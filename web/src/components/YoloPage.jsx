@@ -1,0 +1,233 @@
+import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import DataTile from './DataTile.jsx';
+import { CarIcon, BikeIcon, TruckIcon, SettingsIcon, CameraIcon, SparkleIcon, HeartIcon } from './Icons.jsx';
+import { aiStreamUrl, fetchAIStats, setAIConf, setAIFps, switchAICamera } from '../lib/api.js';
+import { PROVINCE_TONE } from '../lib/store.js';
+
+const EMPTY = { cars: 0, motorcycles: 0, trucks: 0, total: 0, traffic_level: '', latency_ms: 0, fps: 0, active: false };
+
+function levelTone(total) {
+  if (total <= 4) return { text: 'ถนนโล่งสบาย', cls: 'bg-sage-100 text-sage-700', hint: 'ไปได้เลย ทางสะดวก' };
+  if (total <= 12) return { text: 'รถพอประมาณ', cls: 'bg-gold-100 text-gold-700', hint: 'เผื่อเวลาอีกนิดนะ' };
+  return { text: 'รถค่อนข้างเยอะ', cls: 'bg-apricot-100 text-apricot-700', hint: 'ลองเลี่ยงเส้นนี้ก่อนดีไหม' };
+}
+
+export default function YoloPage({ active, cameras, favorites, camid, onPickCamera, onToast, onAsk }) {
+  const [stats, setStats] = useState(EMPTY);
+  const [streamSrc, setStreamSrc] = useState('');
+  const [feedState, setFeedState] = useState('loading'); // loading | live | error
+  const [showOptions, setShowOptions] = useState(false);
+  const [fps, setFps] = useState(5);
+  const [conf, setConf] = useState(30);
+  const imgRef = useRef(null);
+  const cam = cameras.find((c) => c.camid === camid);
+
+  useEffect(() => {
+    if (active && !cam && cameras.length) onPickCamera(cameras[0].camid);
+  }, [active, cam, cameras, onPickCamera]);
+
+  useEffect(() => {
+    if (!active || !cam) return;
+    let cancelled = false;
+    setFeedState('loading');
+    setStats(EMPTY);
+    (async () => {
+      try {
+        await switchAICamera(cam);
+      } catch {
+        if (!cancelled) setFeedState('error');
+        return;
+      }
+      if (!cancelled) setStreamSrc(aiStreamUrl(cam.camid));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [active, cam?.camid]);
+
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(async () => {
+      try {
+        const s = await fetchAIStats();
+        setStats(s);
+        if (s.active && s.camid === camid) setFeedState('live');
+      } catch {
+        setFeedState('error');
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [active, camid]);
+
+  useEffect(() => {
+    if (!active) {
+      setStreamSrc('');
+      setShowOptions(false);
+    }
+  }, [active]);
+
+  const applyFps = (v) => {
+    setFps(v);
+    setAIFps(v).catch(() => {});
+  };
+  const applyConf = (v) => {
+    setConf(v);
+    setAIConf(v / 100).catch(() => {});
+  };
+
+  const captureView = () => {
+    const img = imgRef.current;
+    if (!img || !img.naturalWidth) {
+      onToast('ยังไม่มีภาพให้บันทึก รอสักครู่นะ');
+      return;
+    }
+    const w = img.naturalWidth;
+    const h = img.naturalHeight;
+    const pad = 40;
+    const footer = 150;
+    const canvas = document.createElement('canvas');
+    canvas.width = w + pad * 2;
+    canvas.height = h + pad + footer;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fdfcfb';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(pad, pad, w, h, 28);
+    ctx.clip();
+    ctx.drawImage(img, pad, pad, w, h);
+    ctx.restore();
+    const level = levelTone(stats.total || 0);
+    const y = pad + h + 44;
+    ctx.fillStyle = '#2e2a33';
+    ctx.font = '600 26px "Playfair Display", "Prompt", serif';
+    ctx.fillText('BKK Traffic · Your Street Smart Guide', pad, y);
+    ctx.font = '400 18px "Prompt", "Poppins", sans-serif';
+    ctx.fillStyle = '#6b6572';
+    ctx.fillText(`${cam?.short_title || ''}`, pad, y + 30);
+    ctx.fillText(`รถยนต์ ${stats.cars || 0}  ·  มอเตอร์ไซค์ ${stats.motorcycles || 0}  ·  รถบรรทุก ${stats.trucks || 0}  ·  ${level.text}  ·  ${new Date().toLocaleString('th-TH')}`, pad, y + 60);
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/jpeg', 0.92);
+    a.download = `yolo11x-${cam?.camid || 'view'}-${Date.now()}.jpg`;
+    a.click();
+    onToast('บันทึกภาพวิวของคุณเรียบร้อย');
+  };
+
+  const level = levelTone(stats.total || 0);
+  const tone = cam ? PROVINCE_TONE[cam.province] || 'bg-cream-200 text-ink-600' : '';
+  const favList = cameras.filter((c) => favorites.has(c.camid));
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
+      <section className="glass rounded-[2rem] p-5 sm:p-6" aria-label="AI ตรวจจับรถ YOLO11x">
+        <div className="flex items-start gap-3">
+          <div className="w-11 h-11 rounded-2xl bg-gold-50 border border-gold-100 flex items-center justify-center shrink-0">
+            <CameraIcon />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="font-serif text-xl sm:text-2xl font-semibold text-ink-900">AI ตรวจจับรถ (YOLO11x)</h2>
+            <p className="text-sm text-ink-600">นับรถยนต์ มอเตอร์ไซค์ รถบรรทุก จากภาพกล้องแบบสด ~5 FPS</p>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <label htmlFor="yolo-cam" className="text-sm text-ink-600">กล้อง</label>
+          <select id="yolo-cam" value={camid || ''} onChange={(e) => onPickCamera(e.target.value)} className="cursor-pointer flex-1 min-w-[220px] rounded-full bg-white/85 border border-cream-200 px-4 py-2.5 text-sm text-ink-900 focus:border-lavender-400 outline-none">
+            {cameras.map((c) => (
+              <option key={c.camid} value={c.camid}>
+                [{c.province}] {c.short_title}
+              </option>
+            ))}
+          </select>
+          {cam && <span className={`rounded-full px-3 py-1 text-xs font-medium ${tone}`}>{cam.province}</span>}
+        </div>
+
+        <div className="mt-4 relative rounded-[1.5rem] overflow-hidden bg-cream-100 aspect-video">
+          {streamSrc && <img ref={imgRef} src={streamSrc} alt="ภาพสดจากกล้องพร้อมผลตรวจจับรถ" onError={() => setFeedState('error')} className={`w-full h-full object-contain bg-cream-100 transition-opacity duration-300 ${feedState === 'live' ? 'opacity-100' : 'opacity-0'}`} />}
+          {feedState !== 'live' && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-sm text-ink-600 bg-gradient-to-b from-cream to-lavender-50">
+              {feedState === 'loading' ? (
+                <>
+                  <span className="w-9 h-9 rounded-full border-4 border-gold-100 border-t-gold-400 animate-spin" />
+                  YOLO11x กำลังมองดูถนนให้คุณ...
+                </>
+              ) : (
+                <>
+                  <SparkleIcon className="w-8 h-8" />
+                  <p className="font-medium text-ink-900">AI ยังไม่ตื่น</p>
+                  <p className="text-xs">เปิด run_server.bat แล้วลองใหม่อีกครั้งนะ</p>
+                </>
+              )}
+            </div>
+          )}
+          {feedState === 'live' && <span className={`absolute bottom-3 left-3 rounded-full px-3 py-1 text-xs font-medium shadow-soft ${level.cls}`}>{level.text}</span>}
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <motion.button type="button" whileTap={{ scale: 0.97 }} onClick={captureView} className="cursor-pointer inline-flex items-center gap-2 rounded-full bg-gold-400 text-ink-900 px-6 py-3 text-base font-semibold shadow-lift hover:bg-gold-200 transition-colors duration-200">
+            <CameraIcon />
+            บันทึกวิวของฉัน
+          </motion.button>
+          <button type="button" onClick={() => onAsk(cam?.short_title || '')} className="cursor-pointer inline-flex items-center gap-2 rounded-full bg-lavender-100 text-lavender-700 border border-lavender-200 px-4 py-3 text-sm hover:bg-lavender-200 transition-colors duration-200">
+            <SparkleIcon className="w-4 h-4" />
+            ถามผู้ช่วยเรื่องถนนนี้
+          </button>
+          <div className="relative">
+            <button type="button" onClick={() => setShowOptions((v) => !v)} aria-expanded={showOptions} className="cursor-pointer inline-flex items-center gap-2 rounded-full bg-white/80 border border-cream-200 px-4 py-3 text-sm text-ink-600 hover:bg-lavender-50 transition-colors duration-200">
+              <SettingsIcon />
+              ตัวเลือกเพิ่มเติม...
+            </button>
+            <AnimatePresence>
+              {showOptions && (
+                <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} className="absolute left-0 bottom-full mb-2 z-10 glass-strong rounded-3xl p-4 w-72">
+                  <p className="text-xs text-ink-600 mb-2">ความเร็วประมวลผล</p>
+                  <div className="flex gap-1.5">
+                    {[1, 3, 5, 10].map((v) => (
+                      <button key={v} type="button" onClick={() => applyFps(v)} aria-pressed={fps === v} className={`cursor-pointer flex-1 rounded-full py-1.5 text-sm transition-colors duration-200 ${fps === v ? 'bg-lavender-600 text-white' : 'bg-lavender-50 text-lavender-700 hover:bg-lavender-100'}`}>
+                        {v} FPS
+                      </button>
+                    ))}
+                  </div>
+                  <label htmlFor="yolo-conf" className="block text-xs text-ink-600 mt-4 mb-1">
+                    ความมั่นใจขั้นต่ำ <span className="font-serif text-ink-900">{conf}%</span>
+                  </label>
+                  <input id="yolo-conf" type="range" min="10" max="90" step="5" value={conf} onChange={(e) => applyConf(Number(e.target.value))} className="w-full accent-lavender-600" />
+                  <p className="text-[11px] text-ink-400 mt-3">
+                    หน่วง {stats.latency_ms || 0} ms · {stats.fps || 0} FPS
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      </section>
+
+      <aside className="flex flex-col gap-3">
+        <DataTile icon={CarIcon} label="รถยนต์" value={stats.cars || 0} tone="border-sage-100" />
+        <DataTile icon={BikeIcon} label="มอเตอร์ไซค์" value={stats.motorcycles || 0} tone="border-lavender-100" />
+        <DataTile icon={TruckIcon} label="รถบรรทุก" value={stats.trucks || 0} tone="border-apricot-100" />
+        <div className={`rounded-3xl px-5 py-4 ${level.cls}`}>
+          <p className="text-xs opacity-80">หน้ากล้องตอนนี้</p>
+          <p className="font-serif text-lg font-semibold">{feedState === 'live' ? level.text : 'กำลังดูถนนให้อยู่...'}</p>
+          {feedState === 'live' && <p className="text-sm mt-0.5">{level.hint}</p>}
+        </div>
+        {favList.length > 0 && (
+          <div className="glass rounded-3xl p-4">
+            <p className="text-xs text-ink-600 mb-2 flex items-center gap-1.5">
+              <HeartIcon filled className="w-4 h-4" />
+              กล้องโปรดของคุณ
+            </p>
+            <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto scroll-soft">
+              {favList.map((c) => (
+                <button key={c.camid} type="button" onClick={() => onPickCamera(c.camid)} aria-pressed={c.camid === camid} className={`cursor-pointer text-left rounded-2xl px-3 py-2 text-sm transition-colors duration-200 ${c.camid === camid ? 'bg-lavender-100 text-lavender-700' : 'hover:bg-lavender-50 text-ink-900'}`}>
+                  <span className="line-clamp-1">{c.short_title}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </aside>
+    </div>
+  );
+}

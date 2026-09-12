@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>กล้องจราจร กรุงเทพฯ และ ปริมณฑล | BKK Traffic CCTV</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <!-- Leaflet Map CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="style.css">
+  <!-- HLS.js for Live Video Streaming -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+
+  <!-- Top App Header -->
+  <header class="app-header">
+    <div class="brand-section">
+      <div class="logo-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+        </svg>
+      </div>
+      <div class="brand-titles">
+        <div class="brand-title">
+          กล้องจราจร กรุงเทพฯ และ ปริมณฑล
+          <span class="badge-live-pulse">
+            <span class="pulse-dot"></span> LIVE
+          </span>
+        </div>
+        <div class="brand-subtitle">
+          Longdo Traffic CCTV • กรุงเทพฯ • นนทบุรี • ปทุมธานี • สมุทรปราการ • นครปฐม
+        </div>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <div class="stat-pill" id="stat-cameras-active">
+        <span>กำลังแสดง:</span> <strong id="active-cam-count">0</strong> / <span id="layout-max-count">4</span>
+      </div>
+      <div class="stat-pill" id="stat-cameras-total">
+        <span>กล้องทั้งหมด:</span> <strong id="total-cam-count">66</strong>
+      </div>
+
+      <button class="btn btn-ai-pulse" id="btn-open-ai-studio" title="เปิดระบบ AI YOLO11x ตรวจจับรถ">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="10" rx="2"></rect>
+          <circle cx="12" cy="5" r="2"></circle>
+          <path d="M12 7v4"></path>
+          <line x1="8" y1="16" x2="8" y2="16"></line>
+          <line x1="16" y1="16" x2="16" y2="16"></line>
+        </svg>
+        AI ตรวจจับรถ (YOLO11x)
+      </button>
+
+      <button class="btn btn-primary" id="btn-open-map" title="ดูตำแหน่งกล้องบนแผนที่">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon>
+          <line x1="8" y1="2" x2="8" y2="18"></line>
+          <line x1="16" y1="6" x2="16" y2="22"></line>
+        </svg>
+        เลือกจากแผนที่
+      </button>
+
+      <button class="btn" id="btn-share-link" title="คัดลอกลิงก์แชร์การดูกล้องชุดนี้">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+        </svg>
+        แชร์ลิงก์
+      </button>
+
+      <button class="btn btn-icon-only" id="btn-fullscreen-grid" title="เต็มจอ (Fullscreen)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+        </svg>
+      </button>
+
+      <button class="btn btn-outline-danger" id="btn-clear-all" title="ปิดกล้องทั้งหมด">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        </svg>
+        ปิดทั้งหมด
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Application Body -->
+  <div class="app-container">
+    
+    <!-- Left Sidebar: Search & Camera List -->
+    <aside class="sidebar">
+      
+      <!-- Search & Filters Header -->
+      <div class="sidebar-search-section">
+        <div class="search-input-wrapper">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="search-input" class="search-input" placeholder="ค้นหาชื่อถนน, แยก, ทางด่วน, รหัสกล้อง...">
+          <button id="search-clear-btn" class="search-clear-btn" title="ล้างการค้นหา">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Province Filter Chips -->
+        <div class="province-filter-chips" id="province-chips">
+          <button class="chip active" data-province="all">
+            ทั้งหมด <span class="chip-count" id="chip-all-count">66</span>
+          </button>
+          <button class="chip" data-province="กรุงเทพมหานคร">
+            กรุงเทพฯ <span class="chip-count">32</span>
+          </button>
+          <button class="chip" data-province="นนทบุรี">
+            นนทบุรี <span class="chip-count">24</span>
+          </button>
+          <button class="chip" data-province="นครปฐม">
+            นครปฐม <span class="chip-count">6</span>
+          </button>
+          <button class="chip" data-province="สมุทรปราการ">
+            สมุทรปราการ <span class="chip-count">3</span>
+          </button>
+          <button class="chip" data-province="ปทุมธานี">
+            ปทุมธานี <span class="chip-count">1</span>
+          </button>
+          <button class="chip" data-province="favorites">
+            ⭐ โปรด <span class="chip-count" id="chip-fav-count">0</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Sorting & Actions subbar -->
+      <div class="sidebar-subbar">
+        <div>
+          <span>เรียง: </span>
+          <select id="sort-select" class="sort-select">
+            <option value="name">ชื่อตำแหน่ง (ก-ฮ)</option>
+            <option value="province">จังหวัด</option>
+            <option value="camid">รหัสกล้อง (ID)</option>
+          </select>
+        </div>
+        <div>
+          <button class="btn btn-icon-only" id="btn-quick-random" style="padding: 2px 6px; font-size: 0.72rem;" title="สุ่มเปิด 4 กล้อง">
+            สุ่ม 4 กล้อง
+          </button>
+        </div>
+      </div>
+
+      <!-- Camera Items List -->
+      <div class="camera-list-container" id="camera-list">
+        <!-- Rendered dynamically by app.js -->
+      </div>
+    </aside>
+
+    <!-- Main Right Content: Video Wall Display -->
+    <main class="display-area">
+      
+      <!-- Video Grid Control Toolbar -->
+      <div class="video-control-bar">
+        <div class="layout-picker">
+          <span class="layout-label">จำนวนจอ:</span>
+          <div class="layout-btn-group" id="layout-buttons">
+            <button class="layout-btn" data-size="1">1</button>
+            <button class="layout-btn active" data-size="4">4 (2x2)</button>
+            <button class="layout-btn" data-size="9">9 (3x3)</button>
+            <button class="layout-btn" data-size="16">16 (4x4)</button>
+          </div>
+        </div>
+
+        <div class="multi-toggle-wrapper">
+          <span>แสดงหลายกล้องพร้อมกัน</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggle-multi-cam" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Video Grid Container (Slots 1 to 16) -->
+      <div class="video-grid-container layout-4" id="video-grid">
+        <!-- 16 Video Slots generated in JS -->
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Map Modal -->
+  <div class="modal-backdrop" id="map-modal">
+    <div class="modal-card modal-map">
+      <div class="modal-header">
+        <div class="modal-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon>
+            <line x1="8" y1="2" x2="8" y2="18"></line>
+            <line x1="16" y1="6" x2="16" y2="22"></line>
+          </svg>
+          แผนที่ตำแหน่งกล้องจราจร (กรุงเทพฯ และ ปริมณฑล)
+        </div>
+        <button class="modal-close-btn" id="btn-close-map-modal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div style="flex: 1; position: relative;">
+        <div id="leaflet-map"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Camera Details Modal -->
+  <div class="modal-backdrop" id="info-modal">
+    <div class="modal-card" style="width: 520px;">
+      <div class="modal-header">
+        <div class="modal-title" id="info-modal-title">ข้อมูลกล้องจราจร</div>
+        <button class="modal-close-btn" id="btn-close-info-modal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body" id="info-modal-body">
+        <!-- Populated dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Vehicle Analytics Studio Modal -->
+  <div class="modal-backdrop" id="ai-modal">
+    <div class="modal-card modal-ai">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span class="ai-badge-header">YOLO11x • 5 FPS</span>
+          <span>ระบบ AI ตรวจจับและแยกประเภทยานพาหนะ (รถยนต์, มอไซ, รถบรรทุก)</span>
+        </div>
+        <button class="modal-close-btn" id="btn-close-ai-modal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="ai-studio-body">
+        
+        <!-- Left: Live Detection Video Feed -->
+        <div class="ai-stream-view">
+          <div class="ai-stream-loading" id="ai-stream-loading">
+            <div class="spinner"></div>
+            <span>กำลังประมวลผล YOLO11x (5 FPS)...</span>
+          </div>
+          <img id="ai-video-feed" src="" alt="AI Live Detection Stream">
+        </div>
+
+        <!-- Right: Real-time Analytics & Controls -->
+        <div class="ai-panel-sidebar">
+          
+          <!-- Camera Selection -->
+          <div class="ai-card">
+            <div class="ai-card-title">
+              <span>เลือกกล้องที่ต้องการตรวจจับ</span>
+              <span id="ai-selected-prov" class="prov-tag bkk">กรุงเทพมหานคร</span>
+            </div>
+            <select id="ai-camera-select" class="ai-select">
+              <!-- Populated dynamically -->
+            </select>
+          </div>
+
+          <!-- Vehicle Counters -->
+          <div class="ai-card">
+            <div class="ai-card-title">
+              <span>จำนวนยานพาหนะแบบเรียลไทม์</span>
+              <span class="badge-live-pulse" style="font-size:0.65rem;">
+                <span class="pulse-dot"></span> LIVE COUNT
+              </span>
+            </div>
+
+            <div class="vehicle-counter-grid">
+              <!-- Cars -->
+              <div class="counter-card car">
+                <div class="counter-label">
+                  <span>🚗 รถยนต์</span>
+                  <small style="color:#00d2ff;">Cars</small>
+                </div>
+                <div class="counter-value" id="ai-count-cars">0</div>
+              </div>
+
+              <!-- Motorcycles -->
+              <div class="counter-card motorcycle">
+                <div class="counter-label">
+                  <span>🏍️ มอไซ</span>
+                  <small style="color:#ffb800;">Motorcycles</small>
+                </div>
+                <div class="counter-value" id="ai-count-motorcycles">0</div>
+              </div>
+
+              <!-- Trucks -->
+              <div class="counter-card truck">
+                <div class="counter-label">
+                  <span>🚚 รถบรรทุก</span>
+                  <small style="color:#ff4d4d;">Trucks / Bus</small>
+                </div>
+                <div class="counter-value" id="ai-count-trucks">0</div>
+              </div>
+
+              <!-- Total -->
+              <div class="counter-card total">
+                <div class="counter-label">
+                  <span>🚦 รวมยานพาหนะทั้งหมด</span>
+                  <small id="ai-fps-display" style="color:#2ea043;">5.0 FPS</small>
+                </div>
+                <div class="counter-value" id="ai-count-total">0</div>
+              </div>
+            </div>
+
+            <!-- Traffic Density Status -->
+            <div class="traffic-status-banner" id="ai-traffic-status">
+              กำลังประเมินสภาพจราจร...
+            </div>
+          </div>
+
+          <!-- Settings & Tuning -->
+          <div class="ai-card">
+            <div class="ai-card-title">ตั้งค่าการประมวลผล</div>
+            
+            <div class="form-group">
+              <div class="form-label">
+                <span>อัตราการประมวลผล (Target FPS):</span>
+                <strong id="ai-target-fps-val" style="color:var(--accent-blue);">5 FPS</strong>
+              </div>
+              <div class="fps-btn-group" id="ai-fps-group">
+                <button class="fps-btn" data-fps="3">3 FPS</button>
+                <button class="fps-btn active" data-fps="5">5 FPS (แนะนำ)</button>
+                <button class="fps-btn" data-fps="10">10 FPS</button>
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-top: 6px;">
+              <div class="form-label">
+                <span>ความแม่นยำขั้นต่ำ (Confidence):</span>
+                <span id="ai-conf-val">30%</span>
+              </div>
+              <input type="range" id="ai-conf-slider" min="15" max="80" value="30" style="accent-color:var(--accent-blue); width:100%;">
+            </div>
+
+            <div class="ai-telemetry">
+              <span>ประมวลผล: <strong style="color:var(--text-primary);">RTX 3050 CUDA</strong></span>
+              <span>ความหน่วง: <strong id="ai-latency-val" style="color:var(--text-primary);">-- ms</strong></span>
+            </div>
+
+            <div style="display:flex; gap:8px; margin-top:4px;">
+              <button class="btn btn-primary" id="btn-ai-snapshot" style="flex:1;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                  <circle cx="12" cy="13" r="4"></circle>
+                </svg>
+                บันทึกภาพพร้อมผลตรวจ
+              </button>
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Toast Notifications -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Data & Application Logic -->
+  <script src="cameras_data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

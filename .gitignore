@@ -1,0 +1,35 @@
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Large Model Weights (YOLO auto-downloads if missing, avoids GitHub 100MB limit)
+*.pt
+*.onnx
+*.engine
+
+# Dependencies
+web/node_modules/
+node_modules/
+
+# Cache and temporary data
+cache/
+*.log
+
+# Environment variables & API keys
+.env
+.env.local
+.env.*.local
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
