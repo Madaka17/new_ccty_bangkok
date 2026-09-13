@@ -122,14 +122,37 @@ class VehicleTracker:
 
         persons = []
         tracked_boxes = []
+
+        # Separate person rows and vehicle rows from ByteTrack
+        person_rows = []
+        veh_rows = []
         for row in tracks:
+            cls_id = int(row[6])
+            if cls_id == PERSON_CLASS:
+                person_rows.append(row)
+            else:
+                veh_rows.append(row)
+
+        used_person_indices = set()
+
+        for row in veh_rows:
             x1, y1, x2, y2 = [int(v) for v in row[:4]]
             track_id = int(row[4])
             conf = float(row[5])
             cls_id = int(row[6])
-            if cls_id == PERSON_CLASS:
-                persons.append(((x1 + x2) / 2.0, (y1 + y2) / 2.0, max(1, y2 - y1)))
-                continue
+
+            # Merge rider (person) into motorcycle/bicycle if overlapping
+            if cls_id in (1, 3):
+                for p_i, p_row in enumerate(person_rows):
+                    if p_i in used_person_indices:
+                        continue
+                    px1, py1, px2, py2 = [int(v) for v in p_row[:4]]
+                    if not (px2 < x1 or px1 > x2 or py2 < y1 - 40 or py1 > y2 + 40):
+                        x1, y1 = min(x1, px1), min(y1, py1)
+                        x2, y2 = max(x2, px2), max(y2, py2)
+                        conf = max(conf, float(p_row[5]))
+                        used_person_indices.add(p_i)
+
             cat = CLASS_CONFIG.get(cls_id, DEFAULT_CLASS)['category']
             counts[CAT_KEY[cat]] += 1
             dets.append((cls_id, conf, x1, y1, x2, y2, track_id))
@@ -141,8 +164,6 @@ class VehicleTracker:
                 tr = self._tracks[track_id] = {'t': now, 'speed': None, 'path': deque(), 'seen': 0}
             tr['t'] = now
             tr['seen'] += 1
-            # Count a vehicle once its track is confirmed by a second frame; one-frame
-            # tracks are detector flicker or tracker ID churn, not a new vehicle
             if tr['seen'] == 2:
                 new_vehicles[CAT_KEY[cat]] += 1
                 self._passes.append(now)
@@ -150,12 +171,9 @@ class VehicleTracker:
             path.append((now, cx, cy))
             while path and now - path[0][0] > self.SPEED_WINDOW * 1.5:
                 path.popleft()
-            # Speed over ~1 s of video time, in box-heights per second (roughly
-            # perspective-independent). Frame-to-frame deltas are too jittery to use.
             t0, x0, y0 = path[0]
             if now - t0 >= self.SPEED_WINDOW * 0.6:
                 tr['speed'] = ((cx - x0) ** 2 + (cy - y0) ** 2) ** 0.5 / max(1.0, y2 - y1) / (now - t0)
-                # How long this vehicle has been standing still
                 if tr['speed'] < self.STOPPED_SPEED:
                     tr.setdefault('stop_t', now)
                 elif tr['speed'] >= self.MOVING_SPEED:
@@ -166,16 +184,83 @@ class VehicleTracker:
                 if tr['speed'] >= self.MOVING_SPEED:
                     moving += 1
 
+        # Handle remaining tracked persons: lone rider detected as person in traffic
+        for p_i, p_row in enumerate(person_rows):
+            px1, py1, px2, py2 = [int(v) for v in p_row[:4]]
+            p_track_id = int(p_row[4])
+            p_conf = float(p_row[5])
+            persons.append(((px1 + px2) / 2.0, (py1 + py2) / 2.0, max(1, py2 - py1)))
+            if p_i in used_person_indices:
+                continue
+            h = py2 - py1
+            # Standalone person in traffic view -> motorcycle rider
+            if h <= 200:
+                cat = 'มอไซ'
+                counts[CAT_KEY[cat]] += 1
+                dets.append((3, p_conf, px1, py1, px2, py2, p_track_id))
+                tracked_boxes.append((px1, py1, px2, py2))
+
+                cx, cy = (px1 + px2) / 2.0, (py1 + py2) / 2.0
+                tr = self._tracks.get(p_track_id)
+                if tr is None:
+                    tr = self._tracks[p_track_id] = {'t': now, 'speed': None, 'path': deque(), 'seen': 0}
+                tr['t'] = now
+                tr['seen'] += 1
+                if tr['seen'] == 2:
+                    new_vehicles['motorcycles'] += 1
+                    self._passes.append(now)
+                path = tr['path']
+                path.append((now, cx, cy))
+                while path and now - path[0][0] > self.SPEED_WINDOW * 1.5:
+                    path.popleft()
+                t0, x0, y0 = path[0]
+                if now - t0 >= self.SPEED_WINDOW * 0.6:
+                    tr['speed'] = ((cx - x0) ** 2 + (cy - y0) ** 2) ** 0.5 / max(1.0, py2 - py1) / (now - t0)
+                    if tr['speed'] < self.STOPPED_SPEED:
+                        tr.setdefault('stop_t', now)
+                    elif tr['speed'] >= self.MOVING_SPEED:
+                        tr.pop('stop_t', None)
+                    tr['box'] = (cx, cy, max(1, py2 - py1), px1, py1, px2, py2)
+                if tr['speed'] is not None:
+                    measured += 1
+                    if tr['speed'] >= self.MOVING_SPEED:
+                        moving += 1
+
         # Also capture and show raw detections that ByteTrack hasn't locked onto yet
         # so NO vehicle is missed on screen
         if len(result.boxes):
+            raw_motos = []
+            raw_others = []
+            raw_persons = []
             for b in result.boxes:
                 bx1, by1, bx2, by2 = [int(v) for v in b.xyxy[0]]
                 bconf = float(b.conf[0])
                 bcls = int(b.cls[0])
                 if bcls == PERSON_CLASS:
-                    continue
-                # Overlap check with already tracked boxes
+                    raw_persons.append((bx1, by1, bx2, by2, bconf))
+                elif bcls in (1, 3):
+                    raw_motos.append([bx1, by1, bx2, by2, bconf, bcls])
+                else:
+                    raw_others.append((bx1, by1, bx2, by2, bconf, bcls))
+
+            used_raw_p = set()
+            for m in raw_motos:
+                for p_i, (px1, py1, px2, py2, pconf) in enumerate(raw_persons):
+                    if p_i in used_raw_p:
+                        continue
+                    if not (px2 < m[0] or px1 > m[2] or py2 < m[1] - 40 or py1 > m[3] + 40):
+                        m[0], m[1] = min(m[0], px1), min(m[1], py1)
+                        m[2], m[3] = max(m[2], px2), max(m[3], py2)
+                        m[4] = max(m[4], pconf)
+                        used_raw_p.add(p_i)
+
+            # Standalone raw persons on road -> motorcycle
+            for p_i, (px1, py1, px2, py2, pconf) in enumerate(raw_persons):
+                if p_i not in used_raw_p and (py2 - py1) <= 200:
+                    raw_motos.append([px1, py1, px2, py2, pconf, 3])
+
+            all_raw = [(m[0], m[1], m[2], m[3], m[4], m[5]) for m in raw_motos] + raw_others
+            for bx1, by1, bx2, by2, bconf, bcls in all_raw:
                 is_dup = False
                 for tx1, ty1, tx2, ty2 in tracked_boxes:
                     ix1, iy1 = max(bx1, tx1), max(by1, ty1)
@@ -309,10 +394,10 @@ def frame_video_time(cap, t_wall=None):
 
 
 def skip_elapsed_frames(cap, seconds):
-    """Skip the source frames that arrived during `seconds` so the feed stays live
-    instead of playing in slow motion with an ever-growing lag."""
+    """Skip a few buffered frames so the feed stays live without blocking network I/O."""
     src_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-    for _ in range(int(src_fps * seconds) - 1):
+    frames_to_skip = min(4, max(0, int(src_fps * min(0.5, seconds)) - 1))
+    for _ in range(frames_to_skip):
         if not cap.grab():
             break
 
@@ -328,6 +413,12 @@ class VehicleDetectorYOLO11x:
 
         print(f"[AI] Initializing YOLO11x ({model_path}) with target {target_fps} FPS...")
         self.model = YOLO(model_path)
+        # Warmup model once on dummy image so initial stream frames don't stall
+        try:
+            dummy = np.zeros((320, 320, 3), dtype=np.uint8)
+            self.model(dummy, verbose=False)
+        except Exception:
+            pass
         # One GPU: inference from all streams (this one and the background counters) is serialized
         self.model_lock = threading.Lock()
 
@@ -397,10 +488,13 @@ class VehicleDetectorYOLO11x:
     def infer(self, frame, conf=None):
         """Run YOLO on one frame (thread-safe). Returns the ultralytics Results object."""
         with self.model_lock:
+            # Detect at slightly lower threshold (min 0.15) and imgsz=800 so small/distant motorcycles are clearly detected
+            eff_conf = min(0.15, self.conf_threshold if conf is None else conf)
             return self.model(
                 frame,
                 classes=self.target_classes,
-                conf=self.conf_threshold if conf is None else conf,
+                conf=eff_conf,
+                imgsz=800,
                 iou=0.45,
                 verbose=False
             )[0]

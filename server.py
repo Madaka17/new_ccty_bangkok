@@ -1,5 +1,13 @@
 import os
 import sys
+import io
+
+if sys.platform == 'win32':
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 # 1. Auto-detect and switch to .venv if running under global Python
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -109,10 +117,9 @@ incidents = IncidentManager(vehicle_log, lambda: {c["camid"]: c for c in cameras
                             os.path.join(BASE_DIR, "cache", "incidents"))
 detector.incidents = incidents
 
-# Start detector on initial Bangkok camera
+# Start detector on initial Bangkok camera (Default: แยกประชานิเวศน์ with active cars & motorcycles)
 if cameras_data:
-    # Prefer Rama 4 or Vibhavadi
-    init_cam = next((c for c in cameras_data if c["camid"] == "ITICM_BMAMI0074"), cameras_data[0])
+    init_cam = next((c for c in cameras_data if c["camid"] == "ITICM_BMAMI0188"), cameras_data[0])
     stream_url = init_cam.get("hls_url") or init_cam.get("vdourl")
     if stream_url:
         detector.start_stream(stream_url, init_cam)

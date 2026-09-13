@@ -26,7 +26,10 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
   const cam = cameras.find((c) => c.camid === camid);
 
   useEffect(() => {
-    if (active && !cam && cameras.length) onPickCamera(cameras[0].camid);
+    if (active && !cam && cameras.length) {
+      const defCam = cameras.find((c) => c.camid === 'ITICM_BMAMI0188') || cameras[0];
+      onPickCamera(defCam.camid);
+    }
   }, [active, cam, cameras, onPickCamera]);
 
   useEffect(() => {

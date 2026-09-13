@@ -26,7 +26,7 @@ export default function App() {
   const [filter, setFilter] = useState('all');
   const [query, setQuery] = useState('');
   const [userPos, setUserPos] = useState(null);
-  const [aiCamid, setAiCamid] = useState('');
+  const [aiCamid, setAiCamid] = useState('ITICM_BMAMI0188');
   const [pendingQuestion, setPendingQuestion] = useState('');
   const [aiActive, setAiActive] = useState(false);
   const [toast, setToast] = useState('');
