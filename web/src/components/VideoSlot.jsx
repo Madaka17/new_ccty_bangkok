@@ -2,15 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js';
 import { motion } from 'framer-motion';
 import { OfflineIllustration, CloseIcon, RefreshIcon, ExpandIcon, SparkleIcon } from './Icons.jsx';
-import { PROVINCE_TONE } from '../lib/store.js';
+import { PROVINCE_TONE, CAM_LEVEL, camStatusText } from '../lib/store.js';
 
-export default function VideoSlot({ cam, onClose, onOpenAI }) {
+export default function VideoSlot({ cam, status: aiStatus, incident, onClose, onOpenAI }) {
   const videoRef = useRef(null);
   const [status, setStatus] = useState('loading'); // loading | live | offline
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     const video = videoRef.current;
+    if (!cam?.hls_url && cam?.vdourl) {
+      setStatus('mjpeg');
+      return;
+    }
     if (!video || !cam?.hls_url) {
       setStatus('offline');
       return;
@@ -62,7 +66,17 @@ export default function VideoSlot({ cam, onClose, onOpenAI }) {
     };
   }, [cam?.hls_url, attempt]);
 
+  useEffect(() => {
+    if (status === 'offline') {
+      const timer = setTimeout(() => {
+        onClose?.();
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [status, onClose]);
+
   const tone = PROVINCE_TONE[cam.province] || 'bg-cream-200 text-ink-600';
+  const level = aiStatus?.ts ? CAM_LEVEL[aiStatus.level] || CAM_LEVEL.free : null;
 
   const fullscreen = () => {
     const el = videoRef.current?.parentElement;
@@ -83,7 +97,7 @@ export default function VideoSlot({ cam, onClose, onOpenAI }) {
         <p className="flex-1 min-w-0 truncate text-sm font-medium text-ink-900" title={cam.title}>
           {cam.short_title || cam.title}
         </p>
-        {status === 'live' && (
+        {(status === 'live' || status === 'mjpeg') && (
           <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-sage-700">
             <span className="live-dot w-2 h-2 rounded-full bg-sage-400" />
             สด
@@ -102,6 +116,27 @@ export default function VideoSlot({ cam, onClose, onOpenAI }) {
 
       <div className="relative flex-1 min-h-[180px] bg-cream-100 rounded-[1.5rem] mx-2 mb-2 overflow-hidden">
         <video ref={videoRef} muted playsInline autoPlay className={`w-full h-full object-cover ${status === 'live' ? '' : 'opacity-0'}`} />
+        {status === 'mjpeg' && (
+          <img src={`${cam.vdourl}${cam.vdourl.includes('?') ? '&' : '?'}t=${attempt}`} alt="" onError={() => setStatus('offline')} className="absolute inset-0 w-full h-full object-cover" />
+        )}
+
+        {(status === 'live' || status === 'mjpeg') && (
+          <div className="absolute bottom-2 left-2 flex items-center gap-1.5">
+            {incident ? (
+              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold bg-[#d9534f] text-white shadow-soft" title={incident.description || ''}>
+                ⚠ {incident.kind === 'breakdown' ? 'รถเสียกีดขวาง' : 'อุบัติเหตุ'}
+              </span>
+            ) : level ? (
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium shadow-soft ${level.cls}`} title={camStatusText(aiStatus)}>
+                <span className="w-2 h-2 rounded-full" style={{ background: level.dot }} />
+                {level.text}
+                <span className="opacity-70 font-normal">· {aiStatus.rate_per_min} คัน/นาที</span>
+              </span>
+            ) : (
+              <span className="rounded-full px-2.5 py-1 text-xs bg-white/80 text-ink-400 shadow-soft">รอ AI วัด</span>
+            )}
+          </div>
+        )}
 
         {status === 'loading' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-ink-600 text-sm">
@@ -113,17 +148,26 @@ export default function VideoSlot({ cam, onClose, onOpenAI }) {
         {status === 'offline' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center px-4 bg-gradient-to-b from-cream to-lavender-50">
             <OfflineIllustration />
-            <p className="font-medium text-ink-900">กล้องขอพักสักครู่นะ</p>
-            <p className="text-xs text-ink-600">สัญญาณยังไม่มา ลองใหม่ได้ทุกเมื่อ</p>
-            <motion.button
-              type="button"
-              whileTap={{ scale: 0.96 }}
-              onClick={() => setAttempt((n) => n + 1)}
-              className="cursor-pointer mt-1 inline-flex items-center gap-1.5 rounded-full bg-lavender-100 text-lavender-700 border border-lavender-200 px-4 py-2 text-sm font-medium hover:bg-lavender-200 transition-colors duration-200"
-            >
-              <RefreshIcon />
-              ลองอีกครั้ง
-            </motion.button>
+            <p className="font-medium text-ink-900">ไม่มีสัญญาณภาพ</p>
+            <p className="text-xs text-ink-600">กล้องออฟไลน์ กำลังนำออกจากจอ...</p>
+            <div className="flex items-center gap-2 mt-1">
+              <button
+                type="button"
+                onClick={onClose}
+                className="cursor-pointer inline-flex items-center gap-1 rounded-full bg-rose-50 text-rose-700 border border-rose-200 px-3 py-1.5 text-xs font-medium hover:bg-rose-100 transition-colors duration-200"
+              >
+                <CloseIcon className="w-3.5 h-3.5" />
+                นำออกทันที
+              </button>
+              <button
+                type="button"
+                onClick={() => setAttempt((n) => n + 1)}
+                className="cursor-pointer inline-flex items-center gap-1 rounded-full bg-lavender-100 text-lavender-700 border border-lavender-200 px-3 py-1.5 text-xs font-medium hover:bg-lavender-200 transition-colors duration-200"
+              >
+                <RefreshIcon className="w-3 h-3" />
+                ลองใหม่
+              </button>
+            </div>
           </div>
         )}
       </div>

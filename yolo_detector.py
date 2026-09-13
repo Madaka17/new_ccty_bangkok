@@ -2,50 +2,301 @@ import cv2
 import time
 import os
 import threading
+from collections import deque
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from ultralytics import YOLO
+from ultralytics.trackers import BYTETracker
+from ultralytics.utils import YAML, IterableSimpleNamespace
+from ultralytics.utils.checks import check_yaml
+
+# Target classes. COCO IDs: 2: car, 3: motorcycle, 5: bus, 7: truck; 0: person is detected only
+# as an incident signal (people on the road next to a stopped vehicle) and never counted as a vehicle
+PERSON_CLASS = 0
+TARGET_CLASSES = [PERSON_CLASS, 2, 3, 5, 7]
+
+# Color mapping (RGB)
+CLASS_CONFIG = {
+    2: {
+        'category': 'รถยนต์',
+        'name_en': 'Car',
+        'color': (157, 191, 146),    # Sage
+        'bg_color': (227, 238, 221)
+    },
+    3: {
+        'category': 'มอไซ',
+        'name_en': 'Motorcycle',
+        'color': (181, 163, 222),    # Lavender
+        'bg_color': (235, 229, 247)
+    },
+    5: {
+        'category': 'รถบรรทุก',       # Bus grouped as heavy transport / truck
+        'name_en': 'Bus',
+        'color': (245, 168, 140),    # Apricot
+        'bg_color': (253, 230, 221)
+    },
+    7: {
+        'category': 'รถบรรทุก',
+        'name_en': 'Truck',
+        'color': (245, 168, 140),    # Apricot
+        'bg_color': (253, 230, 221)
+    }
+}
+DEFAULT_CLASS = {
+    'category': 'รถยนต์',
+    'name_en': 'Vehicle',
+    'color': (157, 191, 146),
+    'bg_color': (227, 238, 221)
+}
+CAT_KEY = {'รถยนต์': 'cars', 'มอไซ': 'motorcycles', 'รถบรรทุก': 'trucks'}
+
+LEVEL_TEXT = {
+    'free': ("การจราจรคล่องตัว 🟢", (157, 191, 146)),
+    'moderate': ("การจราจรปานกลาง 🟡", (237, 197, 92)),
+    'heavy': ("การจราจรหนาแน่น 🔴", (245, 168, 140)),
+}
+
+
+class VehicleTracker:
+    """Per-stream ByteTrack + counting of vehicles that pass + traffic level from motion.
+
+    One instance per video stream. The YOLO model itself is shared (see VehicleDetectorYOLO11x.infer).
+    """
+
+    # A tracked vehicle moving slower than this (box-heights per second) counts as stopped
+    MOVING_SPEED = 0.3
+    # Seconds of video over which a vehicle's speed is measured
+    SPEED_WINDOW = 1.0
+    # Forget a track after this long without being seen
+    TRACK_TTL = 10.0
+    # Seconds of video over which vehicle count and moving share are averaged for the traffic level
+    LEVEL_WINDOW = 60.0
+    # Seconds of video over which passes are counted for the turnover signal
+    TURNOVER_WINDOW = 60.0
+    # A vehicle stopped this long while the rest of the traffic flows is an incident candidate
+    STOPPED_ALERT = 60.0
+    STOPPED_SPEED = 0.1
+
+    _cfg = None
+
+    def __init__(self, level_window=None):
+        if VehicleTracker._cfg is None:
+            VehicleTracker._cfg = IterableSimpleNamespace(**YAML.load(check_yaml('bytetrack.yaml')))
+        self.tracker = BYTETracker(args=VehicleTracker._cfg)
+        self.level_window = level_window or self.LEVEL_WINDOW
+        # track_id -> {'t': last seen, 'seen': frames, 'speed', 'path': deque of (t, cx, cy)}
+        self._tracks = {}
+        # Smoothed {'t', 'moving' (%), 'total'} used for the traffic level
+        self._flow = None
+        # Video times of confirmed passes in the last TURNOVER_WINDOW seconds, and first frame time
+        self._passes = deque()
+        self._t_first = None
+        # People seen in the last frame, as (cx, cy, h) boxes
+        self.persons = []
+        self.last_stats = None
+
+    def update(self, result, frame, frame_t):
+        """Track detections of one frame.
+
+        Returns (dets, stats, new_vehicles):
+          dets: list of (cls_id, conf, x1, y1, x2, y2, track_id)
+          stats: cars/motorcycles/trucks/total/moving_pct/level/traffic_level
+          new_vehicles: {'cars', 'motorcycles', 'trucks'} confirmed as passing in this frame
+        """
+        det = result.boxes.cpu().numpy()
+        tracks = self.tracker.update(det, frame) if len(det) else np.empty((0, 8))
+        # tracks rows: x1, y1, x2, y2, track_id, conf, cls, det_idx
+
+        counts = {'cars': 0, 'motorcycles': 0, 'trucks': 0}
+        new_vehicles = {'cars': 0, 'motorcycles': 0, 'trucks': 0}
+        dets = []
+        moving = 0
+        measured = 0
+        now = frame_t
+
+        persons = []
+        for row in tracks:
+            x1, y1, x2, y2 = [int(v) for v in row[:4]]
+            track_id = int(row[4])
+            conf = float(row[5])
+            cls_id = int(row[6])
+            if cls_id == PERSON_CLASS:
+                persons.append(((x1 + x2) / 2.0, (y1 + y2) / 2.0, max(1, y2 - y1)))
+                continue
+            cat = CLASS_CONFIG.get(cls_id, DEFAULT_CLASS)['category']
+            counts[CAT_KEY[cat]] += 1
+            dets.append((cls_id, conf, x1, y1, x2, y2, track_id))
+
+            cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+            tr = self._tracks.get(track_id)
+            if tr is None:
+                tr = self._tracks[track_id] = {'t': now, 'speed': None, 'path': deque(), 'seen': 0}
+            tr['t'] = now
+            tr['seen'] += 1
+            # Count a vehicle once its track is confirmed by a second frame; one-frame
+            # tracks are detector flicker or tracker ID churn, not a new vehicle
+            if tr['seen'] == 2:
+                new_vehicles[CAT_KEY[cat]] += 1
+                self._passes.append(now)
+            path = tr['path']
+            path.append((now, cx, cy))
+            while path and now - path[0][0] > self.SPEED_WINDOW * 1.5:
+                path.popleft()
+            # Speed over ~1 s of video time, in box-heights per second (roughly
+            # perspective-independent). Frame-to-frame deltas are too jittery to use.
+            t0, x0, y0 = path[0]
+            if now - t0 >= self.SPEED_WINDOW * 0.6:
+                tr['speed'] = ((cx - x0) ** 2 + (cy - y0) ** 2) ** 0.5 / max(1.0, y2 - y1) / (now - t0)
+                # How long this vehicle has been standing still
+                if tr['speed'] < self.STOPPED_SPEED:
+                    tr.setdefault('stop_t', now)
+                elif tr['speed'] >= self.MOVING_SPEED:
+                    tr.pop('stop_t', None)
+                tr['box'] = (cx, cy, max(1, y2 - y1), x1, y1, x2, y2)
+            if tr['speed'] is not None:
+                measured += 1
+                if tr['speed'] >= self.MOVING_SPEED:
+                    moving += 1
+
+        total = sum(counts.values())
+
+        # Drop tracks that left the frame
+        for tid in [t for t, v in self._tracks.items() if now - v['t'] > self.TRACK_TTL]:
+            del self._tracks[tid]
+
+        # Traffic level: how many vehicles are visible AND whether they are moving.
+        # Many moving vehicles = busy but flowing, not a jam. Both signals are smoothed over
+        # ~LEVEL_WINDOW seconds of video so one red-light queue does not read as a jam.
+        if total <= 4:
+            # If current frame has 4 or fewer vehicles, the road is clear!
+            # Reset smoothed total directly to current count and moving_pct to 100%
+            self._flow = {'t': now, 'moving': 100.0, 'total': float(total)}
+        elif measured:
+            inst_moving = 100.0 * moving / measured
+            if self._flow is None:
+                self._flow = {'t': now, 'moving': inst_moving, 'total': float(total)}
+            else:
+                a = min(1.0, max(0.0, now - self._flow['t']) / self.level_window)
+                self._flow['moving'] += a * (inst_moving - self._flow['moving'])
+                self._flow['total'] += a * (total - self._flow['total'])
+                self._flow['t'] = now
+        elif self._flow:
+            # If no speeds measured this frame, total still decays towards current visible count
+            a = min(1.0, max(0.0, now - self._flow['t']) / self.level_window)
+            self._flow['total'] += a * (total - self._flow['total'])
+            self._flow['t'] = now
+
+        moving_pct = round(self._flow['moving']) if self._flow else 100
+        n = self._flow['total'] if self._flow else total
+
+        # Turnover: fast vehicles leave before their speed can be measured, which biases the
+        # moving share low on highways. If the visible vehicles are replaced about twice a
+        # minute or more, traffic is flowing regardless of what the speed estimate says.
+        if self._t_first is None:
+            self._t_first = now
+        while self._passes and now - self._passes[0] > self.TURNOVER_WINDOW:
+            self._passes.popleft()
+        window = max(5.0, min(self.TURNOVER_WINDOW, now - self._t_first))
+        turnover = len(self._passes) * (60.0 / window) / max(1.0, n)
+        moving_pct = max(moving_pct, min(100, round(turnover * 50)))
+        if total <= 5 or n <= 5:
+            level = 'free'
+        elif moving_pct >= 50:
+            level = 'free' if n <= 15 else 'moderate'
+        elif moving_pct < 25 and n > 20:
+            level = 'heavy'
+        else:
+            level = 'moderate'
+
+        stats = dict(counts, total=total, moving_pct=moving_pct, level=level, traffic_level=LEVEL_TEXT[level][0])
+        self.persons = persons
+        self.last_stats = stats
+        self._now = now
+        return dets, stats, new_vehicles
+
+    def anomaly(self):
+        """Incident candidate: a vehicle stopped >= STOPPED_ALERT s while traffic around it flows
+        (so not a jam or a red light). Returns None or a dict describing the strongest candidate."""
+        st = self.last_stats
+        if not st or st['moving_pct'] < 40 or st['total'] > 25:
+            return None
+        now = self._now
+        stopped_boxes = [tr['box'] for tr in self._tracks.values()
+                         if tr.get('stop_t') is not None and 'box' in tr and now - tr['t'] <= 2.0]
+        best = None
+        for tid, tr in self._tracks.items():
+            stop_t = tr.get('stop_t')
+            if stop_t is None or 'box' not in tr or now - tr['t'] > 2.0:
+                continue
+            stopped = now - stop_t
+            if stopped < self.STOPPED_ALERT:
+                continue
+            cx, cy, h, x1, y1, x2, y2 = tr['box']
+            # A stopped vehicle with other stopped vehicles right next to it is a queue (red light), not an incident
+            neighbours = sum(1 for bx, by, bh, *_ in stopped_boxes
+                             if (bx, by) != (cx, cy) and abs(bx - cx) < 2.5 * h and abs(by - cy) < 2.5 * h)
+            if neighbours >= 2:
+                continue
+            # People within ~2 vehicle-heights of the stopped vehicle
+            people_near = sum(1 for px, py, ph in self.persons
+                              if abs(px - cx) < 2.0 * h and abs(py - cy) < 2.0 * h)
+            # Hazard markers or triangular warning cones placed behind the vehicle
+            # (YOLO doesn't detect cones, but stopped vehicle + people out of cars is a strong signal)
+            conf = min(0.95, 0.45 + (0.35 if people_near else 0.0) + min(0.20, (stopped - self.STOPPED_ALERT) / 120.0))
+            cand = {
+                'track_id': tid,
+                'stopped_s': round(stopped),
+                'box': (x1, y1, x2, y2),
+                'confidence': round(conf, 2),
+                'persons_near': people_near,
+                'people_near': people_near,
+                'moving_pct': st['moving_pct'],
+                'total': st['total'],
+            }
+            if best is None or cand['confidence'] > best['confidence']:
+                best = cand
+        return best
+
+
+def frame_video_time(cap, t_wall=None):
+    """Video-time (seconds) of the frame just read, from the frame counter.
+    Falls back to wall time if OpenCV stream properties are unavailable or negative."""
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    if fps and fps > 0:
+        pos = cap.get(cv2.CAP_PROP_POS_FRAMES)
+        if pos and pos >= 0:
+            return pos / fps
+    msec = cap.get(cv2.CAP_PROP_POS_MSEC)
+    if msec and msec > 0:
+        return msec / 1000.0
+    return t_wall if t_wall is not None else time.time()
+
+
+def skip_elapsed_frames(cap, seconds):
+    """Skip the source frames that arrived during `seconds` so the feed stays live
+    instead of playing in slow motion with an ever-growing lag."""
+    src_fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    for _ in range(int(src_fps * seconds) - 1):
+        if not cap.grab():
+            break
+
 
 class VehicleDetectorYOLO11x:
-    def __init__(self, model_path='yolo11x.pt', target_fps=5.0, conf_threshold=0.30):
+    def __init__(self, model_path='yolo11x.pt', target_fps=10.0, conf_threshold=0.30, vehicle_log=None):
         self.target_fps = target_fps
         self.conf_threshold = conf_threshold
-        self.frame_interval = 1.0 / target_fps  # 0.20s for 5 FPS
+        self.frame_interval = 1.0 / target_fps  # 0.10s for 10 FPS
+        self.vehicle_log = vehicle_log
+        # IncidentManager, attached by the server after construction
+        self.incidents = None
 
         print(f"[AI] Initializing YOLO11x ({model_path}) with target {target_fps} FPS...")
         self.model = YOLO(model_path)
-        
-        # Target vehicle classes:
-        # COCO IDs: 2: car, 3: motorcycle, 5: bus, 7: truck
-        self.target_classes = [2, 3, 5, 7]
-        
-        # Color mapping (RGB)
-        self.CLASS_CONFIG = {
-            2: {
-                'category': 'รถยนต์',
-                'name_en': 'Car',
-                'color': (157, 191, 146),    # Sage
-                'bg_color': (227, 238, 221)
-            },
-            3: {
-                'category': 'มอไซ',
-                'name_en': 'Motorcycle',
-                'color': (181, 163, 222),    # Lavender
-                'bg_color': (235, 229, 247)
-            },
-            5: {
-                'category': 'รถบรรทุก',       # Bus grouped as heavy transport / truck
-                'name_en': 'Bus',
-                'color': (245, 168, 140),    # Apricot
-                'bg_color': (253, 230, 221)
-            },
-            7: {
-                'category': 'รถบรรทุก',
-                'name_en': 'Truck',
-                'color': (245, 168, 140),    # Apricot
-                'bg_color': (253, 230, 221)
-            }
-        }
+        # One GPU: inference from all streams (this one and the background counters) is serialized
+        self.model_lock = threading.Lock()
+
+        self.target_classes = TARGET_CLASSES
+        self.CLASS_CONFIG = CLASS_CONFIG
 
         # Fonts
         self.font = None
@@ -75,6 +326,8 @@ class VehicleDetectorYOLO11x:
             'motorcycles': 0,
             'trucks': 0,
             'total': 0,
+            'moving_pct': 100,
+            'level': 'free',
             'traffic_level': 'ไม่มีข้อมูล'
         }
 
@@ -104,6 +357,16 @@ class VehicleDetectorYOLO11x:
             self.font = ImageFont.load_default()
             self.font_bold = self.font
             self.font_title = self.font
+
+    def infer(self, frame, conf=None):
+        """Run YOLO on one frame (thread-safe). Returns the ultralytics Results object."""
+        with self.model_lock:
+            return self.model(
+                frame,
+                classes=self.target_classes,
+                conf=self.conf_threshold if conf is None else conf,
+                verbose=False
+            )[0]
 
     def set_target_fps(self, fps):
         self.target_fps = max(1.0, min(30.0, float(fps)))
@@ -151,6 +414,8 @@ class VehicleDetectorYOLO11x:
     def _process_loop(self, stream_url, cam_info, stop_event):
         print(f"[AI Worker] Processing stream at target {self.target_fps} FPS...")
         cap = None
+        # Fresh tracker per stream so IDs and counts do not carry over from the previous camera
+        tracker = VehicleTracker()
 
         while not stop_event.is_set():
             try:
@@ -161,9 +426,14 @@ class VehicleDetectorYOLO11x:
                         print(f"[AI Worker] Could not open stream: {stream_url}. Retrying in 3s...")
                         stop_event.wait(3.0)
                         continue
+                    try:
+                        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                    except Exception:
+                        pass
 
                 t_start = time.time()
                 ret, frame = cap.read()
+                frame_t = frame_video_time(cap, t_start)
 
                 if not ret or frame is None:
                     # Retry stream
@@ -175,16 +445,21 @@ class VehicleDetectorYOLO11x:
 
                 # Run YOLO11x inference
                 t_infer_start = time.time()
-                results = self.model(
-                    frame,
-                    classes=self.target_classes,
-                    conf=self.conf_threshold,
-                    verbose=False
-                )
+                result = self.infer(frame)
                 infer_latency_ms = (time.time() - t_infer_start) * 1000.0
 
-                # Annotate and count
-                annotated_jpeg, stats = self._annotate_frame(frame, results[0], infer_latency_ms)
+                dets, stats, new_vehicles = tracker.update(result, frame, frame_t)
+                stats['latency_ms'] = round(infer_latency_ms, 1)
+                annotated_jpeg = self._annotate_frame(frame, dets, stats)
+                if self.incidents:
+                    self.incidents.observe(cam_info.get('camid', ''), cam_info.get('short_title', cam_info.get('title', '')), tracker, frame)
+
+                if self.vehicle_log and any(new_vehicles.values()):
+                    self.vehicle_log.add(
+                        cam_info.get('camid', ''),
+                        cam_info.get('short_title', cam_info.get('title', '')),
+                        **new_vehicles
+                    )
 
                 with self.lock:
                     if stop_event.is_set():
@@ -202,8 +477,9 @@ class VehicleDetectorYOLO11x:
                 if sleep_time > 0:
                     time.sleep(sleep_time)
 
-                actual_fps = 1.0 / max(0.001, time.time() - t_start)
-                self.latest_stats['fps'] = round(actual_fps, 1)
+                iteration = max(0.001, time.time() - t_start)
+                self.latest_stats['fps'] = round(1.0 / iteration, 1)
+                skip_elapsed_frames(cap, iteration)
 
             except Exception as e:
                 print(f"[AI Worker] Processing error: {e}")
@@ -213,66 +489,33 @@ class VehicleDetectorYOLO11x:
             cap.release()
         print("[AI Worker] Worker stopped.")
 
-    def _annotate_frame(self, frame, detection_result, latency_ms):
+    def _annotate_frame(self, frame, dets, stats):
         h, w = frame.shape[:2]
-        
+
         # Convert BGR OpenCV to RGB PIL for high quality anti-aliased Thai text
         pil_img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         draw = ImageDraw.Draw(pil_img)
 
-        cars_count = 0
-        motorcycles_count = 0
-        trucks_count = 0
+        for cls_id, conf, x1, y1, x2, y2, _track_id in dets:
+            cfg = CLASS_CONFIG.get(cls_id, DEFAULT_CLASS)
+            cat = cfg['category']
 
-        boxes = detection_result.boxes
-        if boxes is not None:
-            for box in boxes:
-                cls_id = int(box.cls[0])
-                conf = float(box.conf[0])
-                x1, y1, x2, y2 = [int(v) for v in box.xyxy[0]]
+            # Thin, rounded pastel box
+            color = cfg['color']
+            draw.rounded_rectangle([x1, y1, x2, y2], radius=8, outline=color, width=2)
 
-                cfg = self.CLASS_CONFIG.get(cls_id, {
-                    'category': 'รถยนต์',
-                    'name_en': 'Vehicle',
-                    'color': (157, 191, 146),
-                    'bg_color': (227, 238, 221)
-                })
+            # Small label pill floating above the vehicle: e.g. "รถยนต์ 89%"
+            label_text = f"{cat} {int(conf * 100)}%"
+            ty = max(4, y1 - 20)
+            text_bbox = draw.textbbox((x1 + 6, ty), label_text, font=self.font)
+            pill = [text_bbox[0] - 6, text_bbox[1] - 3, text_bbox[2] + 6, text_bbox[3] + 3]
+            draw.rounded_rectangle(pill, radius=9, fill=cfg['bg_color'], outline=color, width=1)
+            draw.text((x1 + 6, ty), label_text, fill=(46, 42, 51), font=self.font)
 
-                cat = cfg['category']
-                if cat == 'รถยนต์':
-                    cars_count += 1
-                elif cat == 'มอไซ':
-                    motorcycles_count += 1
-                elif cat == 'รถบรรทุก':
-                    trucks_count += 1
-
-                # Thin, rounded pastel box
-                color = cfg['color']
-                draw.rounded_rectangle([x1, y1, x2, y2], radius=8, outline=color, width=2)
-
-                # Small label pill floating above the vehicle: e.g. "รถยนต์ 89%"
-                label_text = f"{cat} {int(conf * 100)}%"
-                ty = max(4, y1 - 20)
-                text_bbox = draw.textbbox((x1 + 6, ty), label_text, font=self.font)
-                pill = [text_bbox[0] - 6, text_bbox[1] - 3, text_bbox[2] + 6, text_bbox[3] + 3]
-                draw.rounded_rectangle(pill, radius=9, fill=cfg['bg_color'], outline=color, width=1)
-                draw.text((x1 + 6, ty), label_text, fill=(46, 42, 51), font=self.font)
-
-        total_vehicles = cars_count + motorcycles_count + trucks_count
-
-        # Evaluate traffic level
-        if total_vehicles <= 4:
-            traffic_level = "การจราจรคล่องตัว 🟢"
-            level_color = (157, 191, 146)
-        elif total_vehicles <= 12:
-            traffic_level = "การจราจรปานกลาง 🟡"
-            level_color = (237, 197, 92)
-        else:
-            traffic_level = "การจราจรหนาแน่น 🔴"
-            level_color = (245, 168, 140)
+        level_color = LEVEL_TEXT[stats['level']][1]
 
         # Soft corner tag instead of a dark HUD bar (counts live in the UI tiles)
-        tag = f"{cars_count + motorcycles_count + trucks_count} คัน"
+        tag = f"{stats['total']} คัน"
         tb = draw.textbbox((0, 0), tag, font=self.font_bold)
         tw, th = tb[2] - tb[0], tb[3] - tb[1]
         py = h - th - 26
@@ -283,17 +526,7 @@ class VehicleDetectorYOLO11x:
         # Convert back to BGR and encode to JPEG
         annotated_bgr = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
         _, jpeg_bytes = cv2.imencode('.jpg', annotated_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
-
-        stats = {
-            'latency_ms': round(latency_ms, 1),
-            'cars': cars_count,
-            'motorcycles': motorcycles_count,
-            'trucks': trucks_count,
-            'total': total_vehicles,
-            'traffic_level': traffic_level
-        }
-
-        return jpeg_bytes.tobytes(), stats
+        return jpeg_bytes.tobytes()
 
     def get_latest_frame(self):
         with self.lock:

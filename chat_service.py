@@ -23,7 +23,7 @@ except ImportError:
     genai = None
 
 MODEL = "claude-opus-5"
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
 SYSTEM_PROMPT = """คุณคือ "ผู้ช่วยการจราจร" ของแอป BKK Traffic: Your Street Smart Guide
 บทบาท: วิเคราะห์ "การระบายรถ" ของถนนในกรุงเทพฯ และปริมณฑลจากข้อมูลเส้นจราจรสด (Longdo Traffic)

@@ -20,11 +20,46 @@ except ImportError:
 import asyncio
 import threading
 import socket
+
+def free_port_if_needed(port=8000):
+    """Ensure port is available, stopping old hung processes if needed."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.5)
+            if s.connect_ex(('127.0.0.1', port)) != 0:
+                return  # Port is free
+        
+        print(f"[Server] Port {port} is occupied. Attempting to free it...")
+        import subprocess
+        res = subprocess.run(f'netstat -ano | findstr :{port}', shell=True, capture_output=True, text=True)
+        my_pid = os.getpid()
+        killed = False
+        for line in res.stdout.strip().splitlines():
+            parts = line.strip().split()
+            if len(parts) >= 5 and f":{port}" in parts[1] and parts[3] == "LISTENING":
+                try:
+                    pid = int(parts[4])
+                    if pid != my_pid and pid > 0:
+                        print(f"[Server] Closing old process PID {pid} on port {port}...")
+                        subprocess.run(f"taskkill /F /PID {pid}", shell=True, capture_output=True)
+                        killed = True
+                except ValueError:
+                    pass
+        if killed:
+            time.sleep(1.0)
+    except Exception as e:
+        print(f"[Server] Note during port check: {e}")
+
+free_port_if_needed(8000)
 from fastapi import FastAPI, Request, Query, Body
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from yolo_detector import VehicleDetectorYOLO11x
+from vehicle_log import VehicleLog
+from count_workers import CountManager
+from survey import SurveyManager
+from incident_service import IncidentManager
 from traffic_service import traffic, get_traffic_tile, get_osm_tile
 import chat_service
 
@@ -48,57 +83,31 @@ WEB_DIST = os.path.join(BASE_DIR, "web", "dist")
 if os.path.exists(os.path.join(WEB_DIST, "index.html")):
     INDEX_HTML = os.path.join(WEB_DIST, "index.html")
 
-# Load cameras
+# Load cameras (strictly verified live streams)
 cameras_data = []
 if os.path.exists(CAMERAS_FILE):
     try:
         with open(CAMERAS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
             cameras_data = data.get("items", [])
+            print(f"[Server] Loaded {len(cameras_data)} verified active cameras from {CAMERAS_FILE}")
     except Exception as e:
         print(f"[Warning] Failed to load cameras_bkk.json: {e}")
 
-# Fetch live Longdo cameras in background to enrich camera list
-def update_cameras_from_longdo():
-    global cameras_data
-    try:
-        import urllib.request
-        url = 'https://traffic.longdo.com/camera.json'
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            data = json.loads(resp.read().decode('utf-8'))
-            items = data.get('item', [])
-            bkk_provs = ['กรุงเทพมหานคร', 'นนทบุรี', 'ปทุมธานี', 'สมุทรปราการ', 'สมุทรสาคร', 'นครปฐม']
-            existing_ids = {c['camid'] for c in cameras_data}
-            added = 0
-            for it in items:
-                camid = it.get('camid', '')
-                if not camid or camid in existing_ids:
-                    continue
-                title = it.get('title', '')
-                geo = str(it.get('geocode', '')).strip()
-                if any(p in title for p in bkk_provs) or geo.startswith(('10', '11', '12', '13', '73', '74')):
-                    cameras_data.append({
-                        'camid': camid,
-                        'title': title,
-                        'short_title': title.split(')', 1)[-1].strip() if ')' in title else title,
-                        'province': 'กรุงเทพมหานคร' if geo.startswith('10') or 'กรุงเทพ' in title else 'ปริมณฑล',
-                        'organization': it.get('organization', 'Longdo'),
-                        'hls_url': it.get('hls_url', ''),
-                        'vdourl': it.get('vdourl', ''),
-                        'imgurl': it.get('imgurl', ''),
-                    })
-                    existing_ids.add(camid)
-                    added += 1
-            if added > 0:
-                print(f"[Server] Enriched camera list with {added} cameras from Longdo (Total: {len(cameras_data)})")
-    except Exception as e:
-        print(f"[Server] Live camera sync info: {e}")
-
-threading.Thread(target=update_cameras_from_longdo, daemon=True).start()
-
-# Initialize YOLO11x Vehicle Detector (Target: 5 FPS)
-detector = VehicleDetectorYOLO11x(model_path=MODEL_PATH, target_fps=5.0, conf_threshold=0.30)
+# Initialize YOLO11x Vehicle Detector (Target: 10 FPS for smoother playback)
+vehicle_log = VehicleLog(os.path.join(BASE_DIR, "vehicle_counts.db"))
+detector = VehicleDetectorYOLO11x(model_path=MODEL_PATH, target_fps=10.0, conf_threshold=0.30, vehicle_log=vehicle_log)
+# Background counting on user-selected cameras (lower fps to prioritize live camera)
+counter = CountManager(detector, vehicle_log, os.path.join(BASE_DIR, "count_cameras.json"), target_fps=0.5, max_cameras=4)
+counter.load({c["camid"]: c for c in cameras_data})
+# Round-robin sampling with single worker at 0.5 FPS so live camera gets primary GPU time
+survey = SurveyManager(detector, vehicle_log, lambda: cameras_data, lambda: set(counter.workers),
+                       workers=1, sample_seconds=12.0, target_fps=0.5)
+survey.start()
+# Accident / breakdown detection (camera AI + Claude vision) and Longdo accident reports
+incidents = IncidentManager(vehicle_log, lambda: {c["camid"]: c for c in cameras_data},
+                            os.path.join(BASE_DIR, "cache", "incidents"))
+detector.incidents = incidents
 
 # Start detector on initial Bangkok camera
 if cameras_data:
@@ -116,6 +125,50 @@ def get_cameras():
 @app.get("/api/ai/stats")
 def get_ai_stats():
     return detector.get_stats()
+
+@app.get("/api/ai/history")
+def get_ai_history(range: str = Query("24h", pattern="^(24h|7d|30d)$"), date: str = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"), camid: str = Query(None)):
+    """Vehicles that passed each camera: hourly for 24h or a given date, daily for 7d/30d."""
+    return vehicle_log.history(range_=range, date=date, camid=camid)
+
+@app.get("/api/count/cameras")
+def get_count_cameras():
+    return counter.status()
+
+@app.get("/api/survey/ranking")
+def get_survey_ranking():
+    """Every camera with its latest measurement: continuous counters plus round-robin survey samples."""
+    now = int(time.time())
+    items = []
+    for c in counter.status()["cameras"]:
+        if c["active"]:
+            items.append({"camid": c["camid"], "title": c["title"], "ts": now, "source": "count",
+                          "rate_per_min": c["rate_per_min"], "visible": c["total"],
+                          "moving_pct": c["moving_pct"], "level": c["level"], "error": ""})
+    sv = survey.status()
+    items += sv["cameras"]
+    return {"cycle_seconds": sv["cycle_seconds"], "sample_seconds": sv["sample_seconds"],
+            "total_cameras": len(cameras_data), "cameras": items}
+
+@app.get("/api/incidents")
+def get_incidents():
+    return incidents.status()
+
+@app.get("/api/incidents/{incident_id}/image")
+def get_incident_image(incident_id: str):
+    path = incidents.snapshot_path(incident_id)
+    if not path:
+        return Response(status_code=404)
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
+
+@app.put("/api/count/cameras")
+def set_count_cameras(payload: dict = Body(...)):
+    camids = payload.get("camids") or []
+    if not isinstance(camids, list) or len(camids) > counter.max_cameras:
+        return JSONResponse(status_code=400, content={"error": f"camids must be a list of at most {counter.max_cameras}"})
+    by_id = {c["camid"]: c for c in cameras_data}
+    counter.set_cameras([by_id[c] for c in camids if c in by_id])
+    return counter.status()
 
 @app.post("/api/ai/switch_camera")
 def switch_camera(
@@ -200,6 +253,11 @@ def traffic_summary(top: int = Query(8, ge=1, le=30)):
 def traffic_roads(q: str = Query(None), limit: int = Query(50, ge=1, le=500)):
     return {"items": traffic.get_roads(q, limit)}
 
+@app.get("/api/traffic/road_cameras")
+def traffic_road_cameras(name: str = Query(...), max_km: float = Query(0.25, ge=0.05, le=2.0)):
+    """Cameras located on / next to the named road, nearest first."""
+    return {"name": name, "items": traffic.cameras_on_road(name, cameras_data, max_km)}
+
 @app.get("/api/traffic/tile/{z}/{x}/{y}.pbf")
 def traffic_tile(z: int, x: int, y: int):
     data, stale = get_traffic_tile(z, x, y)
@@ -228,42 +286,14 @@ def chat_endpoint(payload: dict = Body(...)):
 # Static files for web frontend
 @app.get("/")
 def read_root():
-    return FileResponse(INDEX_HTML)
+    # never cache the shell so a rebuilt bundle is picked up on the next reload
+    return FileResponse(INDEX_HTML, headers={"Cache-Control": "no-cache"})
 
 if os.path.isdir(WEB_DIST):
     app.mount("/assets", StaticFiles(directory=os.path.join(WEB_DIST, "assets")), name="assets")
 app.mount("/", StaticFiles(directory=BASE_DIR, html=True), name="static")
 
 traffic.start()
-
-def free_port_if_needed(port=8000):
-    """Ensure port 8000 is available, stopping old hung processes if needed."""
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(0.5)
-            if s.connect_ex(('127.0.0.1', port)) != 0:
-                return  # Port is free
-        
-        print(f"[Server] Port {port} is occupied. Attempting to free it...")
-        import subprocess
-        res = subprocess.run(f'netstat -ano | findstr :{port}', shell=True, capture_output=True, text=True)
-        my_pid = os.getpid()
-        killed = False
-        for line in res.stdout.strip().splitlines():
-            parts = line.strip().split()
-            if len(parts) >= 5 and f":{port}" in parts[1] and parts[3] == "LISTENING":
-                try:
-                    pid = int(parts[4])
-                    if pid != my_pid and pid > 0:
-                        print(f"[Server] Closing old process PID {pid} on port {port}...")
-                        subprocess.run(f"taskkill /F /PID {pid}", shell=True, capture_output=True)
-                        killed = True
-                except ValueError:
-                    pass
-        if killed:
-            time.sleep(1.0)
-    except Exception as e:
-        print(f"[Server] Note during port check: {e}")
 
 def start_browser_when_ready(url="http://localhost:8000"):
     """Opens browser only when server is confirmed responsive."""
@@ -285,12 +315,18 @@ def start_browser_when_ready(url="http://localhost:8000"):
 if __name__ == "__main__":
     import uvicorn
     free_port_if_needed(8000)
-    start_browser_when_ready("http://localhost:8000")
+    if os.getenv("OPEN_BROWSER") == "1":
+        start_browser_when_ready("http://localhost:8000")
     print("=" * 60)
     print("  BKK Traffic CCTV & YOLO11x Vehicle Detection Server")
     print("  Model: YOLO11x | Processing Rate: 5 FPS")
     print("  Detected Classes: รถยนต์ (Cars), มอไซ (Motorcycles), รถบรรทุก (Trucks)")
     print("  Running at http://localhost:8000")
     print("=" * 60)
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    try:
+        uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    except BaseException as e:
+        print(f"[Server] Exited with {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
 

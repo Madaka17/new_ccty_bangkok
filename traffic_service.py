@@ -216,6 +216,21 @@ class RoadIndex:
         cx, cy = ax + t * dx, ay + t * dy
         return math.hypot((px - cx) * 111.32, (py - cy) * 110.57)
 
+    def distance_to_road(self, name, lon, lat, max_km=0.25):
+        """Distance (km) from a point to the nearest segment of the named road within max_km, else None."""
+        kx, ky = self._key(lon, lat)
+        r = int(max_km / (self.CELL * 100)) + 1  # cells to scan (CELL ~ 0.44 km)
+        best = None
+        for i in range(-r, r + 1):
+            for j in range(-r, r + 1):
+                for n, a, b in self.grid.get((kx + i, ky + j), ()):
+                    if n != name:
+                        continue
+                    d = self._dist((lon, lat), a, b)
+                    if d <= max_km and (best is None or d < best):
+                        best = d
+        return best
+
     def nearest(self, lon, lat, max_km=0.06):
         kx, ky = self._key(lon, lat)
         best, best_d = None, max_km
@@ -370,11 +385,28 @@ class TrafficService:
         with self.lock:
             s = dict(self.summary)
             roads = s.get("roads", [])
-            s["congested"] = roads[:top]
+            # Only roads that are actually slow; a long free-flowing road can still have the most red km
+            s["congested"] = [r for r in roads if r["level"] != "โล่ง"][:top]
             s["free_flow"] = sorted([r for r in roads if r["flow"] >= 85], key=lambda r: -r["length_km"])[:top]
             s["history"] = list(self.history)
             s.pop("roads", None)
             return s
+
+    def cameras_on_road(self, name, cameras, max_km=0.25):
+        """Cameras within max_km of the named road, nearest first."""
+        if not self.road_index:
+            return []
+        out = []
+        for c in cameras:
+            try:
+                lon, lat = float(c['longitude']), float(c['latitude'])
+            except (KeyError, TypeError, ValueError):
+                continue
+            d = self.road_index.distance_to_road(name, lon, lat, max_km)
+            if d is not None:
+                out.append((d, c))
+        out.sort(key=lambda x: x[0])
+        return [dict(c, distance_km=round(d, 2)) for d, c in out]
 
     def get_roads(self, query=None, limit=50):
         with self.lock:

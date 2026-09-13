@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { HeartIcon, CheckIcon, SparkleIcon } from './Icons.jsx';
-import { PROVINCE_TONE } from '../lib/store.js';
+import { PROVINCE_TONE, CAM_LEVEL, camStatusText } from '../lib/store.js';
 
-export default function CameraCard({ cam, isActive, isFav, km, onToggleActive, onToggleFav, onOpenAI }) {
+export default function CameraCard({ cam, status, isActive, isFav, km, onToggleActive, onToggleFav, onOpenAI }) {
   const [imgOk, setImgOk] = useState(true);
   const tone = PROVINCE_TONE[cam.province] || 'bg-cream-200 text-ink-600';
+  const level = status?.ts ? CAM_LEVEL[status.level] || CAM_LEVEL.free : null;
 
   return (
     <div
@@ -54,8 +55,16 @@ export default function CameraCard({ cam, isActive, isFav, km, onToggleActive, o
       {/* Text */}
       <button type="button" onClick={onToggleActive} className="cursor-pointer flex-1 min-w-0 text-left">
         <p className="text-sm font-medium text-ink-900 leading-snug line-clamp-2">{cam.short_title || cam.title}</p>
-        <div className="mt-1 flex items-center gap-1.5">
+        <div className="mt-1 flex items-center gap-1.5 flex-wrap">
           <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${tone}`}>{cam.province}</span>
+          {level ? (
+            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${level.cls}`} title={camStatusText(status)}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: level.dot }} />
+              {level.text}
+            </span>
+          ) : (
+            <span className="rounded-full px-2 py-0.5 text-[11px] text-ink-400 bg-cream-100" title="AI ยังไม่ได้วัดกล้องนี้">รอ AI วัด</span>
+          )}
           {typeof km === 'number' && (
             <span className="text-[11px] text-lavender-700 font-serif">{km < 1 ? `${Math.round(km * 1000)} ม.` : `${km.toFixed(1)} กม.`}</span>
           )}

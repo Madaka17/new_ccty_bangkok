@@ -27,6 +27,42 @@ export async function fetchAIStats() {
   return res.json();
 }
 
+// { range: '24h'|'7d'|'30d' } or { date: 'YYYY-MM-DD' } (hourly for that day)
+export async function fetchAIHistory({ range = '24h', date } = {}) {
+  const params = date ? `date=${date}` : `range=${range}`;
+  const res = await fetch(`/api/ai/history?${params}`);
+  if (!res.ok) throw new Error('history');
+  return res.json();
+}
+
+export async function fetchCountCameras() {
+  const res = await fetch('/api/count/cameras');
+  if (!res.ok) throw new Error('count');
+  return res.json();
+}
+
+export async function fetchSurveyRanking() {
+  const res = await fetch('/api/survey/ranking');
+  if (!res.ok) throw new Error('ranking');
+  return res.json();
+}
+
+export async function fetchIncidents() {
+  const res = await fetch('/api/incidents');
+  if (!res.ok) throw new Error('incidents');
+  return res.json();
+}
+
+export async function setCountCameras(camids) {
+  const res = await fetch('/api/count/cameras', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ camids }),
+  });
+  if (!res.ok) throw new Error('count');
+  return res.json();
+}
+
 export function setAIFps(fps) {
   return fetch(`/api/ai/set_fps?fps=${fps}`, { method: 'POST' });
 }
@@ -48,6 +84,12 @@ export async function fetchTrafficSummary(top = 8) {
 export async function searchRoads(q, limit = 20) {
   const res = await fetch(`/api/traffic/roads?q=${encodeURIComponent(q)}&limit=${limit}`);
   if (!res.ok) throw new Error('roads');
+  return (await res.json()).items || [];
+}
+
+export async function fetchRoadCameras(name, maxKm = 0.25) {
+  const res = await fetch(`/api/traffic/road_cameras?name=${encodeURIComponent(name)}&max_km=${maxKm}`);
+  if (!res.ok) throw new Error('road_cameras');
   return (await res.json()).items || [];
 }
 

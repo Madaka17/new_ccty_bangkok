@@ -13,6 +13,7 @@ const CHIPS = [
 
 export default function SidePanel({
   cameras,
+  camStatus = {},
   favorites,
   active,
   filter,
@@ -116,6 +117,7 @@ export default function SidePanel({
             >
               <CameraCard
                 cam={cam}
+                status={camStatus[cam.camid]}
                 isActive={active.includes(cam.camid)}
                 isFav={favorites.has(cam.camid)}
                 km={cam._km}

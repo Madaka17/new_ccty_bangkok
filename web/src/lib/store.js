@@ -42,7 +42,11 @@ export function useActiveCameras() {
   }, []);
   const remove = useCallback((id) => setList((prev) => prev.filter((x) => x !== id)), []);
   const clear = useCallback(() => setList([]), []);
-  return { active: list, toggle, remove, clear };
+  // Add several cameras at once (no toggling), keeping the newest 9
+  const addMany = useCallback((ids) => {
+    setList((prev) => [...prev.filter((x) => !ids.includes(x)), ...ids].slice(-9));
+  }, []);
+  return { active: list, toggle, remove, clear, addMany };
 }
 
 export function useUserName() {
@@ -87,3 +91,17 @@ export const PROVINCE_TONE = {
   สมุทรปราการ: 'bg-gold-100 text-gold-700',
   ปทุมธานี: 'bg-cream-200 text-ink-600',
 };
+
+// Traffic level of a camera (from the AI count / survey), shown as a pill on camera cards and video slots
+export const CAM_LEVEL = {
+  free: { text: 'ถนนโล่ง', cls: 'bg-sage-100 text-sage-700', dot: '#4a9a3f' },
+  moderate: { text: 'รถปานกลาง', cls: 'bg-gold-100 text-gold-700', dot: '#d6a52a' },
+  heavy: { text: 'รถติดขัด', cls: 'bg-apricot-100 text-apricot-700', dot: '#d9534f' },
+};
+
+export function camStatusText(st) {
+  if (!st?.ts) return null;
+  const m = Math.round((Date.now() / 1000 - st.ts) / 60);
+  const ago = m < 1 ? 'เมื่อสักครู่' : m < 60 ? `${m} นาทีก่อน` : `${Math.round(m / 60)} ชม.ก่อน`;
+  return `${st.source === 'count' ? 'นับต่อเนื่อง' : 'AI สุ่มดู'} · รถผ่าน ${st.rate_per_min} คัน/นาที · ในภาพ ${Math.round(st.visible)} คัน · ${ago}`;
+}

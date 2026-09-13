@@ -5,20 +5,22 @@ import { CarIcon, BikeIcon, TruckIcon, SettingsIcon, CameraIcon, SparkleIcon, He
 import { aiStreamUrl, fetchAIStats, setAIConf, setAIFps, switchAICamera } from '../lib/api.js';
 import { PROVINCE_TONE } from '../lib/store.js';
 
-const EMPTY = { cars: 0, motorcycles: 0, trucks: 0, total: 0, traffic_level: '', latency_ms: 0, fps: 0, active: false };
+const EMPTY = { cars: 0, motorcycles: 0, trucks: 0, total: 0, level: 'free', traffic_level: '', latency_ms: 0, fps: 0, active: false };
 
-function levelTone(total) {
-  if (total <= 4) return { text: 'ถนนโล่งสบาย', cls: 'bg-sage-100 text-sage-700', hint: 'ไปได้เลย ทางสะดวก' };
-  if (total <= 12) return { text: 'รถพอประมาณ', cls: 'bg-gold-100 text-gold-700', hint: 'เผื่อเวลาอีกนิดนะ' };
-  return { text: 'รถค่อนข้างเยอะ', cls: 'bg-apricot-100 text-apricot-700', hint: 'ลองเลี่ยงเส้นนี้ก่อนดีไหม' };
-}
+// Level comes from the backend, which looks at both how many vehicles are visible and whether they move
+const LEVEL_TONE = {
+  free: { text: 'ถนนโล่งสบาย', cls: 'bg-sage-100 text-sage-700', hint: 'ไปได้เลย ทางสะดวก' },
+  moderate: { text: 'รถพอประมาณ', cls: 'bg-gold-100 text-gold-700', hint: 'เผื่อเวลาอีกนิดนะ' },
+  heavy: { text: 'รถค่อนข้างเยอะ', cls: 'bg-apricot-100 text-apricot-700', hint: 'ลองเลี่ยงเส้นนี้ก่อนดีไหม' },
+};
+const levelTone = (level) => LEVEL_TONE[level] || LEVEL_TONE.free;
 
-export default function YoloPage({ active, cameras, favorites, camid, onPickCamera, onToast, onAsk }) {
+export default function YoloPage({ active, cameras, favorites, camid, incidents, onPickCamera, onToast, onAsk }) {
   const [stats, setStats] = useState(EMPTY);
   const [streamSrc, setStreamSrc] = useState('');
   const [feedState, setFeedState] = useState('loading'); // loading | live | error
   const [showOptions, setShowOptions] = useState(false);
-  const [fps, setFps] = useState(5);
+  const [fps, setFps] = useState(10);
   const [conf, setConf] = useState(30);
   const imgRef = useRef(null);
   const cam = cameras.find((c) => c.camid === camid);
@@ -98,7 +100,7 @@ export default function YoloPage({ active, cameras, favorites, camid, onPickCame
     ctx.clip();
     ctx.drawImage(img, pad, pad, w, h);
     ctx.restore();
-    const level = levelTone(stats.total || 0);
+    const level = levelTone(stats.level);
     const y = pad + h + 44;
     ctx.fillStyle = '#2e2a33';
     ctx.font = '600 26px "Playfair Display", "Prompt", serif';
@@ -114,7 +116,8 @@ export default function YoloPage({ active, cameras, favorites, camid, onPickCame
     onToast('บันทึกภาพวิวของคุณเรียบร้อย');
   };
 
-  const level = levelTone(stats.total || 0);
+  const level = levelTone(stats.level);
+  const incident = (incidents?.camera || []).find((i) => i.camid === camid);
   const tone = cam ? PROVINCE_TONE[cam.province] || 'bg-cream-200 text-ink-600' : '';
   const favList = cameras.filter((c) => favorites.has(c.camid));
 
@@ -162,6 +165,15 @@ export default function YoloPage({ active, cameras, favorites, camid, onPickCame
             </div>
           )}
           {feedState === 'live' && <span className={`absolute bottom-3 left-3 rounded-full px-3 py-1 text-xs font-medium shadow-soft ${level.cls}`}>{level.text}</span>}
+          {incident && (
+            <div role="alert" className="absolute top-3 left-3 right-3 rounded-2xl bg-[#d9534f]/90 text-white px-4 py-2.5 shadow-lift flex items-start gap-3">
+              <span className="font-serif text-xl leading-none mt-0.5">⚠</span>
+              <div className="min-w-0">
+                <p className="font-semibold text-sm">{incident.kind === 'breakdown' ? 'รถเสีย / จอดกีดขวางเลน' : 'อุบัติเหตุ'} · AI ตรวจพบ</p>
+                <p className="text-xs opacity-90 line-clamp-2">{incident.description || `รถจอดนิ่ง ${incident.stopped_s} วินาทีขณะรถคันอื่นวิ่ง`}</p>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -181,10 +193,10 @@ export default function YoloPage({ active, cameras, favorites, camid, onPickCame
             <AnimatePresence>
               {showOptions && (
                 <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} className="absolute left-0 bottom-full mb-2 z-10 glass-strong rounded-3xl p-4 w-72">
-                  <p className="text-xs text-ink-600 mb-2">ความเร็วประมวลผล</p>
+                  <p className="text-xs text-ink-600 mb-2">ความเร็วประมวลผล (FPS)</p>
                   <div className="flex gap-1.5">
-                    {[1, 3, 5, 10].map((v) => (
-                      <button key={v} type="button" onClick={() => applyFps(v)} aria-pressed={fps === v} className={`cursor-pointer flex-1 rounded-full py-1.5 text-sm transition-colors duration-200 ${fps === v ? 'bg-lavender-600 text-white' : 'bg-lavender-50 text-lavender-700 hover:bg-lavender-100'}`}>
+                    {[5, 10, 15, 20].map((v) => (
+                      <button key={v} type="button" onClick={() => applyFps(v)} aria-pressed={fps === v} className={`cursor-pointer flex-1 rounded-full py-1.5 text-sm font-medium transition-colors duration-200 ${fps === v ? 'bg-lavender-600 text-white shadow-xs' : 'bg-lavender-50 text-lavender-700 hover:bg-lavender-100'}`}>
                         {v} FPS
                       </button>
                     ))}
@@ -209,7 +221,7 @@ export default function YoloPage({ active, cameras, favorites, camid, onPickCame
         <DataTile icon={TruckIcon} label="รถบรรทุก" value={stats.trucks || 0} tone="border-apricot-100" />
         <div className={`rounded-3xl px-5 py-4 ${level.cls}`}>
           <p className="text-xs opacity-80">หน้ากล้องตอนนี้</p>
-          <p className="font-serif text-lg font-semibold">{feedState === 'live' ? level.text : 'กำลังดูถนนให้อยู่...'}</p>
+          <p className="font-serif text-lg font-semibold">{incident ? (incident.kind === 'breakdown' ? 'มีรถเสียกีดขวาง' : 'เกิดอุบัติเหตุ') : feedState === 'live' ? level.text : 'กำลังดูถนนให้อยู่...'}</p>
           {feedState === 'live' && <p className="text-sm mt-0.5">{level.hint}</p>}
         </div>
         {favList.length > 0 && (

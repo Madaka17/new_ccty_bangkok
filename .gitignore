@@ -33,3 +33,10 @@ cache/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Runtime vehicle count database
+vehicle_counts.db
+count_cameras.json
+scratch/
+*.bak
+

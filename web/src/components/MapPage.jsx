@@ -48,6 +48,25 @@ function mapStyle() {
   };
 }
 
+const KIND_TH = { accident: 'อุบัติเหตุ', breakdown: 'รถเสีย / จอดกีดขวาง' };
+const agoTh = (ts) => {
+  const m = Math.round((Date.now() / 1000 - ts) / 60);
+  return m < 1 ? 'เมื่อสักครู่' : m < 60 ? `${m} นาทีก่อน` : `${Math.round(m / 60)} ชม.ก่อน`;
+};
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// Pulsing warning marker for an incident
+function incidentEl(kind) {
+  const el = document.createElement('button');
+  el.type = 'button';
+  el.className = 'cursor-pointer incident-pin';
+  el.setAttribute('aria-label', KIND_TH[kind] || 'เหตุการณ์');
+  const color = kind === 'breakdown' ? '#e07a57' : '#d9534f';
+  el.style.cssText = `width:30px;height:30px;border-radius:999px;background:${color};border:3px solid #fff;box-shadow:0 0 0 6px ${color}44,0 2px 10px rgba(46,42,51,.35);color:#fff;font-weight:700;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;animation:incident-pulse 1.6s ease-out infinite`;
+  el.textContent = '!';
+  return el;
+}
+
 function pinEl(color, active) {
   const el = document.createElement('button');
   el.type = 'button';
@@ -56,10 +75,11 @@ function pinEl(color, active) {
   return el;
 }
 
-export default function MapPage({ isActive, cameras, active, onToggle, onOpenAI, onToast }) {
+export default function MapPage({ isActive, cameras, active, incidents, onToggle, onOpenAI, onToast }) {
   const mapEl = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef({});
+  const incidentMarkersRef = useRef([]);
   const [provinceFilter, setProvinceFilter] = useState('all');
   const [showTraffic, setShowTraffic] = useState(true);
   const [summary, setSummary] = useState(null);
@@ -126,8 +146,12 @@ export default function MapPage({ isActive, cameras, active, onToggle, onOpenAI,
         const on = active.includes(c.camid);
         const el = pinEl(PIN_COLOR[c.province] || '#c9c3cc', on);
         el.setAttribute('aria-label', c.short_title || c.title);
-        const popup = new maplibregl.Popup({ offset: 14, closeButton: true, maxWidth: '260px' }).setHTML(
-          `<div style="min-width:200px">
+        const popup = new maplibregl.Popup({ offset: 14, closeButton: true, maxWidth: '300px', anchor: 'bottom' }).setHTML(
+          `<div style="width:260px">
+            <div style="position:relative;border-radius:12px;overflow:hidden;background:#efeae4;aspect-ratio:16/9;margin-bottom:8px">
+              <img data-live="${c.camid}" alt="" style="display:block;width:100%;height:100%;object-fit:cover" />
+              <span data-status="${c.camid}" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:#6b6572;background:linear-gradient(#fdfcfb,#f5f2fb)">กำลังเปิดภาพ...</span>
+            </div>
             <p style="margin:0 0 8px;font-weight:500;color:#2e2a33;font-size:13px;line-height:1.35">${c.short_title || c.title}</p>
             <div style="display:flex;gap:6px;flex-wrap:wrap">
               <button data-act="toggle" data-camid="${c.camid}" style="cursor:pointer;border:0;border-radius:999px;padding:6px 14px;background:${on ? '#fde6dd' : '#e3eedd'};color:${on ? '#b85f41' : '#557a4b'};font-size:12px;font-family:inherit">${on ? 'ปิดกล้องนี้' : 'เปิดดูกล้องนี้'}</button>
@@ -135,10 +159,62 @@ export default function MapPage({ isActive, cameras, active, onToggle, onOpenAI,
             </div>
           </div>`
         );
+        // Live MJPEG preview inside the popup (every camera has vdourl; HLS via MSE does not start inside popups)
+        popup.on('open', () => {
+          map.easeTo({ center: [c.longitude, c.latitude], offset: [0, 130], duration: 400 });
+          const root = popup.getElement();
+          const img = root?.querySelector(`img[data-live="${c.camid}"]`);
+          const status = root?.querySelector(`span[data-status="${c.camid}"]`);
+          if (!img) return;
+          const src = c.vdourl || c.imgurl;
+          if (!src) {
+            if (status) status.textContent = 'กล้องนี้ไม่มีภาพสด';
+            return;
+          }
+          img.onload = () => status && (status.style.display = 'none');
+          img.onerror = () => status && (status.textContent = 'กล้องขอพักสักครู่');
+          img.src = `${src}${src.includes('?') ? '&' : '?'}t=${Date.now()}`;
+        });
+        popup.on('close', () => {
+          // drop the src so the MJPEG connection closes
+          popup.getElement()?.querySelectorAll('img[data-live]').forEach((img) => (img.src = ''));
+        });
         const m = new maplibregl.Marker({ element: el }).setLngLat([c.longitude, c.latitude]).setPopup(popup).addTo(map);
         markersRef.current[c.camid] = m;
       });
   }, [cameras, active, provinceFilter, isActive]);
+
+  // Sync incident markers (camera-confirmed + Longdo reports)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    incidentMarkersRef.current.forEach((m) => m.remove());
+    incidentMarkersRef.current = [];
+    const all = [...(incidents?.camera || []), ...(incidents?.longdo || [])].filter((i) => i.latitude && i.longitude);
+    all.forEach((i) => {
+      const when = i.source === 'camera' ? agoTh(i.ts) : i.start ? `เริ่ม ${esc(i.start).slice(11, 16)}` : '';
+      const html = `<div style="width:260px">
+          <p style="margin:0 0 4px;font-weight:600;color:${i.kind === 'breakdown' ? '#b85f41' : '#d9534f'};font-size:13px">⚠ ${KIND_TH[i.kind] || 'เหตุการณ์'} · ${i.source === 'camera' ? 'กล้อง AI ตรวจพบ' : 'รายงานจราจร'}</p>
+          <p style="margin:0 0 6px;color:#2e2a33;font-size:13px;line-height:1.35">${esc(i.title)}</p>
+          ${i.image ? `<img src="${i.image}" alt="" style="display:block;width:100%;border-radius:10px;margin-bottom:6px" />` : ''}
+          ${i.description ? `<p style="margin:0 0 6px;color:#6b6572;font-size:12px;line-height:1.4">${esc(i.description)}</p>` : ''}
+          <p style="margin:0;color:#9a94a1;font-size:11px">${when}${i.confidence ? ` · ความมั่นใจ ${Math.round(i.confidence * 100)}%` : ''}${i.stopped_s ? ` · จอดนิ่ง ${i.stopped_s} วิ` : ''}</p>
+          ${i.camid ? `<div style="margin-top:8px"><button data-act="ai" data-camid="${esc(i.camid)}" style="cursor:pointer;border:0;border-radius:999px;padding:6px 14px;background:#fbefd3;color:#a07e2b;font-size:12px;font-family:inherit">ดูภาพสดกล้องนี้</button></div>` : ''}
+        </div>`;
+      const popup = new maplibregl.Popup({ offset: 18, closeButton: true, maxWidth: '300px', anchor: 'bottom' }).setHTML(html);
+      const m = new maplibregl.Marker({ element: incidentEl(i.kind) }).setLngLat([i.longitude, i.latitude]).setPopup(popup).addTo(map);
+      incidentMarkersRef.current.push(m);
+    });
+  }, [incidents, isActive]);
+
+  const flyToIncident = (i) => {
+    const map = mapRef.current;
+    if (!map || !i.latitude) return;
+    map.flyTo({ center: [i.longitude, i.latitude], zoom: 15, duration: 800 });
+    const idx = [...(incidents?.camera || []), ...(incidents?.longdo || [])].filter((x) => x.latitude && x.longitude).findIndex((x) => x.id === i.id);
+    const m = incidentMarkersRef.current[idx];
+    if (m) setTimeout(() => m.togglePopup(), 850);
+  };
 
   // Popup button clicks (delegated)
   useEffect(() => {
@@ -256,6 +332,24 @@ export default function MapPage({ isActive, cameras, active, onToggle, onOpenAI,
           </div>
         </div>
 
+        {(() => {
+          const list = [...(incidents?.camera || []), ...(incidents?.longdo || [])];
+          if (!list.length) return null;
+          return (
+            <div className="rounded-3xl bg-apricot-50 border border-apricot-100 p-3">
+              <p className="text-xs font-semibold text-apricot-700 mb-1.5">⚠ อุบัติเหตุ / เหตุการณ์ตอนนี้ ({list.length})</p>
+              <div className="max-h-36 overflow-y-auto scroll-soft flex flex-col gap-1">
+                {list.map((i) => (
+                  <button key={i.id} type="button" onClick={() => flyToIncident(i)} className="cursor-pointer text-left rounded-2xl px-2.5 py-1.5 text-sm text-ink-900 hover:bg-white/70 transition-colors duration-200">
+                    <span className="line-clamp-1">{i.title}</span>
+                    <span className="block text-[11px] text-ink-600">{KIND_TH[i.kind] || 'เหตุการณ์'} · {i.source === 'camera' ? 'กล้อง AI' : 'รายงานจราจร'}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
         <div className="flex-1 min-h-0 flex flex-col">
           <p className="text-xs text-ink-600 mb-2 flex items-center gap-1.5">
             <MapPinIcon className="w-4 h-4" />
@@ -276,8 +370,8 @@ export default function MapPage({ isActive, cameras, active, onToggle, onOpenAI,
         </div>
       </aside>
 
-      <section aria-label="แผนที่จราจร" className="glass rounded-[2rem] p-3 min-h-[420px]">
-        <div ref={mapEl} className="w-full h-full min-h-[400px] rounded-[1.5rem] overflow-hidden" />
+      <section aria-label="แผนที่จราจร" className="glass rounded-[2rem] p-3 min-h-[560px]">
+        <div ref={mapEl} className="w-full h-full min-h-[540px] rounded-[1.5rem] overflow-hidden" />
       </section>
     </div>
   );
