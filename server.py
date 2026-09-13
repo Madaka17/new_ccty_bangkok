@@ -96,7 +96,7 @@ if os.path.exists(CAMERAS_FILE):
 
 # Initialize YOLO11x Vehicle Detector (Target: 10 FPS for smoother playback)
 vehicle_log = VehicleLog(os.path.join(BASE_DIR, "vehicle_counts.db"))
-detector = VehicleDetectorYOLO11x(model_path=MODEL_PATH, target_fps=10.0, conf_threshold=0.30, vehicle_log=vehicle_log)
+detector = VehicleDetectorYOLO11x(model_path=MODEL_PATH, target_fps=10.0, conf_threshold=0.20, vehicle_log=vehicle_log)
 # Background counting on user-selected cameras (lower fps to prioritize live camera)
 counter = CountManager(detector, vehicle_log, os.path.join(BASE_DIR, "count_cameras.json"), target_fps=0.5, max_cameras=4)
 counter.load({c["camid"]: c for c in cameras_data})
@@ -206,7 +206,7 @@ def set_fps(fps: float = Query(5.0, ge=1.0, le=30.0)):
     return {"status": "success", "target_fps": fps}
 
 @app.post("/api/ai/set_conf")
-def set_conf(conf: float = Query(0.30, ge=0.1, le=0.9)):
+def set_conf(conf: float = Query(0.20, ge=0.05, le=0.9)):
     detector.set_confidence(conf)
     return {"status": "success", "conf_threshold": conf}
 

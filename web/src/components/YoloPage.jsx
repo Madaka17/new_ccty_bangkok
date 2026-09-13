@@ -21,7 +21,7 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
   const [feedState, setFeedState] = useState('loading'); // loading | live | error
   const [showOptions, setShowOptions] = useState(false);
   const [fps, setFps] = useState(10);
-  const [conf, setConf] = useState(30);
+  const [conf, setConf] = useState(20);
   const imgRef = useRef(null);
   const cam = cameras.find((c) => c.camid === camid);
 

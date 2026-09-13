@@ -10,13 +10,19 @@ from ultralytics.trackers import BYTETracker
 from ultralytics.utils import YAML, IterableSimpleNamespace
 from ultralytics.utils.checks import check_yaml
 
-# Target classes. COCO IDs: 2: car, 3: motorcycle, 5: bus, 7: truck; 0: person is detected only
+# Target classes. COCO IDs: 1: bicycle, 2: car, 3: motorcycle, 5: bus, 7: truck; 0: person is detected only
 # as an incident signal (people on the road next to a stopped vehicle) and never counted as a vehicle
 PERSON_CLASS = 0
-TARGET_CLASSES = [PERSON_CLASS, 2, 3, 5, 7]
+TARGET_CLASSES = [PERSON_CLASS, 1, 2, 3, 5, 7]
 
 # Color mapping (RGB)
 CLASS_CONFIG = {
+    1: {
+        'category': 'มอไซ',          # Group bicycle / e-bike / scooter into motorcycle
+        'name_en': 'Motorcycle',
+        'color': (181, 163, 222),    # Lavender
+        'bg_color': (235, 229, 247)
+    },
     2: {
         'category': 'รถยนต์',
         'name_en': 'Car',
@@ -115,6 +121,7 @@ class VehicleTracker:
         now = frame_t
 
         persons = []
+        tracked_boxes = []
         for row in tracks:
             x1, y1, x2, y2 = [int(v) for v in row[:4]]
             track_id = int(row[4])
@@ -126,6 +133,7 @@ class VehicleTracker:
             cat = CLASS_CONFIG.get(cls_id, DEFAULT_CLASS)['category']
             counts[CAT_KEY[cat]] += 1
             dets.append((cls_id, conf, x1, y1, x2, y2, track_id))
+            tracked_boxes.append((x1, y1, x2, y2))
 
             cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
             tr = self._tracks.get(track_id)
@@ -157,6 +165,34 @@ class VehicleTracker:
                 measured += 1
                 if tr['speed'] >= self.MOVING_SPEED:
                     moving += 1
+
+        # Also capture and show raw detections that ByteTrack hasn't locked onto yet
+        # so NO vehicle is missed on screen
+        if len(result.boxes):
+            for b in result.boxes:
+                bx1, by1, bx2, by2 = [int(v) for v in b.xyxy[0]]
+                bconf = float(b.conf[0])
+                bcls = int(b.cls[0])
+                if bcls == PERSON_CLASS:
+                    continue
+                # Overlap check with already tracked boxes
+                is_dup = False
+                for tx1, ty1, tx2, ty2 in tracked_boxes:
+                    ix1, iy1 = max(bx1, tx1), max(by1, ty1)
+                    ix2, iy2 = min(bx2, tx2), min(by2, ty2)
+                    iw, ih = max(0, ix2 - ix1), max(0, iy2 - iy1)
+                    if iw * ih > 0:
+                        inter = iw * ih
+                        area_b = (bx2 - bx1) * (by2 - by1)
+                        area_t = (tx2 - tx1) * (ty2 - ty1)
+                        union = area_b + area_t - inter
+                        if union > 0 and (inter / union > 0.35 or inter / max(1.0, min(area_b, area_t)) > 0.6):
+                            is_dup = True
+                            break
+                if not is_dup:
+                    cat = CLASS_CONFIG.get(bcls, DEFAULT_CLASS)['category']
+                    counts[CAT_KEY[cat]] += 1
+                    dets.append((bcls, bconf, bx1, by1, bx2, by2, -1))
 
         total = sum(counts.values())
 
@@ -282,7 +318,7 @@ def skip_elapsed_frames(cap, seconds):
 
 
 class VehicleDetectorYOLO11x:
-    def __init__(self, model_path='yolo11x.pt', target_fps=10.0, conf_threshold=0.30, vehicle_log=None):
+    def __init__(self, model_path='yolo11x.pt', target_fps=10.0, conf_threshold=0.20, vehicle_log=None):
         self.target_fps = target_fps
         self.conf_threshold = conf_threshold
         self.frame_interval = 1.0 / target_fps  # 0.10s for 10 FPS
@@ -365,6 +401,7 @@ class VehicleDetectorYOLO11x:
                 frame,
                 classes=self.target_classes,
                 conf=self.conf_threshold if conf is None else conf,
+                iou=0.45,
                 verbose=False
             )[0]
 

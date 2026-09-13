@@ -95,6 +95,7 @@ class CountManager:
                     cap.release()
                     cap = None
                     stop.wait(2.0)
+                    continue
                 # Skip background duplicate inference if user is actively watching this camera
                 if self.detector.is_running and self.detector.current_cam_info.get('camid') == camid:
                     stop.wait(interval)
