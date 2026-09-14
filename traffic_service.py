@@ -116,7 +116,8 @@ def get_traffic_tile(z, x, y):
         with open(path, "rb") as f:
             return f.read(), False
     try:
-        data = http_get(TRAFFIC_TILE_URL.format(z=z, x=x, y=y))
+        # Longdo's tile cache (tegola) serves the same bytes for hours; a changing query string forces a fresh render
+        data = http_get(TRAFFIC_TILE_URL.format(z=z, x=x, y=y) + f"?_={int(time.time())}")
         if data and data[:2] != b"\x1f\x8b":
             data = gzip.compress(data)
         with open(path, "wb") as f:

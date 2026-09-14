@@ -102,3 +102,10 @@ export async function sendChat(messages) {
   if (!res.ok) throw new Error('chat');
   return res.json();
 }
+
+// Camera incidents from the last `hours`, including ones already cleared
+export async function fetchIncidentHistory(hours = 24) {
+  const res = await fetch(`/api/incidents/history?hours=${hours}`);
+  if (!res.ok) throw new Error('incident_history');
+  return (await res.json()).items || [];
+}

@@ -84,19 +84,21 @@ export function distanceKm(a, b) {
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
+// Province is a label, not a status: one neutral tone for every province
+const NEUTRAL_TONE = 'bg-slate-100 text-slate-600 border border-slate-200';
 export const PROVINCE_TONE = {
-  กรุงเทพมหานคร: 'bg-sage-100 text-sage-700',
-  นนทบุรี: 'bg-lavender-100 text-lavender-700',
-  นครปฐม: 'bg-apricot-100 text-apricot-700',
-  สมุทรปราการ: 'bg-gold-100 text-gold-700',
-  ปทุมธานี: 'bg-cream-200 text-ink-600',
+  กรุงเทพมหานคร: NEUTRAL_TONE,
+  นนทบุรี: NEUTRAL_TONE,
+  นครปฐม: NEUTRAL_TONE,
+  สมุทรปราการ: NEUTRAL_TONE,
+  ปทุมธานี: NEUTRAL_TONE,
 };
 
 // Traffic level of a camera (from the AI count / survey), shown as a pill on camera cards and video slots
 export const CAM_LEVEL = {
-  free: { text: 'ถนนโล่ง', cls: 'bg-sage-100 text-sage-700', dot: '#4a9a3f' },
-  moderate: { text: 'รถปานกลาง', cls: 'bg-gold-100 text-gold-700', dot: '#d6a52a' },
-  heavy: { text: 'รถติดขัด', cls: 'bg-apricot-100 text-apricot-700', dot: '#d9534f' },
+  free: { text: 'ถนนโล่ง', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200', dot: '#059669' },
+  moderate: { text: 'รถปานกลาง', cls: 'bg-amber-50 text-amber-700 border border-amber-200', dot: '#d97706' },
+  heavy: { text: 'รถติดขัด', cls: 'bg-red-50 text-red-700 border border-red-200', dot: '#dc2626' },
 };
 
 export function camStatusText(st) {

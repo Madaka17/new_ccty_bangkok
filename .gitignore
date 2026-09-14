@@ -40,3 +40,7 @@ count_cameras.json
 scratch/
 *.bak
 
+dataset/
+runs/
+*_bkk.pt
+pipeline.log

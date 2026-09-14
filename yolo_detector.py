@@ -4,6 +4,7 @@ import os
 import threading
 from collections import deque
 import numpy as np
+import torch
 from PIL import Image, ImageDraw, ImageFont
 from ultralytics import YOLO
 from ultralytics.trackers import BYTETracker
@@ -82,6 +83,10 @@ class VehicleTracker:
     # A vehicle stopped this long while the rest of the traffic flows is an incident candidate
     STOPPED_ALERT = 60.0
     STOPPED_SPEED = 0.1
+    # Collision: a vehicle goes from moving to stopped within this many seconds...
+    SUDDEN_STOP_S = 2.0
+    # ...touching another vehicle that is also stopped, and both stay stopped this long
+    COLLISION_CONFIRM_S = 5.0
 
     _cfg = None
 
@@ -281,6 +286,8 @@ class VehicleTracker:
 
         total = sum(counts.values())
 
+        self._detect_collisions(now)
+
         # Drop tracks that left the frame
         for tid in [t for t, v in self._tracks.items() if now - v['t'] > self.TRACK_TTL]:
             del self._tracks[tid]
@@ -335,9 +342,39 @@ class VehicleTracker:
         self._now = now
         return dets, stats, new_vehicles
 
+    def _detect_collisions(self, now):
+        """Mark tracks that stopped abruptly while touching another stopped vehicle as a collision pair."""
+        live = {tid: tr for tid, tr in self._tracks.items()
+                if tr['t'] == now and 'box' in tr and tr['speed'] is not None}
+        sudden = []
+        for tid, tr in live.items():
+            if tr['speed'] >= self.MOVING_SPEED:
+                tr['last_moving_t'] = now
+                tr.pop('sudden_t', None)
+                tr.pop('collision_t', None)
+            stop_t = tr.get('stop_t')
+            if stop_t is not None and 'sudden_t' not in tr and 'last_moving_t' in tr \
+                    and stop_t - tr['last_moving_t'] <= self.SUDDEN_STOP_S:
+                tr['sudden_t'] = stop_t
+            if 'sudden_t' in tr and 'collision_t' not in tr:
+                sudden.append(tid)
+        for tid in sudden:
+            tr = live[tid]
+            cx, cy, h, x1, y1, x2, y2 = tr['box']
+            gap = 0.3 * h
+            for oid, other in live.items():
+                if oid == tid or other.get('stop_t') is None:
+                    continue
+                ox1, oy1, ox2, oy2 = other['box'][3:]
+                if not (ox2 < x1 - gap or ox1 > x2 + gap or oy2 < y1 - gap or oy1 > y2 + gap):
+                    tr['collision_t'] = other['collision_t'] = now
+                    tr['partner'], other['partner'] = oid, tid
+                    break
+
     def anomaly(self):
-        """Incident candidate: a vehicle stopped >= STOPPED_ALERT s while traffic around it flows
-        (so not a jam or a red light). Returns None or a dict describing the strongest candidate."""
+        """Incident candidate: two vehicles that stopped abruptly in contact (collision), or a vehicle
+        stopped >= STOPPED_ALERT s while traffic around it flows (so not a jam or a red light).
+        Returns None or a dict describing the strongest candidate."""
         st = self.last_stats
         if not st or st['moving_pct'] < 40 or st['total'] > 25:
             return None
@@ -350,24 +387,33 @@ class VehicleTracker:
             if stop_t is None or 'box' not in tr or now - tr['t'] > 2.0:
                 continue
             stopped = now - stop_t
-            if stopped < self.STOPPED_ALERT:
+            collision_t = tr.get('collision_t')
+            collision = collision_t is not None and now - collision_t >= self.COLLISION_CONFIRM_S
+            if stopped < self.STOPPED_ALERT and not collision:
                 continue
             cx, cy, h, x1, y1, x2, y2 = tr['box']
             # A stopped vehicle with other stopped vehicles right next to it is a queue (red light), not an incident
+            # (a collision pair already has one stopped neighbour: the partner)
             neighbours = sum(1 for bx, by, bh, *_ in stopped_boxes
                              if (bx, by) != (cx, cy) and abs(bx - cx) < 2.5 * h and abs(by - cy) < 2.5 * h)
-            if neighbours >= 2:
+            if neighbours >= (3 if collision else 2):
                 continue
             # People within ~2 vehicle-heights of the stopped vehicle
             people_near = sum(1 for px, py, ph in self.persons
                               if abs(px - cx) < 2.0 * h and abs(py - cy) < 2.0 * h)
             # Hazard markers or triangular warning cones placed behind the vehicle
             # (YOLO doesn't detect cones, but stopped vehicle + people out of cars is a strong signal)
-            conf = min(0.95, 0.45 + (0.35 if people_near else 0.0) + min(0.20, (stopped - self.STOPPED_ALERT) / 120.0))
+            if collision:
+                conf = min(0.95, 0.65 + (0.25 if people_near else 0.0))
+            else:
+                conf = min(0.95, 0.45 + (0.35 if people_near else 0.0) + min(0.20, (stopped - self.STOPPED_ALERT) / 120.0))
+            partner = self._tracks.get(tr.get('partner')) if collision else None
             cand = {
                 'track_id': tid,
+                'kind': 'collision' if collision else 'stopped',
                 'stopped_s': round(stopped),
                 'box': (x1, y1, x2, y2),
+                'box2': partner['box'][3:] if partner and 'box' in partner else None,
                 'confidence': round(conf, 2),
                 'persons_near': people_near,
                 'people_near': people_near,
@@ -403,7 +449,7 @@ def skip_elapsed_frames(cap, seconds):
 
 
 class VehicleDetectorYOLO11x:
-    def __init__(self, model_path='yolo11x.pt', target_fps=10.0, conf_threshold=0.20, vehicle_log=None):
+    def __init__(self, model_path='yolo11x.pt', target_fps=10.0, conf_threshold=0.15, vehicle_log=None):
         self.target_fps = target_fps
         self.conf_threshold = conf_threshold
         self.frame_interval = 1.0 / target_fps  # 0.10s for 10 FPS
@@ -485,19 +531,30 @@ class VehicleDetectorYOLO11x:
             self.font_bold = self.font
             self.font_title = self.font
 
+    # Inference resolution. Streams are 1280x720; 960 keeps distant motorcycles at a usable pixel size
+    IMGSZ = 960
+    # Per-class minimum confidence. Small classes need a low floor; large ones false-positive easily at 0.15
+    CLASS_CONF = {PERSON_CLASS: 0.25, 1: 0.15, 2: 0.30, 3: 0.15, 5: 0.30, 7: 0.30}
+
     def infer(self, frame, conf=None):
         """Run YOLO on one frame (thread-safe). Returns the ultralytics Results object."""
         with self.model_lock:
-            # Detect at slightly lower threshold (min 0.15) and imgsz=800 so small/distant motorcycles are clearly detected
-            eff_conf = min(0.15, self.conf_threshold if conf is None else conf)
-            return self.model(
+            # Predict at the lowest per-class floor, then drop boxes under their own class threshold
+            base = self.conf_threshold if conf is None else conf
+            floor = min(self.CLASS_CONF.values())
+            result = self.model(
                 frame,
                 classes=self.target_classes,
-                conf=eff_conf,
-                imgsz=800,
+                conf=min(floor, base),
+                imgsz=self.IMGSZ,
                 iou=0.45,
                 verbose=False
             )[0]
+        if len(result.boxes):
+            cls = result.boxes.cls
+            thr = torch.tensor([max(base, self.CLASS_CONF.get(int(c), base)) for c in cls], device=cls.device)
+            result = result[result.boxes.conf >= thr]
+        return result
 
     def set_target_fps(self, fps):
         self.target_fps = max(1.0, min(30.0, float(fps)))

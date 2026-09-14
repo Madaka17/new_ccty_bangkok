@@ -3,18 +3,18 @@ import VideoSlot from './VideoSlot.jsx';
 import { CameraIcon } from './Icons.jsx';
 
 function gridClass(n) {
-  if (n <= 1) return 'grid-cols-1';
-  if (n <= 4) return 'grid-cols-1 md:grid-cols-2';
-  return 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3';
+ if (n <= 1) return 'grid-cols-1';
+ if (n <= 4) return 'grid-cols-1 md:grid-cols-2';
+ return 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3';
 }
 
 export default function CityWindow({ cameras, camStatus = {}, incidents, onClose, onOpenAI }) {
-  if (cameras.length === 0) {
-    return (
+ if (cameras.length === 0) {
+ return (
       <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="glass rounded-[2rem] h-full min-h-[360px] flex flex-col items-center justify-center text-center px-6"
+ initial={{ opacity: 0 }}
+ animate={{ opacity: 1 }}
+ className="glass rounded-xl h-full min-h-[360px] flex flex-col items-center justify-center text-center px-6"
       >
         <div className="w-24 h-24 rounded-full bg-lavender-50 border border-lavender-100 flex items-center justify-center mb-4">
           <CameraIcon className="w-11 h-11" />
@@ -27,17 +27,17 @@ export default function CityWindow({ cameras, camStatus = {}, incidents, onClose
     );
   }
 
-  return (
+ return (
     <div className={`grid gap-4 ${gridClass(cameras.length)} auto-rows-[minmax(260px,1fr)]`}>
       <AnimatePresence>
         {cameras.map((cam) => (
           <VideoSlot
-            key={cam.camid}
-            cam={cam}
-            status={camStatus[cam.camid]}
-            incident={(incidents?.camera || []).find((i) => i.camid === cam.camid)}
-            onClose={() => onClose(cam.camid)}
-            onOpenAI={() => onOpenAI(cam.camid)}
+ key={cam.camid}
+ cam={cam}
+ status={camStatus[cam.camid]}
+ incident={(incidents?.camera || []).find((i) => i.camid === cam.camid)}
+ onClose={() => onClose(cam.camid)}
+ onOpenAI={() => onOpenAI(cam.camid)}
           />
         ))}
       </AnimatePresence>

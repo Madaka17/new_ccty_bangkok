@@ -122,6 +122,16 @@ class VehicleLog:
                  'longitude': r[5], 'kind': r[6], 'confidence': r[7], 'description': r[8], 'stopped_s': r[9],
                  'persons_near': r[10], 'image': f"/api/incidents/{r[0]}/image"} for r in rows]
 
+    def recent_incidents(self, hours=24):
+        """Camera incidents (active and cleared) from the last `hours`, newest first."""
+        since = int(datetime.now().timestamp()) - hours * 3600
+        with self.lock:
+            rows = self.conn.execute("""SELECT id, ts, cleared_ts, camid, title, latitude, longitude, kind, confidence, description, stopped_s, persons_near
+                                        FROM incidents WHERE ts >= ? ORDER BY ts DESC""", (since,)).fetchall()
+        return [{'id': r[0], 'source': 'camera', 'ts': r[1], 'cleared_ts': r[2], 'camid': r[3], 'title': r[4],
+                 'latitude': r[5], 'longitude': r[6], 'kind': r[7], 'confidence': r[8], 'description': r[9],
+                 'stopped_s': r[10], 'persons_near': r[11], 'image': f"/api/incidents/{r[0]}/image"} for r in rows]
+
     def history(self, range_='24h', date=None, camid=None):
         """Per-camera totals plus a time series.
 

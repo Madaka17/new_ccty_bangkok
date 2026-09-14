@@ -33,8 +33,9 @@ LONGDO_ACCIDENT_TYPE = "3"
 BBOX = (13.3, 100.1, 14.3, 101.1)  # min lat, min lon, max lat, max lon
 
 SYSTEM_PROMPT = (
-    "You review a single frame from a Bangkok traffic CCTV camera. Our tracker flagged a vehicle that has been "
-    "standing still while other traffic keeps moving. Decide whether the frame shows a road incident.\n"
+    "You review a single frame from a Bangkok traffic CCTV camera. Our tracker flagged either a vehicle that has been "
+    "standing still while other traffic keeps moving, or two vehicles that stopped abruptly while touching each other. "
+    "Decide whether the frame shows a road incident.\n"
     "Answer ONLY with a JSON object: {\"kind\": \"accident\"|\"breakdown\"|\"none\", \"confidence\": 0..1, "
     "\"description_th\": \"<one short Thai sentence>\"}.\n"
     "accident = collision, overturned vehicle, debris from a crash, injured people, emergency vehicles at a crash.\n"
@@ -106,6 +107,9 @@ class IncidentManager:
             img = frame.copy()
             x1, y1, x2, y2 = cand['box']
             cv2.rectangle(img, (x1, y1), (x2, y2), (60, 60, 230), 3)
+            if cand.get('box2'):
+                bx1, by1, bx2, by2 = cand['box2']
+                cv2.rectangle(img, (bx1, by1), (bx2, by2), (60, 60, 230), 3)
             jpeg = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 80])[1].tobytes()
             threading.Thread(target=self._confirm, args=(camid, title, cand, jpeg, st), daemon=True).start()
         elif active:
@@ -121,7 +125,8 @@ class IncidentManager:
         try:
             self._checks.append(time.time())
             verdict = self._ask_vision(jpeg, title, cand)
-            print(f"[Incident] {title}: stopped {cand['stopped_s']}s, persons {cand['persons_near']} -> {verdict}")
+            print(f"[Incident] {title}: {cand.get('kind', 'stopped')} {cand['stopped_s']}s, "
+                  f"persons {cand['persons_near']} -> {verdict}")
             if verdict and verdict.get('kind') in ('accident', 'breakdown') and float(verdict.get('confidence', 0)) >= 0.6:
                 self._open(camid, title, cand, jpeg, verdict)
         except Exception as e:
@@ -130,9 +135,13 @@ class IncidentManager:
             st['checking'] = False
 
     def _ask_vision(self, jpeg, title, cand):
-        context = (f"Camera: {title}. Tracker: vehicle stopped for {cand['stopped_s']} s, "
-                   f"{cand['persons_near']} people near it, {cand['moving_pct']}% of other vehicles moving, "
-                   f"{cand['total']} vehicles visible. The stopped vehicle is inside the red box.")
+        if cand.get('kind') == 'collision':
+            what = (f"Tracker: two vehicles stopped abruptly in contact with each other {cand['stopped_s']} s ago "
+                    f"(possible collision). Both are inside red boxes.")
+        else:
+            what = f"Tracker: vehicle stopped for {cand['stopped_s']} s. The stopped vehicle is inside the red box."
+        context = (f"Camera: {title}. {what} {cand['persons_near']} people near it, "
+                   f"{cand['moving_pct']}% of other vehicles moving, {cand['total']} vehicles visible.")
         if self.provider == 'gemini':
             resp = self.client.models.generate_content(
                 model=GEMINI_MODEL,

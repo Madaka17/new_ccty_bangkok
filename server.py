@@ -84,6 +84,9 @@ app.add_middleware(
 
 # Paths
 MODEL_PATH = os.path.join(BASE_DIR, "yolo11x.pt")
+# Fine-tuned weights from train_model.py take precedence when present
+if os.path.exists(os.path.join(BASE_DIR, "yolo11x_bkk.pt")):
+    MODEL_PATH = os.path.join(BASE_DIR, "yolo11x_bkk.pt")
 CAMERAS_FILE = os.path.join(BASE_DIR, "cameras_bkk.json")
 INDEX_HTML = os.path.join(BASE_DIR, "index.html")
 # New React UI (web/dist) takes precedence when built
@@ -104,7 +107,7 @@ if os.path.exists(CAMERAS_FILE):
 
 # Initialize YOLO11x Vehicle Detector (Target: 10 FPS for smoother playback)
 vehicle_log = VehicleLog(os.path.join(BASE_DIR, "vehicle_counts.db"))
-detector = VehicleDetectorYOLO11x(model_path=MODEL_PATH, target_fps=10.0, conf_threshold=0.20, vehicle_log=vehicle_log)
+detector = VehicleDetectorYOLO11x(model_path=MODEL_PATH, target_fps=10.0, conf_threshold=0.15, vehicle_log=vehicle_log)
 # Background counting on user-selected cameras (lower fps to prioritize live camera)
 counter = CountManager(detector, vehicle_log, os.path.join(BASE_DIR, "count_cameras.json"), target_fps=0.5, max_cameras=4)
 counter.load({c["camid"]: c for c in cameras_data})
@@ -160,6 +163,10 @@ def get_survey_ranking():
 @app.get("/api/incidents")
 def get_incidents():
     return incidents.status()
+
+@app.get("/api/incidents/history")
+def get_incident_history(hours: int = Query(24, ge=1, le=168)):
+    return {"hours": hours, "items": vehicle_log.recent_incidents(hours)}
 
 @app.get("/api/incidents/{incident_id}/image")
 def get_incident_image(incident_id: str):
