@@ -409,24 +409,55 @@ def render_dashboard(is_watch=False, interval=1):
     return "\n".join(lines)
 
 
+def enable_vt_mode():
+    """Enable Windows VT100 ANSI escape processing so in-place rendering is flicker-free."""
+    if sys.platform == 'win32':
+        try:
+            import ctypes
+            k32 = ctypes.windll.kernel32
+            h = k32.GetStdHandle(-11)
+            m = ctypes.c_ulong()
+            k32.GetConsoleMode(h, ctypes.byref(m))
+            # ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+            k32.SetConsoleMode(h, m.value | 0x0004)
+        except Exception:
+            pass
+
+
 def main():
     parser = argparse.ArgumentParser(description="Realtime Pipeline & AI Training Monitor")
-    parser.add_argument('-w', '--watch', nargs='?', const=1, type=int, default=None,
-                        help="Live realtime watch mode with interval in seconds (default: 1)")
+    parser.add_argument('-w', '--watch', nargs='?', const=2, type=int, default=None,
+                        help="Live realtime watch mode with interval in seconds (default: 2)")
     args = parser.parse_args()
 
     if args.watch is not None:
         interval = max(1, args.watch)
+        enable_vt_mode()
+        # Clear screen ONLY once on launch
+        os.system('cls' if os.name == 'nt' else 'clear')
+        # Hide blinking console cursor
+        sys.stdout.write('\033[?25l')
+        sys.stdout.flush()
         try:
             while True:
-                os.system('cls' if os.name == 'nt' else 'clear')
-                print(render_dashboard(is_watch=True, interval=interval))
+                content = render_dashboard(is_watch=True, interval=interval)
+                # Erase each line to end (\033[K) to avoid ghost text from shorter lines
+                lines = [l + '\033[K' for l in content.splitlines()]
+                # \033[H moves cursor to top-left (1,1), \033[J clears remaining screen below
+                buf = '\033[H' + '\n'.join(lines) + '\n\033[J'
+                sys.stdout.write(buf)
+                sys.stdout.flush()
                 time.sleep(interval)
         except KeyboardInterrupt:
-            print("\n[!] ปิดระบบติดตามสถานะเรียบร้อยแล้ว")
+            pass
+        finally:
+            # Restore cursor and print exit message
+            sys.stdout.write('\033[?25h\n\n[!] ปิดระบบติดตามสถานะเรียบร้อยแล้ว\n')
+            sys.stdout.flush()
     else:
         print(render_dashboard(is_watch=False))
 
 
 if __name__ == '__main__':
     main()
+

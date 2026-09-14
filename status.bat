@@ -17,9 +17,9 @@ mode con: cols=90 lines=38
 color 0F
 
 if exist ".venv\Scripts\python.exe" (
-    .venv\Scripts\python.exe pipeline_status.py --watch 1
+    .venv\Scripts\python.exe pipeline_status.py --watch 2
 ) else (
-    python pipeline_status.py --watch 1
+    python pipeline_status.py --watch 2
 )
 
 if %ERRORLEVEL% NEQ 0 (
