@@ -200,7 +200,7 @@ export default function App() {
  const activeCams = useMemo(() => active.map((id) => cameras.find((c) => c.camid === id)).filter(Boolean), [active, cameras]);
 
  return (
-    <div className="min-h-full lg:grid lg:grid-cols-[240px_1fr]">
+    <div className="min-h-full lg:grid lg:grid-cols-[220px_1fr]">
       {/* Desktop sidebar */}
       <aside className="hidden lg:block sticky top-0 h-screen">
         <Sidebar page={page} onNavigate={navigate} userName={userName} onSaveName={saveName} liveCount={activeCams.length} totalCount={cameras.length} aiActive={aiActive} theme={theme} onTheme={setTheme} />
