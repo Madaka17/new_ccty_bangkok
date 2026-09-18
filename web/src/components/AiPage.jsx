@@ -1,21 +1,33 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { CarIcon, BikeIcon, TruckIcon, SparkleIcon, CameraIcon, SettingsIcon } from './Icons.jsx';
-import { aiStreamUrl, fetchAIStats, fetchTrafficSummary, sendChat, setAIConf, setAIFps, switchAICamera } from '../lib/api.js';
+import { aiStreamUrl, fetchAIStats, fetchTrafficSummary, fetchWaterSummary, sendChat, setAIConf, setAIFps, switchAICamera } from '../lib/api.js';
 
-const SUGGESTIONS = ['สรุปสภาพจราจรตอนนี้', 'ถนนไหนติดที่สุดตอนนี้', 'สุขุมวิทกับพระราม 4 ระบายรถเป็นยังไง', 'จากลาดพร้าวไปสีลม ควรไปทางไหน'];
-const WELCOME = 'สวัสดี! ฉันดูเส้นจราจรทุกสายในกรุงเทพฯ ให้อยู่ ถามได้เลยว่าถนนไหนระบายรถดี ถนนไหนควรเลี่ยง หรือให้สรุปภาพรวมก็ได้นะ';
+const SUGGESTIONS = [
+  'สรุปสถานการณ์ทั้งหมดตอนนี้',
+  'ถนนไหนติดที่สุดตอนนี้',
+  'วิเคราะห์น้ำท่วมและฝนวันนี้ พื้นที่ไหนต้องเฝ้าระวัง',
+  'พรุ่งนี้มีพายุฝนไหม ฝนตกหนักช่วงไหน',
+  'วันนี้มีอุบัติเหตุที่ไหนบ้าง เขตไหนเสี่ยงสุด',
+  'เขตไหนรถหนาแน่นสุดจากกล้อง กทม.',
+  'ขับรถลุยน้ำท่วมยังไงให้ปลอดภัย',
+  'เบอร์ฉุกเฉินที่ควรรู้',
+  'ช่วยแปลประโยคนี้เป็นอังกฤษ: วันนี้ฝนตกหนักมาก',
+  'แนะนำร้านอาหารแถวสยาม',
+];
+const WELCOME = 'สวัสดี! ถามได้ทุกเรื่อง ทั้งข้อมูลสดของเมือง (จราจรทุกสาย กล้องนับรถ กทม. 500+ ตัว น้ำท่วม-ฝน-พายุ 24 ชม.รายพื้นที่ อุบัติเหตุและเหตุการณ์ สถิติรายเขต) และคำถามทั่วไปอะไรก็ได้ เช่น แปลภาษา สรุปข้อความ คำนวณ สุขภาพ ท่องเที่ยว หรือให้ช่วยเขียนอะไรก็ได้เลย';
 const LEVEL_CLS = { โล่ง: 'bg-sage-100 text-sage-700', ปานกลาง: 'bg-gold-100 text-gold-700', ติดขัด: 'bg-apricot-100 text-apricot-700' };
+const WATCH = {
+  green: { label: 'ปกติ', cls: 'bg-sage-100 text-sage-700' },
+  yellow: { label: 'ติดตาม', cls: 'bg-gold-100 text-gold-700' },
+  orange: { label: 'เฝ้าระวัง', cls: 'bg-apricot-100 text-apricot-700' },
+  red: { label: 'เตือนภัย', cls: 'bg-red-100 text-red-700' },
+};
+const WINDY_RADAR = 'https://embed.windy.com/embed2.html?lat=13.750&lon=100.500&detailLat=13.750&detailLon=100.500&width=340&height=260&zoom=8&level=surface&overlay=radar&product=radar&menu=&message=true&marker=&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1';
 
 function Bubble({ role, text, mode }) {
  const me = role === 'user';
  return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }} className={`flex ${me ? 'justify-end' : 'justify-start'}`}>
-      {!me && (
-        <span className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center mr-2 shrink-0 mt-1">
-          <SparkleIcon className="w-4 h-4" />
-        </span>
-      )}
       <div className={`max-w-[85%] rounded-xl px-4 py-3 text-[15px] leading-relaxed whitespace-pre-wrap ${me ? 'bg-lavender-600 text-white rounded-br-lg' : 'bg-white border border-cream-200 text-ink-900 rounded-bl-lg'}`}>
         {text}
         {!me && mode === 'gemini' && <span className="block mt-1 text-[11px] text-ink-400">Gemini Flash-Lite</span>}
@@ -30,6 +42,8 @@ export default function AiPage({ active, cameras, camid, onPickCamera, onToast, 
  const [input, setInput] = useState('');
  const [busy, setBusy] = useState(false);
  const [summary, setSummary] = useState(null);
+ const [water, setWater] = useState(null);
+ const [showRadar, setShowRadar] = useState(false);
  const [stats, setStats] = useState(null);
  const [streamSrc, setStreamSrc] = useState('');
  const [live, setLive] = useState(false);
@@ -86,6 +100,19 @@ export default function AiPage({ active, cameras, camid, onPickCamera, onToast, 
     };
   }, [active]);
 
+  // Flood / rain watch for the side panel
+ useEffect(() => {
+ if (!active) return;
+ let alive = true;
+ const tick = () => fetchWaterSummary().then((w) => alive && setWater(w)).catch(() => {});
+ tick();
+ const id = setInterval(tick, 60000);
+ return () => {
+ alive = false;
+ clearInterval(id);
+    };
+  }, [active]);
+
   // Question handed over from the dashboard / map
  useEffect(() => {
  if (active && pendingQuestion) {
@@ -134,12 +161,9 @@ export default function AiPage({ active, cameras, camid, onPickCamera, onToast, 
       {/* Chat */}
       <section className="glass rounded-xl flex flex-col overflow-hidden" aria-label="แชทกับผู้ช่วยการจราจร">
         <div className="px-5 pt-5 pb-3 flex items-start gap-3">
-          <div className="w-11 h-11 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
-            <SparkleIcon />
-          </div>
           <div className="flex-1 min-w-0">
-            <h2 className="font-serif text-xl sm:text-2xl font-semibold text-ink-900">AI ผู้ช่วยการจราจร</h2>
-            <p className="text-sm text-ink-600">วิเคราะห์การระบายรถทุกเส้นทางจากเส้นแผนที่จราจรสด</p>
+            <h1 className="text-xl font-semibold text-slate-900 leading-7">ถาม AI ได้ทุกเรื่อง</h1>
+            <p className="text-[13px] text-slate-600 mt-0.5">ข้อมูลสด: จราจร · กล้องนับรถ · น้ำท่วม-ฝน-พายุ · อุบัติเหตุ · สถิติ — และคำถามทั่วไปทุกหัวข้อ</p>
           </div>
           {summary?.ready && (
             <span className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-sage-50 border border-sage-100 px-3 py-1.5 text-xs text-sage-700">
@@ -179,7 +203,7 @@ export default function AiPage({ active, cameras, camid, onPickCamera, onToast, 
  className="flex items-center gap-2 rounded-lg bg-white border border-cream-200 pl-5 pr-1.5 py-1.5 focus-within:border-lavender-400 transition-colors duration-200"
           >
             <label htmlFor="chat-input" className="sr-only">ถามผู้ช่วยการจราจร</label>
-            <input id="chat-input" value={input} onChange={(e) => setInput(e.target.value)} placeholder="ถามเรื่องถนน เช่น รัชดาตอนนี้ติดไหม..." className="flex-1 bg-transparent outline-none text-base text-ink-900 placeholder:text-ink-400" disabled={busy} />
+            <input id="chat-input" value={input} onChange={(e) => setInput(e.target.value)} placeholder="ถามอะไรก็ได้ เช่น รัชดาตอนนี้ติดไหม, พรุ่งนี้ฝนตกไหม, ช่วยแปลประโยคนี้..." className="flex-1 bg-transparent outline-none text-base text-ink-900 placeholder:text-ink-400" disabled={busy} />
             <motion.button type="submit" whileTap={{ scale: 0.95 }} disabled={busy || !input.trim()} className="cursor-pointer rounded-lg bg-blue-600 text-white px-5 py-2.5 text-sm font-semibold hover:bg-blue-700 transition-colors duration-200 disabled:opacity-50">
               ถาม
             </motion.button>
@@ -189,6 +213,50 @@ export default function AiPage({ active, cameras, camid, onPickCamera, onToast, 
 
       {/* Side: live insight + camera AI */}
       <aside className="flex flex-col gap-3 lg:overflow-y-auto scroll-soft">
+        <div className="glass rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <p className="text-xs text-ink-600 flex-1">เฝ้าระวังฝน / น้ำท่วม รายพื้นที่ (24 ชม.)</p>
+            <button type="button" onClick={() => setShowRadar((v) => !v)} aria-expanded={showRadar} className="cursor-pointer h-7 px-2 rounded-md text-[11px] text-slate-600 hover:bg-slate-100">
+              {showRadar ? 'ซ่อนเรดาร์' : 'เรดาร์ฝน'}
+            </button>
+          </div>
+          {water?.flood_roads && (
+            <p className="text-[11px] text-ink-600 mb-2">
+              ถนนท่วม {water.flood_roads.flooding} จุด · ท่วมเล็กน้อย {water.flood_roads.slight} จุด · ล้นตลิ่ง {(water.river_counts?.overflow || 0) + (water.canal_counts?.overflow || 0)} สถานี
+            </p>
+          )}
+          {!water?.weather?.length ? (
+            <p className="text-sm text-ink-400">กำลังโหลดพยากรณ์ฝน...</p>
+          ) : (
+            <ul className="space-y-1">
+              {water.weather.map((z) => {
+                const w = WATCH[z.watch] || WATCH.green;
+                return (
+                  <li key={z.id}>
+                    <button type="button" onClick={() => ask(`${z.name} (${z.areas}) วิเคราะห์น้ำท่วม ฝน พายุ และแนวทางป้องกัน`)} className="cursor-pointer w-full text-left rounded-lg px-2 py-1.5 hover:bg-cream-100 transition-colors duration-200">
+                      <div className="flex items-center gap-2">
+                        <span className="flex-1 min-w-0 text-sm text-ink-900 line-clamp-1">{z.name}</span>
+                        <span className={`rounded-lg px-2 py-0.5 text-[11px] font-medium ${w.cls}`}>{w.label}</span>
+                      </div>
+                      <p className="text-[11px] text-ink-600 mt-0.5 line-clamp-1">
+                        ฝน {z.rain_24h} มม. · ลม {z.gust_max} กม./ชม.
+                        {z.storm_at ? ` · พายุ ${z.storm_at}` : z.peak_at ? ` · หนักสุด ${z.peak_at}` : ''}
+                        {z.flood_roads?.length ? ` · ท่วม ${z.flood_roads.length} จุด` : ''}
+                        {z.stations_overflow?.length ? ` · ล้น ${z.stations_overflow[0]}` : ''}
+                      </p>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {showRadar && (
+            <div className="mt-2 rounded-lg overflow-hidden border border-cream-200 bg-cream-100 h-[260px]">
+              <iframe src={WINDY_RADAR} width="100%" height="100%" frameBorder="0" title="เรดาร์ฝน Windy" loading="lazy" className="w-full h-full block" />
+            </div>
+          )}
+        </div>
+
         <div className="glass rounded-xl p-4">
           <p className="text-xs text-ink-600 mb-2">ติดขัดมากที่สุดตอนนี้</p>
           {!summary?.ready ? (
@@ -200,7 +268,7 @@ export default function AiPage({ active, cameras, camid, onPickCamera, onToast, 
                   <button type="button" onClick={() => ask(`${r.name} ตอนนี้ระบายรถเป็นยังไง`)} className="cursor-pointer w-full text-left flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-cream-100 transition-colors duration-200">
                     <span className="flex-1 min-w-0 text-sm text-ink-900 line-clamp-1">{r.name}</span>
                     <span className={`rounded-lg px-2 py-0.5 text-[11px] font-medium ${LEVEL_CLS[r.level]}`}>{r.level}</span>
-                    <span className="font-serif text-sm text-ink-900 w-8 text-right">{r.flow}</span>
+                    <span className="text-sm text-ink-900 w-8 text-right">{r.flow}</span>
                   </button>
                 </li>
               ))}
@@ -210,10 +278,9 @@ export default function AiPage({ active, cameras, camid, onPickCamera, onToast, 
 
         <div className="glass rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
-            <CameraIcon className="w-4 h-4" />
             <p className="text-xs text-ink-600 flex-1">กล้อง AI นับรถ</p>
-            <button type="button" onClick={() => setShowOptions((v) => !v)} aria-expanded={showOptions} aria-label="ตัวเลือกเพิ่มเติม" className="cursor-pointer w-7 h-7 rounded-full flex items-center justify-center hover:bg-lavender-50">
-              <SettingsIcon className="w-4 h-4" />
+            <button type="button" onClick={() => setShowOptions((v) => !v)} aria-expanded={showOptions} className="cursor-pointer h-7 px-2 rounded-md text-[11px] text-slate-600 hover:bg-slate-100">
+              ตั้งค่า
             </button>
           </div>
           <label htmlFor="ai-cam" className="sr-only">เลือกกล้อง</label>
@@ -235,13 +302,13 @@ export default function AiPage({ active, cameras, camid, onPickCamera, onToast, 
           </div>
           <div className="mt-2 grid grid-cols-3 gap-1.5">
             {[
-              [CarIcon, stats?.cars],
-              [BikeIcon, stats?.motorcycles],
-              [TruckIcon, stats?.trucks],
-            ].map(([Icon, v], i) => (
-              <div key={i} className="rounded-lg bg-white border border-cream-200 px-2 py-1.5 flex items-center gap-1.5">
-                <Icon className="w-5 h-5" />
-                <span className="font-serif text-lg text-ink-900 tabular-nums">{v ?? 0}</span>
+              ['รถยนต์', stats?.cars],
+              ['มอไซ', stats?.motorcycles],
+              ['บรรทุก', stats?.trucks],
+            ].map(([label, v]) => (
+              <div key={label} className="rounded-lg bg-white border border-cream-200 px-2 py-1.5">
+                <p className="text-[11px] text-slate-500">{label}</p>
+                <p className="text-base text-ink-900 tabular-nums font-medium leading-5">{v ?? 0}</p>
               </div>
             ))}
           </div>
@@ -265,7 +332,7 @@ export default function AiPage({ active, cameras, camid, onPickCamera, onToast, 
                   ))}
                 </div>
                 <label htmlFor="ai-conf" className="block text-[11px] text-ink-600 mt-2 mb-1">
-                  ความมั่นใจขั้นต่ำ <span className="font-serif text-ink-900">{conf}%</span>
+                  ความมั่นใจขั้นต่ำ <span className="text-ink-900">{conf}%</span>
                 </label>
                 <input
  id="ai-conf"

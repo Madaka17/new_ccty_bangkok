@@ -1,9 +1,10 @@
 @echo off
+chcp 65001 >nul
 cd /d "%~dp0"
-title BKK Traffic CCTV + YOLO11x AI Server
+title BKK StreetSmart CCTV + YOLO11x AI Server
 
 echo ======================================================================
-echo   BKK Traffic CCTV + YOLO11x AI Server
+echo   BKK StreetSmart CCTV + YOLO11x AI Server
 echo ======================================================================
 echo.
 

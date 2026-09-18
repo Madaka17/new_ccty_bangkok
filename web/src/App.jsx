@@ -1,16 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import TopBar from './components/TopBar.jsx';
+import Sidebar, { PAGE_TITLES } from './components/Sidebar.jsx';
+import { PageHeader } from './components/dashboard/primitives.jsx';
 import SidePanel from './components/SidePanel.jsx';
 import CityWindow from './components/CityWindow.jsx';
 import AiPage from './components/AiPage.jsx';
 import MapPage from './components/MapPage.jsx';
 import DashboardPage from './components/DashboardPage.jsx';
+import BottomNav from './components/BottomNav.jsx';
 import YoloPage from './components/YoloPage.jsx';
+import WaterPage from './components/WaterPage.jsx';
+import BmaCountPage from './components/BmaCountPage.jsx';
+import AnalyticsPage from './components/AnalyticsPage.jsx';
+import NavIcon from './components/NavIcons.jsx';
 import { fetchCameras, fetchAIStats, fetchIncidents, fetchSurveyRanking, fetchRoadCameras } from './lib/api.js';
-import { useActiveCameras, useFavorites, useUserName } from './lib/store.js';
+import { useActiveCameras, useFavorites, useUserName, useTheme } from './lib/store.js';
+import { trackView, startHeartbeat } from './lib/telemetry.js';
 
-const PAGES = ['dashboard', 'cameras', 'map', 'yolo', 'ai'];
+const PAGES = ['dashboard', 'analytics', 'bma-count', 'cameras', 'map', 'water', 'yolo', 'ai'];
 
 function pageFromHash() {
  const h = window.location.hash.replace(/^#\/?/, '');
@@ -22,6 +29,8 @@ export default function App() {
  const [favorites, toggleFav] = useFavorites();
  const { active, toggle, remove, clear, addMany } = useActiveCameras();
  const [userName, saveName] = useUserName();
+ const [theme, setTheme] = useTheme();
+ const [menuOpen, setMenuOpen] = useState(false);
  const [page, setPage] = useState(pageFromHash);
  const [filter, setFilter] = useState('all');
  const [query, setQuery] = useState('');
@@ -47,6 +56,12 @@ export default function App() {
     }
   }, [cameras, active, remove]);
 
+  // Visitor telemetry: one view per page, heartbeat while open
+ useEffect(() => {
+ trackView(page);
+  }, [page]);
+ useEffect(() => startHeartbeat(), []);
+
   // Hash routing
  useEffect(() => {
  const onHash = () => setPage(pageFromHash());
@@ -68,7 +83,7 @@ export default function App() {
         .then((s) => alive && setAiActive(!!s.active))
         .catch(() => alive && setAiActive(false));
  tick();
- const id = setInterval(tick, 5000);
+ const id = setInterval(tick, 60000);
  return () => {
  alive = false;
  clearInterval(id);
@@ -116,7 +131,7 @@ export default function App() {
         })
         .catch(() => {});
  tick();
- const id = setInterval(tick, 30000);
+ const id = setInterval(tick, 60000);
  return () => {
  alive = false;
  clearInterval(id);
@@ -185,21 +200,47 @@ export default function App() {
  const activeCams = useMemo(() => active.map((id) => cameras.find((c) => c.camid === id)).filter(Boolean), [active, cameras]);
 
  return (
-    <div className="min-h-full flex flex-col gap-4 pb-6">
-      <TopBar
- userName={userName}
- onSaveName={saveName}
- liveCount={activeCams.length}
- totalCount={cameras.length}
- aiActive={aiActive}
- page={page}
- onNavigate={navigate}
-      />
+    <div className="min-h-full lg:grid lg:grid-cols-[240px_1fr]">
+      {/* Desktop sidebar */}
+      <aside className="hidden lg:block sticky top-0 h-screen">
+        <Sidebar page={page} onNavigate={navigate} userName={userName} onSaveName={saveName} liveCount={activeCams.length} totalCount={cameras.length} aiActive={aiActive} theme={theme} onTheme={setTheme} />
+      </aside>
 
-      <main className="flex-1 px-4 sm:px-6 min-h-0">
+      {/* Mobile top bar + drawer */}
+      <div className="lg:hidden sticky top-0 z-40 bg-white border-b border-slate-200 px-4 h-14 flex items-center justify-between">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-900 truncate">{PAGE_TITLES[page]}</p>
+          <p className="text-[11px] text-slate-500">BKK StreetSmart</p>
+        </div>
+        <span className="text-xs text-slate-500">{activeCams.length ? `ดูสด ${activeCams.length} กล้อง` : ''}</span>
+      </div>
+      {menuOpen && (
+        <div className="lg:hidden fixed inset-0 z-50 flex">
+          <div className="w-72 max-w-[85vw] h-full">
+            <Sidebar page={page} onNavigate={navigate} userName={userName} onSaveName={saveName} liveCount={activeCams.length} totalCount={cameras.length} aiActive={aiActive} theme={theme} onTheme={setTheme} onClose={() => setMenuOpen(false)} />
+          </div>
+          <button type="button" aria-label="ปิดเมนู" onClick={() => setMenuOpen(false)} className="flex-1 bg-slate-900/50" />
+        </div>
+      )}
+      <BottomNav page={page} onNavigate={navigate} onMenu={() => setMenuOpen(true)} />
+
+      <div className="min-h-full flex flex-col gap-4 pb-20 lg:pb-6 pt-4 min-w-0">
+      <main className="flex-1 px-4 sm:px-6 min-h-0 min-w-0">
           {page === 'dashboard' && (
             <motion.div key="dashboard" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
-              <DashboardPage isActive liveCount={activeCams.length} cameras={cameras} incidents={incidents} onAsk={askAI} onOpenRoad={openRoadCameras} onNavigate={navigate} onOpenAI={openAI} />
+              <DashboardPage isActive liveCount={activeCams.length} cameras={cameras} incidents={incidents} onAsk={askAI} onOpenRoad={openRoadCameras} onNavigate={navigate} onOpenAI={openAI} onToast={showToast} />
+            </motion.div>
+          )}
+
+          {page === 'analytics' && (
+            <motion.div key="analytics" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
+              <AnalyticsPage isActive onNavigate={navigate} onOpenRoad={openRoadCameras} />
+            </motion.div>
+          )}
+
+          {page === 'bma-count' && (
+            <motion.div key="bma-count" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
+              <BmaCountPage isActive onToast={showToast} />
             </motion.div>
           )}
 
@@ -209,8 +250,10 @@ export default function App() {
  initial={{ opacity: 0, y: 10 }}
  animate={{ opacity: 1, y: 0 }}
  transition={{ duration: 0.22 }}
- className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-4"
+ className="flex flex-col gap-4"
             >
+              <PageHeader title="กล้องของฉัน" description="เลือกกล้องจากรายการ ภาพสดจะแสดงทางขวา เปิดพร้อมกันได้ 9 กล้อง" />
+              <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-4">
               <div className="h-[46vh] lg:h-[calc(100vh-11rem)] lg:sticky lg:top-4">
                 <SidePanel
  cameras={cameras}
@@ -231,6 +274,7 @@ export default function App() {
               <section aria-label="หน้าต่างเมือง" className="min-h-[360px]">
                 <CityWindow cameras={activeCams} camStatus={camStatus} incidents={incidents} onClose={remove} onOpenAI={openAI} />
               </section>
+              </div>
             </motion.div>
           )}
 
@@ -242,6 +286,12 @@ export default function App() {
  transition={{ duration: 0.22 }}
             >
               <MapPage isActive cameras={cameras} active={active} incidents={incidents} onToggle={toggle} onOpenAI={openAI} onToast={showToast} />
+            </motion.div>
+          )}
+
+          {page === 'water' && (
+            <motion.div key="water" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
+              <WaterPage isActive onToast={showToast} onNavigate={navigate} onAsk={askAI} />
             </motion.div>
           )}
 
@@ -263,6 +313,24 @@ export default function App() {
           )}
       </main>
 
+      {/* ปุ่มกลมไอคอน AI ลอยด้านล่างขวาทุกหน้า (ยกเว้นหน้าคุยกับ AI อยู่แล้ว) */}
+      {page !== 'ai' && (
+        <button
+          type="button"
+          onClick={() => askAI('')}
+          className="fixed bottom-20 lg:bottom-8 right-5 lg:right-8 z-30 w-14 h-14 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-xl shadow-blue-500/35 hover:shadow-blue-500/55 hover:scale-108 active:scale-95 transition-all duration-200 flex items-center justify-center cursor-pointer group"
+          title="ถาม AI ผู้ช่วยจราจร"
+          aria-label="ถาม AI ผู้ช่วยจราจร"
+        >
+          <span className="relative flex items-center justify-center">
+            <NavIcon name="ai" className="w-6 h-6 group-hover:scale-110 transition-transform duration-200 text-white" />
+            <span className="absolute -top-2 -right-2 bg-gradient-to-r from-amber-400 to-amber-300 text-slate-900 font-extrabold text-[9px] px-1.5 py-0.2 rounded-full shadow-xs border border-white/60">
+              AI
+            </span>
+          </span>
+        </button>
+      )}
+
       <AnimatePresence>
         {toast && (
           <motion.div
@@ -276,6 +344,7 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
     </div>
   );
 }

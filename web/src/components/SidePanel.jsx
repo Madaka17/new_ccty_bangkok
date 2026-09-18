@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FlowerIcon, StarIcon, LocateIcon } from './Icons.jsx';
 import CameraCard from './CameraCard.jsx';
 import { distanceKm } from '../lib/store.js';
 
@@ -9,8 +8,8 @@ const CHIP_ON = 'bg-blue-600 text-white border-blue-600';
 const CHIPS = [
   { id: 'all', label: 'ทั้งหมด' },
   { id: 'bkk', label: 'กรุงเทพฯ' },
-  { id: 'near', label: 'ใกล้ฉัน', icon: LocateIcon },
-  { id: 'fav', label: 'รายการโปรด', icon: StarIcon },
+  { id: 'near', label: 'ใกล้ฉัน' },
+  { id: 'fav', label: 'รายการโปรด' },
 ];
 
 export default function SidePanel({
@@ -48,15 +47,14 @@ export default function SidePanel({
  return (
     <aside className="glass rounded-xl flex flex-col h-full overflow-hidden">
       <div className="px-5 pt-5 pb-3">
-        <h2 className="font-serif text-lg font-semibold text-ink-900">ช่องมองภาพของคุณ</h2>
-        <p className="text-sm text-ink-600">เลือกกล้องที่อยากดู แล้วภาพจะมาโผล่ที่หน้าต่างเมือง</p>
+        <h2 className="text-[15px] font-semibold text-slate-900">เลือกกล้อง</h2>
+        <p className="text-[13px] text-slate-600">ติ๊กกล้องที่อยากดู ภาพสดจะแสดงทางขวา</p>
       </div>
 
       {/* Search */}
       <div className="px-5">
         <label htmlFor="cam-search" className="sr-only">ค้นหาถนนหรือแยก</label>
         <div className="flex items-center gap-2 rounded-lg bg-white border border-cream-200 px-4 py-2.5 focus-within:border-lavender-400 transition-colors duration-200">
-          <FlowerIcon />
           <input
  id="cam-search"
  type="search"
@@ -72,7 +70,6 @@ export default function SidePanel({
       <div className="px-5 pt-3 pb-2 flex flex-wrap gap-2">
         {CHIPS.map((chip) => {
  const isActive = filter === chip.id;
- const Icon = chip.icon;
  return (
             <motion.button
  key={chip.id}
@@ -82,7 +79,6 @@ export default function SidePanel({
  aria-pressed={isActive}
  className={`cursor-pointer inline-flex items-center gap-1.5 rounded-lg border px-3 h-8 text-xs font-medium transition-colors duration-200 ${isActive ? CHIP_ON : CHIP_OFF}`}
             >
-              {Icon && <Icon className="w-4 h-4" />}
               {chip.label}
               {chip.id === 'fav' && favorites.size > 0 && (
                 <span className="ml-0.5 rounded-lg bg-white px-1.5 text-xs text-ink-900">{favorites.size}</span>
@@ -95,7 +91,7 @@ export default function SidePanel({
       {/* Count / clear */}
       <div className="px-5 pb-2 flex items-center justify-between text-xs text-ink-600">
         <span>
-          พบ <span className="font-serif text-sm text-ink-900">{list.length}</span> กล้อง
+          พบ <span className="text-sm text-ink-900">{list.length}</span> กล้อง
           {filter === 'near' && !userPos && <span className="ml-1 text-lavender-700">(กำลังหาตำแหน่งของคุณ...)</span>}
         </span>
         {active.length > 0 && (
@@ -132,7 +128,6 @@ export default function SidePanel({
         </AnimatePresence>
         {list.length === 0 && (
           <div className="text-center text-sm text-ink-600 py-10">
-            <FlowerIcon className="w-8 h-8 mx-auto mb-2" />
             ยังไม่พบกล้องที่ตรงกัน ลองคำอื่นดูนะ
           </div>
         )}

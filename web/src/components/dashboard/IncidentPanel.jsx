@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { MapPinIcon, CameraIcon } from '../Icons.jsx';
 import { fetchIncidentHistory } from '../../lib/api.js';
 import { Card, SectionHeader, Badge, Button, Segmented, Skeleton, EmptyState, ErrorState, Truncate, FOCUS } from './ui.jsx';
 import { agoText, fmtTime, fmtDateTime, fmtDuration } from './format.js';
@@ -14,14 +13,6 @@ const FILTERS = [
   ['camera', 'กล้อง AI'],
   ['longdo', 'รายงานจราจร'],
 ];
-
-function ChevronIcon({ open, className = 'w-4 h-4' }) {
-  return (
-    <svg viewBox="0 0 24 24" className={`${className} transition-transform duration-150 ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <polyline points="6 9 12 15 18 9" />
-    </svg>
-  );
-}
 
 // Longdo timestamps are 'YYYY-MM-DD HH:MM:SS' local time
 const longdoClock = (s) => (s ? `${s.slice(11, 16)} น.` : '');
@@ -47,8 +38,8 @@ function IncidentRow({ i, expanded, onToggle, onOpenAI, onNavigate }) {
         {i.image ? (
           <img src={i.image} alt="" loading="lazy" className="w-20 h-14 rounded-md object-cover border border-slate-200 shrink-0 bg-slate-100" />
         ) : (
-          <span className="w-20 h-14 rounded-md border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400 shrink-0" aria-hidden="true">
-            <MapPinIcon className="w-5 h-5" />
+          <span className="w-20 h-14 rounded-md border border-slate-200 bg-slate-50 flex items-center justify-center text-[11px] text-slate-400 shrink-0" aria-hidden="true">
+            ไม่มีภาพ
           </span>
         )}
         <div className="min-w-0 flex-1">
@@ -62,8 +53,7 @@ function IncidentRow({ i, expanded, onToggle, onOpenAI, onNavigate }) {
         <div className="flex items-center gap-1 shrink-0">
           {i.camid && (
             <Button size="sm" onClick={() => onOpenAI(i.camid)} title="เปิดภาพสดจากกล้องนี้">
-              <CameraIcon className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">ภาพสด</span>
+              ภาพสด
             </Button>
           )}
           <button
@@ -72,9 +62,9 @@ function IncidentRow({ i, expanded, onToggle, onOpenAI, onNavigate }) {
             aria-expanded={expanded}
             aria-controls={detailId}
             aria-label={expanded ? 'ซ่อนรายละเอียด' : 'ดูรายละเอียด'}
-            className={`cursor-pointer w-8 h-8 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 flex items-center justify-center transition-colors ${FOCUS}`}
+            className={`cursor-pointer h-8 px-2 rounded-lg text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-900 flex items-center justify-center transition-colors ${FOCUS}`}
           >
-            <ChevronIcon open={expanded} />
+            {expanded ? 'ซ่อน' : 'เพิ่มเติม'}
           </button>
         </div>
       </div>
@@ -123,7 +113,6 @@ function IncidentRow({ i, expanded, onToggle, onOpenAI, onNavigate }) {
             )}
             {i.latitude && i.longitude && (
               <Button size="sm" variant="ghost" onClick={() => onNavigate('map')}>
-                <MapPinIcon className="w-3.5 h-3.5" />
                 ดูบนแผนที่
               </Button>
             )}
@@ -151,7 +140,7 @@ function ResolvedList({ items, loading, error, onRetry }) {
         <span className="text-[13px] font-medium text-slate-700">เหตุการณ์ที่คลี่คลายแล้ว ใน 24 ชม.</span>
         <span className="flex items-center gap-2 text-xs text-slate-500">
           {n} รายการ
-          <ChevronIcon open={open} />
+          {open ? 'ซ่อน' : 'แสดง'}
         </span>
       </button>
       {open && (
@@ -229,8 +218,7 @@ export default function IncidentPanel({ incidents, onOpenAI, onNavigate }) {
           <div className="flex items-center gap-2">
             <Segmented options={FILTERS} value={filter} onChange={setFilter} label="กรองแหล่งที่มา" />
             <Button size="sm" onClick={() => onNavigate('map')} disabled={!total}>
-              <MapPinIcon className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">แผนที่</span>
+              แผนที่
             </Button>
           </div>
         }

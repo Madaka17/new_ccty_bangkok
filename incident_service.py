@@ -29,6 +29,7 @@ CLAUDE_MODEL = "claude-opus-5"
 GEMINI_MODEL = os.environ.get("GEMINI_VISION_MODEL", "gemini-3.6-flash")
 LONGDO_FEED = "https://event.longdo.com/feed/json"
 LONGDO_ACCIDENT_TYPE = "3"
+LONGDO_BREAKDOWN_TYPE = "1"
 # Bangkok and vicinity
 BBOX = (13.3, 100.1, 14.3, 101.1)  # min lat, min lon, max lat, max lon
 
@@ -217,8 +218,21 @@ class IncidentManager:
         now = time.strftime('%Y-%m-%d %H:%M:%S')
         out = []
         for e in items:
-            if str(e.get('type')) != LONGDO_ACCIDENT_TYPE:
+            etype = str(e.get('type') or '')
+            title = (e.get('title') or '').strip()
+            desc = (e.get('description') or '').strip()
+            icon = str(e.get('icon') or '').lower()
+
+            # Identify vehicle breakdown (type 1, carbreakdown icon, or keywords)
+            if etype == LONGDO_BREAKDOWN_TYPE or 'carbreakdown' in icon or 'รถเสีย' in title or 'จอดเสีย' in title or 'รถเสีย' in desc or 'จอดเสีย' in desc:
+                kind = 'breakdown'
+                default_title = 'รถเสีย / กีดขวาง'
+            elif etype == LONGDO_ACCIDENT_TYPE or 'accident' in icon or 'อุบัติเหตุ' in title or 'ชนกัน' in title or 'รถชน' in title:
+                kind = 'accident'
+                default_title = 'อุบัติเหตุ'
+            else:
                 continue
+
             try:
                 lat, lon = float(e['latitude']), float(e['longitude'])
             except (KeyError, TypeError, ValueError):
@@ -228,8 +242,8 @@ class IncidentManager:
             if e.get('stop') and e['stop'] < now:
                 continue
             out.append({
-                'id': f"longdo-{e.get('eid')}", 'source': 'longdo', 'kind': 'accident',
-                'title': (e.get('title') or 'อุบัติเหตุ').strip(), 'description': (e.get('description') or '').strip(),
+                'id': f"longdo-{e.get('eid')}", 'source': 'longdo', 'kind': kind,
+                'title': title or default_title, 'description': desc,
                 'latitude': lat, 'longitude': lon, 'start': e.get('start'), 'stop': e.get('stop'),
                 'contributor': e.get('contributor', ''), 'severity': e.get('severity', ''),
             })

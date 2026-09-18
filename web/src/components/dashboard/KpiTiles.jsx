@@ -1,65 +1,51 @@
-import { CameraIcon, CarIcon, MapPinIcon } from '../Icons.jsx';
-import { Card, Badge, Skeleton, Truncate } from './ui.jsx';
-import { fmtNum } from './format.js';
+import { Badge } from './ui.jsx';
+import { StatTile } from './primitives.jsx';
+import { fmtNum, flowLevel } from './format.js';
 
-function ActivityIcon({ className = 'w-5 h-5' }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-    </svg>
-  );
-}
-
-function Tile({ icon: Icon, label, value, sub, badge, loading }) {
-  return (
-    <Card as="div" className="p-4 flex items-start gap-3">
-      <span className="w-9 h-9 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
-        <Icon className="w-5 h-5" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs text-slate-600 truncate">{label}</p>
-          {badge}
-        </div>
-        {loading ? <Skeleton className="h-7 w-20 mt-1" /> : <p className="text-2xl font-semibold text-slate-900 leading-8 tabular-nums">{value}</p>}
-        {sub && <Truncate text={sub} className="text-xs text-slate-500 mt-0.5" />}
-      </div>
-    </Card>
-  );
-}
-
-export default function KpiTiles({ summary, ai, liveCount }) {
+export default function KpiTiles({ summary }) {
   const loading = !summary;
+  const lv = summary ? flowLevel(summary.flow_index) : null;
+  const isBma = !!summary?.is_bma;
+  const totalKm = summary?.total_km ? Math.round(summary.total_km) : 0;
+  const greenKm = totalKm && summary ? Math.round((totalKm * summary.green_pct) / 100) : 0;
+  const yellowKm = totalKm && summary ? Math.round((totalKm * summary.yellow_pct) / 100) : 0;
+  const redKm = totalKm && summary ? Math.round((totalKm * summary.red_pct) / 100) : 0;
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-      <Tile
-        icon={CameraIcon}
-        label="กล้อง CCTV ที่เปิดดูอยู่"
-        value={`${liveCount} ตัว`}
-        sub={liveCount ? 'ดูภาพสดได้ในหน้ากล้อง' : 'ยังไม่ได้เปิดกล้อง'}
-        badge={liveCount > 0 ? <Badge tone="green" dot>LIVE</Badge> : null}
-      />
-      <Tile
-        icon={CarIcon}
-        label="รถหน้ากล้อง AI ตอนนี้"
-        value={ai?.active ? `${fmtNum(ai.total)} คัน` : '–'}
-        sub={ai?.active ? ai.title : 'ยังไม่ได้เปิดกล้อง AI'}
-        badge={ai?.active ? <Badge tone="blue">YOLO11</Badge> : <Badge>ว่าง</Badge>}
-      />
-      <Tile
-        icon={MapPinIcon}
-        label="ถนนที่ติดตาม"
-        value={summary ? `${fmtNum(summary.road_count)} สาย` : '–'}
-        sub="วิเคราะห์จากเส้นจราจร Longdo ทุก 3 นาที"
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <StatTile
+        label={isBma ? "ภาพรวมการจราจร BMA" : "ภาพรวมการจราจร"}
+        value={summary ? `${summary.flow_index} / 100` : '–'}
+        sub={summary ? (isBma ? `กล้อง BMA ออนไลน์ ${fmtNum(summary.camera_count)} ตัว` : `${lv.hint} (${fmtNum(summary.road_count)} สาย)`) : 'กำลังโหลดข้อมูล...'}
+        badge={summary ? <Badge tone={lv.key === 'neutral' ? 'blue' : lv.key} dot>{lv.label}</Badge> : null}
         loading={loading}
+        tone={summary ? (lv.key === 'neutral' ? undefined : lv.key) : undefined}
       />
-      <Tile
-        icon={ActivityIcon}
-        label="สัดส่วนถนนที่คล่องตัว"
+      <StatTile
+        label={isBma ? "กล้องคล่องตัว" : "ถนนคล่องตัว"}
         value={summary ? `${summary.green_pct}%` : '–'}
-        sub={summary ? `ติดขัด ${summary.red_pct}% · ปานกลาง ${summary.yellow_pct}%` : ''}
+        sub={summary ? (isBma ? `${fmtNum(summary.free_count || 0)} กล้อง (0-4 คัน)` : `ระยะทาง ~${fmtNum(greenKm)} กม.`) : ''}
+        badge={summary ? <Badge tone="green">คล่องตัว</Badge> : null}
         loading={loading}
+        tone="green"
+      />
+      <StatTile
+        label={isBma ? "กล้องปานกลาง" : "ถนนปานกลาง"}
+        value={summary ? `${summary.yellow_pct}%` : '–'}
+        sub={summary ? (isBma ? `${fmtNum(summary.moderate_count || 0)} กล้อง (5-12 คัน)` : `ระยะทาง ~${fmtNum(yellowKm)} กม.`) : ''}
+        badge={summary ? <Badge tone="yellow">ปานกลาง</Badge> : null}
+        loading={loading}
+        tone="yellow"
+      />
+      <StatTile
+        label={isBma ? "กล้องหนาแน่น" : "ถนนหนาแน่น"}
+        value={summary ? `${summary.red_pct}%` : '–'}
+        sub={summary ? (isBma ? `${fmtNum(summary.heavy_count || 0)} กล้อง (13+ คัน)` : `ระยะทาง ~${fmtNum(redKm)} กม.`) : ''}
+        badge={summary ? <Badge tone="red">หนาแน่น</Badge> : null}
+        loading={loading}
+        tone="red"
       />
     </div>
   );
 }
+

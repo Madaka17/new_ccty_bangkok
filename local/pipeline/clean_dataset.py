@@ -11,13 +11,17 @@ obvious errors so the model does not learn them.
 """
 import glob
 import os
+import sys
 from collections import Counter
+
+sys.stdout.reconfigure(line_buffering=True, encoding='utf-8')
 
 import cv2
 import numpy as np
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATASET_DIR = os.path.join(BASE_DIR, 'dataset')
+LOCAL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # local/ (dataset, runs, logs)
+BASE_DIR = os.path.dirname(LOCAL_DIR)  # project root (server, models, cameras, .env)
+DATASET_DIR = os.path.join(LOCAL_DIR, 'dataset')
 MIN_PX = 8
 MAX_OUTSIDE = 0.4       # drop a box if more than this share of its area is off-frame
 DUP_DIFF = 2.5          # mean abs grey difference (0-255) under which two frames count as identical

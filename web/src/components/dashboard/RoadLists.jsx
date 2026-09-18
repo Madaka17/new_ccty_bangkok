@@ -1,4 +1,3 @@
-import { CameraIcon } from '../Icons.jsx';
 import { Card, SectionHeader, Badge, Skeleton, EmptyState, FOCUS } from './ui.jsx';
 import { STATUS, ROAD_LEVEL } from './format.js';
 
@@ -29,7 +28,11 @@ function RoadRow({ r, rank, mode, onOpen }) {
               {r.red_pct > 0 && <div className={STATUS.red.bar} style={{ width: `${r.red_pct}%` }} />}
             </div>
             <span className="text-xs text-slate-600 truncate tabular-nums">
-              {mode === 'congested' ? (
+              {r.is_bma ? (
+                <>
+                  ตรวจพบ <span className="font-medium text-slate-900">{r.total}</span> คัน ({r.cars ? `เก๋ง ${r.cars} · มอเตอร์ไซค์ ${r.motos || r.motorcycles || 0}` : r.level})
+                </>
+              ) : mode === 'congested' ? (
                 <>
                   ติด <span className="font-medium text-slate-900">{r.red_km}</span> จาก {r.length_km} กม.
                 </>
@@ -41,8 +44,8 @@ function RoadRow({ r, rank, mode, onOpen }) {
             </span>
           </div>
         </div>
-        <span className="shrink-0 text-slate-400 group-hover:text-blue-600 transition-colors" aria-hidden="true">
-          <CameraIcon className="w-4 h-4" />
+        <span className="shrink-0 text-xs text-slate-400 group-hover:text-blue-700 transition-colors" aria-hidden="true">
+          เปิดกล้อง
         </span>
       </button>
     </li>
@@ -76,28 +79,29 @@ function RoadList({ id, title, description, badge, rows, ready, mode, empty, onO
 
 export default function RoadLists({ summary, onOpenRoad }) {
   const ready = !!summary?.ready;
+  const isBma = !!summary?.is_bma;
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <RoadList
         id="roads-congested"
-        title="ถนนที่ควรเลี่ยงตอนนี้"
-        description="เรียงตามระยะทางที่ติดขัด · กดเพื่อเปิดกล้องบนถนนนั้น"
-        badge={<Badge tone="red" dot>ติดขัด</Badge>}
+        title={isBma ? "กล้อง/จุดที่รถสะสมหนาแน่นสุด" : "ถนนที่ควรเลี่ยงตอนนี้"}
+        description={isBma ? "เรียงตามจำนวนรถที่ตรวจพบล่าสุดหน้ากล้อง BMA" : "เรียงตามระยะทางที่ติดขัด · กดเพื่อเปิดกล้องบนถนนนั้น"}
+        badge={<Badge tone="red" dot>{isBma ? "หนาแน่น" : "ติดขัด"}</Badge>}
         rows={summary?.congested || []}
         ready={ready}
         mode="congested"
-        empty="ไม่มีถนนสายหลักที่ติดขัดในขณะนี้"
+        empty="ไม่มีจุดที่รถสะสมหนาแน่นในขณะนี้"
         onOpen={onOpenRoad}
       />
       <RoadList
         id="roads-free"
-        title="ถนนสายหลักที่วิ่งได้สบาย"
-        description="สายยาวที่ระบายรถได้ดี · กดเพื่อเปิดกล้องบนถนนนั้น"
+        title={isBma ? "กล้อง/จุดที่การจราจรคล่องตัว" : "ถนนสายหลักที่วิ่งได้สบาย"}
+        description={isBma ? "จุดที่มีรถน้อยหรือไม่มีรถสะสมหน้ากล้อง" : "สายยาวที่ระบายรถได้ดี · กดเพื่อเปิดกล้องบนถนนนั้น"}
         badge={<Badge tone="green" dot>คล่องตัว</Badge>}
         rows={summary?.free_flow || []}
         ready={ready}
         mode="free"
-        empty="ยังไม่มีข้อมูลถนนที่คล่องตัว"
+        empty="ยังไม่มีข้อมูลจุดที่คล่องตัว"
         onOpen={onOpenRoad}
       />
     </div>

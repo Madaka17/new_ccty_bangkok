@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-cd /d "%~dp0"
+cd /d "%~dp0..\.."
 
 :: If called as child window or with --inline flag, run the monitor directly
 if "%~1"=="--child" goto :RUN_MONITOR
@@ -17,9 +17,9 @@ mode con: cols=90 lines=38
 color 0F
 
 if exist ".venv\Scripts\python.exe" (
-    .venv\Scripts\python.exe pipeline_status.py --watch 2
+    .venv\Scripts\python.exe local\pipeline\pipeline_status.py --watch 2
 ) else (
-    python pipeline_status.py --watch 2
+    python local\pipeline\pipeline_status.py --watch 2
 )
 
 if %ERRORLEVEL% NEQ 0 (

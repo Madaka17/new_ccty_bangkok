@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CarIcon, BikeIcon, TruckIcon, CameraIcon, CheckIcon, CloseIcon } from '../Icons.jsx';
-import { fetchAIHistory, fetchCountCameras, fetchSurveyRanking, setCountCameras } from '../../lib/api.js';
+import { fetchAIHistory, fetchCountCameras, fetchSurveyRanking, setCountCameras, getBmaSnapshotUrl } from '../../lib/api.js';
 import { Card, SectionHeader, Badge, Button, Segmented, Skeleton, EmptyState, ErrorState, Truncate, FOCUS } from './ui.jsx';
 import { AI_LEVEL, agoText, fmtDay, fmtNum, pad2 } from './format.js';
 
@@ -79,9 +78,9 @@ function CountBars({ bucket, keys, series, onPickDay }) {
         {s ? (
           <>
             <span className="font-medium text-slate-900">{bucketTitle(bucket, keys[shownIdx])}</span>
-            <span className="inline-flex items-center gap-1"><CarIcon className="w-3.5 h-3.5" /> {fmtNum(s.cars)}</span>
-            <span className="inline-flex items-center gap-1"><BikeIcon className="w-3.5 h-3.5" /> {fmtNum(s.motorcycles)}</span>
-            <span className="inline-flex items-center gap-1"><TruckIcon className="w-3.5 h-3.5" /> {fmtNum(s.trucks)}</span>
+            <span>รถยนต์ {fmtNum(s.cars)}</span>
+            <span>มอเตอร์ไซค์ {fmtNum(s.motorcycles)}</span>
+            <span>รถบรรทุก {fmtNum(s.trucks)}</span>
           </>
         ) : (
           <span className="text-slate-400">{clickable ? 'กดแท่งกราฟเพื่อดูรายชั่วโมงของวันนั้น' : ''}</span>
@@ -99,11 +98,25 @@ function CameraCard({ cam, live, bucket, keys, onPickDay }) {
     : null;
   return (
     <Card as="article" className="p-4 flex flex-col gap-3">
+      <div className="relative aspect-video rounded-lg bg-slate-900 overflow-hidden border border-slate-200">
+        <img
+          src={getBmaSnapshotUrl(cam.camid, false)}
+          alt={cam.title || cam.camid}
+          className="w-full h-full object-cover"
+          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+        />
+        {status && (
+          <span className="absolute top-2 left-2 rounded-md bg-slate-900/80 text-white text-[11px] font-medium px-2 py-0.5 flex items-center gap-1.5 backdrop-blur-xs shadow">
+            <span className={`w-1.5 h-1.5 rounded-full ${live?.active ? 'bg-emerald-400 animate-pulse' : 'bg-yellow-400'}`} />
+            {status.text}
+          </span>
+        )}
+      </div>
       <div className="flex items-start justify-between gap-2">
         <h4 className="text-sm font-medium text-slate-900 leading-5 line-clamp-2" title={cam.title || cam.camid}>
           {cam.title || cam.camid}
         </h4>
-        {status && (
+        {status && !live?.active && (
           <Badge tone={status.tone} dot={status.dot} className="shrink-0">
             {status.text}
           </Badge>
@@ -115,15 +128,12 @@ function CameraCard({ cam, live, bucket, keys, onPickDay }) {
       </div>
       <dl className="grid grid-cols-3 gap-2 text-xs">
         {[
-          ['รถยนต์', cam.cars, CarIcon],
-          ['มอเตอร์ไซค์', cam.motorcycles, BikeIcon],
-          ['รถบรรทุก', cam.trucks, TruckIcon],
-        ].map(([label, v, Icon]) => (
+          ['รถยนต์', cam.cars],
+          ['มอเตอร์ไซค์', cam.motorcycles],
+          ['รถบรรทุก', cam.trucks],
+        ].map(([label, v]) => (
           <div key={label} className="rounded-lg border border-slate-200 px-2.5 py-2 min-w-0">
-            <dt className="flex items-center gap-1 text-slate-500 truncate">
-              <Icon className="w-3.5 h-3.5 shrink-0" />
-              {label}
-            </dt>
+            <dt className="text-slate-500 truncate">{label}</dt>
             <dd className="text-sm font-semibold text-slate-900 tabular-nums mt-0.5">{fmtNum(v)}</dd>
           </div>
         ))}
@@ -164,8 +174,8 @@ function CameraPicker({ cameras, selected, max, saving, onChange, onClose }) {
           เลือกแล้ว {selected.length}/{max}
           {saving ? ' · กำลังบันทึก' : ''}
         </span>
-        <button type="button" onClick={onClose} aria-label="ปิดตัวเลือกกล้อง" className={`cursor-pointer w-8 h-8 rounded-lg hover:bg-slate-200 text-slate-600 flex items-center justify-center ${FOCUS}`}>
-          <CloseIcon className="w-4 h-4" />
+        <button type="button" onClick={onClose} className={`cursor-pointer h-8 px-2 rounded-lg hover:bg-slate-200 text-xs text-slate-600 flex items-center justify-center ${FOCUS}`}>
+          ปิด
         </button>
       </div>
       <ul className="mt-3 max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white divide-y divide-slate-100" aria-label="รายชื่อกล้อง">
@@ -184,7 +194,7 @@ function CameraPicker({ cameras, selected, max, saving, onChange, onClose }) {
                 }`}
               >
                 <span className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${on ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300 bg-white'}`}>
-                  {on && <CheckIcon className="w-3 h-3" />}
+                  {on && <span className="block w-2 h-2 rounded-sm bg-white" />}
                 </span>
                 <Truncate text={c.short_title || c.title} className="flex-1 text-slate-900" />
                 <span className="text-xs text-slate-500 shrink-0">{c.province}</span>
@@ -320,7 +330,7 @@ export default function VehicleCounts({ cameras }) {
       fetchSurveyRanking().then((r) => alive && setRanking(r)).catch(() => {});
     };
     tick();
-    const id = setInterval(tick, 30000);
+    const id = setInterval(tick, 60000);
     return () => {
       alive = false;
       clearInterval(id);
@@ -365,7 +375,6 @@ export default function VehicleCounts({ cameras }) {
         description="นับแยกประเภทจากกล้องที่เลือกให้นับต่อเนื่อง บันทึกรายชั่วโมง"
         action={
           <Button size="sm" onClick={() => setPicking((v) => !v)} aria-expanded={picking} aria-controls="cam-picker">
-            <CameraIcon className="w-3.5 h-3.5" />
             กล้องที่นับ {counting ? `${selected.length}/${counting.max_cameras}` : ''}
           </Button>
         }

@@ -2,6 +2,9 @@ import os
 import sys
 import io
 
+os.environ["OPENCV_FFMPEG_LOGLEVEL"] = "-8"
+os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
+
 if sys.platform == 'win32':
     try:
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
@@ -12,7 +15,7 @@ if sys.platform == 'win32':
 # 1. Auto-detect and switch to .venv if running under global Python
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 venv_python = os.path.join(BASE_DIR, ".venv", "Scripts", "python.exe")
-if os.path.exists(venv_python) and os.path.normcase(sys.executable) != os.path.normcase(venv_python):
+if os.path.exists(venv_python) and sys.prefix == sys.base_prefix and os.path.normcase(sys.executable) != os.path.normcase(venv_python):
     import subprocess
     print(f"[Auto-Env] Switching to virtual environment (.venv)...")
     code = subprocess.call([venv_python] + sys.argv)
@@ -20,6 +23,7 @@ if os.path.exists(venv_python) and os.path.normcase(sys.executable) != os.path.n
 
 import json
 import time
+from datetime import datetime
 try:
     from dotenv import load_dotenv
     load_dotenv(os.path.join(BASE_DIR, ".env"))  # ANTHROPIC_API_KEY for the traffic assistant
@@ -68,10 +72,17 @@ from vehicle_log import VehicleLog
 from count_workers import CountManager
 from survey import SurveyManager
 from incident_service import IncidentManager
+from violation_service import ViolationMonitor
 from traffic_service import traffic, get_traffic_tile, get_osm_tile
 import chat_service
+import water_service
+import rsc_service
+from bma_events import bma_feed
+from bma_service import BmaScanner
+import analytics_service
+from telemetry_service import telemetry
 
-app = FastAPI(title="BKK Traffic CCTV & YOLO11x Vehicle Detection")
+app = FastAPI(title="BKK StreetSmart CCTV & YOLO11x Vehicle Detection")
 
 # Enable CORS
 app.add_middleware(
@@ -83,15 +94,21 @@ app.add_middleware(
 )
 
 # Paths
-MODEL_PATH = os.path.join(BASE_DIR, "yolo11x.pt")
-# Fine-tuned weights from train_model.py take precedence when present
-if os.path.exists(os.path.join(BASE_DIR, "yolo11x_bkk.pt")):
-    MODEL_PATH = os.path.join(BASE_DIR, "yolo11x_bkk.pt")
+# Stock COCO yolo11x by default. AI_MODEL=yolo11x_bkk.pt (or any .pt) in .env / env switches weights;
+# the fine-tuned file is no longer picked up just because it exists (the first run missed motorcycles).
+MODEL_PATH = os.path.join(BASE_DIR, os.getenv("AI_MODEL", "yolo11x.pt"))
+if not os.path.exists(MODEL_PATH):
+    print(f"[AI] {MODEL_PATH} not found, falling back to yolo11x.pt")
+    MODEL_PATH = os.path.join(BASE_DIR, "yolo11x.pt")
 CAMERAS_FILE = os.path.join(BASE_DIR, "cameras_bkk.json")
-INDEX_HTML = os.path.join(BASE_DIR, "index.html")
+# Legacy vanilla UI (local/legacy_ui) is only the fallback when web/dist has not been built
+LEGACY_UI = os.path.join(BASE_DIR, "local", "legacy_ui")
+STATIC_DIR = LEGACY_UI
+INDEX_HTML = os.path.join(LEGACY_UI, "index.html")
 # New React UI (web/dist) takes precedence when built
 WEB_DIST = os.path.join(BASE_DIR, "web", "dist")
 if os.path.exists(os.path.join(WEB_DIST, "index.html")):
+    STATIC_DIR = WEB_DIST
     INDEX_HTML = os.path.join(WEB_DIST, "index.html")
 
 # Load cameras (strictly verified live streams)
@@ -111,18 +128,27 @@ detector = VehicleDetectorYOLO11x(model_path=MODEL_PATH, target_fps=10.0, conf_t
 # Background counting on user-selected cameras (lower fps to prioritize live camera)
 counter = CountManager(detector, vehicle_log, os.path.join(BASE_DIR, "count_cameras.json"), target_fps=0.5, max_cameras=4)
 counter.load({c["camid"]: c for c in cameras_data})
-# Round-robin sampling with single worker at 0.5 FPS so live camera gets primary GPU time
+# Round-robin survey sampling: default 0 workers to prevent FFmpeg C-level crashes on corrupt Longdo HLS streams
+survey_workers = int(os.getenv("SURVEY_WORKERS", "0"))
 survey = SurveyManager(detector, vehicle_log, lambda: cameras_data, lambda: set(counter.workers),
-                       workers=1, sample_seconds=12.0, target_fps=0.5)
+                       workers=survey_workers, sample_seconds=12.0, target_fps=0.5)
 survey.start()
 # Accident / breakdown detection (camera AI + Claude vision) and Longdo accident reports
 incidents = IncidentManager(vehicle_log, lambda: {c["camid"]: c for c in cameras_data},
                             os.path.join(BASE_DIR, "cache", "incidents"))
 detector.incidents = incidents
+analytics_service.configure(incidents=incidents)
+# Wrong-way + no-helmet detection on the live AI camera (shares the incident vision provider)
+violations = ViolationMonitor(os.path.join(BASE_DIR, "vehicle_counts.db"), vision=incidents,
+                              cameras_by_id=lambda: {c["camid"]: c for c in cameras_data})
+detector.violations = violations
 
-# Start detector on initial Bangkok camera (Default: แยกประชานิเวศน์ with active cars & motorcycles)
+# BMA Traffic Scanner & YOLO Vehicle Counter for all cameras
+bma_scanner = BmaScanner(detector=detector)
+
+# Start detector on initial Bangkok camera (Default: first BMA camera)
 if cameras_data:
-    init_cam = next((c for c in cameras_data if c["camid"] == "ITICM_BMAMI0188"), cameras_data[0])
+    init_cam = cameras_data[0]
     stream_url = init_cam.get("hls_url") or init_cam.get("vdourl")
     if stream_url:
         detector.start_stream(stream_url, init_cam)
@@ -131,6 +157,244 @@ if cameras_data:
 @app.get("/api/cameras")
 def get_cameras():
     return {"total": len(cameras_data), "items": cameras_data}
+
+_longdo_cams_cache = {"time": 0, "data": None}
+
+@app.get("/api/cameras/longdo")
+def get_longdo_cameras():
+    """Returns all cameras from Longdo Traffic API with disk and memory caching."""
+    import urllib.request
+    import re
+    now = time.time()
+    if now - _longdo_cams_cache["time"] < 300 and _longdo_cams_cache["data"] is not None:
+        return _longdo_cams_cache["data"]
+
+    cache_file = os.path.join(BASE_DIR, "cache", "longdo_cameras.json")
+    try:
+        req = urllib.request.Request("https://traffic.longdo.com/camera.json", headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            raw = resp.read().decode("utf-8")
+            data = json.loads(raw)
+            items = data.get("item", [])
+            if items:
+                formatted = []
+                for it in items:
+                    title = (it.get("title") or "").strip()
+                    m = re.match(r"^\(([^)]+)\)", title)
+                    prov = m.group(1).replace("จ.", "").strip() if m else ""
+                    formatted.append({
+                        "camid": it.get("camid", ""),
+                        "title": title,
+                        "short_title": re.sub(r"^\([^)]+\)\s*", "", title),
+                        "province": prov or "กรุงเทพมหานคร",
+                        "organization": it.get("organization") or "Longdo Traffic",
+                        "hls_url": it.get("hls_url") or "",
+                        "vdourl": it.get("vdourl") or "",
+                        "imgurl": it.get("imgurl") or "",
+                        "latitude": float(it.get("latitude") or 0),
+                        "longitude": float(it.get("longitude") or 0),
+                        "geocode": str(it.get("geocode") or ""),
+                        "lastupdate": it.get("lastupdate") or ""
+                    })
+                res_data = {"total": len(formatted), "items": formatted}
+                _longdo_cams_cache["time"] = now
+                _longdo_cams_cache["data"] = res_data
+                try:
+                    os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+                    with open(cache_file, "w", encoding="utf-8") as f:
+                        json.dump(res_data, f, ensure_ascii=False)
+                except Exception:
+                    pass
+                return res_data
+    except Exception as e:
+        print(f"[Warning] Failed to fetch live Longdo cameras: {e}")
+
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, "r", encoding="utf-8") as f:
+                res_data = json.load(f)
+                _longdo_cams_cache["data"] = res_data
+                return res_data
+        except Exception:
+            pass
+
+    return {"total": len(cameras_data), "items": cameras_data}
+
+# BMA Traffic & YOLO Vehicle Counting Endpoints
+@app.get("/api/bma/cameras")
+def get_bma_cameras():
+    """Returns all BMA cameras with latest detection counts, road, district, and status."""
+    cams = bma_scanner.db.get_all_latest()
+    if not cams:
+        cams = bma_scanner.cameras
+    return {"total": len(bma_scanner.cameras), "items": cams}
+
+@app.get("/api/bma/analytics")
+def get_bma_analytics():
+    """Returns comprehensive data analysis for BMA cameras vehicle counts."""
+    return bma_scanner.get_analytics()
+
+@app.post("/api/bma/scan")
+def trigger_bma_scan():
+    """Start an immediate scan of all BMA cameras."""
+    return bma_scanner.start_scan()
+
+@app.get("/api/bma/scan/status")
+def get_bma_scan_status():
+    """Returns current scanning progress across all BMA cameras."""
+    return bma_scanner.get_status()
+
+@app.get("/api/bma/snapshot/{camid}")
+async def get_bma_snapshot(camid: str, live: bool = False, annotate: bool = True):
+    """Returns annotated or raw snapshot for a BMA camera. If live=True, fetches latest real-time frame."""
+    loop = asyncio.get_running_loop()
+    if live:
+        try:
+            jpeg_bytes, stats = await loop.run_in_executor(
+                None, lambda: bma_scanner.get_live_snapshot(camid, annotate=annotate)
+            )
+            if jpeg_bytes:
+                return Response(
+                    content=jpeg_bytes,
+                    media_type="image/jpeg",
+                    headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+                )
+        except Exception as e:
+            print(f"[Live Snapshot Error] {e}")
+
+    cache_file = os.path.join(BASE_DIR, "cache", "bma_snapshots", f"{camid}.jpg")
+    if os.path.exists(cache_file):
+        return FileResponse(cache_file, media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
+
+    try:
+        raw = await loop.run_in_executor(None, lambda: bma_scanner.session.fetch_snapshot(str(camid), timeout=4.0))
+        if raw:
+            return Response(content=raw, media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
+    except Exception:
+        pass
+    return Response(status_code=404)
+
+@app.get("/api/bma/stream/{camid}")
+async def stream_bma_camera(camid: str, fps: float = 2.0):
+    """Live MJPEG video stream with real-time YOLO detection overlay for any BMA camera."""
+    async def _stream():
+        cam = next((c for c in bma_scanner.cameras if str(c.get('camid')) == str(camid)), None)
+        if not cam:
+            return
+        
+        # 1. Immediately yield cached snapshot so client never experiences a black screen!
+        cache_file = os.path.join(BASE_DIR, "cache", "bma_snapshots", f"{camid}.jpg")
+        last_frame = None
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, "rb") as f:
+                    last_frame = f.read()
+                if last_frame:
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + last_frame + b'\r\n')
+            except Exception:
+                pass
+
+        interval = 1.0 / max(0.5, min(5.0, fps))
+        loop = asyncio.get_running_loop()
+        while True:
+            t0 = time.time()
+            try:
+                raw = await loop.run_in_executor(None, lambda: bma_scanner.session.fetch_snapshot(str(camid), timeout=7.0))
+                if raw:
+                    jpeg_bytes, _ = await loop.run_in_executor(None, lambda: bma_scanner.process_image_and_detect(cam, raw))
+                    if jpeg_bytes:
+                        last_frame = jpeg_bytes
+                        yield (b'--frame\r\n'
+                               b'Content-Type: image/jpeg\r\n\r\n' + jpeg_bytes + b'\r\n')
+                elif last_frame:
+                    # Keep yielding last frame to prevent stream connection from stalling
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + last_frame + b'\r\n')
+            except (asyncio.CancelledError, GeneratorExit):
+                break
+            except Exception:
+                pass
+            
+            elapsed = time.time() - t0
+            sleep_time = max(0.5, interval - elapsed)
+            await asyncio.sleep(sleep_time)
+
+    return StreamingResponse(
+        _stream(),
+        media_type="multipart/x-mixed-replace; boundary=frame"
+    )
+
+@app.get("/api/bma/live_analysis/{camid}")
+async def get_bma_live_analysis(camid: str):
+    """Fetches a real-time snapshot, runs YOLO, and returns live vehicle detection analysis."""
+    loop = asyncio.get_running_loop()
+    try:
+        jpeg_bytes, stats = await loop.run_in_executor(
+            None, lambda: bma_scanner.get_live_snapshot(camid, annotate=True)
+        )
+        if stats:
+            return {
+                "camid": camid,
+                "cars": stats["cars"],
+                "motorcycles": stats["motorcycles"],
+                "trucks": stats["trucks"],
+                "total": stats["total"],
+                "level": stats["level"],
+                "ts": stats["timestamp"],
+                "detections": stats.get("detections", []),
+                "live": True
+            }
+    except Exception as e:
+        print(f"[Live Analysis Error] {e}")
+    
+    c = bma_scanner.db.get_camera_latest(camid)
+    if c:
+        return c
+    return {"error": "Camera unavailable", "camid": camid}
+
+@app.get("/api/bma/export/csv")
+def export_bma_csv():
+    """Export BMA vehicle count data as CSV."""
+    import csv
+    cams = bma_scanner.db.get_all_latest()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Camera ID", "Camera Code", "Location", "Road", "District",
+        "Cars", "Motorcycles", "Trucks/Buses", "Total Vehicles",
+        "Traffic Level", "Status", "Timestamp"
+    ])
+    for c in cams:
+        ts_val = c.get('ts')
+        ts_str = datetime.fromtimestamp(ts_val).strftime('%Y-%m-%d %H:%M:%S') if ts_val else ""
+        writer.writerow([
+            c.get('camid', ''), c.get('camera_code', ''), c.get('title', ''),
+            c.get('road', ''), c.get('district', ''),
+            c.get('cars', 0), c.get('motorcycles', 0), c.get('trucks', 0), c.get('total', 0),
+            c.get('level', ''), c.get('status', ''), ts_str
+        ])
+    output.seek(0)
+    return Response(
+        content=output.getvalue().encode('utf-8-sig'),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=bma_traffic_vehicle_counts.csv"}
+    )
+
+@app.get("/api/bma/cycle")
+def get_bma_cycle():
+    """Automatic count cycle: running totals since the last reset and when the next reset happens."""
+    return bma_scanner.get_cycle_status()
+
+@app.get("/api/bma/comparison")
+def get_bma_comparison(period: str = Query("day", pattern="^(day|week|month)$")):
+    """Returns comparative data analysis across Day, Week, and Month periods."""
+    return bma_scanner.get_comparison(period=period)
+
+@app.get("/api/bma/drive_d_status")
+def get_bma_drive_d_status():
+    """Folder layout under the CSV export directory (D:\Data by default)."""
+    return bma_scanner.archiver.files_status()
 
 @app.get("/api/ai/stats")
 def get_ai_stats():
@@ -224,6 +488,11 @@ def set_conf(conf: float = Query(0.20, ge=0.05, le=0.9)):
     detector.set_confidence(conf)
     return {"status": "success", "conf_threshold": conf}
 
+@app.post("/api/ai/set_night_mode")
+def set_night_mode(enabled: bool = Query(True)):
+    detector.set_night_mode(enabled)
+    return {"status": "success", "night_mode": enabled}
+
 async def generate_mjpeg_stream():
     """Generator for MJPEG video stream regulated at detector's target FPS (~5 FPS)"""
     try:
@@ -239,7 +508,7 @@ async def generate_mjpeg_stream():
         pass
 
 @app.get("/api/ai/stream")
-def video_feed(camid: str = None, url: str = None):
+async def video_feed(camid: str = None, url: str = None):
     # If a specific camid is requested and different from current, switch
     if camid:
         current_camid = detector.latest_stats.get("camid")
@@ -289,13 +558,121 @@ def base_tile(z: int, x: int, y: int):
         return Response(status_code=204)
     return Response(content=data, media_type="image/png", headers={"Cache-Control": "max-age=86400"})
 
+# ---------------------------------------------------------------- Water outlook (ThaiWater / HII + BMA)
+@app.get("/api/water/summary")
+def water_summary():
+    try:
+        return water_service.get_summary()
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"error": str(e), "api_key": water_service.key_status()})
+
+@app.get("/api/water/forecast")
+def water_forecast(station: int = Query(..., ge=1)):
+    """Observed + official (HII) or local tidal-harmonic outlook for one telemetry station."""
+    try:
+        return water_service.get_forecast(station)
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"error": str(e)})
+
+@app.get("/api/water/bma_events")
+def water_bma_events(kind: str = Query(None), hours: int = Query(24, ge=1, le=168), limit: int = Query(60, ge=1, le=200)):
+    """Live BMA traffic-centre reports (flooded roads, accidents, closures), polled every minute."""
+    return bma_feed.get(kind=kind, hours=hours, limit=limit)
+
+# ---------------------------------------------------------------- Traffic violations (wrong way / no helmet)
+@app.get("/api/ai/violations")
+def ai_violations(hours: int = Query(24, ge=1, le=168), camid: str = Query(None), kind: str = Query(None, pattern="^(wrong_way|no_helmet)$"), limit: int = Query(100, ge=1, le=500)):
+    """Logged violations from the live AI camera, newest first, with evidence image links."""
+    return violations.recent(hours=hours, camid=camid, kind=kind, limit=limit)
+
+@app.get("/api/ai/violations/status")
+def ai_violations_status(camid: str = Query(None)):
+    """How much of each camera's direction-of-travel map is learned, and whether helmet checks are on."""
+    return violations.status(camid=camid)
+
+@app.get("/api/ai/violations/{vid}/image")
+def ai_violation_image(vid: str):
+    p = violations.image_path(vid)
+    if not p:
+        return Response(status_code=404)
+    return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "max-age=3600"})
+
+# ---------------------------------------------------------------- Road accidents (Thai RSC)
+@app.get("/api/rsc/summary")
+def rsc_summary():
+    """Bangkok accident stats (today / YTD / by vehicle / by hour / by district) joined with BMA camera load."""
+    try:
+        return rsc_service.get_summary()
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"error": str(e)})
+
+@app.get("/api/rsc/camera_risk")
+def rsc_camera_risk(limit: int = Query(None, ge=1, le=600), district: str = Query(None)):
+    """BMA cameras ranked by accident points within RADIUS_M (current + previous year)."""
+    return rsc_service.get_camera_risk(limit=limit, district=district)
+
+@app.get("/api/rsc/points")
+def rsc_points(camid: str = Query(None), lat: float = Query(None), lon: float = Query(None), radius: int = Query(None, ge=50, le=3000), limit: int = Query(500, ge=1, le=5000)):
+    """Accident points near one camera (victim identity removed)."""
+    return rsc_service.get_points(camid=camid, cameras=bma_scanner.cameras, radius_m=radius, lat=lat, lon=lon, limit=limit)
+
+@app.get("/api/rsc/points.geojson")
+def rsc_points_geojson():
+    return rsc_service.get_points_geojson()
+
+@app.post("/api/rsc/rebuild")
+def rsc_rebuild(force: bool = Query(False)):
+    """Re-fetch accident points from Thai RSC and rescore every camera (background)."""
+    return rsc_service.build_camera_risk(bma_scanner.cameras, force=force)
+
+# ---------------------------------------------------------------- Urban analytics (5 sections) + visitor telemetry
+@app.get("/api/analytics/summary")
+def analytics_summary(refresh: bool = Query(False)):
+    """Traffic overview, flood watch + 1-6 h outlook, density tiers, black spots, dashboard visitors."""
+    return analytics_service.get_summary(force=refresh)
+
+@app.get("/api/analytics/export")
+def analytics_export(format: str = Query("json", pattern="^(json|csv)$"),
+                     section: str = Query("traffic", pattern="^(traffic|flood|density|accidents|visitors)$")):
+    stamp = datetime.now().strftime("%Y%m%d-%H%M")
+    if format == "csv":
+        return Response(content=analytics_service.export_csv(section), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="analytics-{section}-{stamp}.csv"'})
+    body = json.dumps(analytics_service.get_summary(), ensure_ascii=False, indent=1)
+    return Response(content=body, media_type="application/json; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="analytics-{stamp}.json"'})
+
+@app.get("/api/telemetry/online")
+def telemetry_online():
+    return {"ok": True, "online": telemetry.online_count()}
+
+@app.post("/api/telemetry/view")
+def telemetry_view(payload: dict = Body(...)):
+    return {"ok": telemetry.view(payload.get("sid"), payload.get("view"))}
+
+@app.post("/api/telemetry/heartbeat")
+def telemetry_heartbeat(payload: dict = Body(...)):
+    return {"ok": telemetry.heartbeat(payload.get("sid"), payload.get("view"))}
+
 @app.post("/api/chat")
 def chat_endpoint(payload: dict = Body(...)):
     messages = payload.get("messages") or []
     messages = [m for m in messages if isinstance(m, dict) and m.get("role") in ("user", "assistant")]
     if not messages:
         return JSONResponse(status_code=400, content={"error": "messages required"})
-    return chat_service.chat(traffic, messages, detector.get_stats())
+    try:
+        water = water_service.get_summary()
+    except Exception:
+        water = None
+    extra = {}
+    for key, fn in (("incidents", incidents.status), ("bma_events", lambda: bma_feed.get(hours=12, limit=20)),
+                    ("bma_analytics", bma_scanner.get_analytics), ("rsc", rsc_service.get_summary),
+                    ("camera_risk", lambda: rsc_service.get_camera_risk(limit=8))):
+        try:
+            extra[key] = fn()
+        except Exception as e:
+            print(f"[Chat] {key} unavailable: {e}")
+    return chat_service.chat(traffic, messages, detector.get_stats(), water, extra)
 
 # Static files for web frontend
 @app.get("/")
@@ -303,11 +680,20 @@ def read_root():
     # never cache the shell so a rebuilt bundle is picked up on the next reload
     return FileResponse(INDEX_HTML, headers={"Cache-Control": "no-cache"})
 
+@app.get("/cameras_bkk.json")
+def read_cameras_json():
+    # the React app fetches this directly; serve the live root copy, not the stale one bundled in web/dist
+    return FileResponse(CAMERAS_FILE, media_type="application/json", headers={"Cache-Control": "no-cache"})
+
 if os.path.isdir(WEB_DIST):
     app.mount("/assets", StaticFiles(directory=os.path.join(WEB_DIST, "assets")), name="assets")
-app.mount("/", StaticFiles(directory=BASE_DIR, html=True), name="static")
+# Only the UI folder is exposed (never the project root: .env, *.db, *.py, cameras_bma.json ...)
+app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 traffic.start()
+water_service.warm()
+rsc_service.warm(bma_scanner.cameras)
+bma_feed.start()
 
 def start_browser_when_ready(url="http://localhost:8000"):
     """Opens browser only when server is confirmed responsive."""
@@ -332,7 +718,7 @@ if __name__ == "__main__":
     if os.getenv("OPEN_BROWSER") == "1":
         start_browser_when_ready("http://localhost:8000")
     print("=" * 60)
-    print("  BKK Traffic CCTV & YOLO11x Vehicle Detection Server")
+    print("  BKK StreetSmart CCTV & YOLO11x Vehicle Detection Server")
     print("  Model: YOLO11x | Processing Rate: 5 FPS")
     print("  Detected Classes: รถยนต์ (Cars), มอไซ (Motorcycles), รถบรรทุก (Trucks)")
     print("  Running at http://localhost:8000")

@@ -33,8 +33,8 @@ USER_AGENT = "BKK-Traffic-CCTV/2.0 (personal dashboard)"
 # Bangkok + inner metropolitan area (lon_min, lat_min, lon_max, lat_max)
 BBOX = (100.30, 13.50, 100.95, 14.05)
 ANALYSIS_ZOOM = 12
-REFRESH_SECONDS = 180
-TRAFFIC_TILE_TTL = 120
+REFRESH_SECONDS = 60
+TRAFFIC_TILE_TTL = 60
 
 COLOR_CLASS = {
     "54C00C": "green",
@@ -45,7 +45,7 @@ ROAD_TYPES = {
     "nu:motorway", "nu:trunk", "nu:primary", "nu:secondary", "nu:tertiary",
     "nu:motorway_link", "nu:trunk_link", "nu:primary_link", "nu:expressway",
 }
-MAX_HISTORY = 288  # 288 x 3 min = 14.4 h
+MAX_HISTORY = 864  # 864 x 1 min = 14.4 h
 
 for d in (TRAFFIC_TILE_DIR, BASE_TILE_DIR, OSM_TILE_DIR):
     os.makedirs(d, exist_ok=True)

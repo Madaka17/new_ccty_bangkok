@@ -76,10 +76,15 @@ class SurveyManager:
         camid = cam['camid']
         title = cam.get('short_title') or cam.get('title') or camid
         url = cam.get('hls_url') or cam.get('vdourl')
-        cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG, [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 8000, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 8000])
-        if not cap.isOpened():
+        if not url:
+            return
+        try:
+            cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG, [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000])
+        except Exception:
             self._fail(camid, title, 'เปิดสตรีมไม่ได้')
-            print(f"[Survey] {title}: cannot open stream")
+            return
+        if not cap or not cap.isOpened():
+            self._fail(camid, title, 'เปิดสตรีมไม่ได้')
             return
 
         # Short sample: judge the traffic level over the sample itself, not a 60 s window

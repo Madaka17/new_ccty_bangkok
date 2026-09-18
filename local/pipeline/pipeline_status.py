@@ -18,8 +18,9 @@ import urllib.request
 from datetime import datetime
 
 sys.stdout.reconfigure(encoding='utf-8')
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LOG_FILE = os.path.join(BASE_DIR, 'pipeline.log')
+LOCAL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # local/ (dataset, runs, logs)
+BASE_DIR = os.path.dirname(LOCAL_DIR)  # project root (server, models, cameras, .env)
+LOG_FILE = os.path.join(LOCAL_DIR, 'pipeline.log')
 CAMERAS_FILE = os.path.join(BASE_DIR, 'cameras_bkk.json')
 TASK_NAME = 'BKK_Dataset_Train'
 
@@ -131,8 +132,8 @@ def get_task_info():
 
 def get_dataset_info():
     """Scan dataset counts and inspect the latest captured frame."""
-    train_files = glob.glob(os.path.join(BASE_DIR, 'dataset', 'images', 'train', '*.jpg'))
-    val_files = glob.glob(os.path.join(BASE_DIR, 'dataset', 'images', 'val', '*.jpg'))
+    train_files = glob.glob(os.path.join(LOCAL_DIR, 'dataset', 'images', 'train', '*.jpg'))
+    val_files = glob.glob(os.path.join(LOCAL_DIR, 'dataset', 'images', 'val', '*.jpg'))
     n_train, n_val = len(train_files), len(val_files)
     total = n_train + n_val
 
@@ -150,7 +151,7 @@ def get_dataset_info():
         
         # Count boxes in corresponding label file
         split = 'train' if latest_file in train_files else 'val'
-        lbl_file = os.path.join(BASE_DIR, 'dataset', 'labels', split, os.path.splitext(fname)[0] + '.txt')
+        lbl_file = os.path.join(LOCAL_DIR, 'dataset', 'labels', split, os.path.splitext(fname)[0] + '.txt')
         boxes_count = 0
         if os.path.exists(lbl_file):
             try:
@@ -173,7 +174,7 @@ def get_dataset_info():
 
 def get_training_info():
     """Read Ultralytics YOLO training progress from runs/train/."""
-    run_dirs = sorted(glob.glob(os.path.join(BASE_DIR, 'runs', 'train', 'bkk*')), key=os.path.getmtime)
+    run_dirs = sorted(glob.glob(os.path.join(LOCAL_DIR, 'runs', 'train', 'bkk*')), key=os.path.getmtime)
     if not run_dirs:
         # Check if completed weights exist
         bkk_weights = glob.glob(os.path.join(BASE_DIR, '*_bkk.pt'))
@@ -209,10 +210,23 @@ def get_training_info():
         cls_loss = float(metrics.get('train/cls_loss', metrics.get('val/cls_loss', 0)))
         dfl_loss = float(metrics.get('train/dfl_loss', metrics.get('val/dfl_loss', 0)))
 
+        # Read actual configured epochs from args.yaml if available
+        total_epochs = None
+        args_file = os.path.join(latest_run, 'args.yaml')
+        if os.path.exists(args_file):
+            try:
+                with open(args_file, 'r', encoding='utf-8', errors='replace') as af:
+                    m = re.search(r'^epochs:\s*(\d+)', af.read(), re.MULTILINE)
+                    if m:
+                        total_epochs = int(m.group(1))
+            except Exception:
+                pass
+
         return {
             'status': 'training',
             'run_name': os.path.basename(latest_run),
             'epoch': epoch,
+            'total_epochs': total_epochs,
             'map50': map50,
             'map5095': map5095,
             'box_loss': box_loss,
@@ -245,6 +259,10 @@ def parse_pipeline_log():
                 continue
             if s.startswith('=== ['):
                 stage = s
+                # Reset previous stage parameters
+                target_images = None
+                until_time = None
+                epochs = None
                 # Parse target images
                 m_target = re.search(r'target\s+(\d+)', s)
                 if m_target:
@@ -342,11 +360,23 @@ def render_dashboard(is_watch=False, interval=1):
     until = pipeline_meta.get('until_time')
     total_imgs = dataset['total']
 
-    if target:
+    if until:
+        rem_str = ""
+        try:
+            uh, um = map(int, until.split(':'))
+            target_dt = now.replace(hour=uh, minute=um, second=0, microsecond=0)
+            if target_dt > now:
+                diff_sec = int((target_dt - now).total_seconds())
+                h = diff_sec // 3600
+                m = (diff_sec % 3600) // 60
+                rem_str = f" · เหลือเวลาอีก {h} ชม. {m} นาที"
+        except Exception:
+            pass
+        lines.append(f"  โหมดการทำงาน:   เก็บภาพต่อเนื่องจนถึง {until} น. [ไม่จำกัดจำนวนภาพ]{rem_str}")
+        lines.append(f"  ภาพที่เก็บได้:    {total_imgs:,} ภาพ (จะเริ่มคลีนและเทรน AI ทันทีเมื่อถึงเวลา {until} น.)")
+    elif target:
         bar = make_bar(total_imgs, target, width=24)
         lines.append(f"  ความคืบหน้า:     {bar} ({total_imgs:,} / {target:,} ภาพ)")
-    elif until:
-        lines.append(f"  ความคืบหน้า:     เก็บภาพตามรอบเวลาจนถึง {until} น. (เก็บได้แล้ว {total_imgs:,} ภาพ)")
     else:
         lines.append(f"  ความคืบหน้า:     มีภาพรวมทั้งสิ้น {total_imgs:,} ภาพ")
 
@@ -365,11 +395,12 @@ def render_dashboard(is_watch=False, interval=1):
     lines.append("  🔥 [3/3] การเทรนโมเดล AI (YOLO11 Training)")
     lines.append("-" * 86)
 
-    target_epochs = pipeline_meta.get('epochs') or 60
+    target_epochs = training.get('total_epochs') or pipeline_meta.get('epochs') or 60
     if training.get('status') == 'training':
         ep = training.get('epoch', 0)
         ep_bar = make_bar(ep, target_epochs, width=24)
-        lines.append(f"  รอบการเทรน:      {ep_bar} (Epoch {ep} / {target_epochs})")
+        status_suffix = " (กำลังเทรน...)" if is_training else " ✅ เสร็จสิ้นสมบูรณ์" if ep >= target_epochs else ""
+        lines.append(f"  รอบการเทรน:      {ep_bar} (Epoch {ep} / {target_epochs}){status_suffix}")
         lines.append(f"  คะแนนความแม่นยำ: mAP50: {training['map50']:.3f} · mAP50-95: {training['map5095']:.3f}")
         lines.append(f"  Loss ล่าสุด:     Box: {training['box_loss']:.3f} · Cls: {training['cls_loss']:.3f} · DFL: {training['dfl_loss']:.3f}")
         best_status = "✅ บันทึกแล้ว" if training.get('has_best') else "⏳ กำลังประเมิน"

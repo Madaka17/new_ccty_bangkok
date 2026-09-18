@@ -37,11 +37,12 @@ Thumbs.db
 # Runtime vehicle count database
 vehicle_counts.db
 count_cameras.json
-scratch/
+local/scratch/
 *.bak
 
-dataset/
-runs/
+local/dataset/
+local/dataset_helmet/
+local/runs/
 *_bkk.pt
-pipeline.log
-new_ccty_bangkok/
+local/pipeline.log
+local/archive/

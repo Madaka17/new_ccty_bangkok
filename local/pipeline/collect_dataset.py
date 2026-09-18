@@ -1,8 +1,9 @@
 """Collect training frames from the CCTV cameras and auto-label them with the current model.
 
 Frames go to dataset/images/<split>/, YOLO-format labels to dataset/labels/<split>/ (same stem).
-Labels come from yolo11x at a high resolution with test-time augmentation, so they are a
-starting point to correct by hand (Label Studio / CVAT / Roboflow), not ground truth.
+Labels come from yolo11x at a high resolution with test-time augmentation plus a 2x2 tiled pass
+(per-class confidence floors, see CLASS_CONF), so they are a starting point to correct by hand
+(Label Studio / CVAT / Roboflow), not ground truth. Re-label existing frames with relabel_dataset.py.
 
 Usage:
     python collect_dataset.py                       # one pass over every camera, 1 frame each
@@ -23,10 +24,17 @@ import sys
 import time
 from datetime import datetime
 
+# Enable real-time flush so status monitor sees progress immediately
+sys.stdout.reconfigure(line_buffering=True, encoding='utf-8')
+# Suppress noisy FFmpeg 'co located POCs unavailable' spam
+os.environ["OPENCV_FFMPEG_LOGLEVEL"] = "-8"
+os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
+
 import cv2
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATASET_DIR = os.path.join(BASE_DIR, 'dataset')
+LOCAL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # local/ (dataset, runs, logs)
+BASE_DIR = os.path.dirname(LOCAL_DIR)  # project root (server, models, cameras, .env)
+DATASET_DIR = os.path.join(LOCAL_DIR, 'dataset')
 CAMERAS_FILE = os.path.join(BASE_DIR, 'cameras_bkk.json')
 
 # Dataset classes (index = YOLO class id). Ids are kept identical to COCO so a fine-tuned model
@@ -70,14 +78,63 @@ def grab_frame(cam, timeout_ms=8000):
     return None
 
 
-def auto_label(model, frame, conf):
-    """Run the model with TTA at high resolution; returns YOLO label lines (normalized xywh)."""
-    r = model(frame, imgsz=1280, conf=conf, iou=0.5, augment=True, classes=list(COCO_TO_DATASET), verbose=False)[0]
+# Per-class label floor. One floor of 0.25 labelled almost no motorcycles (543 boxes vs 17,874 cars
+# in the first 1,682 frames) and the fine-tuned model then learnt to ignore them. Small classes
+# get a low floor; big classes stay strict so the labels are not full of false cars/trucks.
+CLASS_CONF = {0: 0.25, 1: 0.12, 2: 0.30, 3: 0.12, 5: 0.30, 7: 0.30}
+TILE_OVERLAP = 0.15
+
+
+def _nms(rows, iou_thr=0.5):
+    """Greedy class-aware NMS; rows = [x1, y1, x2, y2, conf, cls]. Returns kept row indices."""
+    import numpy as np
+    keep, order = [], np.argsort(-rows[:, 4])
+    x1, y1, x2, y2 = rows[:, 0], rows[:, 1], rows[:, 2], rows[:, 3]
+    area = (x2 - x1) * (y2 - y1)
+    gone = np.zeros(len(rows), dtype=bool)
+    for i in order:
+        if gone[i]:
+            continue
+        keep.append(int(i))
+        iw = np.clip(np.minimum(x2, x2[i]) - np.maximum(x1, x1[i]), 0, None)
+        ih = np.clip(np.minimum(y2, y2[i]) - np.maximum(y1, y1[i]), 0, None)
+        inter = iw * ih
+        gone |= (rows[:, 5] == rows[i, 5]) & (inter / (area + area[i] - inter + 1e-6) > iou_thr)
+        gone[i] = True
+    return keep
+
+
+def auto_label(model, frame, conf=None, tiled=True):
+    """Label one frame: full frame at 1280 with TTA, plus (tiled) a 2x2 grid of overlapping crops
+    so distant motorcycles get enough pixels. Boxes are merged with NMS and filtered per class.
+    Returns YOLO label lines (normalized xywh)."""
+    import numpy as np
     h, w = frame.shape[:2]
+    floor = min(CLASS_CONF.values()) if conf is None else min(conf, min(CLASS_CONF.values()))
+    classes = list(COCO_TO_DATASET)
+    crops = [(0, 0, frame)]
+    if tiled:
+        oy, ox = int(h * TILE_OVERLAP), int(w * TILE_OVERLAP)
+        for y0, y1 in ((0, h // 2 + oy), (h // 2 - oy, h)):
+            for x0, x1 in ((0, w // 2 + ox), (w // 2 - ox, w)):
+                crops.append((x0, y0, frame[y0:y1, x0:x1]))
+    rows = []
+    for x0, y0, im in crops:
+        r = model(im, imgsz=1280 if im is frame else 960, conf=floor, iou=0.5, augment=True, classes=classes, verbose=False)[0]
+        if len(r.boxes):
+            d = r.boxes.data.cpu().numpy()
+            d[:, :4] += [x0, y0, x0, y0]
+            rows.append(d)
+    if not rows:
+        return []
+    rows = np.vstack(rows)
+    rows = rows[_nms(rows)]
     lines = []
-    for box in r.boxes:
-        cls = COCO_TO_DATASET[int(box.cls[0])]
-        x1, y1, x2, y2 = box.xyxy[0].tolist()
+    for x1, y1, x2, y2, cf, c in rows:
+        c = int(c)
+        if cf < max(conf or 0.0, CLASS_CONF.get(c, 0.25)):
+            continue
+        cls = COCO_TO_DATASET[c]
         cx, cy, bw, bh = (x1 + x2) / 2 / w, (y1 + y2) / 2 / h, (x2 - x1) / w, (y2 - y1) / h
         lines.append(f'{cls} {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}')
     return lines
@@ -111,7 +168,8 @@ def main():
     ap.add_argument('--every', type=int, default=300, help='seconds between passes')
     ap.add_argument('--limit', type=int, default=0, help='stop when the dataset reaches this many images (0 = no limit)')
     ap.add_argument('--until', help='HH:MM local time to stop at (overrides --rounds when reached first)')
-    ap.add_argument('--conf', type=float, default=0.25, help='auto-label confidence floor')
+    ap.add_argument('--conf', type=float, default=None, help='raise every class floor to this (default: per-class CLASS_CONF)')
+    ap.add_argument('--no-tiles', action='store_true', help='label from the full frame only (faster, misses small motorcycles)')
     ap.add_argument('--model', default=os.path.join(BASE_DIR, 'yolo11x.pt'))
     args = ap.parse_args()
     stop_at = None
@@ -148,7 +206,7 @@ def main():
             if frame is None:
                 print(f'  - {cam["camid"]}: no frame')
                 continue
-            lines = auto_label(model, frame, args.conf)
+            lines = auto_label(model, frame, args.conf, tiled=not args.no_tiles)
             split = 'val' if random.random() < VAL_SHARE else 'train'
             stem = f'{cam["camid"]}_{datetime.now():%Y%m%d_%H%M%S}'
             cv2.imwrite(os.path.join(DATASET_DIR, 'images', split, stem + '.jpg'), frame, [cv2.IMWRITE_JPEG_QUALITY, 92])

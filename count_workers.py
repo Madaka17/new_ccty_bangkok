@@ -81,8 +81,17 @@ class CountManager:
         while not stop.is_set():
             try:
                 if cap is None or not cap.isOpened():
-                    cap = cv2.VideoCapture(url)
-                    if not cap.isOpened():
+                    try:
+                        cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG, [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 6000, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 6000])
+                    except Exception:
+                        cap = None
+                    if not cap or not cap.isOpened():
+                        if cap is not None:
+                            try:
+                                cap.release()
+                            except Exception:
+                                pass
+                            cap = None
                         status.update(active=False, error='เปิดสตรีมไม่ได้')
                         stop.wait(5.0)
                         continue
@@ -92,8 +101,12 @@ class CountManager:
                 frame_t = frame_video_time(cap, t_start)
                 if not ret or frame is None:
                     status.update(active=False, error='อ่านภาพไม่ได้')
-                    cap.release()
-                    cap = None
+                    if cap is not None:
+                        try:
+                            cap.release()
+                        except Exception:
+                            pass
+                        cap = None
                     stop.wait(2.0)
                     continue
                 # Skip background duplicate inference if user is actively watching this camera

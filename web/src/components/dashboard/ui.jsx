@@ -1,15 +1,16 @@
+import { forwardRef } from 'react';
 // Small neutral building blocks shared across the dashboard.
 // One accent (blue-600) for interactive elements; slate for everything else.
 
 export const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2';
 
-export function Card({ as: Tag = 'section', className = '', children, ...rest }) {
+export const Card = forwardRef(function Card({ as: Tag = 'section', className = '', children, ...rest }, ref) {
   return (
-    <Tag className={`rounded-xl border border-slate-200 bg-white ${className}`} {...rest}>
+    <Tag ref={ref} className={`rounded-xl border border-slate-200 bg-white ${className}`} {...rest}>
       {children}
     </Tag>
   );
-}
+});
 
 export function SectionHeader({ id, title, description, action, className = '' }) {
   return (

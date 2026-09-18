@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { HeartIcon, CheckIcon, SparkleIcon } from './Icons.jsx';
 import { PROVINCE_TONE, CAM_LEVEL, camStatusText } from '../lib/store.js';
 
 export default function CameraCard({ cam, status, isActive, isFav, km, onToggleActive, onToggleFav, onOpenAI }) {
@@ -28,7 +27,7 @@ export default function CameraCard({ cam, status, isActive, isFav, km, onToggleA
  isActive ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-300 peer-focus-visible:border-blue-600'
           }`}
         >
-          {isActive && <CheckIcon className="w-5 h-5" />}
+          {isActive && <span className="block w-2.5 h-2.5 rounded-sm bg-white" />}
         </span>
       </label>
 
@@ -79,18 +78,18 @@ export default function CameraCard({ cam, status, isActive, isFav, km, onToggleA
  onClick={onToggleFav}
  aria-label={isFav ? 'เอาออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'}
  aria-pressed={isFav}
- className="cursor-pointer w-9 h-9 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors duration-200"
+ className="cursor-pointer h-8 px-2 rounded-lg flex items-center justify-center hover:bg-slate-100 transition-colors duration-200"
         >
-          <HeartIcon filled={isFav} />
+          <span className={`text-xs font-medium ${isFav ? 'text-blue-700' : 'text-slate-500'}`}>{isFav ? 'โปรด' : 'ชอบ'}</span>
         </motion.button>
         <button
  type="button"
  onClick={onOpenAI}
  aria-label="เปิดผู้ช่วย AI กับกล้องนี้"
  title="ผู้ช่วย AI"
- className="cursor-pointer w-9 h-9 rounded-full flex items-center justify-center opacity-70 group-hover:opacity-100 hover:bg-slate-100 transition-all duration-200"
+ className="cursor-pointer h-8 px-2 rounded-lg flex items-center justify-center opacity-70 group-hover:opacity-100 hover:bg-slate-100 transition-all duration-200"
         >
-          <SparkleIcon className="w-4 h-4" />
+          <span className="text-xs text-slate-600">AI</span>
         </button>
       </div>
     </div>

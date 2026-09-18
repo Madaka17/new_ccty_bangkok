@@ -1,69 +1,78 @@
+import { motion } from 'framer-motion';
 import { Card, Badge, Skeleton, ErrorState } from './ui.jsx';
-import { STATUS, flowLevel, fmtTime, fmtNum } from './format.js';
+import { STATUS, flowLevel, fmtTime } from './format.js';
 
-function Gauge({ value, colorHex }) {
-  const size = 120;
-  const stroke = 10;
-  const r = (size - stroke) / 2;
-  const c = 2 * Math.PI * r;
+// Horizontal HUD meter: gradient track (red -> amber -> green), threshold ticks at the
+// flowLevel cut-offs, glowing marker at the current value. Replaces the old ring gauge.
+const ZONES = [
+  { from: 0, to: 45, label: 'หนาแน่น', key: 'red' },
+  { from: 45, to: 75, label: 'ปานกลาง', key: 'yellow' },
+  { from: 75, to: 100, label: 'คล่องตัว', key: 'green' },
+];
+
+function Meter({ value, colorHex }) {
   const v = Math.min(100, Math.max(0, value ?? 0));
   return (
-    <div className="relative shrink-0" style={{ width: size, height: size }} role="img" aria-label={`ดัชนีการระบายรถ ${value ?? '-'} จาก 100`}>
-      <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e2e8f0" strokeWidth={stroke} />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke={colorHex}
-          strokeWidth={stroke}
-          strokeDasharray={c}
-          strokeDashoffset={c - (v / 100) * c}
-          strokeLinecap="round"
-          className="transition-[stroke-dashoffset] duration-700 ease-out"
+    <div className="w-full" role="img" aria-label={`ดัชนีการระบายรถ ${value ?? '-'} จาก 100`}>
+      <div className="relative h-4 rounded-full bg-slate-100 overflow-visible">
+        {/* muted zone gradient under everything */}
+        <div
+          className="absolute inset-0 rounded-full opacity-40"
+          style={{ background: 'linear-gradient(90deg, #dc2626 0%, #dc2626 45%, #d97706 45%, #d97706 75%, #059669 75%, #059669 100%)' }}
         />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-3xl font-semibold text-slate-900 leading-none tabular-nums">{value ?? '–'}</span>
-        <span className="text-[11px] text-slate-500 mt-1">/ 100</span>
-      </div>
-    </div>
-  );
-}
-
-function StackBar({ green, yellow, red }) {
-  const segs = [
-    ['green', green, 'โล่ง'],
-    ['yellow', yellow, 'ปานกลาง'],
-    ['red', red, 'ติดขัด'],
-  ];
-  return (
-    <div>
-      <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-slate-100" role="img" aria-label={`โล่ง ${green}% ปานกลาง ${yellow}% ติดขัด ${red}%`}>
-        {segs
-          .filter(([, v]) => v > 0)
-          .map(([k, v]) => (
-            <div key={k} className={`h-full ${STATUS[k].bar} transition-[width] duration-500`} style={{ width: `${v}%` }} />
-          ))}
-      </div>
-      <dl className="mt-3 grid grid-cols-3 gap-2">
-        {segs.map(([k, v, label]) => (
-          <div key={k} className="flex items-center gap-2 min-w-0">
-            <span className={`w-2 h-2 rounded-sm shrink-0 ${STATUS[k].bar}`} aria-hidden="true" />
-            <dt className="text-xs text-slate-600 truncate">{label}</dt>
-            <dd className="text-sm font-semibold text-slate-900 tabular-nums ml-auto">{v}%</dd>
-          </div>
+        {/* lit portion up to the value */}
+        <motion.div
+          className="absolute inset-y-0 left-0 rounded-full"
+          initial={{ width: 0 }}
+          animate={{ width: `${v}%` }}
+          transition={{ type: 'spring', stiffness: 60, damping: 18 }}
+          style={{ background: `linear-gradient(90deg, ${colorHex}66, ${colorHex})`, boxShadow: `0 0 14px ${colorHex}80` }}
+        />
+        {/* moving sheen */}
+        <motion.div
+          className="absolute inset-y-0 w-16 rounded-full pointer-events-none"
+          style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent)' }}
+          animate={{ left: ['-4rem', '100%'] }}
+          transition={{ duration: 2.6, repeat: Infinity, ease: 'linear', repeatDelay: 1.2 }}
+        />
+        {/* threshold ticks */}
+        {[45, 75].map((t) => (
+          <span key={t} className="absolute top-[-4px] bottom-[-4px] w-px bg-slate-300" style={{ left: `${t}%` }} aria-hidden="true" />
         ))}
-      </dl>
+        {/* marker */}
+        <motion.div
+          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2"
+          initial={{ left: 0 }}
+          animate={{ left: `${v}%` }}
+          transition={{ type: 'spring', stiffness: 60, damping: 18 }}
+          aria-hidden="true"
+        >
+          <span className="block w-6 h-6 rounded-full border-2 border-white" style={{ background: colorHex, boxShadow: `0 0 0 3px ${colorHex}33, 0 0 18px ${colorHex}` }} />
+        </motion.div>
+      </div>
+      <div className="relative mt-2 h-4 text-[11px] text-slate-500">
+        {ZONES.map((z) => (
+          <span
+            key={z.key}
+            className={`absolute top-0 text-center ${v >= z.from && v < (z.to === 100 ? 101 : z.to) ? `${STATUS[z.key].text} font-medium` : ''}`}
+            style={{ left: `${z.from}%`, width: `${z.to - z.from}%` }}
+          >
+            {z.label}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
 
 function Delta({ history }) {
-  // Change vs ~1 hour ago (20 samples x 3 min)
-  if (!history || history.length <= 20) return <p className="text-xs text-slate-500">ยังไม่ครบ 1 ชม. สำหรับเทียบแนวโน้ม</p>;
-  const d = history[history.length - 1].flow - history[history.length - 21].flow;
+  // Change vs ~1 hour ago (60 samples x 1 min)
+  if (!history) return null;
+  // BMA history is one point per hour; Longdo history is one point per minute
+  const step = history[history.length - 1]?.hourly ? 1 : 60;
+  if (history.length <= step) return <p className="text-xs text-slate-500">ยังไม่ครบ 1 ชม. สำหรับเทียบแนวโน้ม</p>;
+  const d = history[history.length - 1].flow - history[history.length - 1 - step].flow;
+  if (!Number.isFinite(d)) return null;
   if (Math.abs(d) <= 2) return <p className="text-xs text-slate-500">ใกล้เคียงกับ 1 ชม.ก่อน</p>;
   const up = d > 0;
   return (
@@ -81,7 +90,7 @@ export default function FlowOverview({ summary, error, onRetry, retrying }) {
     <Card aria-labelledby="flow-title" className="p-5 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="flow-title" className="text-[15px] font-semibold text-slate-900">
-          ภาพรวมการจราจร กรุงเทพฯ และปริมณฑล
+          {summary?.is_bma ? 'ภาพรวมการจราจรจากกล้อง CCTV กทม. (BMA)' : 'ภาพรวมการจราจร กรุงเทพฯ และปริมณฑล'}
         </h2>
         {summary ? (
           <Badge tone={summary.online === false ? 'yellow' : 'green'} dot>
@@ -98,34 +107,43 @@ export default function FlowOverview({ summary, error, onRetry, retrying }) {
         </div>
       )}
 
-      <div className="mt-5 grid grid-cols-1 md:grid-cols-[auto_1fr] gap-6 md:gap-10 items-center">
-        <div className="flex items-center gap-5">
-          {summary ? <Gauge value={summary.flow_index} colorHex={status.hex} /> : <Skeleton className="w-[120px] h-[120px] rounded-full" />}
-          <div className="min-w-0">
-            <p className="text-xs text-slate-500">ดัชนีการระบายรถ</p>
-            {summary ? (
-              <>
-                <p className={`text-xl font-semibold leading-7 ${status.text}`}>{level.label}</p>
-                <p className="text-[13px] text-slate-600 mt-0.5 leading-5">{level.hint}</p>
-                <div className="mt-2">
-                  <Delta history={summary.history} />
-                </div>
-              </>
-            ) : (
-              <div className="space-y-2 mt-1">
-                <Skeleton className="h-6 w-28" />
-                <Skeleton className="h-4 w-56" />
-              </div>
-            )}
-          </div>
+      <div className="mt-5 grid grid-cols-1 md:grid-cols-[auto_1fr_auto] gap-6 md:gap-8 items-center">
+        {/* score */}
+        <div className="flex items-end gap-1.5 shrink-0">
+          {summary ? (
+            <>
+              <span className={`text-5xl font-semibold leading-none tabular-nums ${status.text}`} style={{ textShadow: `0 0 24px ${status.hex}66` }}>
+                {summary.flow_index ?? '–'}
+              </span>
+              <span className="text-sm text-slate-500 pb-1">/ 100</span>
+            </>
+          ) : (
+            <Skeleton className="h-12 w-24" />
+          )}
         </div>
 
-        <div className="rounded-lg border border-slate-200 p-4">
-          <div className="flex items-center justify-between text-xs text-slate-600 mb-3">
-            <span>สัดส่วนสภาพถนนทุกสายที่ติดตาม</span>
-            <span className="font-medium text-slate-900 tabular-nums">{summary ? `${fmtNum(Math.round(summary.total_km))} กม.` : ''}</span>
-          </div>
-          {summary?.ready ? <StackBar green={summary.green_pct} yellow={summary.yellow_pct} red={summary.red_pct} /> : <Skeleton className="h-2.5 w-full rounded-full" />}
+        {/* meter */}
+        <div className="min-w-0">
+          <p className="text-xs text-slate-500 mb-3">ดัชนีการระบายรถ</p>
+          {summary ? <Meter value={summary.flow_index} colorHex={status.hex} /> : <Skeleton className="h-4 w-full rounded-full" />}
+        </div>
+
+        {/* status */}
+        <div className="min-w-0 md:max-w-[260px] md:border-l md:border-slate-200 md:pl-6">
+          {summary ? (
+            <>
+              <p className={`text-xl font-semibold leading-7 ${status.text}`}>{level.label}</p>
+              <p className="text-[13px] text-slate-600 mt-0.5 leading-5">{level.hint}</p>
+              <div className="mt-2">
+                <Delta history={summary.history} />
+              </div>
+            </>
+          ) : (
+            <div className="space-y-2 mt-1">
+              <Skeleton className="h-6 w-28" />
+              <Skeleton className="h-4 w-56" />
+            </div>
+          )}
         </div>
       </div>
     </Card>

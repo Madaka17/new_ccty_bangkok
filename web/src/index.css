@@ -1,8 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Prompt", "Poppins", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Prompt", "Poppins", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Prompt", ui-sans-serif, system-ui, sans-serif;
 
   /* Legacy token names mapped onto the neutral system: cream/ink = slate, sage = emerald,
      lavender = blue (accent), apricot = red, gold = amber. Keeps older pages on one palette. */
@@ -97,3 +96,65 @@ body {
   0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5), 0 2px 8px rgba(15, 23, 42, 0.3); }
   100% { box-shadow: 0 0 0 14px rgba(220, 38, 38, 0), 0 2px 8px rgba(15, 23, 42, 0.3); }
 }
+
+/* ---------------------------------------------------------------- dark theme
+   Enabled by the `dark` class on <html> (see useTheme in lib/store.js).
+   Tailwind v4 utilities read colour tokens through var(--color-*), so the light
+   tints and neutral surfaces are remapped once here instead of adding dark:
+   variants to every element. Text shades are overridden per utility because the
+   same token (slate-900) is a dark surface in one place and dark text in another. */
+.dark {
+  color-scheme: dark;
+  --color-slate-50: #1e293b;
+  --color-slate-100: #263449;
+  --color-slate-200: #334155;
+  --color-slate-300: #475569;
+  --color-emerald-50: #052e16;
+  --color-emerald-100: #064e3b;
+  --color-emerald-200: #065f46;
+  --color-amber-50: #451a03;
+  --color-amber-100: #78350f;
+  --color-amber-200: #92400e;
+  --color-red-50: #450a0a;
+  --color-red-100: #7f1d1d;
+  --color-red-200: #991b1b;
+  --color-blue-50: #172554;
+  --color-blue-100: #1e3a8a;
+  --color-blue-200: #1e40af;
+  --color-cream: #0f172a;
+  --color-cream-100: #1e293b;
+  --color-cream-200: #334155;
+  --color-ink-900: #f1f5f9;
+  --color-ink-600: #cbd5e1;
+  --color-sage-50: #052e16;
+  --color-sage-100: #064e3b;
+  --color-sage-200: #065f46;
+  --color-lavender-50: #172554;
+  --color-lavender-100: #1e3a8a;
+  --color-lavender-200: #1e40af;
+  --color-apricot-50: #450a0a;
+  --color-apricot-100: #7f1d1d;
+  --color-apricot-200: #991b1b;
+  --color-gold-50: #451a03;
+  --color-gold-100: #78350f;
+  --color-gold-200: #92400e;
+}
+.dark body { background: #020617; color: #f1f5f9; }
+.dark .bg-white, .dark .glass, .dark .glass-strong { background-color: #0f172a; }
+.dark .glass, .dark .glass-strong { border-color: #334155; }
+.dark .text-slate-900, .dark .text-slate-800 { color: #f1f5f9; }
+.dark .text-slate-700 { color: #e2e8f0; }
+.dark .text-slate-600 { color: #cbd5e1; }
+.dark .text-slate-500 { color: #94a3b8; }
+.dark .text-emerald-700, .dark .text-emerald-800, .dark .text-emerald-900 { color: #6ee7b7; }
+.dark .text-amber-700, .dark .text-amber-800, .dark .text-amber-900 { color: #fcd34d; }
+.dark .text-red-700, .dark .text-red-800, .dark .text-red-900 { color: #fca5a5; }
+.dark .text-blue-700, .dark .text-blue-800, .dark .text-blue-900 { color: #93c5fd; }
+.dark .hover\:text-slate-900:hover { color: #ffffff; }
+.dark .hover\:bg-slate-50:hover, .dark .hover\:bg-slate-100:hover { background-color: #263449; }
+.dark .hover\:bg-white:hover { background-color: #1e293b; }
+.dark .bg-slate-900\/80 { background-color: rgba(2, 6, 23, 0.8); }
+.dark .bg-slate-900\/60, .dark .bg-slate-900\/50 { background-color: rgba(2, 6, 23, 0.7); }
+.dark .scroll-soft::-webkit-scrollbar-thumb { background: #334155; }
+.dark .maplibregl-popup-content { background: #0f172a; color: #f1f5f9; border-color: #334155; }
+.dark svg text { fill: #94a3b8; }

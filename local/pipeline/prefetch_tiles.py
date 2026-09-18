@@ -9,11 +9,12 @@ Be polite to the OpenStreetMap tile servers: this script is rate-limited and
 skips tiles already cached.
 """
 import argparse
+import os
 import sys
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))  # project root
 from traffic_service import BBOX, bbox_tiles, get_osm_tile, get_traffic_tile, get_base_tile, ANALYSIS_ZOOM, OSM_TILE_DIR
-import os
 
 
 def main():

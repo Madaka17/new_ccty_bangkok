@@ -1,4 +1,4 @@
-// Pre-filtered active cameras for Bangkok and Metropolitan Region
+// Pre-filtered active cameras for Bangkok and Metropolitan Region (Longdo / iTIC)
 window.BKK_CAMERAS = {
   "total": 34,
   "items": [

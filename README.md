@@ -21,7 +21,7 @@
 
 ## 🌸 หน้าเว็บใหม่ (React + Tailwind + framer-motion)
 
-โค้ดหน้าเว็บโฉมใหม่อยู่ในโฟลเดอร์ `web/` เมื่อ build แล้ว `server.py` จะเสิร์ฟหน้าใหม่จาก `web/dist` โดยอัตโนมัติ (ถ้ายังไม่ได้ build จะใช้ `index.html` เดิม)
+โค้ดหน้าเว็บโฉมใหม่อยู่ในโฟลเดอร์ `web/` เมื่อ build แล้ว `server.py` จะเสิร์ฟหน้าใหม่จาก `web/dist` โดยอัตโนมัติ (ถ้ายังไม่ได้ build จะใช้หน้าเดิมจาก `local/legacy_ui/`)
 
 ```bash
 cd web
@@ -40,7 +40,7 @@ npm run dev        # โหมดพัฒนา ที่ http://localhost:5173
 - **แผนที่ออฟไลน์**: แผนที่พื้นฐาน (OpenStreetMap) จะถูกเก็บลงเครื่องอัตโนมัติเมื่อเปิดดู หรือดาวน์โหลดล่วงหน้าทั้งกรุงเทพฯ ด้วย
 
 ```bash
-.venv\Scripts\python prefetch_tiles.py
+.venv\Scripts\python local\pipeline\prefetch_tiles.py
 ```
 
 - **AI ผู้ช่วยการจราจร** วิเคราะห์การระบายรถรายถนนจากเส้นจราจรทุกสาย (จับคู่ชื่อถนนจาก Longdo base map) ใช้ **Gemini Flash-Lite** เมื่อใส่ key ในไฟล์ `.env` (สร้าง key ฟรีที่ https://aistudio.google.com/apikey):
@@ -86,3 +86,73 @@ tailscale serve --bg 8000
 2. ระบบจะเปิดเซิร์ฟเวอร์ FastAPI พร้อมโหลดโมเดล YOLO11x บน GPU
 3. หน้าเว็บจะเปิดขึ้นมาที่ `http://localhost:8000` โดยอัตโนมัติ
 4. กดที่ปุ่ม **"🤖 AI ตรวจจับรถ (YOLO11x)"** ที่แถบเมนูด้านบน หรือกดไอคอนหุ่นยนต์บนหน้าต่างกล้องใดๆ เพื่อเปิดหน้าต่างวิเคราะห์การจราจรสด
+
+## 📁 โครงสร้างโฟลเดอร์ (อะไรขึ้น Tailscale / อะไรใช้แค่ในเครื่อง)
+
+`tailscale funnel 8000` เปิดเฉพาะ `server.py` ดังนั้น **ทุกอย่างที่ root คือชุดที่เซิร์ฟเวอร์ต้องใช้** ส่วน `local/` คือของที่ใช้แค่ในเครื่องนี้ (เทรนโมเดล, เก็บ dataset, ของเก่า) ไม่ต้องคัดลอกไปเครื่องอื่น
+
+```
+D:\New_CCTV\
+├── server.py, *_service.py, yolo_detector.py,      ← 🌐 เซิร์ฟเวอร์ (Tailscale) — โค้ด backend
+│   vehicle_log.py, count_workers.py, survey.py,
+│   bma_*.py, telemetry_service.py
+├── cameras_bkk.json, cameras_bma.json               ← 🌐 ข้อมูลกล้อง
+├── yolo11x.pt (+ yolo11l/m), *_bkk.pt, helmet_cls.pt ← 🌐 โมเดล (gitignore, ต้องคัดลอกเอง)
+├── web/  (src/ = ซอร์ส React, dist/ = ที่เซิร์ฟจริง)  ← 🌐 หน้าเว็บ (build ด้วย npm run build)
+├── run_server.bat, requirements.txt, .env           ← 🌐 ตัวรัน + config (.env ห้าม commit)
+├── cache/, vehicle_counts.db, count_cameras.json    ← 🌐 ข้อมูล runtime (สร้างเองอัตโนมัติ)
+│
+└── local/                                            ← 💻 ใช้ในเครื่องเท่านั้น
+    ├── pipeline/   สคริปต์เก็บภาพ/label/เทรน + .bat/.sh ทั้งหมด (pipeline.bat, collect.bat, status.bat ...)
+    ├── dataset/, dataset_helmet/, runs/, pipeline.log   ข้อมูลเทรนและผลลัพธ์ (gitignore)
+    ├── legacy_ui/  หน้าเว็บเก่า (index.html, app.js, style.css, cameras_data.js) ใช้เป็น fallback เมื่อไม่มี web/dist
+    ├── scratch/    ไฟล์ทดลอง
+    └── archive/    ของเก่า/สำรอง (new_ccty_bangkok, cameras_bkk_backup_itic.json, yolo11x_bkk.pt.bad, test_*.jpg)
+```
+
+- ไฟล์ `.bat` ใน `local/pipeline/` ดับเบิลคลิกได้เหมือนเดิม (สคริปต์ `cd` กลับไป root เอง) ผลลัพธ์โมเดล `*_bkk.pt` / `helmet_cls.pt` ยังถูกเขียนลง root ให้เซิร์ฟเวอร์หยิบใช้
+- เซิร์ฟเวอร์เสิร์ฟไฟล์ static จาก `web/dist` เท่านั้น (ไม่เสิร์ฟ root ทั้งโฟลเดอร์แล้ว) `.env`, `*.db`, `*.py` จึงไม่หลุดออก Tailscale
+
+---
+
+## แผนผังโค้ด (Code map)
+
+### Backend (Python, FastAPI)
+| ไฟล์ | หน้าที่ |
+|---|---|
+| `server.py` | จุดเริ่มต้น: โหลดกล้อง, สร้าง detector/scanner/services, ประกาศ REST API ทั้งหมด, เสิร์ฟ `web/dist` |
+| `yolo_detector.py` | YOLO11x + ByteTrack บนสตรีมกล้องเดียว (หน้า AI ตรวจจับรถสด), นับรถผ่าน, ประเมินระดับจราจร, ตรวจรถจอดนิ่ง/ชน |
+| `count_workers.py` | นับรถต่อเนื่องหลายกล้องในพื้นหลัง (แดชบอร์ด "จำนวนรถที่ผ่านกล้อง AI") |
+| `survey.py` | วนสำรวจทุกกล้องสั้น ๆ เพื่อให้ป้ายระดับ โล่ง/ปานกลาง/ติดขัด ในหน้ากล้อง |
+| `vehicle_log.py` | SQLite `vehicle_counts.db`: ยอดรายชั่วโมง, sample จาก survey, เหตุการณ์จากกล้อง |
+| `incident_service.py` | รวมเหตุการณ์: กล้อง AI (ยืนยันด้วย Claude vision) + รายงาน Longdo |
+| `traffic_service.py` | ดึง tile จราจร Longdo, สรุปการระบายรถรายถนน, proxy tile แผนที่ |
+| `chat_service.py` | หน้า "ถาม AI เรื่องเส้นทาง": ส่งสรุปจราจร + กล้องให้ Claude ตอบ |
+| `bma_service.py` | สแกนกล้อง กทม. 574 ตัว (snapshot ทุก ~4 นาที) นับรถด้วย YOLO, เก็บ `bma_latest`/`bma_history`, สตรีม MJPEG |
+| `bma_archive.py` | รอบนับอัตโนมัติ: สะสมยอดต่อกล้อง, รีเซ็ตทุกชั่วโมง, เขียน CSV รายวัน/สัปดาห์/เดือน/รายถนน ที่ `D:\Data`, ข้อมูลเปรียบเทียบ |
+| `bma_events.py` | ดึงรายงานสด (น้ำท่วม/อุบัติเหตุ) จาก cpudapp.bangkok.go.th ทุก 60 วินาที |
+| `water_service.py` | ระดับน้ำ/คลอง/น้ำทะเลหนุน/ฝน จาก thaiwater.net + คาดการณ์ (ทางการ 7 วัน หรือโมเดลในเครื่อง 48 ชม.) + หาคีย์ API ใหม่อัตโนมัติ |
+| `local/pipeline/` (`collect_dataset.py`, `relabel_dataset.py`, `clean_dataset.py`, `train_model.py`, `pipeline_status.py`, `*.bat`) | pipeline เก็บภาพ-ทำ label (tiled 2×2 + เกณฑ์ conf รายคลาส)-เทรน YOLO (oversample เฟรมที่มีมอเตอร์ไซค์ `--moto-boost`) ให้เข้ากับกล้องไทย |
+| `rsc_service.py` | สถิติอุบัติเหตุ Thai RSC รายเขต + จุดเสี่ยงรอบกล้อง BMA (`/api/rsc/*`) |
+| `violation_service.py` | จับผิดกฎจราจรจากกล้อง AI สด: ย้อนศร (เรียนรู้ทิศทางจราจรต่อกล้องเอง) และไม่สวมหมวกกันน็อก (โมเดล `helmet_cls.pt` ถ้ามี ไม่งั้นใช้ vision API) → `/api/ai/violations` สำเนาภาพลง `D:\Dataiolations` |
+| `local/pipeline/collect_helmet_dataset.py`, `local/pipeline/train_helmet.py` | สร้างชุดข้อมูล crop ผู้ขี่ (label โดย vision API) แล้วเทรน YOLO11 classifier หมวก/ไม่หมวก → `helmet_cls.pt` |
+| `local/pipeline/prefetch_tiles.py` | ดาวน์โหลด tile แผนที่ไว้ใช้ออฟไลน์ (รันครั้งเดียว) |
+
+### Frontend (`web/src`, React + Tailwind v4)
+| ไฟล์ | หน้าที่ |
+|---|---|
+| `App.jsx` | เลย์เอาต์หลัก (Sidebar ซ้าย + เนื้อหา), routing ด้วย hash, state กล้องที่เปิด, toast, poll เหตุการณ์ |
+| `components/Sidebar.jsx` | เมนูซ้าย (กลุ่มหน้า), ชื่อผู้ใช้, สถานะกล้อง, สลับธีม สว่าง/มืด/ตามเครื่อง |
+| `components/dashboard/ui.jsx` | ชิ้นส่วนพื้นฐาน: Card, Badge, Button, Segmented, Skeleton, EmptyState, ErrorState |
+| `components/dashboard/primitives.jsx` | ชิ้นส่วนระดับหน้า: PageHeader, StatTile, StatusBanner, Tabs, Modal, ShareBar |
+| `components/dashboard/format.js` | ฟอร์แมตเวลา/ตัวเลข/สีสถานะ |
+| `components/DashboardPage.jsx` + `dashboard/*` | แดชบอร์ดจราจร: ประโยคสรุป, KPI, ดัชนีระบายรถ, เหตุการณ์, ถนนติด/โล่ง, กราฟแนวโน้ม, จำนวนรถผ่านกล้อง |
+| `components/SidePanel.jsx`, `CameraCard.jsx`, `CityWindow.jsx`, `VideoSlot.jsx` | หน้า "กล้องของฉัน": เลือกกล้อง + ดูภาพสด HLS สูงสุด 9 ช่อง |
+| `components/BmaCountPage.jsx` + `bma/*` | นับรถจากกล้อง กทม.: ภาพรวมตอนนี้, เทียบวัน/สัปดาห์/เดือน, กล้องทุกตัว + สตรีม YOLO |
+| `components/YoloPage.jsx` | AI ตรวจจับรถสดจากกล้องเดียว ปรับ FPS/ความมั่นใจ |
+| `components/MapPage.jsx` | แผนที่ MapLibre: เส้นจราจร, หมุดกล้อง, เหตุการณ์ |
+| `components/WaterPage.jsx` + `water/*` | คาดการณ์น้ำ: กราฟรายสถานี, ตารางสถานี, น้ำทะเลหนุน, คลอง/ถนน, ฝน, รายงานสด กทม. |
+| `components/AiPage.jsx` | แชทถาม AI เรื่องเส้นทาง พร้อมกล้อง AI ประกอบ |
+| `lib/api.js` | ฟังก์ชันเรียก REST API ทั้งหมด |
+| `lib/store.js` | localStorage: กล้องโปรด, กล้องที่เปิด, ชื่อผู้ใช้, ธีม |
+| `index.css` | โทเค็นสี/ฟอนต์ Prompt, ธีมมืด (remap ตัวแปรสีภายใต้ `.dark`) |

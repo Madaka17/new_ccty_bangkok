@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js';
 import { motion } from 'framer-motion';
-import { OfflineIllustration, CloseIcon, RefreshIcon, ExpandIcon, SparkleIcon } from './Icons.jsx';
 import { PROVINCE_TONE, CAM_LEVEL, camStatusText } from '../lib/store.js';
 
 export default function VideoSlot({ cam, status: aiStatus, incident, onClose, onOpenAI }) {
@@ -103,14 +102,14 @@ export default function VideoSlot({ cam, status: aiStatus, incident, onClose, on
             สด
           </span>
         )}
-        <button type="button" onClick={onOpenAI} title="ผู้ช่วย AI" aria-label="เปิดผู้ช่วย AI กับกล้องนี้" className="cursor-pointer w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors duration-200">
-          <SparkleIcon className="w-4 h-4" />
+        <button type="button" onClick={onOpenAI} title="เปิดผู้ช่วย AI กับกล้องนี้" className="cursor-pointer h-7 px-2 rounded-md text-[11px] text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors duration-200">
+          AI
         </button>
-        <button type="button" onClick={fullscreen} title="ขยายเต็มจอ" aria-label="ขยายเต็มจอ" className="cursor-pointer w-8 h-8 rounded-full flex items-center justify-center text-ink-600 hover:bg-lavender-50 transition-colors duration-200">
-          <ExpandIcon />
+        <button type="button" onClick={fullscreen} title="ขยายเต็มจอ" className="cursor-pointer h-7 px-2 rounded-md text-[11px] text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors duration-200">
+          เต็มจอ
         </button>
-        <button type="button" onClick={onClose} title="ปิดกล้องนี้" aria-label="ปิดกล้องนี้" className="cursor-pointer w-8 h-8 rounded-full flex items-center justify-center text-ink-600 hover:bg-slate-100 hover:text-red-700 transition-colors duration-200">
-          <CloseIcon className="w-4 h-4" />
+        <button type="button" onClick={onClose} title="ปิดกล้องนี้" className="cursor-pointer h-7 px-2 rounded-md text-[11px] text-slate-600 hover:bg-slate-100 hover:text-red-700 transition-colors duration-200">
+          ปิด
         </button>
       </div>
 
@@ -147,7 +146,6 @@ export default function VideoSlot({ cam, status: aiStatus, incident, onClose, on
 
         {status === 'offline' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center px-4 bg-slate-50">
-            <OfflineIllustration />
             <p className="font-medium text-ink-900">ไม่มีสัญญาณภาพ</p>
             <p className="text-xs text-ink-600">กล้องออฟไลน์ กำลังนำออกจากจอ...</p>
             <div className="flex items-center gap-2 mt-1">
@@ -156,7 +154,6 @@ export default function VideoSlot({ cam, status: aiStatus, incident, onClose, on
  onClick={onClose}
  className="cursor-pointer inline-flex items-center gap-1 rounded-lg bg-white text-red-700 border border-slate-300 px-3 py-1.5 text-xs font-medium hover:bg-slate-50 transition-colors duration-200"
               >
-                <CloseIcon className="w-3.5 h-3.5" />
                 นำออกทันที
               </button>
               <button
@@ -164,7 +161,6 @@ export default function VideoSlot({ cam, status: aiStatus, incident, onClose, on
  onClick={() => setAttempt((n) => n + 1)}
  className="cursor-pointer inline-flex items-center gap-1 rounded-lg bg-blue-600 text-white border border-blue-600 px-3 py-1.5 text-xs font-medium hover:bg-blue-700 transition-colors duration-200"
               >
-                <RefreshIcon className="w-3 h-3" />
                 ลองใหม่
               </button>
             </div>
