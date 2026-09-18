@@ -400,6 +400,52 @@ def get_bma_drive_d_status():
 def get_ai_stats():
     return detector.get_stats()
 
+@app.post("/api/ai/reset_passed")
+def reset_ai_passed():
+    """Restart the passed-vehicle counter of the live camera (start of a manual count)."""
+    return detector.reset_passed()
+
+@app.get("/api/ai/accuracy")
+def get_ai_accuracy(limit: int = Query(50, ge=1, le=500)):
+    """Manual-vs-AI checks: per-row absolute error / accuracy plus MAE and mean accuracy."""
+    return vehicle_log.accuracy_checks(limit=limit)
+
+@app.post("/api/ai/accuracy")
+def add_ai_accuracy(payload: dict = Body(...)):
+    """Save one check. ai_count defaults to the live camera's passed_total since the last reset."""
+    try:
+        manual = int(payload.get("manual_count"))
+    except (TypeError, ValueError):
+        return JSONResponse(status_code=400, content={"error": "manual_count must be an integer"})
+    if manual < 0:
+        return JSONResponse(status_code=400, content={"error": "manual_count must be >= 0"})
+    st = detector.get_stats()
+    camid = payload.get("camid") or st.get("camid") or ""
+    title = payload.get("title") or (st.get("title") if camid == st.get("camid") else None)
+    if not title:
+        cam = next((c for c in cameras_data if c["camid"] == camid), None)
+        title = cam.get("short_title", cam.get("title")) if cam else camid
+    ai = payload.get("ai_count")
+    duration = payload.get("duration_s")
+    if ai is None:
+        if camid != st.get("camid"):
+            return JSONResponse(status_code=400, content={"error": "ai_count required when camera is not the live one"})
+        ai = st.get("passed_total", 0)
+        if duration is None and st.get("passed_since"):
+            duration = int(time.time()) - int(st["passed_since"])
+    try:
+        ai = int(ai)
+    except (TypeError, ValueError):
+        return JSONResponse(status_code=400, content={"error": "ai_count must be an integer"})
+    row = vehicle_log.add_accuracy_check(camid, title, manual, ai, duration_s=duration, note=(payload.get("note") or None))
+    return row
+
+@app.delete("/api/ai/accuracy/{check_id}")
+def delete_ai_accuracy(check_id: int):
+    if not vehicle_log.delete_accuracy_check(check_id):
+        return JSONResponse(status_code=404, content={"error": "not found"})
+    return {"deleted": check_id}
+
 @app.get("/api/ai/history")
 def get_ai_history(range: str = Query("24h", pattern="^(24h|7d|30d)$"), date: str = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"), camid: str = Query(None)):
     """Vehicles that passed each camera: hourly for 24h or a given date, daily for 7d/30d."""

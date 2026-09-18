@@ -529,7 +529,14 @@ class VehicleDetectorYOLO11x:
             'moving_pct': 100,
             'level': 'free',
             'traffic_level': 'ไม่มีข้อมูล',
-            'night_mode': False
+            'night_mode': False,
+            # vehicles confirmed as passing since the stream started / the counter was reset
+            # (ground truth for the manual-vs-AI accuracy check on the live page)
+            'passed_cars': 0,
+            'passed_motorcycles': 0,
+            'passed_trucks': 0,
+            'passed_total': 0,
+            'passed_since': 0,
         }
         self.night_mode = False
         inv_gamma = 1.0 / 0.60
@@ -761,6 +768,7 @@ class VehicleDetectorYOLO11x:
             self.current_cam_info = cam_info or {}
             self.latest_jpeg = None
             self.is_running = True
+            self._reset_passed_locked()
             self.thread = threading.Thread(
                 target=self._process_loop,
                 args=(stream_url, self.current_cam_info, self.stop_event),
@@ -861,6 +869,10 @@ class VehicleDetectorYOLO11x:
                         break
                     self.latest_jpeg = annotated_jpeg
                     self.latest_stats.update(stats)
+                    if any(new_vehicles.values()):
+                        for k, v in new_vehicles.items():
+                            self.latest_stats['passed_' + k] += v
+                        self.latest_stats['passed_total'] += sum(new_vehicles.values())
                     self.latest_stats['active'] = True
                     self.latest_stats['camid'] = cam_info.get('camid', '')
                     self.latest_stats['title'] = cam_info.get('short_title', cam_info.get('title', ''))
@@ -933,4 +945,14 @@ class VehicleDetectorYOLO11x:
 
     def get_stats(self):
         with self.lock:
+            return dict(self.latest_stats)
+
+    def _reset_passed_locked(self):
+        self.latest_stats.update(passed_cars=0, passed_motorcycles=0, passed_trucks=0, passed_total=0,
+                                 passed_since=int(time.time()))
+
+    def reset_passed(self):
+        """Restart the passed-vehicle counter (user starts counting by hand at the same moment)."""
+        with self.lock:
+            self._reset_passed_locked()
             return dict(self.latest_stats)

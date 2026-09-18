@@ -287,3 +287,31 @@ export async function fetchOnlineCount() {
   const d = await res.json();
   return d.online;
 }
+
+// ---- manual-vs-AI accuracy checks (live page)
+export async function fetchAIAccuracy(limit = 50) {
+  const res = await fetch(`/api/ai/accuracy?limit=${limit}`);
+  if (!res.ok) throw new Error('accuracy');
+  return res.json();
+}
+
+// { manual_count, ai_count?, camid?, title?, duration_s?, note? } — ai_count defaults to the live counter
+export async function addAIAccuracy(payload) {
+  const res = await fetch('/api/ai/accuracy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'accuracy');
+  return res.json();
+}
+
+export async function deleteAIAccuracy(id) {
+  const res = await fetch(`/api/ai/accuracy/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('accuracy');
+  return res.json();
+}
+
+export function resetAIPassed() {
+  return fetch('/api/ai/reset_passed', { method: 'POST' });
+}

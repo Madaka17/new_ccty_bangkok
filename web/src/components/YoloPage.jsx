@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { StatTile } from './dashboard/primitives.jsx';
 import { aiStreamUrl, fetchAIStats, setAIConf, setAIFps, setAINightMode, switchAICamera } from '../lib/api.js';
 import ViolationPanel from './yolo/ViolationPanel.jsx';
+import AccuracyPanel from './yolo/AccuracyPanel.jsx';
 import { PROVINCE_TONE } from '../lib/store.js';
 
 const EMPTY = { cars: 0, motorcycles: 0, trucks: 0, total: 0, level: 'free', traffic_level: '', latency_ms: 0, fps: 0, active: false };
@@ -281,6 +282,11 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
           </div>
         )}
       </aside>
+
+      {/* Manual-vs-AI accuracy check: full width under the stream */}
+      <div className="lg:col-span-2">
+        <AccuracyPanel active={active} stats={stats} camTitle={cam?.short_title} onToast={onToast} />
+      </div>
     </div>
   );
 }

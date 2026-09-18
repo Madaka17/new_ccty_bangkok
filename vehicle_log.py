@@ -52,11 +52,85 @@ class VehicleLog:
                 stopped_s   INTEGER,
                 persons_near INTEGER
             )""")
+        # Manual-vs-AI accuracy checks entered on the live page
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS accuracy_checks (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts           INTEGER NOT NULL,
+                camid        TEXT NOT NULL,
+                title        TEXT,
+                manual_count INTEGER NOT NULL,
+                ai_count     INTEGER NOT NULL,
+                abs_error    INTEGER NOT NULL,
+                accuracy_pct REAL,
+                duration_s   INTEGER,
+                note         TEXT
+            )""")
         self.conn.commit()
 
     @staticmethod
     def _hour(dt=None):
         return (dt or datetime.now()).strftime('%Y-%m-%dT%H:00')
+
+    # ------------------------------------------------------------------ accuracy checks
+    @staticmethod
+    def _accuracy(manual, ai):
+        """Absolute error and accuracy (%) of the AI count against the manual count."""
+        err = abs(int(manual) - int(ai))
+        if manual <= 0:
+            acc = 100.0 if err == 0 else 0.0
+        else:
+            acc = max(0.0, 100.0 - err * 100.0 / manual)
+        return err, round(acc, 1)
+
+    def add_accuracy_check(self, camid, title, manual_count, ai_count, duration_s=None, note=None):
+        err, acc = self._accuracy(manual_count, ai_count)
+        with self.lock:
+            cur = self.conn.execute(
+                "INSERT INTO accuracy_checks (ts, camid, title, manual_count, ai_count, abs_error, accuracy_pct, duration_s, note) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                (int(datetime.now().timestamp()), camid, title, int(manual_count), int(ai_count), err, acc, duration_s, note))
+            self.conn.commit()
+            return self._accuracy_row(cur.lastrowid)
+
+    def _accuracy_row(self, rid):
+        r = self.conn.execute("SELECT id, ts, camid, title, manual_count, ai_count, abs_error, accuracy_pct, duration_s, note "
+                              "FROM accuracy_checks WHERE id = ?", (rid,)).fetchone()
+        return self._accuracy_dict(r) if r else None
+
+    @staticmethod
+    def _accuracy_dict(r):
+        return {'id': r[0], 'ts': r[1], 'camid': r[2], 'title': r[3], 'manual_count': r[4], 'ai_count': r[5],
+                'abs_error': r[6], 'accuracy_pct': r[7], 'duration_s': r[8], 'note': r[9]}
+
+    def delete_accuracy_check(self, rid):
+        with self.lock:
+            n = self.conn.execute("DELETE FROM accuracy_checks WHERE id = ?", (rid,)).rowcount
+            self.conn.commit()
+        return n > 0
+
+    def accuracy_checks(self, limit=50):
+        """Latest checks plus the summary row: MAE, mean accuracy, totals."""
+        with self.lock:
+            rows = self.conn.execute(
+                "SELECT id, ts, camid, title, manual_count, ai_count, abs_error, accuracy_pct, duration_s, note "
+                "FROM accuracy_checks ORDER BY ts DESC, id DESC LIMIT ?", (limit,)).fetchall()
+        items = [self._accuracy_dict(r) for r in rows]
+        n = len(items)
+        summary = None
+        if n:
+            manual = sum(i['manual_count'] for i in items)
+            ai = sum(i['ai_count'] for i in items)
+            mae = sum(i['abs_error'] for i in items) / n
+            summary = {
+                'count': n,
+                'manual_total': manual,
+                'ai_total': ai,
+                'mae': round(mae, 1),
+                'mean_accuracy_pct': round(sum(i['accuracy_pct'] or 0 for i in items) / n, 1),
+                'overall_accuracy_pct': self._accuracy(manual, ai)[1],
+            }
+        return {'items': items, 'summary': summary}
 
     def add(self, camid, title, cars=0, motorcycles=0, trucks=0):
         if not camid or not (cars or motorcycles or trucks):
