@@ -201,7 +201,6 @@ export default function IncidentPanel({ incidents, onOpenAI, onNavigate }) {
   }, [incidents, filter]);
 
   const total = (incidents?.camera?.length || 0) + (incidents?.longdo?.length || 0);
-  const visionOff = incidents && !incidents.vision_provider;
 
   return (
     <Card aria-labelledby="incident-title" className="p-5">
@@ -223,12 +222,6 @@ export default function IncidentPanel({ incidents, onOpenAI, onNavigate }) {
           </div>
         }
       />
-
-      {visionOff && (
-        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          ยังไม่ได้ตั้งค่า vision API (GEMINI_API_KEY หรือ ANTHROPIC_API_KEY) การตรวจจับอุบัติเหตุจากกล้องจึงปิดอยู่ แสดงเฉพาะรายงานจาก Longdo
-        </p>
-      )}
 
       <div className="mt-3">
         {!incidents ? (

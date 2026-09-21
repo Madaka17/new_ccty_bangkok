@@ -469,7 +469,7 @@ def skip_elapsed_frames(cap, seconds):
 
 
 class VehicleDetectorYOLO11x:
-    def __init__(self, model_path='yolo11x.pt', target_fps=10.0, conf_threshold=0.15, vehicle_log=None):
+    def __init__(self, model_path='yolo26x.pt', target_fps=10.0, conf_threshold=0.15, vehicle_log=None):
         self.target_fps = target_fps
         self.conf_threshold = conf_threshold
         self.frame_interval = 1.0 / target_fps  # 0.10s for 10 FPS

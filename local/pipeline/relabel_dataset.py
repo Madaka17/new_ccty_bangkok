@@ -27,7 +27,7 @@ BASE_DIR = os.path.dirname(LOCAL_DIR)  # project root (server, models, cameras, 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--split', choices=['train', 'val'], help='default: both')
-    ap.add_argument('--model', default=os.path.join(BASE_DIR, 'yolo11x.pt'))
+    ap.add_argument('--model', default=os.path.join(BASE_DIR, 'yolo26x.pt'))
     ap.add_argument('--keep-manual', action='store_true', help='skip labels edited after the image was saved')
     args = ap.parse_args()
 

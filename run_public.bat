@@ -5,7 +5,7 @@ title BKK StreetSmart - Public (Tailscale Funnel)
 set OPENCV_FFMPEG_LOGLEVEL=-8
 
 echo ======================================================================
-echo   BKK StreetSmart CCTV + YOLO11x AI Server  (Public via Tailscale)
+echo   BKK StreetSmart CCTV + YOLO26x AI Server  (Public via Tailscale)
 echo ======================================================================
 echo.
 

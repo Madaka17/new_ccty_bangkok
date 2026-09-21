@@ -333,12 +333,12 @@ class BmaScanner:
 
     def _detect(self, img):
         """(cls_id, conf, x1, y1, x2, y2) per vehicle. Shares the server's detector (tiled 2x2 on
-        small frames, per-class thresholds); falls back to a local yolo11m when run standalone."""
+        small frames, per-class thresholds); falls back to a local yolo26m when run standalone."""
         if self.detector and hasattr(self.detector, 'detect_boxes'):
             return self.detector.detect_boxes(img)
         from ultralytics import YOLO
         if not hasattr(self, '_local_model'):
-            m_path = 'yolo11x.pt' if os.path.exists(os.path.join(BASE_DIR, 'yolo11x.pt')) else 'yolo11m.pt'
+            m_path = 'yolo26x.pt' if os.path.exists(os.path.join(BASE_DIR, 'yolo26x.pt')) else 'yolo26m.pt'
             self._local_model = YOLO(m_path)
         r = self._local_model(img, conf=0.08, classes=[0, 1, 2, 3, 5, 7], imgsz=960, verbose=False)[0]
         return [(int(c), float(cf), int(x1), int(y1), int(x2), int(y2))

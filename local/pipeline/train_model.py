@@ -1,13 +1,13 @@
 """Fine-tune YOLO11 on the frames collected by collect_dataset.py.
 
-    python train_model.py                        # yolo11x, 100 epochs, imgsz 960, auto batch
-    python train_model.py --model yolo11l.pt --epochs 60 --imgsz 1280
+    python train_model.py                        # yolo26x, 100 epochs, imgsz 960, auto batch
+    python train_model.py --model yolo26l.pt --epochs 60 --imgsz 1280
     python train_model.py --resume               # continue the last interrupted run
 
 Output: runs/train/bkk*/weights/best.pt, copied to yolo11x_bkk.pt (or <model>_bkk.pt).
-To use it, set AI_MODEL=yolo11x_bkk.pt in .env (server.py runs stock yolo11x.pt by default) and restart the server.
+To use it, set AI_MODEL=yolo26x_bkk.pt in .env (server.py runs stock yolo26x.pt by default) and restart the server.
 
-Stop the server first: training needs the whole GPU (RTX 3050 8 GB fits yolo11x at 960 with
+Stop the server first: training needs the whole GPU (RTX 3050 8 GB fits yolo26x at 960 with
 batch 4-6). Correct the auto-labels before training on a large set; the model can only be as
 good as its labels.
 """
@@ -57,7 +57,7 @@ def write_boosted_yaml(repeat):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--model', default='yolo11x.pt', help='starting weights')
+    ap.add_argument('--model', default='yolo26x.pt', help='starting weights')
     ap.add_argument('--epochs', type=int, default=100)
     ap.add_argument('--imgsz', type=int, default=960)
     ap.add_argument('--batch', type=int, default=-1, help='-1 = pick the largest batch that fits the GPU')

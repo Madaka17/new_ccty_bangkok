@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { StatTile } from './dashboard/primitives.jsx';
 import { aiStreamUrl, fetchAIStats, setAIConf, setAIFps, setAINightMode, switchAICamera } from '../lib/api.js';
-import ViolationPanel from './yolo/ViolationPanel.jsx';
 import AccuracyPanel from './yolo/AccuracyPanel.jsx';
 import { PROVINCE_TONE } from '../lib/store.js';
 
@@ -268,7 +267,6 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
           <p className="text-lg font-semibold">{incident ? (incident.kind === 'breakdown' ? 'มีรถเสียกีดขวาง' : 'เกิดอุบัติเหตุ') : feedState === 'live' ? level.text : 'กำลังดูถนนให้อยู่...'}</p>
           {feedState === 'live' && <p className="text-sm mt-0.5">{level.hint}</p>}
         </div>
-        <ViolationPanel active={active} camid={camid} />
         {favList.length > 0 && (
           <div className="glass rounded-xl p-4">
             <p className="text-xs text-ink-600 mb-2">กล้องโปรดของคุณ</p>

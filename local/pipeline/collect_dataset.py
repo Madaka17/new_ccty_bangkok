@@ -1,7 +1,7 @@
 """Collect training frames from the CCTV cameras and auto-label them with the current model.
 
 Frames go to dataset/images/<split>/, YOLO-format labels to dataset/labels/<split>/ (same stem).
-Labels come from yolo11x at a high resolution with test-time augmentation plus a 2x2 tiled pass
+Labels come from yolo26x at a high resolution with test-time augmentation plus a 2x2 tiled pass
 (per-class confidence floors, see CLASS_CONF), so they are a starting point to correct by hand
 (Label Studio / CVAT / Roboflow), not ground truth. Re-label existing frames with relabel_dataset.py.
 
@@ -170,7 +170,7 @@ def main():
     ap.add_argument('--until', help='HH:MM local time to stop at (overrides --rounds when reached first)')
     ap.add_argument('--conf', type=float, default=None, help='raise every class floor to this (default: per-class CLASS_CONF)')
     ap.add_argument('--no-tiles', action='store_true', help='label from the full frame only (faster, misses small motorcycles)')
-    ap.add_argument('--model', default=os.path.join(BASE_DIR, 'yolo11x.pt'))
+    ap.add_argument('--model', default=os.path.join(BASE_DIR, 'yolo26x.pt'))
     args = ap.parse_args()
     stop_at = None
     if args.until:

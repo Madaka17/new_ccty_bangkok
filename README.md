@@ -73,6 +73,11 @@ tailscale serve --bg 8000
 
 ลิงก์: https://cctv-bangkok.tail95e28b.ts.net
 
+ทางลัด (ดับเบิลคลิก):
+- `run_public.bat` เปิด Funnel + รันเซิร์ฟเวอร์
+- `restart_public.bat` ปิดเซิร์ฟเวอร์เดิมที่พอร์ต 8000 แล้วเปิดใหม่พร้อม Funnel (ใช้หลังแก้ `.env` หรือโค้ด)
+- `stop_public.bat` ปิด Funnel (เซิร์ฟเวอร์ยังรันอยู่)
+
 - API: `GET /api/traffic/summary`, `GET /api/traffic/roads?q=`, `POST /api/chat`, tiles ที่ `/api/traffic/tile/{z}/{x}/{y}.pbf` และ `/api/tiles/base/{z}/{x}/{y}.png`
 
 #### 🔒 การป้องกันเมื่อเปิดสาธารณะ (`access_guard.py`)
@@ -122,7 +127,7 @@ D:\New_CCTV\
 │   vehicle_log.py, count_workers.py, survey.py,
 │   bma_*.py, telemetry_service.py
 ├── cameras_bkk.json, cameras_bma.json               ← 🌐 ข้อมูลกล้อง
-├── yolo11x.pt (+ yolo11l/m), *_bkk.pt, helmet_cls.pt ← 🌐 โมเดล (gitignore, ต้องคัดลอกเอง)
+├── yolo26x.pt (+ yolo26l/m), *_bkk.pt, helmet_cls.pt ← 🌐 โมเดล (gitignore, ต้องคัดลอกเอง)
 ├── web/  (src/ = ซอร์ส React, dist/ = ที่เซิร์ฟจริง)  ← 🌐 หน้าเว็บ (build ด้วย npm run build)
 ├── run_server.bat, requirements.txt, .env           ← 🌐 ตัวรัน + config (.env ห้าม commit)
 ├── cache/, vehicle_counts.db, count_cameras.json    ← 🌐 ข้อมูล runtime (สร้างเองอัตโนมัติ)

@@ -412,7 +412,7 @@ def render_dashboard(is_watch=False, interval=1):
         if bkk_models:
             lines.append(f"  โมเดลที่เทรนแล้ว: {', '.join(bkk_models)} (Fine-tuned พร้อมใช้งาน)")
         else:
-            lines.append("  โมเดลปัจจุบัน:   ยังไม่มีโมเดล custom (*_bkk.pt) — ใช้โมเดลเริ่มต้น yolo11x.pt")
+            lines.append("  โมเดลปัจจุบัน:   ยังไม่มีโมเดล custom (*_bkk.pt) — ใช้โมเดลเริ่มต้น yolo26x.pt")
 
     # Section 3: Processes & Server
     lines.append("-" * 86)

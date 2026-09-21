@@ -97,12 +97,12 @@ app.add_middleware(
 app.middleware("http")(access_guard.guard)
 
 # Paths
-# Stock COCO yolo11x by default. AI_MODEL=yolo11x_bkk.pt (or any .pt) in .env / env switches weights;
+# Stock COCO yolo26x by default. AI_MODEL=yolo26x_bkk.pt (or any .pt) in .env / env switches weights;
 # the fine-tuned file is no longer picked up just because it exists (the first run missed motorcycles).
-MODEL_PATH = os.path.join(BASE_DIR, os.getenv("AI_MODEL", "yolo11x.pt"))
+MODEL_PATH = os.path.join(BASE_DIR, os.getenv("AI_MODEL", "yolo26x.pt"))
 if not os.path.exists(MODEL_PATH):
-    print(f"[AI] {MODEL_PATH} not found, falling back to yolo11x.pt")
-    MODEL_PATH = os.path.join(BASE_DIR, "yolo11x.pt")
+    print(f"[AI] {MODEL_PATH} not found, falling back to yolo26x.pt")
+    MODEL_PATH = os.path.join(BASE_DIR, "yolo26x.pt")
 CAMERAS_FILE = os.path.join(BASE_DIR, "cameras_bkk.json")
 # Legacy vanilla UI (local/legacy_ui) is only the fallback when web/dist has not been built
 LEGACY_UI = os.path.join(BASE_DIR, "local", "legacy_ui")

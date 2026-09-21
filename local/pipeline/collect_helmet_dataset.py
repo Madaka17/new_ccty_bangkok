@@ -132,7 +132,7 @@ def main():
     ap.add_argument('--max-calls', type=int, default=1500, help='vision API calls this run')
     ap.add_argument('--min-height', type=int, default=36, help='rider+bike box height in px before upscaling')
     ap.add_argument('--min-conf', type=float, default=0.7, help='drop labels the model is less sure about')
-    ap.add_argument('--model', default=os.path.join(BASE_DIR, 'yolo11x.pt'))
+    ap.add_argument('--model', default=os.path.join(BASE_DIR, 'yolo26x.pt'))
     ap.add_argument('--live', action='store_true', help='also sample fresh frames from the cameras (see collect_dataset.py)')
     ap.add_argument('--bma', action='store_true', help='also use the BMA snapshot cache (needs server.py running); one pass per round')
     ap.add_argument('--rounds', type=int, default=5)
