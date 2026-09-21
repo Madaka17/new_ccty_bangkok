@@ -135,8 +135,13 @@ export default function AiPage({ active, cameras, camid, onPickCamera, onToast, 
  try {
  const res = await sendChat(next.filter((m) => m.role !== 'assistant' || m.content !== WELCOME).map((m) => ({ role: m.role, content: m.content })));
  setMessages([...next, { role: 'assistant', content: res.reply, mode: res.mode }]);
-    } catch {
- setMessages([...next, { role: 'assistant', content: 'ผู้ช่วยยังไม่ตื่น ลองเปิด run_server.bat แล้วถามใหม่นะ', mode: 'offline' }]);
+    } catch (e) {
+ const msg = e?.message === 'rate_limited'
+   ? 'ถามบ่อยเกินไป รอสักครู่แล้วลองใหม่นะ'
+   : e?.message === 'too_long'
+     ? 'ข้อความยาวเกินไป ลองย่อคำถามให้สั้นลง'
+     : 'ผู้ช่วยยังไม่ตื่น ลองเปิด run_server.bat แล้วถามใหม่นะ';
+ setMessages([...next, { role: 'assistant', content: msg, mode: 'offline' }]);
     } finally {
  setBusy(false);
     }

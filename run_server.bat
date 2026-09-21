@@ -2,6 +2,8 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 title BKK StreetSmart CCTV + YOLO11x AI Server
+rem Silence FFmpeg h264 decoder spam; must be set before python starts (os.environ inside python is too late on Windows)
+set OPENCV_FFMPEG_LOGLEVEL=-8
 
 echo ======================================================================
 echo   BKK StreetSmart CCTV + YOLO11x AI Server

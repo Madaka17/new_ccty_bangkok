@@ -284,7 +284,7 @@ class ViolationMonitor:
 
     def status(self, camid=None):
         out = {"helmet_checks": self.helmet_enabled(), "helmet_mode": self.helmet_mode(), "archive_dir": ARCHIVE_DIR,
-               "archive_ok": os.path.isdir(os.path.dirname(ARCHIVE_DIR.rstrip("\/"))), "cameras": {}}
+               "archive_ok": os.path.isdir(os.path.dirname(ARCHIVE_DIR.rstrip("/\\"))), "cameras": {}}
         for cid, fl in self.flows.items():
             if camid and cid != camid:
                 continue

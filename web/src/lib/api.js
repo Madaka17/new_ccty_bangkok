@@ -136,6 +136,8 @@ export async function sendChat(messages) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messages }),
   });
+  if (res.status === 429) throw new Error('rate_limited');
+  if (res.status === 413) throw new Error('too_long');
   if (!res.ok) throw new Error('chat');
   return res.json();
 }

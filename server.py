@@ -81,6 +81,7 @@ from bma_events import bma_feed
 from bma_service import BmaScanner
 import analytics_service
 from telemetry_service import telemetry
+import access_guard
 
 app = FastAPI(title="BKK StreetSmart CCTV & YOLO11x Vehicle Detection")
 
@@ -92,6 +93,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Public-exposure guard: control endpoints operator-only, /api/chat rate limited (see access_guard.py)
+app.middleware("http")(access_guard.guard)
 
 # Paths
 # Stock COCO yolo11x by default. AI_MODEL=yolo11x_bkk.pt (or any .pt) in .env / env switches weights;
@@ -393,7 +396,7 @@ def get_bma_comparison(period: str = Query("day", pattern="^(day|week|month)$"))
 
 @app.get("/api/bma/drive_d_status")
 def get_bma_drive_d_status():
-    """Folder layout under the CSV export directory (D:\Data by default)."""
+    """Folder layout under the CSV export directory (D:\\Data by default)."""
     return bma_scanner.archiver.files_status()
 
 @app.get("/api/ai/stats")

@@ -15,6 +15,13 @@
   - แสดงตัวเลขดิจิทัลนับแยกตามประเภทแบบสดๆ
   - ประเมินสถานะการจราจร: `🟢 คล่องตัว` / `🟡 ปานกลาง` / `🔴 หนาแน่น`
   - รองรับการเปิดดูกล้อง CCTV ใดก็ได้จากทั้ง 66 ตัวในกรุงเทพฯ และปริมณฑล
+- **เปลี่ยนโมเดลได้ผ่าน `.env`**: `AI_MODEL=yolo26x.pt` (YOLO26x: mAP 57.5 vs YOLO11x 54.7, NMS-free, เร็วกว่าเล็กน้อย — ทดสอบบน RTX 3080 FP16 ได้ ~36 ms/เฟรม) ไฟล์ `.pt` ดาวน์โหลดอัตโนมัติถ้ายังไม่มี
+- **ติดตั้ง PyTorch แบบ CUDA** (ถ้า `torch.cuda.is_available()` เป็น False ระบบจะตกไปใช้ CPU ช้ากว่า ~30 เท่า):
+
+```bash
+.venv\Scripts\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130 --force-reinstall --no-deps
+```
+
 - **รองรับ GPU Acceleration**: ใช้งาน PyTorch CUDA 12.4 บนการ์ดจอ **NVIDIA GeForce RTX 3050** ความเร็ว Latency เพียง ~65 ms ต่อเฟรม!
 
 ---
@@ -67,6 +74,24 @@ tailscale serve --bg 8000
 ลิงก์: https://cctv-bangkok.tail95e28b.ts.net
 
 - API: `GET /api/traffic/summary`, `GET /api/traffic/roads?q=`, `POST /api/chat`, tiles ที่ `/api/traffic/tile/{z}/{x}/{y}.pbf` และ `/api/tiles/base/{z}/{x}/{y}.png`
+
+#### 🔒 การป้องกันเมื่อเปิดสาธารณะ (`access_guard.py`)
+
+เปิดใช้อัตโนมัติ ไม่ต้องตั้งค่าเพิ่ม:
+
+- **endpoint ควบคุม** (POST/PUT/DELETE เช่น เปลี่ยนกล้อง, ตั้ง FPS, สแกน BMA, ลบผลตรวจ) ใช้ได้เฉพาะ localhost / LAN / tailnet หรือส่ง header `X-Admin-Token` ให้ตรงกับ `ADMIN_TOKEN` ใน `.env` — คนนอกได้ `403`
+- **`/api/chat`** (ใช้ key Gemini/Claude) จำกัดต่อ IP ค่าเริ่มต้น 6 ครั้ง/นาที, 60 ครั้ง/วัน, body ไม่เกิน 8000 bytes — เกินได้ `429` / `413`
+- request ทั่วไปจากคนนอกจำกัด 600 ครั้ง/นาที ต่อ IP
+
+ปรับได้ใน `.env`:
+
+```
+ADMIN_TOKEN=รหัสลับสำหรับสั่งงานจากข้างนอก
+CHAT_RATE_PER_MIN=6
+CHAT_RATE_PER_DAY=60
+CHAT_MAX_BODY=8000
+GENERAL_RATE_PER_MIN=600
+```
 
 หมายเหตุ: endpoint เส้นจราจรของ Longdo เป็นการใช้งานแบบไม่เป็นทางการ อาจเปลี่ยนหรือต้องใช้ key ในอนาคต
 
