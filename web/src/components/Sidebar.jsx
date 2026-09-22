@@ -3,15 +3,15 @@ import NavIcon from './NavIcons.jsx';
 // Left navigation: one flat list on a navy panel (no group headers), like a classic
 // analytics console. Order = how often each page is opened.
 export const NAV_ITEMS = [
-  { id: 'dashboard', label: 'แดชบอร์ดจราจร' },
-  { id: 'analytics', label: 'สรุปข้อมูลเมือง' },
-  { id: 'map', label: 'แผนที่จราจร' },
-  { id: 'bma-count', label: 'นับรถจากกล้อง กทม.' },
-  { id: 'yolo', label: 'AI ตรวจจับรถสด' },
-  { id: 'helmet', label: 'ตรวจหมวกกันน็อก' },
-  { id: 'wrongway', label: 'ตรวจรถย้อนศร' },
-  { id: 'water', label: 'คาดการณ์น้ำ' },
-  { id: 'ai', label: 'ถาม AI เรื่องเส้นทาง' },
+  { id: 'dashboard', label: 'Traffic Dashboard' },
+  { id: 'analytics', label: 'City Analytics' },
+  { id: 'map', label: 'Traffic Map' },
+  { id: 'bma-count', label: 'BMA Camera Counts' },
+  { id: 'yolo', label: 'Live Vehicle AI' },
+  { id: 'helmet', label: 'Helmet Check' },
+  { id: 'wrongway', label: 'Wrong-Way Check' },
+  { id: 'water', label: 'Water Forecast' },
+  { id: 'ai', label: 'Ask AI (Routes)' },
 ];
 
 export const PAGE_TITLES = Object.fromEntries(NAV_ITEMS.map((i) => [i.id, i.label]));
