@@ -12,12 +12,13 @@ import YoloPage from './components/YoloPage.jsx';
 import WaterPage from './components/WaterPage.jsx';
 import BmaCountPage from './components/BmaCountPage.jsx';
 import AnalyticsPage from './components/AnalyticsPage.jsx';
+import HelmetPage from './components/HelmetPage.jsx';
 import NavIcon from './components/NavIcons.jsx';
 import { fetchCameras, fetchAIStats, fetchIncidents, fetchSurveyRanking, fetchRoadCameras } from './lib/api.js';
 import { useActiveCameras, useFavorites, useUserName, useTheme } from './lib/store.js';
 import { trackView, startHeartbeat } from './lib/telemetry.js';
 
-const PAGES = ['dashboard', 'analytics', 'bma-count', 'cameras', 'map', 'water', 'yolo', 'ai'];
+const PAGES = ['dashboard', 'analytics', 'bma-count', 'cameras', 'map', 'water', 'yolo', 'helmet', 'ai'];
 
 function pageFromHash() {
  const h = window.location.hash.replace(/^#\/?/, '');
@@ -298,6 +299,12 @@ export default function App() {
           {page === 'yolo' && (
             <motion.div key="yolo" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
               <YoloPage active cameras={cameras} favorites={favorites} camid={aiCamid} incidents={incidents} onPickCamera={setAiCamid} onToast={showToast} onAsk={askAI} />
+            </motion.div>
+          )}
+
+          {page === 'helmet' && (
+            <motion.div key="helmet" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
+              <HelmetPage isActive onToast={showToast} />
             </motion.div>
           )}
 

@@ -326,6 +326,8 @@ class BmaScanner:
         self.cycle_count = 0
         self.download_workers = 3
         self.infer_lock = threading.Lock()
+        # HelmetPatrol (helmet_service.py) set by the server: gets every snapshot + its boxes
+        self.helmet = None
 
         # Auto background scan every 3 minutes
         self.auto_scan_thread = threading.Thread(target=self._auto_scan_loop, daemon=True)
@@ -441,6 +443,11 @@ class BmaScanner:
                     with self.infer_lock:
                         boxes = self._detect(img)
                     infer_latency = (time.time() - t_infer) * 1000.0
+                    if self.helmet is not None:
+                        try:
+                            self.helmet.observe(cam, img, boxes)
+                        except Exception as e:  # noqa: BLE001 - patrol is best effort
+                            print(f"[BMA Scanner] helmet patrol failed on {camid}: {e}")
                     for cls_id, conf, x1, y1, x2, y2 in boxes:
                         category = VEHICLE_CLASSES.get(cls_id)
                         if not category:

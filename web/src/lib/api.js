@@ -124,6 +124,63 @@ export async function fetchTrafficSummary(top = 8) {
   return res.json();
 }
 
+export async function fetchWindGrid() {
+  const res = await fetch('/api/weather/wind');
+  if (!res.ok) throw new Error('wind');
+  return res.json();
+}
+
+export async function fetchAirStations() {
+  const res = await fetch('/api/air/stations');
+  if (!res.ok) throw new Error('air');
+  return res.json();
+}
+
+export async function fetchTrafficGuidance() {
+  const res = await fetch('/api/traffic/guidance');
+  if (!res.ok) throw new Error('guidance');
+  return res.json();
+}
+
+export async function fetchHelmetStatus() {
+  const res = await fetch('/api/helmet/status');
+  if (!res.ok) throw new Error('helmet_status');
+  return res.json();
+}
+
+export async function fetchHelmetRecent({ hours = 24, verdict = null, camid = null, limit = 200 } = {}) {
+  const params = new URLSearchParams({ hours: String(hours), limit: String(limit) });
+  if (verdict) params.set('verdict', verdict);
+  if (camid) params.set('camid', camid);
+  const res = await fetch(`/api/helmet/recent?${params}`);
+  if (!res.ok) throw new Error('helmet_recent');
+  return res.json();
+}
+
+export async function fetchHelmetCameras() {
+  const res = await fetch('/api/helmet/cameras');
+  if (!res.ok) throw new Error('helmet_cameras');
+  return res.json();
+}
+
+export async function triggerHelmetCheck(camid) {
+  const res = await fetch(`/api/helmet/check/${encodeURIComponent(camid)}`, { method: 'POST' });
+  if (!res.ok) throw new Error('helmet_check');
+  return res.json();
+}
+
+export async function reanalyseHelmet(hid, agent = 'local') {
+  const res = await fetch(`/api/helmet/${encodeURIComponent(hid)}/reanalyse?agent=${agent}`, { method: 'POST' });
+  if (!res.ok) throw new Error('helmet_reanalyse');
+  return res.json();
+}
+
+export async function reanalyseHelmetPending(agent = 'local', limit = 40) {
+  const res = await fetch(`/api/helmet/reanalyse_pending?agent=${agent}&limit=${limit}`, { method: 'POST' });
+  if (!res.ok) throw new Error('helmet_reanalyse_pending');
+  return res.json();
+}
+
 export async function fetchRoadCameras(name, maxKm = 0.25) {
   const res = await fetch(`/api/traffic/road_cameras?name=${encodeURIComponent(name)}&max_km=${maxKm}`);
   if (!res.ok) throw new Error('road_cameras');

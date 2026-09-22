@@ -6,9 +6,9 @@ export const NAV_ITEMS = [
   { id: 'dashboard', label: 'แดชบอร์ดจราจร' },
   { id: 'analytics', label: 'สรุปข้อมูลเมือง' },
   { id: 'map', label: 'แผนที่จราจร' },
-  { id: 'cameras', label: 'กล้องของฉัน' },
   { id: 'bma-count', label: 'นับรถจากกล้อง กทม.' },
   { id: 'yolo', label: 'AI ตรวจจับรถสด' },
+  { id: 'helmet', label: 'ตรวจหมวกกันน็อก' },
   { id: 'water', label: 'คาดการณ์น้ำ' },
   { id: 'ai', label: 'ถาม AI เรื่องเส้นทาง' },
 ];
