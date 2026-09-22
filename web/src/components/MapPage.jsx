@@ -40,6 +40,20 @@ function mapStyle() {
     },
     layers: [
       { id: 'base', type: 'raster', source: 'base', paint: { 'raster-saturation': -0.45, 'raster-brightness-min': 0.05, 'raster-contrast': -0.08 } },
+      // Flat building footprints for the "รายละเอียดสิ่งปลูกสร้าง" toggle in 2D (the 3D view extrudes them instead)
+      {
+        id: 'buildings-2d',
+        type: 'fill',
+        source: 'omt',
+        'source-layer': 'building',
+        minzoom: 14,
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-color': ['interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 8], 0, '#dbe4ee', 40, '#b6c4d6', 120, '#8fa3bd', 250, '#6b82a3'],
+          'fill-opacity': 0.55,
+          'fill-outline-color': '#64748b',
+        },
+      },
       {
         id: 'traffic-forward',
         type: 'line',
@@ -74,9 +88,36 @@ function mapStyle() {
           'fill-extrusion-opacity': 0.78,
         },
       },
+      // Invisible points so the OpenFreeMap POIs (hospitals, schools, malls, temples ...) are loaded
+      // and queryable; their Thai names are drawn as DOM markers (the style has no glyphs for text)
+      { id: 'poi-pts', type: 'circle', source: 'omt', 'source-layer': 'poi', minzoom: 14, paint: { 'circle-radius': 1, 'circle-opacity': 0 } },
     ],
   };
 }
+
+// OpenMapTiles poi classes worth a label, with an icon and a Thai name
+const POI_KIND = {
+  hospital: ['🏥', 'โรงพยาบาล', '#dc2626'], clinic: ['🏥', 'คลินิก', '#dc2626'], doctors: ['🏥', 'คลินิก', '#dc2626'], pharmacy: ['💊', 'ร้านขายยา', '#dc2626'],
+  school: ['🏫', 'โรงเรียน', '#2563eb'], college: ['🏫', 'วิทยาลัย', '#2563eb'], university: ['🎓', 'มหาวิทยาลัย', '#2563eb'], kindergarten: ['🏫', 'อนุบาล', '#2563eb'],
+  shop: ['🛍️', 'ร้านค้า', '#7c3aed'], grocery: ['🛒', 'ซูเปอร์มาร์เก็ต', '#7c3aed'], mall: ['🏬', 'ห้างสรรพสินค้า', '#7c3aed'], department_store: ['🏬', 'ห้างสรรพสินค้า', '#7c3aed'],
+  town_hall: ['🏛️', 'หน่วยงานราชการ', '#b45309'], townhall: ['🏛️', 'หน่วยงานราชการ', '#b45309'], police: ['🚓', 'สถานีตำรวจ', '#b45309'], fire_station: ['🚒', 'สถานีดับเพลิง', '#b45309'], post: ['📮', 'ไปรษณีย์', '#b45309'], bank: ['🏦', 'ธนาคาร', '#b45309'], embassy: ['🏛️', 'สถานทูต', '#b45309'],
+  place_of_worship: ['🛕', 'ศาสนสถาน', '#d97706'],
+  railway: ['🚉', 'สถานีรถไฟ', '#059669'], bus: ['🚌', 'ป้ายรถเมล์', '#059669'], ferry_terminal: ['⛴️', 'ท่าเรือ', '#059669'], airport: ['✈️', 'สนามบิน', '#059669'], aerodrome: ['✈️', 'สนามบิน', '#059669'],
+  lodging: ['🏨', 'โรงแรม', '#0891b2'], hotel: ['🏨', 'โรงแรม', '#0891b2'],
+  park: ['🌳', 'สวนสาธารณะ', '#16a34a'], stadium: ['🏟️', 'สนามกีฬา', '#16a34a'], sports_centre: ['🏟️', 'ศูนย์กีฬา', '#16a34a'], golf: ['⛳', 'สนามกอล์ฟ', '#16a34a'],
+  museum: ['🏛️', 'พิพิธภัณฑ์', '#9333ea'], attraction: ['📍', 'สถานที่ท่องเที่ยว', '#9333ea'], monument: ['🗿', 'อนุสาวรีย์', '#9333ea'], theatre: ['🎭', 'โรงละคร', '#9333ea'], cinema: ['🎬', 'โรงภาพยนตร์', '#9333ea'],
+  parking: ['🅿️', 'ที่จอดรถ', '#475569'], fuel: ['⛽', 'ปั๊มน้ำมัน', '#475569'], charging_station: ['🔌', 'จุดชาร์จ EV', '#475569'],
+  market: ['🧺', 'ตลาด', '#ea580c'],
+};
+const POI_MAX = 70;
+const POI_MIN_ZOOM = 15;
+// Label priority: public buildings first, then services, shops last (and capped) so a mall's
+// tenants do not crowd out the hospital next door
+const POI_TIER = (cls) => (['shop', 'grocery', 'clothing_store', 'department_store', 'lodging', 'hotel', 'parking', 'fuel', 'charging_station', 'bank', 'pharmacy', 'clinic', 'doctors'].includes(cls) ? 2
+  : ['mall', 'market', 'park', 'museum', 'attraction', 'monument', 'theatre', 'cinema', 'stadium', 'sports_centre', 'golf', 'post', 'embassy'].includes(cls) ? 1 : 0);
+const POI_TIER_MAX = [POI_MAX, 30, 15];
+const poiKindOf = (p) => POI_KIND[p.class] || POI_KIND[p.subclass];
+const poiTierOf = (p) => POI_TIER(POI_KIND[p.class] ? p.class : p.subclass);
 
 const KIND_TH = { accident: 'อุบัติเหตุ', breakdown: 'รถเสีย / จอดกีดขวาง' };
 const agoTh = (ts) => {
@@ -132,6 +173,10 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const [radarTime, setRadarTime] = useState(null);
   const [showPm, setShowPm] = useState(true);
   const [is3d, setIs3d] = useState(false);
+  // Building details: flat footprints in 2D, POI name labels (DOM markers) and click-for-info on any building
+  const [showPlaces, setShowPlaces] = useState(false);
+  const showPlacesRef = useRef(false);
+  const poiMarkersRef = useRef([]);
   // Wind overlay drawn by us (Open-Meteo grid) so nothing sits on top of the traffic map
   const [showWind, setShowWind] = useState(true);
   const [wind, setWind] = useState(null);
@@ -230,6 +275,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
     const map = new maplibregl.Map({ container: mapEl.current, style: mapStyle(), center: [100.55, 13.78], zoom: 11, attributionControl: { compact: true } });
     map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), 'top-right');
     mapRef.current = map;
+    window.__bkkMap = map; // devtools access
     map.on('error', (e) => console.warn('[map]', e?.error?.message || e));
     return () => {
       map.remove();
@@ -313,9 +359,111 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
       map.easeTo({ pitch: is3d ? 58 : 0, bearing: is3d ? -17 : 0, duration: 900 });
       if (is3d && map.getZoom() < 14) map.easeTo({ zoom: 14.5, duration: 900 });
     };
-    if (map.isStyleLoaded()) apply();
-    else map.once('load', apply);
+    if (map.getLayer('buildings-3d')) apply();
+    else map.once('styledata', apply);
   }, [is3d]);
+
+  // Building details toggle: 2D footprints + POI labels + click info. Labels are rebuilt on every
+  // moveend from the vector tiles in view (rank = OpenMapTiles importance, lower is bigger).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    showPlacesRef.current = showPlaces;
+    const clearPois = () => {
+      for (const m of poiMarkersRef.current) m.remove();
+      poiMarkersRef.current = [];
+    };
+    let lastSig = '';
+    const drawPois = () => {
+      if (!showPlacesRef.current || map.getZoom() < POI_MIN_ZOOM || !map.getLayer('poi-pts')) {
+        clearPois();
+        lastSig = '';
+        return;
+      }
+      const raw = map.queryRenderedFeatures({ layers: ['poi-pts'] });
+      // same POIs in the same place as last time (tiles unchanged): keep the markers as they are
+      const c = map.getCenter();
+      const sig = `${raw.length}|${map.getZoom().toFixed(2)}|${c.lng.toFixed(5)},${c.lat.toFixed(5)}`;
+      if (sig === lastSig) return;
+      lastSig = sig;
+      clearPois();
+      const seen = new Set();
+      const feats = raw
+        .map((f) => ({ p: f.properties, c: f.geometry?.coordinates }))
+        .filter((f) => f.c && f.p.name && poiKindOf(f.p))
+        .map((f) => ({ ...f, tier: poiTierOf(f.p) }))
+        .sort((a, b) => a.tier - b.tier || (a.p.rank ?? 99) - (b.p.rank ?? 99));
+      const perTier = [0, 0, 0];
+      const placed = [];   // screen positions of labels already drawn: skip one that would overlap
+      for (const f of feats) {
+        if (poiMarkersRef.current.length >= POI_MAX) break;
+        if (perTier[f.tier] >= POI_TIER_MAX[f.tier]) continue;
+        const key = `${f.p.name}|${Math.round(f.c[0] * 2000)}|${Math.round(f.c[1] * 2000)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const pt = map.project(f.c);
+        if (placed.some((q) => Math.abs(q.x - pt.x) < 110 && Math.abs(q.y - pt.y) < 22)) continue;
+        placed.push(pt);
+        perTier[f.tier] += 1;
+        const [icon, kindTh, color] = poiKindOf(f.p);
+        const nameEn = f.p['name:en'] || f.p.name_en;
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = 'poi-label';
+        el.style.cssText = `display:flex;align-items:center;gap:3px;max-width:170px;padding:2px 6px 2px 4px;border-radius:999px;background:rgba(255,255,255,.92);border:1.5px solid ${color};color:#0f172a;font:500 11px/1.2 var(--font-sans);box-shadow:0 1px 3px rgba(15,23,42,.25);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis`;
+        el.innerHTML = `<span style="font-size:12px">${icon}</span><span style="overflow:hidden;text-overflow:ellipsis">${esc(f.p.name)}</span>`;
+        el.title = `${kindTh}: ${f.p.name}`;
+        const popup = new maplibregl.Popup({ offset: 12, closeButton: true, maxWidth: '260px' }).setHTML(
+          `<div style="font-size:13px;line-height:1.4"><b>${esc(f.p.name)}</b>${nameEn ? `<br><span style="color:#64748b">${esc(nameEn)}</span>` : ''}` +
+            `<br><span style="color:${color};font-weight:600">${icon} ${kindTh}</span>${f.p.subclass && f.p.subclass !== f.p.class ? ` <span style="color:#64748b">· ${esc(f.p.subclass)}</span>` : ''}` +
+            '<br><span style="color:#94a3b8;font-size:11px">ข้อมูล OpenStreetMap / OpenFreeMap</span></div>'
+        );
+        poiMarkersRef.current.push(new maplibregl.Marker({ element: el, anchor: 'bottom', offset: [0, -4] }).setLngLat(f.c).setPopup(popup).addTo(map));
+      }
+    };
+    const onBuildingClick = (e) => {
+      if (!showPlacesRef.current) return;
+      const layers = ['buildings-3d', 'buildings-2d'].filter((id) => map.getLayer(id));
+      const hit = map.queryRenderedFeatures(e.point, { layers })[0];
+      if (!hit) return;
+      const h = Number(hit.properties.render_height ?? 0);
+      const base = Number(hit.properties.render_min_height ?? 0);
+      const floors = h > 0 ? Math.max(1, Math.round(h / 3.2)) : null;
+      // the nearest named POI inside ~40 px is very likely this building's name
+      const near = map.queryRenderedFeatures([[e.point.x - 40, e.point.y - 40], [e.point.x + 40, e.point.y + 40]], { layers: ['poi-pts'] })
+        .filter((f) => f.properties.name && poiKindOf(f.properties))
+        .sort((a, b) => poiTierOf(a.properties) - poiTierOf(b.properties) || (a.properties.rank ?? 99) - (b.properties.rank ?? 99))[0];
+      const kind = near && poiKindOf(near.properties);
+      new maplibregl.Popup({ offset: 6, closeButton: true, maxWidth: '260px' })
+        .setLngLat(e.lngLat)
+        .setHTML(
+          `<div style="font-size:13px;line-height:1.45"><b>${near ? esc(near.properties.name) : 'อาคาร'}</b>` +
+            (kind ? `<br><span style="color:${kind[2]};font-weight:600">${kind[0]} ${kind[1]}</span>` : '') +
+            (h > 0 ? `<br>สูงประมาณ <b>${Math.round(h)} ม.</b> (~${floors} ชั้น)${base > 0 ? ` · ยกจากพื้น ${Math.round(base)} ม.` : ''}` : '<br><span style="color:#64748b">ไม่มีข้อมูลความสูง</span>') +
+            `<br><span style="color:#94a3b8;font-size:11px">${e.lngLat.lat.toFixed(5)}, ${e.lngLat.lng.toFixed(5)} · OpenStreetMap</span></div>`
+        )
+        .addTo(map);
+    };
+    const apply = () => {
+      if (map.getLayer('buildings-2d')) map.setLayoutProperty('buildings-2d', 'visibility', showPlaces && !is3d ? 'visible' : 'none');
+      if (showPlaces && map.getZoom() < POI_MIN_ZOOM) map.easeTo({ zoom: POI_MIN_ZOOM, duration: 700 });
+      drawPois();
+    };
+    // idle fires each time the map finishes rendering (also when late tiles come in); moveend covers pans
+    const onIdle = () => drawPois();
+    // getLayer = the style JSON is applied (isStyleLoaded() is false whenever tiles are still loading)
+    if (map.getLayer('poi-pts')) apply();
+    else map.once('styledata', apply);
+    map.on('idle', onIdle);
+    map.on('moveend', onIdle);
+    map.on('click', onBuildingClick);
+    return () => {
+      map.off('idle', onIdle);
+      map.off('moveend', onIdle);
+      map.off('click', onBuildingClick);
+      clearPois();
+    };
+  }, [showPlaces, is3d]);
 
   // PM2.5 stations as DOM markers (rounded square with the µg/m³ value; the map style ships no
   // glyphs so a symbol layer cannot draw text). Colour = Thai AQI band.
@@ -695,6 +843,11 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
             <span className="text-[11px] text-slate-500">ลาก: ขวาคลิก / Ctrl+ลาก หมุน</span>
           </div>
           <p className="text-[11px] text-slate-500 mt-1">ความสูงอาคารจาก OpenFreeMap แสดงเมื่อซูม ≥ 14 · แผนที่เอียง 58°</p>
+          <label className="mt-2 inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
+            <input type="checkbox" checked={showPlaces} onChange={(e) => setShowPlaces(e.target.checked)} className="accent-blue-600 w-4 h-4" />
+            <Icon name="pin" /> รายละเอียดสิ่งปลูกสร้าง
+          </label>
+          <p className="text-[11px] text-slate-500 mt-1">ซูม ≥ 15: ชื่อโรงพยาบาล โรงเรียน ห้าง วัด สถานี ฯลฯ บนแผนที่ + ผังอาคาร (2D) · คลิกอาคารดูชื่อ/ความสูง/จำนวนชั้น</p>
         </div>
 
         {/* Wind overlay toggle (own layer, Open-Meteo) */}

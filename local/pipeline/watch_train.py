@@ -2,6 +2,7 @@
 
     python watch_train.py                       # local/logs/train_helmet_det.log
     python watch_train.py path\to\other.log
+    python watch_train.py local\logs\train_wrongway_det.log
 
 Reads the last progress line ("  12/80  ...  640: 45% ... 37/82 1.3it/s 0:28<0:35") and prints
 overall % = (finished epochs + fraction of the current one) / total, plus latest val mAP.
@@ -38,7 +39,7 @@ def main():
         ep = EPOCH_RE.findall(txt)
         mp = MAP_RE.findall(txt)
         if 'done ->' in txt:
-            print('\n[done] ' + txt[txt.rfind('[helmet-det] done'):].strip())
+            print('\n[done] ' + txt[txt.rfind('done ->') - 16:].strip())
             break
         if 'Traceback' in txt or 'Error' in txt.split('Starting training')[-1]:
             tail_lines = [l for l in txt.strip().splitlines() if l.strip()][-4:]

@@ -30,9 +30,10 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CACHE_DIR = os.path.join(BASE_DIR, "cache", "rsc")
+from instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
+CACHE_DIR = os.path.join(DATA_DIR, "cache", "rsc")
 SUMMARY_CACHE_FILE = os.path.join(CACHE_DIR, "summary.json")
-DB_PATH = os.path.join(BASE_DIR, "vehicle_counts.db")
+DB_PATH = os.path.join(DATA_DIR, "vehicle_counts.db")
 
 RSC_API = "https://thairscapi.rvpeservice.com/api"
 RSC_WS = "https://www.thairsc.com/thairsc-ws"

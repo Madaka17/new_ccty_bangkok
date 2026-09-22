@@ -61,6 +61,10 @@ GEMINI_VISION_MODEL=gemini-3.5-flash-lite
 # ตรวจหมวก: จำกัดการเรียก API ต่อชั่วโมง, โมเดลแยก
 HELMET_PATROL_MAX_PER_HOUR=240
 HELMET_AGENT_MODEL=gemini-3.1-flash-lite
+# ตรวจย้อนศร: โมเดลทิศทางรถ (เทรนด้วย local\pipeline\wrongway_pipeline.bat), งบ AI ต่อชั่วโมง, จำนวนรถขั้นต่ำต่อช่องก่อนตัดสิน
+WRONGWAY_DET=wrongway_det.pt
+WRONGWAY_MAX_PER_HOUR=120
+WRONGWAY_MIN_VOTES=40
 # ป้องกันสาธารณะ: ตั้งแล้วส่ง header X-Admin-Token เพื่อกดปุ่มควบคุมจากนอก LAN
 ADMIN_TOKEN=
 # โฟลเดอร์เก็บ CSV รอบนับกล้อง กทม. + ภาพหลักฐานฝ่าฝืน (ค่าเริ่มต้น D:\Data)
@@ -83,6 +87,7 @@ tailscale serve --bg 8000
 ลิงก์: https://cctv-bangkok.tail95e28b.ts.net
 
 ทางลัด (ดับเบิลคลิก):
+- `run_test.bat` **เซิร์ฟเวอร์ทดสอบ** ที่ http://localhost:8001 จากโค้ดชุดเดียวกัน แต่ใช้ cache/DB/โฟลเดอร์ข้อมูลของตัวเองใน `local\stage\` (ไม่แตะของจริง, ไม่ออก Tailscale) ใช้ลองโค้ดใหม่ก่อนกด `restart_public.bat`; `stop_test.bat` ปิด; ลบ `local\stage\` เพื่อเริ่มใหม่สะอาด ๆ (ตัวแปร: `PORT`, `INSTANCE_DIR`, `BMA_DATA_DIR` ดู `instance.py`)
 - `run_public.bat` เปิด Funnel + รันเซิร์ฟเวอร์
 - `restart_public.bat` ปิดเซิร์ฟเวอร์เดิมที่พอร์ต 8000 แล้วเปิดใหม่พร้อม Funnel (ใช้หลังแก้ `.env` หรือโค้ด)
 - `stop_public.bat` ปิด Funnel (เซิร์ฟเวอร์ยังรันอยู่)
@@ -159,6 +164,7 @@ D:\New_CCTV\
 ### Backend (Python, FastAPI)
 | ไฟล์ | หน้าที่ |
 |---|---|
+| `instance.py` | พอร์ตและโฟลเดอร์ข้อมูลของ instance นี้ (`PORT`, `INSTANCE_DIR`): ทุก service ดึง path ของ `cache/` และ `vehicle_counts.db` จากที่นี่ ให้เซิร์ฟเวอร์จริง (:8000) กับเซิร์ฟเวอร์ทดสอบ (:8001, `run_test.bat`) รันพร้อมกันได้โดยไม่เขียนทับกัน |
 | `server.py` | จุดเริ่มต้น: โหลดกล้อง, สร้าง detector/scanner/services, ประกาศ REST API ทั้งหมด, เสิร์ฟ `web/dist` |
 | `yolo_detector.py` | YOLO11x + ByteTrack บนสตรีมกล้องเดียว (หน้า AI ตรวจจับรถสด), นับรถผ่าน, ประเมินระดับจราจร, ตรวจรถจอดนิ่ง/ชน |
 | `count_workers.py` | นับรถต่อเนื่องหลายกล้องในพื้นหลัง (แดชบอร์ด "จำนวนรถที่ผ่านกล้อง AI") |
@@ -172,8 +178,11 @@ D:\New_CCTV\
 | `bma_events.py` | ดึงรายงานสด (น้ำท่วม/อุบัติเหตุ) จาก cpudapp.bangkok.go.th ทุก 60 วินาที |
 | `water_service.py` | ระดับน้ำ/คลอง/น้ำทะเลหนุน/ฝน จาก thaiwater.net + คาดการณ์ (ทางการ 7 วัน หรือโมเดลในเครื่อง 48 ชม.) + หาคีย์ API ใหม่อัตโนมัติ |
 | `guidance_service.py` | คำแนะนำระบายรถรายเส้นทางหลัก 12 สาย ทุก 1 นาที จากเส้นสี Longdo (hotspots) + กล้อง กทม. + เหตุการณ์; Gemini เรียบเรียงข้อความทุก 5 นาที (`/api/traffic/guidance`) |
+| `flood_service.py` | จุดน้ำท่วมขังถนน กทม. ~250 จุด จากเซ็นเซอร์สำนักการระบายน้ำ (`weather.bangkok.go.th/flood`) ดึงทุก 5 นาที: ระดับน้ำเหนือผิวถนนหน่วย ซม. ต่อจุด + ถนน/เขต/พิกัด/เวลาเริ่มท่วม/สูงสุด เกณฑ์ตามเว็บต้นทาง (≤5 ปกติ, 5-10 เล็กน้อย, >10 ท่วม) เก็บประวัติในหน่วยความจำเพื่อบอกแนวโน้มขึ้น/ลงเทียบ 25 นาทีก่อน และให้ Gemini เขียนบทวิเคราะห์ (ระดับความรุนแรง จุดที่ต้องจับตา คำแนะนำ แนวโน้ม) ทุก 5 นาทีเมื่อสถานการณ์เปลี่ยน มี template ภาษาไทยสำรองเมื่อไม่มี key (`/api/flood/status|stations|roads|analysis`) — เฉพาะ กทม. 50 เขต ปริมณฑลไม่มีเซ็นเซอร์สาธารณะ |
 | `air_service.py` | PM2.5 / AQI รายสถานีจาก Air4Thai ทุก 10 นาที (`/api/air/stations`) |
 | `helmet_service.py` | ตรวจหมวกกันน็อกทุกกล้อง กทม.: crop มอไซจากรอบสแกน → โมเดลในเครื่อง (`HELMET_DET`, ค่าปัจจุบัน `helmet_det_blur.pt`) คัดกรอง → AI agent (Gemini/Claude) ยืนยัน → ผู้ไม่สวมหมวกเก็บภาพ+CSV ที่ `BMA_DATA_DIR\helmet\` (`/api/helmet/*`) |
+| `wrongway_service.py` | ตรวจรถย้อนศรทุกกล้อง กทม. จากภาพนิ่ง: โมเดลทิศทางรถ `wrongway_det.pt` (YOLO26x, คลาส `car/moto` × `toward/away/left/right`) อ่านว่ารถหันไปทางไหน → กล้องแต่ละตัวเรียนรู้ทิศปกติต่อช่องกริด 12×9 (`cache/heading/`) → รถที่หันสวนช่องที่รู้ทิศแล้วส่ง AI agent ยืนยัน → หลักฐาน+CSV ที่ `BMA_DATA_DIR\wrongway\` (`/api/wrongway/*`) |
+| `local/pipeline/collect_wrongway_dataset.py`, `train_wrongway_det.py`, `wrongway_pipeline.bat`, `wrongway_status.bat` | dataset ทิศทางรถแบบไม่ต้อง label มือ: เก็บ burst จากทุกกล้อง (BMA ~1 เฟรม/วิ + HLS) ติดตามรถ ทิศจากการเคลื่อนที่ (รถจอดใช้แผนที่ทิศของกล้อง) → fine-tune `yolo26x.pt` เป็น `wrongway_det.pt`; `wrongway_pipeline.bat [รอบ] [นาทีห่าง] [epochs] [batch]` ทำครบทั้งสองขั้น + หน้าต่างสถานะ |
 | `access_guard.py` | ป้องกันเมื่อเปิด Funnel สาธารณะ: POST ควบคุมทำได้จาก LAN/tailnet หรือ `X-Admin-Token`; `/api/chat` จำกัดต่อ IP |
 | `local/pipeline/backup_db.py` (`backup_db.bat`) | งานกลางคืน: ลบ `bma_history`/`samples` เกิน 90 วัน, VACUUM, สำเนา DB + CSV + .env ไป `BMA_DATA_DIRackup\` (ลงทะเบียน Task Scheduler 03:30 แล้ว) |
 | `local/pipeline/watchdog.bat` | ping `/api/health` ทุก 1 นาที ล้ม 3 ครั้งติดจึงรัน `restart_public.bat` |
@@ -192,9 +201,10 @@ D:\New_CCTV\
 | `components/dashboard/ui.jsx` | ชิ้นส่วนพื้นฐาน: Card, Badge, Button, Segmented, Skeleton, EmptyState, ErrorState |
 | `components/dashboard/primitives.jsx` | ชิ้นส่วนระดับหน้า: PageHeader, StatTile, StatusBanner, Tabs, Modal, ShareBar |
 | `components/dashboard/format.js` | ฟอร์แมตเวลา/ตัวเลข/สีสถานะ |
-| `components/DashboardPage.jsx` + `dashboard/*` | แดชบอร์ดจราจร: ประโยคสรุป, KPI, ดัชนีระบายรถ, เหตุการณ์, ถนนติด/โล่ง, กราฟแนวโน้ม, จำนวนรถผ่านกล้อง |
+| `components/DashboardPage.jsx` + `dashboard/*` | แดชบอร์ดจราจร 4 แท็บ: ภาพรวมจราจร, **น้ำท่วมขังถนน** (`dashboard/FloodPanel.jsx`: นับจุดท่วม/เล็กน้อย/ปกติ/ขัดข้อง, รายจุดเรียงตามความลึกพร้อมแถบระดับ-เวลาเริ่มท่วม-สูงสุด, สรุปรายเขต, สรุปรายถนน), เหตุการณ์สด, รายงานสดจากศูนย์ |
 | `components/SidePanel.jsx`, `CameraCard.jsx`, `CityWindow.jsx`, `VideoSlot.jsx` | หน้า "กล้องของฉัน": เลือกกล้อง + ดูภาพสด HLS สูงสุด 9 ช่อง |
 | `components/BmaCountPage.jsx` + `bma/*` | นับรถจากกล้อง กทม.: ภาพรวมตอนนี้, เทียบวัน/สัปดาห์/เดือน, กล้องทุกตัว + สตรีม YOLO |
+| `components/HelmetPage.jsx`, `components/WrongWayPage.jsx` | ตรวจหมวกกันน็อก / ตรวจรถย้อนศร จากกล้อง กทม. ทุกตัว: หลักฐาน, รถที่สงสัย (สั่งตรวจซ้ำด้วยโมเดลในเครื่องหรือ AI), กล้องทุกตัว + ตรวจตอนนี้ |
 | `components/YoloPage.jsx` | AI ตรวจจับรถสดจากกล้องเดียว ปรับ FPS/ความมั่นใจ |
 | `components/MapPage.jsx` | แผนที่ MapLibre: เส้นจราจร, หมุดกล้อง, เหตุการณ์ |
 | `components/WaterPage.jsx` + `water/*` | คาดการณ์น้ำ: กราฟรายสถานี, ตารางสถานี, น้ำทะเลหนุน, คลอง/ถนน, ฝน, รายงานสด กทม. |

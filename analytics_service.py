@@ -24,7 +24,8 @@ from telemetry_service import telemetry
 from traffic_service import traffic
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-RSC_POINTS_GLOB = os.path.join(BASE_DIR, "cache", "rsc", "points_*.json")
+from instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
+RSC_POINTS_GLOB = os.path.join(DATA_DIR, "cache", "rsc", "points_*.json")
 BKK_TZ = timezone(timedelta(hours=7))
 
 SUMMARY_TTL = 60

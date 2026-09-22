@@ -130,6 +130,35 @@ export async function fetchWindGrid() {
   return res.json();
 }
 
+// Road flooding: BMA drainage sensors (weather.bangkok.go.th), depth over the road in cm
+export async function fetchFloodStatus() {
+  const res = await fetch('/api/flood/status');
+  if (!res.ok) throw new Error('flood_status');
+  return res.json();
+}
+
+export async function fetchFloodStations({ status = null, district = null, kind = null, limit = 400 } = {}) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (status) params.set('status', status);
+  if (district) params.set('district', district);
+  if (kind) params.set('kind', kind);
+  const res = await fetch(`/api/flood/stations?${params}`);
+  if (!res.ok) throw new Error('flood_stations');
+  return res.json();
+}
+
+export async function fetchFloodAnalysis() {
+  const res = await fetch('/api/flood/analysis');
+  if (!res.ok) throw new Error('flood_analysis');
+  return res.json();
+}
+
+export async function fetchFloodRoads(limit = 60) {
+  const res = await fetch(`/api/flood/roads?limit=${limit}`);
+  if (!res.ok) throw new Error('flood_roads');
+  return res.json();
+}
+
 export async function fetchAirStations() {
   const res = await fetch('/api/air/stations');
   if (!res.ok) throw new Error('air');
@@ -178,6 +207,58 @@ export async function reanalyseHelmet(hid, agent = 'cloud') {
 export async function reanalyseHelmetPending(agent = 'cloud', limit = 40) {
   const res = await fetch(`/api/helmet/reanalyse_pending?agent=${agent}&limit=${limit}`, { method: 'POST' });
   if (!res.ok) throw new Error('helmet_reanalyse_pending');
+  return res.json();
+}
+
+// Wrong-way patrol (all BMA cameras): same shape as the helmet API plus the learned lane-direction field
+export async function fetchWrongWayStatus() {
+  const res = await fetch('/api/wrongway/status');
+  if (!res.ok) throw new Error('wrongway_status');
+  return res.json();
+}
+
+export async function fetchWrongWayRecent({ hours = 24, verdict = null, camid = null, limit = 200 } = {}) {
+  const params = new URLSearchParams({ hours: String(hours), limit: String(limit) });
+  if (verdict) params.set('verdict', verdict);
+  if (camid) params.set('camid', camid);
+  const res = await fetch(`/api/wrongway/recent?${params}`);
+  if (!res.ok) throw new Error('wrongway_recent');
+  return res.json();
+}
+
+export async function fetchWrongWayCameras() {
+  const res = await fetch('/api/wrongway/cameras');
+  if (!res.ok) throw new Error('wrongway_cameras');
+  return res.json();
+}
+
+export async function fetchWrongWayField(camid) {
+  const res = await fetch(`/api/wrongway/field/${encodeURIComponent(camid)}`);
+  if (!res.ok) throw new Error('wrongway_field');
+  return res.json();
+}
+
+export async function triggerWrongWayCheck(camid) {
+  const res = await fetch(`/api/wrongway/check/${encodeURIComponent(camid)}`, { method: 'POST' });
+  if (!res.ok) throw new Error('wrongway_check');
+  return res.json();
+}
+
+export async function reanalyseWrongWay(wid, agent = 'cloud') {
+  const res = await fetch(`/api/wrongway/${encodeURIComponent(wid)}/reanalyse?agent=${agent}`, { method: 'POST' });
+  if (!res.ok) throw new Error('wrongway_reanalyse');
+  return res.json();
+}
+
+export async function reanalyseWrongWayPending(agent = 'cloud', limit = 40) {
+  const res = await fetch(`/api/wrongway/reanalyse_pending?agent=${agent}&limit=${limit}`, { method: 'POST' });
+  if (!res.ok) throw new Error('wrongway_reanalyse_pending');
+  return res.json();
+}
+
+export async function dismissWrongWay(wid) {
+  const res = await fetch(`/api/wrongway/${encodeURIComponent(wid)}/dismiss`, { method: 'POST' });
+  if (!res.ok) throw new Error('wrongway_dismiss');
   return res.json();
 }
 

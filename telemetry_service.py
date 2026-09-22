@@ -12,7 +12,8 @@ import time
 from datetime import datetime, timedelta, timezone
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "cache", "telemetry.db")
+from instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
+DB_PATH = os.path.join(DATA_DIR, "cache", "telemetry.db")
 BKK_TZ = timezone(timedelta(hours=7))
 
 ONLINE_WINDOW = 90       # seconds since last heartbeat to count as "online now"

@@ -56,7 +56,7 @@ function Tile({ icon, title, status, tone, detail, onClick }) {
   );
 }
 
-export default function CityStatusStrip({ summary, incidents, onNavigate, isActive }) {
+export default function CityStatusStrip({ summary, incidents, flood, onNavigate, isActive }) {
   const [water, setWater] = useState(null);
   const [air, setAir] = useState(null);
 
@@ -82,9 +82,13 @@ export default function CityStatusStrip({ summary, incidents, onNavigate, isActi
   const worst = summary?.congested?.[0];
   const trafficDetail = flow == null ? '' : `ระบายได้ ${flow}/100 · แดง ${summary.red_pct}%${worst ? ` · ติดสุด ${worst.name}` : ''}`;
 
-  // Rain + water
+  // Rain + water. Flooded-road counts come from the BMA drainage sensors (flood_service.py, ~250
+  // stations); ThaiWater relays only about 107 of them, so it is the fallback.
   const roads = water?.flood_roads;
-  const flooding = (roads?.flooding || 0) + (roads?.slight || 0);
+  const flooding = flood
+    ? (flood.counts?.flood || 0) + (flood.counts?.slight || 0)
+    : (roads?.flooding || 0) + (roads?.slight || 0);
+  const deepest = flood?.wet?.[0];
   const overflow = water?.river_counts?.overflow || 0;
   const heavyRain = (water?.ntw?.rain_counts?.heavy || 0) + (water?.ntw?.rain_counts?.extreme || 0);
   const worstZone = water?.weather?.[0];
@@ -92,9 +96,11 @@ export default function CityStatusStrip({ summary, incidents, onNavigate, isActi
   const waterStatus = !water ? 'กำลังโหลด' : flooding > 0 ? `น้ำท่วมขัง ${flooding} จุด` : worstZone?.watch === 'red' ? `เฝ้าระวัง ${worstZone.name}` : overflow > 0 ? `ล้นตลิ่ง ${overflow} สถานี` : heavyRain > 0 ? `ฝนหนัก ${heavyRain} จุด` : 'ปกติ';
   const waterDetail = !water
     ? ''
-    : worstZone
-      ? `${worstZone.name}: ฝน 24 ชม.ข้างหน้า ${worstZone.rain_24h ?? 0} มม. (โอกาส ${worstZone.prob_24h ?? 0}%)${worstZone.storm_at ? ` · พายุฝน ${worstZone.storm_at} น.` : ''}`
-      : `ถนนท่วม ${flooding} · ล้นตลิ่ง ${overflow} · ฝนหนัก ${heavyRain} สถานี`;
+    : deepest
+      ? `ลึกสุด ${deepest.short_name} ${deepest.level_cm} ซม.${deepest.district ? ` (เขต${deepest.district})` : ''}`
+      : worstZone
+        ? `${worstZone.name}: ฝน 24 ชม.ข้างหน้า ${worstZone.rain_24h ?? 0} มม. (โอกาส ${worstZone.prob_24h ?? 0}%)${worstZone.storm_at ? ` · พายุฝน ${worstZone.storm_at} น.` : ''}`
+        : `ถนนท่วม ${flooding} · ล้นตลิ่ง ${overflow} · ฝนหนัก ${heavyRain} สถานี`;
 
   // Air
   const pm = air?.avg_pm25;

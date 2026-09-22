@@ -19,10 +19,14 @@ import urllib.request
 import mapbox_vector_tile
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CACHE_DIR = os.path.join(BASE_DIR, "cache")
-TRAFFIC_TILE_DIR = os.path.join(CACHE_DIR, "traffic_tiles")
-BASE_TILE_DIR = os.path.join(CACHE_DIR, "longdo_base")
-OSM_TILE_DIR = os.path.join(CACHE_DIR, "osm")
+from instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
+CACHE_DIR = os.path.join(DATA_DIR, "cache")
+# Map tiles are shared by every instance (test server included): they are big (the offline OSM
+# set is thousands of files), keyed by z/x/y so two writers never clash, and identical for both.
+TILE_CACHE_DIR = os.path.join(BASE_DIR, "cache")
+TRAFFIC_TILE_DIR = os.path.join(TILE_CACHE_DIR, "traffic_tiles")
+BASE_TILE_DIR = os.path.join(TILE_CACHE_DIR, "longdo_base")
+OSM_TILE_DIR = os.path.join(TILE_CACHE_DIR, "osm")
 HISTORY_FILE = os.path.join(CACHE_DIR, "traffic_history.json")
 
 TRAFFIC_TILE_URL = "https://msv.longdo.com/maps/traffic/{z}/{x}/{y}.pbf"

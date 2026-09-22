@@ -16,9 +16,10 @@ from PIL import Image, ImageDraw, ImageFont
 from bma_archive import CycleArchiver
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CACHE_DIR = os.path.join(BASE_DIR, "cache", "bma_snapshots")
+from instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
+CACHE_DIR = os.path.join(DATA_DIR, "cache", "bma_snapshots")
 os.makedirs(CACHE_DIR, exist_ok=True)
-DB_PATH = os.path.join(BASE_DIR, "vehicle_counts.db")
+DB_PATH = os.path.join(DATA_DIR, "vehicle_counts.db")
 CAMERAS_FILE = os.path.join(BASE_DIR, "cameras_bma.json")
 
 # Target YOLO classes for traffic: 1: bicycle, 2: car, 3: motorcycle, 5: bus, 7: truck
@@ -326,8 +327,10 @@ class BmaScanner:
         self.cycle_count = 0
         self.download_workers = 3
         self.infer_lock = threading.Lock()
-        # HelmetPatrol (helmet_service.py) set by the server: gets every snapshot + its boxes
+        # HelmetPatrol (helmet_service.py) / WrongWayPatrol (wrongway_service.py) set by the server:
+        # both get every snapshot (+ its boxes)
         self.helmet = None
+        self.wrongway = None
 
         # Auto background scan every 3 minutes
         self.auto_scan_thread = threading.Thread(target=self._auto_scan_loop, daemon=True)
@@ -448,6 +451,11 @@ class BmaScanner:
                             self.helmet.observe(cam, img, boxes)
                         except Exception as e:  # noqa: BLE001 - patrol is best effort
                             print(f"[BMA Scanner] helmet patrol failed on {camid}: {e}")
+                    if self.wrongway is not None:
+                        try:
+                            self.wrongway.observe(cam, img, boxes)
+                        except Exception as e:  # noqa: BLE001
+                            print(f"[BMA Scanner] wrong-way patrol failed on {camid}: {e}")
                     for cls_id, conf, x1, y1, x2, y2 in boxes:
                         category = VEHICLE_CLASSES.get(cls_id)
                         if not category:

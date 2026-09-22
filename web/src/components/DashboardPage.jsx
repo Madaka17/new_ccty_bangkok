@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { fetchTrafficSummary, fetchBmaAnalytics, fetchAnalytics, fetchOnlineCount } from '../lib/api.js';
+import { fetchTrafficSummary, fetchBmaAnalytics, fetchAnalytics, fetchOnlineCount, fetchFloodStatus } from '../lib/api.js';
 import { trackView } from '../lib/telemetry.js';
 import { Button, Badge } from './dashboard/ui.jsx';
 import { PageHeader, Tabs } from './dashboard/primitives.jsx';
@@ -9,12 +9,14 @@ import IncidentPanel from './dashboard/IncidentPanel.jsx';
 import DensityPanel from './dashboard/DensityPanel.jsx';
 import TrafficGuidanceCard from './dashboard/TrafficGuidanceCard.jsx';
 import CityStatusStrip from './dashboard/CityStatusStrip.jsx';
+import FloodPanel from './dashboard/FloodPanel.jsx';
 import BMAEventFeed from './water/BMAEventFeed.jsx';
 
 const POLL_MS = 60000;
 // Dashboard sections; each tab groups one topic
 const SECTIONS = [
   { id: 'overview', label: 'ภาพรวมจราจร' },
+  { id: 'flood', label: 'น้ำท่วมขังถนน' },
   { id: 'incidents', label: 'เหตุการณ์สด' },
   { id: 'bma-reports', label: 'รายงานสดจากศูนย์' },
 ];
@@ -28,6 +30,8 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
   const [density, setDensity] = useState(null);
   const [onlineCount, setOnlineCount] = useState(null);
   const [summaryError, setSummaryError] = useState(false);
+  // Road-flood sensor counts (BMA drainage): badge on the tab + the city status strip
+  const [flood, setFlood] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(() => {
@@ -44,7 +48,8 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
       if (d.visitors?.online != null) setOnlineCount(d.visitors.online);
     }).catch(() => {});
     const d = fetchOnlineCount().then((n) => setOnlineCount(n)).catch(() => {});
-    return Promise.allSettled([a, b, c, d]).finally(() => setRefreshing(false));
+    const e = fetchFloodStatus().then((f) => setFlood(f)).catch(() => {});
+    return Promise.allSettled([a, b, c, d, e]).finally(() => setRefreshing(false));
   }, []);
 
   useEffect(() => {
@@ -127,6 +132,7 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
 
   const activeSummary = source === 'bma' ? (bmaSummary || ready) : (ready || bmaSummary);
   const incidentCount = (incidents?.camera?.length || 0) + (incidents?.longdo?.length || 0);
+  const floodCount = (flood?.counts?.flood || 0) + (flood?.counts?.slight || 0);
 
   return (
     <div className="flex flex-col gap-4 max-w-6xl mx-auto w-full">
@@ -170,7 +176,7 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
       )}
 
 
-      <CityStatusStrip summary={activeSummary} incidents={incidents} onNavigate={onNavigate} isActive={isActive} />
+      <CityStatusStrip summary={activeSummary} incidents={incidents} flood={flood} onNavigate={onNavigate} isActive={isActive} />
 
       <Tabs
         label="หมวดข้อมูลแดชบอร์ด"
@@ -179,7 +185,8 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
           setSection(id);
           trackView(`dashboard:${id}`);
         }}
-        tabs={SECTIONS.map((t) => (t.id === 'incidents' ? { ...t, badge: incidentCount || undefined } : t))}
+        tabs={SECTIONS.map((t) => (t.id === 'incidents' ? { ...t, badge: incidentCount || undefined }
+          : t.id === 'flood' ? { ...t, badge: floodCount || undefined } : t))}
       />
 
       {section === 'overview' && (
@@ -189,6 +196,7 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
           <TrafficGuidanceCard onOpenRoad={onOpenRoad} onAsk={onAsk} />
         </>
       )}
+      {section === 'flood' && <FloodPanel isActive={isActive && section === 'flood'} onNavigate={onNavigate} />}
       {section === 'incidents' && <IncidentPanel incidents={incidents} onOpenAI={onOpenAI} onNavigate={onNavigate} />}
       {section === 'bma-reports' && <BMAEventFeed isActive={isActive && section === 'bma-reports'} onToast={onToast} />}
     </div>

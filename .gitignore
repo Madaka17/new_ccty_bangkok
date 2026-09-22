@@ -51,6 +51,8 @@ local/archive/
 local/dataset*/
 local/runs/
 local/logs/
+# Test server instance (run_test.bat): own cache, DB, data
+local/stage/
 weights/
 
 # SQLite databases (live data, backed up by local/pipeline/backup_db.py)

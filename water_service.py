@@ -12,6 +12,7 @@ Sources (all public, read-only):
 import json
 import math
 import os
+from instance import DATA_DIR
 import re
 import threading
 import time
@@ -67,7 +68,7 @@ TIDE_PERIODS_H = (12.4206, 12.0, 12.6583, 23.9345, 25.8193)
 
 # ---------------------------------------------------------------- api key discovery
 TWA_SITE = "https://twa.thaiwater.net/th"
-KEY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache", "twa_key.json")
+KEY_FILE = os.path.join(DATA_DIR, "cache", "twa_key.json")
 KEY_RETRY_SECONDS = 300      # how long to wait between discovery attempts while no key works
 _KEY_RE = re.compile(r'"x-api-key"\s*[:=]\s*"([A-Za-z0-9_\-]{16,128})"')
 _CHUNK_RE = re.compile(r"/_next/static/chunks/[^\"']+\.js")

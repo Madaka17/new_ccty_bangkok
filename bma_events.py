@@ -17,7 +17,8 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CACHE_FILE = os.path.join(BASE_DIR, "cache", "bma_events.json")
+from instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
+CACHE_FILE = os.path.join(DATA_DIR, "cache", "bma_events.json")
 BMA_BASE = "https://cpudapp.bangkok.go.th/bmatraffic/"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) BKK-Traffic-CCTV/2.0"
 BKK_TZ = timezone(timedelta(hours=7))

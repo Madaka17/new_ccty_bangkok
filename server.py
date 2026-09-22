@@ -14,6 +14,7 @@ if sys.platform == 'win32':
 
 # 1. Auto-detect and switch to .venv if running under global Python
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+from instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
 venv_python = os.path.join(BASE_DIR, ".venv", "Scripts", "python.exe")
 if os.path.exists(venv_python) and sys.prefix == sys.base_prefix and os.path.normcase(sys.executable) != os.path.normcase(venv_python):
     import subprocess
@@ -63,7 +64,8 @@ def free_port_if_needed(port=8000):
     except Exception as e:
         print(f"[Server] Note during port check: {e}")
 
-free_port_if_needed(8000)
+from instance import PORT, DATA_DIR, IS_STAGE
+free_port_if_needed(PORT)
 from fastapi import FastAPI, Request, Query, Body, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -77,7 +79,9 @@ from violation_service import ViolationMonitor
 from traffic_service import traffic, get_traffic_tile, get_osm_tile
 from guidance_service import GuidanceService
 from helmet_service import HelmetPatrol
+from wrongway_service import WrongWayPatrol
 from air_service import air
+from flood_service import flood_roads
 import chat_service
 import water_service
 import rsc_service
@@ -130,10 +134,10 @@ if os.path.exists(CAMERAS_FILE):
         print(f"[Warning] Failed to load cameras_bkk.json: {e}")
 
 # Initialize YOLO11x Vehicle Detector (Target: 10 FPS for smoother playback)
-vehicle_log = VehicleLog(os.path.join(BASE_DIR, "vehicle_counts.db"))
+vehicle_log = VehicleLog(os.path.join(DATA_DIR, "vehicle_counts.db"))
 detector = VehicleDetectorYOLO11x(model_path=MODEL_PATH, target_fps=10.0, conf_threshold=0.15, vehicle_log=vehicle_log)
 # Background counting on user-selected cameras (lower fps to prioritize live camera)
-counter = CountManager(detector, vehicle_log, os.path.join(BASE_DIR, "count_cameras.json"), target_fps=0.5, max_cameras=4)
+counter = CountManager(detector, vehicle_log, os.path.join(DATA_DIR, "count_cameras.json"), target_fps=0.5, max_cameras=4)
 counter.load({c["camid"]: c for c in cameras_data})
 # Round-robin survey sampling: default 0 workers to prevent FFmpeg C-level crashes on corrupt Longdo HLS streams
 survey_workers = int(os.getenv("SURVEY_WORKERS", "0"))
@@ -142,19 +146,22 @@ survey = SurveyManager(detector, vehicle_log, lambda: cameras_data, lambda: set(
 survey.start()
 # Accident / breakdown detection (camera AI + Claude vision) and Longdo accident reports
 incidents = IncidentManager(vehicle_log, lambda: {c["camid"]: c for c in cameras_data},
-                            os.path.join(BASE_DIR, "cache", "incidents"))
+                            os.path.join(DATA_DIR, "cache", "incidents"))
 detector.incidents = incidents
 analytics_service.configure(incidents=incidents)
 # Wrong-way + no-helmet detection on the live AI camera (shares the incident vision provider)
-violations = ViolationMonitor(os.path.join(BASE_DIR, "vehicle_counts.db"), vision=incidents,
+violations = ViolationMonitor(os.path.join(DATA_DIR, "vehicle_counts.db"), vision=incidents,
                               cameras_by_id=lambda: {c["camid"]: c for c in cameras_data})
 detector.violations = violations
 
 # BMA Traffic Scanner & YOLO Vehicle Counter for all cameras
 bma_scanner = BmaScanner(detector=detector)
 # Helmet patrol over every BMA camera: motorcycle crops -> helmet agent -> evidence on the data drive
-helmet = HelmetPatrol(os.path.join(BASE_DIR, "vehicle_counts.db"), vision=incidents, scanner=bma_scanner)
+helmet = HelmetPatrol(os.path.join(DATA_DIR, "vehicle_counts.db"), vision=incidents, scanner=bma_scanner)
 bma_scanner.helmet = helmet
+# Wrong-way patrol over every BMA camera: heading detector + per-camera learned lane directions -> agent -> evidence
+wrongway = WrongWayPatrol(os.path.join(DATA_DIR, "vehicle_counts.db"), vision=incidents, scanner=bma_scanner)
+bma_scanner.wrongway = wrongway
 # Corridor dispersal guidance rebuilt every minute from the live Longdo lines + camera counts
 guidance = GuidanceService(traffic, incidents=incidents, bma=bma_scanner, cameras=lambda: cameras_data)
 
@@ -188,8 +195,8 @@ def health():
     except Exception:  # noqa: BLE001
         pass
     try:
-        disk = shutil.disk_usage(os.getenv("BMA_DATA_DIR", BASE_DIR))
-        data_disk = {"path": os.getenv("BMA_DATA_DIR", BASE_DIR), "free_gb": round(disk.free / 2**30, 1), "total_gb": round(disk.total / 2**30, 1)}
+        disk = shutil.disk_usage(os.getenv("BMA_DATA_DIR", DATA_DIR))
+        data_disk = {"path": os.getenv("BMA_DATA_DIR", DATA_DIR), "free_gb": round(disk.free / 2**30, 1), "total_gb": round(disk.total / 2**30, 1)}
     except OSError:
         data_disk = None
     hs = helmet.status()
@@ -199,8 +206,10 @@ def health():
         "scan": {"cycle": scan.get("cycle_count"), "age_s": scan_age, "running": scan.get("is_scanning"), "ok": scan_ok},
         "ai_fps": detector.get_stats().get("fps"),
         "helmet": {"agent": hs.get("agent"), "agent_error": hs.get("agent_error"), "queue": hs.get("queue")},
+        "wrongway": {"enabled": wrongway.enabled(), "queue": wrongway._queue.qsize()},
         "gpu": gpu, "data_disk": data_disk,
-        "db_mb": round(os.path.getsize(os.path.join(BASE_DIR, "vehicle_counts.db")) / 2**20, 1),
+        "db_mb": round(os.path.getsize(os.path.join(DATA_DIR, "vehicle_counts.db")) / 2**20, 1),
+        "instance": {"port": PORT, "stage": IS_STAGE, "data_dir": DATA_DIR},
     }
     return JSONResponse(body, status_code=200 if body["ok"] else 503)
 
@@ -219,7 +228,7 @@ def get_longdo_cameras():
     if now - _longdo_cams_cache["time"] < 300 and _longdo_cams_cache["data"] is not None:
         return _longdo_cams_cache["data"]
 
-    cache_file = os.path.join(BASE_DIR, "cache", "longdo_cameras.json")
+    cache_file = os.path.join(DATA_DIR, "cache", "longdo_cameras.json")
     try:
         req = urllib.request.Request("https://traffic.longdo.com/camera.json", headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=5) as resp:
@@ -312,7 +321,7 @@ async def get_bma_snapshot(camid: str, live: bool = False, annotate: bool = True
         except Exception as e:
             print(f"[Live Snapshot Error] {e}")
 
-    cache_file = os.path.join(BASE_DIR, "cache", "bma_snapshots", f"{camid}.jpg")
+    cache_file = os.path.join(DATA_DIR, "cache", "bma_snapshots", f"{camid}.jpg")
     if os.path.exists(cache_file):
         return FileResponse(cache_file, media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
 
@@ -333,7 +342,7 @@ async def stream_bma_camera(camid: str, fps: float = 2.0):
             return
         
         # 1. Immediately yield cached snapshot so client never experiences a black screen!
-        cache_file = os.path.join(BASE_DIR, "cache", "bma_snapshots", f"{camid}.jpg")
+        cache_file = os.path.join(DATA_DIR, "cache", "bma_snapshots", f"{camid}.jpg")
         last_frame = None
         if os.path.exists(cache_file):
             try:
@@ -688,6 +697,80 @@ def helmet_frame(hid: str):
         raise HTTPException(404, "no image")
     return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=3600"})
 
+# ---------------------------------------------------------------- Road flooding (BMA drainage sensors)
+@app.get("/api/flood/status")
+def flood_status(min_cm: float = Query(None, ge=0, le=200)):
+    """Counts, every wet station and the per-district roll-up, for the flood layer on the map."""
+    return flood_roads.status(min_cm=min_cm)
+
+@app.get("/api/flood/stations")
+def flood_stations(status: str = Query(None, pattern="^(flood|slight|normal|offline)$"),
+                   district: str = Query(None), kind: str = Query(None, pattern="^(road|tunnel)$"),
+                   limit: int = Query(400, ge=1, le=1000)):
+    return flood_roads.stations(status=status, district=district, kind=kind, limit=limit)
+
+@app.get("/api/flood/analysis")
+def flood_analysis():
+    """AI read of the current flooding: severity, what is happening, spots to watch, what to do."""
+    return flood_roads.report()
+
+@app.get("/api/flood/roads")
+def flood_roads_list(limit: int = Query(60, ge=1, le=300)):
+    """Worst station per road, so the page can list which roads have standing water."""
+    return flood_roads.roads(limit=limit)
+
+# ---------------------------------------------------------------- Wrong-way patrol (all BMA cameras)
+@app.get("/api/wrongway/status")
+def wrongway_status():
+    return wrongway.status()
+
+@app.get("/api/wrongway/recent")
+def wrongway_recent(hours: int = Query(24, ge=1, le=720), verdict: str = Query(None, pattern="^(pending|wrong_way|ok|unclear|error)$"),
+                    camid: str = Query(None), limit: int = Query(200, ge=1, le=1000)):
+    return wrongway.recent(hours=hours, verdict=verdict, camid=camid, limit=limit)
+
+@app.get("/api/wrongway/cameras")
+def wrongway_cameras():
+    return wrongway.cameras()
+
+@app.get("/api/wrongway/field/{camid}")
+def wrongway_field(camid: str):
+    """Learned lane directions of one camera (known grid cells) for the overlay."""
+    return wrongway.field_cells(camid)
+
+@app.post("/api/wrongway/check/{camid}")
+async def wrongway_check(camid: str):
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: wrongway.check_now(camid))
+
+@app.post("/api/wrongway/reanalyse_pending")
+async def wrongway_reanalyse_pending(agent: str = Query("cloud", pattern="^(cloud|local)$"), limit: int = Query(40, ge=1, le=300), hours: int = Query(24, ge=1, le=168)):
+    return wrongway.reanalyse_pending(agent=agent, limit=limit, hours=hours)
+
+@app.post("/api/wrongway/{wid}/reanalyse")
+async def wrongway_reanalyse(wid: str, agent: str = Query("cloud", pattern="^(cloud|local)$")):
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: wrongway.reanalyse(wid, agent))
+
+@app.post("/api/wrongway/{wid}/dismiss")
+def wrongway_dismiss(wid: str):
+    """A person checked the evidence: not a violation."""
+    return wrongway.dismiss(wid)
+
+@app.get("/api/wrongway/{wid}/crop")
+def wrongway_crop(wid: str):
+    p = wrongway.crop_path(wid)
+    if not os.path.exists(p):
+        raise HTTPException(404, "no image")
+    return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=3600"})
+
+@app.get("/api/wrongway/{wid}/frame")
+def wrongway_frame(wid: str):
+    p = wrongway.frame_path(wid)
+    if not os.path.exists(p):
+        raise HTTPException(404, "no image")
+    return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=3600"})
+
 @app.get("/api/traffic/roads")
 def traffic_roads(q: str = Query(None), limit: int = Query(50, ge=1, le=500)):
     return {"items": traffic.get_roads(q, limit)}
@@ -849,6 +932,7 @@ app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 traffic.start()
 guidance.start()
 air.start()
+flood_roads.start()
 water_service.warm()
 rsc_service.warm(bma_scanner.cameras)
 bma_feed.start()
@@ -872,17 +956,17 @@ def start_browser_when_ready(url="http://localhost:8000"):
 
 if __name__ == "__main__":
     import uvicorn
-    free_port_if_needed(8000)
+    free_port_if_needed(PORT)
     if os.getenv("OPEN_BROWSER") == "1":
-        start_browser_when_ready("http://localhost:8000")
+        start_browser_when_ready(f"http://localhost:{PORT}")
     print("=" * 60)
     print("  BKK StreetSmart CCTV & YOLO11x Vehicle Detection Server")
     print("  Model: YOLO11x | Processing Rate: 5 FPS")
     print("  Detected Classes: รถยนต์ (Cars), มอไซ (Motorcycles), รถบรรทุก (Trucks)")
-    print("  Running at http://localhost:8000")
+    print(f"  Running at http://localhost:{PORT}" + (f"  [TEST instance, data in {DATA_DIR}]" if IS_STAGE else ""))
     print("=" * 60)
     try:
-        uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+        uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
     except BaseException as e:
         print(f"[Server] Exited with {type(e).__name__}: {e}")
         import traceback

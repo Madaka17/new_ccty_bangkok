@@ -35,8 +35,9 @@ import cv2
 import numpy as np
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-FLOW_DIR = os.path.join(BASE_DIR, "cache", "flow")
-EVIDENCE_DIR = os.path.join(BASE_DIR, "cache", "violations")
+from instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
+FLOW_DIR = os.path.join(DATA_DIR, "cache", "flow")
+EVIDENCE_DIR = os.path.join(DATA_DIR, "cache", "violations")
 # Long-term copy of every evidence image on the data drive (same drive as the BMA CSV archive):
 #   D:/Data/violations/<YYYY-MM-DD>/<kind>/<camid>_<HHMMSS>.jpg  + violations.csv index
 ARCHIVE_DIR = os.getenv("VIOLATION_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", r"D:\Data"), "violations"))
