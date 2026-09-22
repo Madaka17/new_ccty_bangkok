@@ -1,9 +1,9 @@
 // Road flooding across Bangkok from the BMA drainage sensors (/api/flood/*, see flood_service.py).
 // Depth is centimetres of water over the road surface, refreshed by the sensors every 5 minutes;
 // the thresholds (5 / 10 cm) are the ones the BMA's own map draws with.
-import { useCallback, useEffect, useState } from 'react';
-import { fetchFloodStatus, fetchFloodRoads, fetchFloodAnalysis } from '../../lib/api.js';
-import { Card, Badge, Button, SectionHeader, Skeleton, Truncate, FOCUS } from './ui.jsx';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { fetchFloodStatus, fetchFloodRoads, fetchFloodAnalysis, fetchFloodStations } from '../../lib/api.js';
+import { Card, Badge, Button, SectionHeader, Segmented, Skeleton, EmptyState, Truncate, FOCUS } from './ui.jsx';
 import { StatTile, StatusBanner } from './primitives.jsx';
 import { fmtNum, fmtTime, agoText } from './format.js';
 
@@ -26,6 +26,10 @@ const SEVERITY = {
   normal: { tone: 'green', label: 'ปกติ', card: 'border-emerald-200 bg-emerald-50/70 dark:border-emerald-900/50 dark:bg-emerald-950/30', dot: 'bg-emerald-500' },
 };
 
+// The full sensor list at the bottom: every monitored road, not only the wet ones
+const FILTERS = [['all', 'ทั้งหมด'], ['wet', 'มีน้ำขัง'], ['normal', 'ปกติ'], ['offline', 'ขัดข้อง']];
+const PAGE = 40;
+
 const TREND_MARK = { rising: '▲', falling: '▼', steady: '▬' };
 const TREND_CLASS = { rising: 'text-red-600', falling: 'text-emerald-600', steady: 'text-slate-400' };
 
@@ -33,6 +37,10 @@ export default function FloodPanel({ isActive, onNavigate }) {
   const [status, setStatus] = useState(null);
   const [roads, setRoads] = useState(null);
   const [ai, setAi] = useState(null);
+  const [all, setAll] = useState(null);
+  const [filter, setFilter] = useState('all');
+  const [query, setQuery] = useState('');
+  const [limit, setLimit] = useState(PAGE);
   const [failed, setFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -43,6 +51,7 @@ export default function FloodPanel({ isActive, onNavigate }) {
       fetchFloodStatus().then((d) => { setStatus(d); setFailed(false); }).catch(() => setFailed(true)),
       fetchFloodRoads(60).then((d) => setRoads(d.items)).catch(() => {}),
       fetchFloodAnalysis().then((d) => setAi(d)).catch(() => {}),
+      fetchFloodStations({ limit: 1000 }).then((d) => setAll(d.items)).catch(() => {}),
     ]).finally(() => setRefreshing(false));
   }, []);
 
@@ -263,11 +272,107 @@ export default function FloodPanel({ isActive, onNavigate }) {
         </Card>
       )}
 
+      <AllStations
+        items={all}
+        filter={filter}
+        onFilter={(f) => { setFilter(f); setLimit(PAGE); }}
+        query={query}
+        onQuery={(q) => { setQuery(q); setLimit(PAGE); }}
+        limit={limit}
+        onMore={() => setLimit((n) => n + PAGE * 2)}
+      />
+
       <p className="text-xs text-slate-500">
         ที่มา: {status.source_name} (<a href={status.source} target="_blank" rel="noreferrer" className="underline">weather.bangkok.go.th/flood</a>)
         · เกณฑ์: ไม่เกิน {status.thresholds?.slight_cm ?? 5} ซม. = ปกติ, {status.thresholds?.slight_cm ?? 5}-{status.thresholds?.flood_cm ?? 10} ซม. = ท่วมเล็กน้อย, เกิน {status.thresholds?.flood_cm ?? 10} ซม. = น้ำท่วม
         · ครอบคลุมเฉพาะพื้นที่ กทม. 50 เขต (นนทบุรี ปทุมธานี สมุทรปราการ นครปฐม ไม่มีเซ็นเซอร์สาธารณะ จึงไม่แสดงผล ไม่ได้แปลว่าไม่ท่วม)
       </p>
     </div>
+  );
+}
+
+// Every monitored point in one searchable table: road, district, current depth, trend, last reading.
+// Sorted deepest first so a wet road is always at the top, whatever the filter.
+function AllStations({ items, filter, onFilter, query, onQuery, limit, onMore }) {
+  const rows = useMemo(() => {
+    if (!items) return [];
+    const q = query.trim().toLowerCase();
+    return items.filter((s) => {
+      if (filter === 'wet' && s.status !== 'flood' && s.status !== 'slight') return false;
+      if (filter === 'normal' && s.status !== 'normal') return false;
+      if (filter === 'offline' && s.status !== 'offline') return false;
+      if (!q) return true;
+      return [s.short_name, s.name, s.road, s.district, s.code].some((v) => (v || '').toLowerCase().includes(q));
+    });
+  }, [items, filter, query]);
+
+  if (!items) return <Skeleton className="h-64" />;
+
+  return (
+    <Card className="p-5">
+      <SectionHeader
+        id="flood-all"
+        title={`จุดวัดทั้งหมด ${fmtNum(items.length)} จุด`}
+        description="ทุกถนนที่มีเซ็นเซอร์วัดระดับน้ำ พร้อมค่าล่าสุด · ค้นหาชื่อถนนหรือเขตได้"
+        action={<Segmented label="กรองสถานะ" options={FILTERS} value={filter} onChange={onFilter} />}
+      />
+
+      <input
+        value={query}
+        onChange={(e) => onQuery(e.target.value)}
+        placeholder="ค้นหาชื่อถนน / จุดวัด / เขต เช่น สุขุมวิท, ลาดพร้าว, บางกะปิ"
+        className="mt-3 h-9 w-full sm:w-96 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400"
+      />
+
+      {rows.length === 0 ? (
+        <div className="mt-3"><EmptyState title="ไม่พบจุดวัดที่ตรงกับเงื่อนไข" description="ลองเปลี่ยนคำค้นหรือกรองสถานะเป็น 'ทั้งหมด'" /></div>
+      ) : (
+        <>
+          <p className="mt-2 text-xs text-slate-500">แสดง {fmtNum(Math.min(limit, rows.length))} จาก {fmtNum(rows.length)} จุด · เรียงจากลึกที่สุด</p>
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-slate-500 border-b border-slate-200">
+                  <th className="py-2 pr-3 font-medium">จุดวัด</th>
+                  <th className="py-2 pr-3 font-medium">ถนน</th>
+                  <th className="py-2 pr-3 font-medium">เขต</th>
+                  <th className="py-2 pr-3 font-medium text-right">ระดับน้ำ</th>
+                  <th className="py-2 pr-3 font-medium">แนวโน้ม</th>
+                  <th className="py-2 pr-3 font-medium">สถานะ</th>
+                  <th className="py-2 font-medium text-right">อัปเดต</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {rows.slice(0, limit).map((s) => {
+                  const lv = LEVEL[s.status] || LEVEL.offline;
+                  return (
+                    <tr key={`${s.code}-${s.side || ''}`} className="align-top">
+                      <td className="py-2 pr-3">
+                        <Truncate text={s.short_name} className="text-ink-900" />
+                        {s.kind === 'tunnel' && <span className="block text-[11px] text-slate-500">อุโมงค์ทางลอด{s.side ? ` ${s.side}` : ''}</span>}
+                      </td>
+                      <td className="py-2 pr-3 text-slate-600"><Truncate text={s.road || '–'} /></td>
+                      <td className="py-2 pr-3 text-slate-600 whitespace-nowrap">{s.district || '–'}</td>
+                      <td className={`py-2 pr-3 text-right tabular-nums font-semibold whitespace-nowrap ${lv.text}`}>
+                        {s.status === 'offline' ? '–' : `${s.level_cm} ซม.`}
+                      </td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {s.trend ? <span className={`text-xs ${TREND_CLASS[s.trend]}`}>{TREND_MARK[s.trend]} {s.trend_th}</span>
+                                 : <span className="text-xs text-slate-400">–</span>}
+                      </td>
+                      <td className="py-2 pr-3"><Badge tone={lv.tone} dot={s.status !== 'normal'}>{lv.label}</Badge></td>
+                      <td className="py-2 text-right text-xs text-slate-500 whitespace-nowrap">{s.ts_th ? s.ts_th.slice(-5) : '–'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {rows.length > limit && (
+            <Button size="sm" className="mt-3" onClick={onMore}>ดูเพิ่มอีก {fmtNum(Math.min(PAGE * 2, rows.length - limit))} จุด</Button>
+          )}
+        </>
+      )}
+    </Card>
   );
 }
