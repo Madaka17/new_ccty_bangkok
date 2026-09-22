@@ -20,8 +20,8 @@ for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:":8000 .*LISTENING"') d
 if not defined KILLED echo [*] No server running on port 8000.
 
 rem Give the OS a moment to release the port
-timeout /t 2 /nobreak >nul
+ping -n 3 127.0.0.1 >nul
 
 echo [*] Starting server with Tailscale Funnel ...
 echo.
-call run_public.bat
+call "%~dp0run_public.bat"

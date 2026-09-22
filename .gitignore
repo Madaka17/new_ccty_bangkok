@@ -46,3 +46,15 @@ local/runs/
 *_bkk.pt
 local/pipeline.log
 local/archive/
+
+# Local datasets, training runs and logs (see local/pipeline/)
+local/dataset*/
+local/runs/
+local/logs/
+weights/
+
+# SQLite databases (live data, backed up by local/pipeline/backup_db.py)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

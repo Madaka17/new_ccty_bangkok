@@ -56,6 +56,16 @@ npm run dev        # โหมดพัฒนา ที่ http://localhost:5173
 GEMINI_API_KEY=AIza...
 # ไม่บังคับ: เปลี่ยนรุ่น (ค่าเริ่มต้น gemini-2.5-flash-lite)
 GEMINI_MODEL=gemini-2.5-flash-lite
+# โมเดล vision สำหรับตรวจภาพ (อุบัติเหตุ/หมวก) ใช้รุ่น lite ที่ไม่ใช่ thinking จะเร็วกว่ามาก (2-6 วิ/ภาพ)
+GEMINI_VISION_MODEL=gemini-3.5-flash-lite
+# ตรวจหมวก: จำกัดการเรียก API ต่อชั่วโมง, โมเดลแยก, AI ในเครื่อง (LOCAL_VLM=0 ปิด)
+HELMET_PATROL_MAX_PER_HOUR=240
+HELMET_AGENT_MODEL=gemini-3.1-flash-lite
+LOCAL_VLM=Qwen/Qwen2-VL-2B-Instruct
+# ป้องกันสาธารณะ: ตั้งแล้วส่ง header X-Admin-Token เพื่อกดปุ่มควบคุมจากนอก LAN
+ADMIN_TOKEN=
+# โฟลเดอร์เก็บ CSV รอบนับกล้อง กทม. + ภาพหลักฐานฝ่าฝืน (ค่าเริ่มต้น D:\Data)
+BMA_DATA_DIR=E:\data smartstreet
 ```
 
 ลำดับผู้ให้บริการ: Gemini (`GEMINI_API_KEY`) → Claude (`ANTHROPIC_API_KEY`) → โหมดออฟไลน์ (สรุปจากข้อมูลสด ไม่ต้องใช้ key)
@@ -159,9 +169,17 @@ D:\New_CCTV\
 | `traffic_service.py` | ดึง tile จราจร Longdo, สรุปการระบายรถรายถนน, proxy tile แผนที่ |
 | `chat_service.py` | หน้า "ถาม AI เรื่องเส้นทาง": ส่งสรุปจราจร + กล้องให้ Claude ตอบ |
 | `bma_service.py` | สแกนกล้อง กทม. 574 ตัว (snapshot ทุก ~4 นาที) นับรถด้วย YOLO, เก็บ `bma_latest`/`bma_history`, สตรีม MJPEG |
-| `bma_archive.py` | รอบนับอัตโนมัติ: สะสมยอดต่อกล้อง, รีเซ็ตทุกชั่วโมง, เขียน CSV รายวัน/สัปดาห์/เดือน/รายถนน ที่ `D:\Data`, ข้อมูลเปรียบเทียบ |
+| `bma_archive.py` | รอบนับอัตโนมัติ: สะสมยอดต่อกล้อง, รีเซ็ตทุกชั่วโมง, เขียน CSV รายวัน/สัปดาห์/เดือน/รายถนน ที่ `BMA_DATA_DIR` (ตั้งใน `.env` ตอนนี้ `E:\data smartstreet`), ข้อมูลเปรียบเทียบ |
 | `bma_events.py` | ดึงรายงานสด (น้ำท่วม/อุบัติเหตุ) จาก cpudapp.bangkok.go.th ทุก 60 วินาที |
 | `water_service.py` | ระดับน้ำ/คลอง/น้ำทะเลหนุน/ฝน จาก thaiwater.net + คาดการณ์ (ทางการ 7 วัน หรือโมเดลในเครื่อง 48 ชม.) + หาคีย์ API ใหม่อัตโนมัติ |
+| `guidance_service.py` | คำแนะนำระบายรถรายเส้นทางหลัก 12 สาย ทุก 1 นาที จากเส้นสี Longdo (hotspots) + กล้อง กทม. + เหตุการณ์; Gemini เรียบเรียงข้อความทุก 5 นาที (`/api/traffic/guidance`) |
+| `air_service.py` | PM2.5 / AQI รายสถานีจาก Air4Thai ทุก 10 นาที (`/api/air/stations`) |
+| `helmet_service.py` | ตรวจหมวกกันน็อกทุกกล้อง กทม.: crop มอไซจากรอบสแกน → AI agent (Gemini/Claude หรือ `helmet_det.pt` ในเครื่อง) → ผู้ไม่สวมหมวกเก็บภาพ+CSV ที่ `BMA_DATA_DIR\helmet\` (`/api/helmet/*`) |
+| `local_vision.py` | AI agent ตัวที่ 2 ในเครื่อง (Qwen2-VL-2B บน GPU, ไม่ใช้ key) ใช้แทนเมื่อ Gemini หมดเครดิต/โควตา และให้ความเห็นซ้ำจากหน้าเว็บ |
+| `access_guard.py` | ป้องกันเมื่อเปิด Funnel สาธารณะ: POST ควบคุมทำได้จาก LAN/tailnet หรือ `X-Admin-Token`; `/api/chat` จำกัดต่อ IP |
+| `local/pipeline/backup_db.py` (`backup_db.bat`) | งานกลางคืน: ลบ `bma_history`/`samples` เกิน 90 วัน, VACUUM, สำเนา DB + CSV + .env ไป `BMA_DATA_DIRackup\` (ลงทะเบียน Task Scheduler 03:30 แล้ว) |
+| `local/pipeline/watchdog.bat` | ping `/api/health` ทุก 1 นาที ล้ม 3 ครั้งติดจึงรัน `restart_public.bat` |
+| `local/pipeline/prep_helmet_det.py`, `train_helmet_det.py`, `watch_train.*` | dataset Kaggle helmet-detection → YOLO format → fine-tune `yolo26x.pt` เป็น `helmet_det.pt` (helmet / no_helmet) + หน้าต่าง % ความคืบหน้า |
 | `local/pipeline/` (`collect_dataset.py`, `relabel_dataset.py`, `clean_dataset.py`, `train_model.py`, `pipeline_status.py`, `*.bat`) | pipeline เก็บภาพ-ทำ label (tiled 2×2 + เกณฑ์ conf รายคลาส)-เทรน YOLO (oversample เฟรมที่มีมอเตอร์ไซค์ `--moto-boost`) ให้เข้ากับกล้องไทย |
 | `rsc_service.py` | สถิติอุบัติเหตุ Thai RSC รายเขต + จุดเสี่ยงรอบกล้อง BMA (`/api/rsc/*`) |
 | `violation_service.py` | จับผิดกฎจราจรจากกล้อง AI สด: ย้อนศร (เรียนรู้ทิศทางจราจรต่อกล้องเอง) และไม่สวมหมวกกันน็อก (โมเดล `helmet_cls.pt` ถ้ามี ไม่งั้นใช้ vision API) → `/api/ai/violations` สำเนาภาพลง `D:\Dataiolations` |
