@@ -37,6 +37,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CACHE_DIR = os.path.join(BASE_DIR, "cache", "helmet")
 ARCHIVE_DIR = os.getenv("HELMET_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", r"D:\Data"), "helmet"))
 LOCAL_DET_PATH = os.getenv("HELMET_DET", os.path.join(BASE_DIR, "helmet_det.pt"))
+if not os.path.isabs(LOCAL_DET_PATH):
+    LOCAL_DET_PATH = os.path.join(BASE_DIR, LOCAL_DET_PATH)
 # Fast non-thinking model on purpose: a 300-px crop needs no reasoning, and the thinking models
 # (gemini-3.6-flash) take 15-40 s per call and hit 504 under load. Falls back to GEMINI_VISION_MODEL.
 HELMET_MODEL = os.getenv("HELMET_AGENT_MODEL", os.getenv("GEMINI_VISION_MODEL", "gemini-3.1-flash-lite"))
