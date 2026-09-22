@@ -2,18 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { aiStreamUrl, fetchAIStats, fetchTrafficSummary, fetchWaterSummary, sendChat, setAIConf, setAIFps, switchAICamera } from '../lib/api.js';
 
-const SUGGESTIONS = [
-  'สรุปสถานการณ์ทั้งหมดตอนนี้',
-  'ถนนไหนติดที่สุดตอนนี้',
-  'วิเคราะห์น้ำท่วมและฝนวันนี้ พื้นที่ไหนต้องเฝ้าระวัง',
-  'พรุ่งนี้มีพายุฝนไหม ฝนตกหนักช่วงไหน',
-  'วันนี้มีอุบัติเหตุที่ไหนบ้าง เขตไหนเสี่ยงสุด',
-  'เขตไหนรถหนาแน่นสุดจากกล้อง กทม.',
-  'ขับรถลุยน้ำท่วมยังไงให้ปลอดภัย',
-  'เบอร์ฉุกเฉินที่ควรรู้',
-  'ช่วยแปลประโยคนี้เป็นอังกฤษ: วันนี้ฝนตกหนักมาก',
-  'แนะนำร้านอาหารแถวสยาม',
-];
 const WELCOME = 'สวัสดี! ถามได้ทุกเรื่อง ทั้งข้อมูลสดของเมือง (จราจรทุกสาย กล้องนับรถ กทม. 500+ ตัว น้ำท่วม-ฝน-พายุ 24 ชม.รายพื้นที่ อุบัติเหตุและเหตุการณ์ สถิติรายเขต) และคำถามทั่วไปอะไรก็ได้ เช่น แปลภาษา สรุปข้อความ คำนวณ สุขภาพ ท่องเที่ยว หรือให้ช่วยเขียนอะไรก็ได้เลย';
 const LEVEL_CLS = { โล่ง: 'bg-sage-100 text-sage-700', ปานกลาง: 'bg-gold-100 text-gold-700', ติดขัด: 'bg-apricot-100 text-apricot-700' };
 const WATCH = {
@@ -193,13 +181,6 @@ export default function AiPage({ active, cameras, camid, onPickCamera, onToast, 
         </div>
 
         <div className="px-5 pb-5 pt-2">
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {SUGGESTIONS.map((s) => (
-              <button key={s} type="button" onClick={() => ask(s)} disabled={busy} className="cursor-pointer rounded-lg bg-white text-slate-700 border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors duration-200 disabled:opacity-50">
-                {s}
-              </button>
-            ))}
-          </div>
           <form
  onSubmit={(e) => {
  e.preventDefault();

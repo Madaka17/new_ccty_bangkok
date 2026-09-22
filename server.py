@@ -30,6 +30,7 @@ try:
 except ImportError:
     pass
 import asyncio
+import shutil
 import threading
 import socket
 
@@ -63,7 +64,7 @@ def free_port_if_needed(port=8000):
         print(f"[Server] Note during port check: {e}")
 
 free_port_if_needed(8000)
-from fastapi import FastAPI, Request, Query, Body
+from fastapi import FastAPI, Request, Query, Body, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -74,6 +75,9 @@ from survey import SurveyManager
 from incident_service import IncidentManager
 from violation_service import ViolationMonitor
 from traffic_service import traffic, get_traffic_tile, get_osm_tile
+from guidance_service import GuidanceService
+from helmet_service import HelmetPatrol
+from air_service import air
 import chat_service
 import water_service
 import rsc_service
@@ -148,6 +152,11 @@ detector.violations = violations
 
 # BMA Traffic Scanner & YOLO Vehicle Counter for all cameras
 bma_scanner = BmaScanner(detector=detector)
+# Helmet patrol over every BMA camera: motorcycle crops -> helmet agent -> evidence on the data drive
+helmet = HelmetPatrol(os.path.join(BASE_DIR, "vehicle_counts.db"), vision=incidents, scanner=bma_scanner)
+bma_scanner.helmet = helmet
+# Corridor dispersal guidance rebuilt every minute from the live Longdo lines + camera counts
+guidance = GuidanceService(traffic, incidents=incidents, bma=bma_scanner, cameras=lambda: cameras_data)
 
 # Start detector on initial Bangkok camera (Default: first BMA camera)
 if cameras_data:
@@ -157,6 +166,45 @@ if cameras_data:
         detector.start_stream(stream_url, init_cam)
 
 # API Endpoints
+# ---------------------------------------------------------------- Health (watchdog / uptime monitor)
+SERVER_START = time.time()
+
+@app.get("/api/health")
+def health():
+    """One call for a watchdog: 200 + ok=true when the scanner ran recently and the detector answers.
+    Returns 503 when the BMA scan is stale (> 3 cycles) so an external monitor can restart the server."""
+    now = time.time()
+    scan = bma_scanner.get_status()
+    last_scan = scan.get("last_scan_time") or 0
+    scan_age = int(now - last_scan) if last_scan else None
+    # Fresh process: the first cycle over 574 cameras takes a few minutes, so give it a grace period
+    scan_ok = (scan_age is not None and scan_age < 15 * 60) or (not last_scan and now - SERVER_START < 20 * 60)
+    gpu = None
+    try:
+        import torch
+        if torch.cuda.is_available():
+            free, total = torch.cuda.mem_get_info()
+            gpu = {"name": torch.cuda.get_device_name(0), "used_mb": int((total - free) / 2**20), "total_mb": int(total / 2**20)}
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        disk = shutil.disk_usage(os.getenv("BMA_DATA_DIR", BASE_DIR))
+        data_disk = {"path": os.getenv("BMA_DATA_DIR", BASE_DIR), "free_gb": round(disk.free / 2**30, 1), "total_gb": round(disk.total / 2**30, 1)}
+    except OSError:
+        data_disk = None
+    hs = helmet.status()
+    body = {
+        "ok": scan_ok and (SERVER_START < now),
+        "uptime_s": int(now - SERVER_START),
+        "scan": {"cycle": scan.get("cycle_count"), "age_s": scan_age, "running": scan.get("is_scanning"), "ok": scan_ok},
+        "ai_fps": detector.get_stats().get("fps"),
+        "helmet": {"agent": hs.get("agent"), "agent_error": hs.get("agent_error"), "queue": hs.get("queue"),
+                   "local_vlm_ready": (hs.get("local_vlm") or {}).get("ready")},
+        "gpu": gpu, "data_disk": data_disk,
+        "db_mb": round(os.path.getsize(os.path.join(BASE_DIR, "vehicle_counts.db")) / 2**20, 1),
+    }
+    return JSONResponse(body, status_code=200 if body["ok"] else 503)
+
 @app.get("/api/cameras")
 def get_cameras():
     return {"total": len(cameras_data), "items": cameras_data}
@@ -479,7 +527,8 @@ def get_incidents():
 
 @app.get("/api/incidents/history")
 def get_incident_history(hours: int = Query(24, ge=1, le=168)):
-    return {"hours": hours, "items": vehicle_log.recent_incidents(hours)}
+    items = vehicle_log.recent_incidents(hours) + incidents.recent_longdo(hours)
+    return {"hours": hours, "items": sorted(items, key=lambda i: -i['ts'])}
 
 @app.get("/api/incidents/{incident_id}/image")
 def get_incident_image(incident_id: str):
@@ -580,6 +629,65 @@ async def video_feed(camid: str = None, url: str = None):
 @app.get("/api/traffic/summary")
 def traffic_summary(top: int = Query(8, ge=1, le=30)):
     return traffic.get_summary(top=top)
+
+@app.get("/api/weather/wind")
+def weather_wind():
+    """Current wind / rain / cloud on a 7x7 grid over Bangkok (Open-Meteo) for the map overlay."""
+    return water_service.get_wind_grid()
+
+@app.get("/api/air/stations")
+def air_stations():
+    """PM2.5 / AQI per monitoring station in Bangkok + surrounding provinces (Air4Thai)."""
+    return air.status()
+
+@app.get("/api/traffic/guidance")
+def traffic_guidance():
+    """Live dispersal guidance per main corridor: hotspots, bypass roads with live flow, advice text."""
+    return guidance.status()
+
+# ---------------------------------------------------------------- Helmet patrol (all BMA cameras)
+@app.get("/api/helmet/status")
+def helmet_status():
+    return helmet.status()
+
+@app.get("/api/helmet/recent")
+def helmet_recent(hours: int = Query(24, ge=1, le=720), verdict: str = Query(None, pattern="^(pending|helmet|no_helmet|suspect|unclear|error)$"),
+                  camid: str = Query(None), limit: int = Query(200, ge=1, le=1000)):
+    return helmet.recent(hours=hours, verdict=verdict, camid=camid, limit=limit)
+
+@app.get("/api/helmet/cameras")
+def helmet_cameras():
+    return helmet.cameras()
+
+@app.post("/api/helmet/check/{camid}")
+async def helmet_check(camid: str):
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: helmet.check_now(camid))
+
+@app.post("/api/helmet/reanalyse_pending")
+async def helmet_reanalyse_pending(agent: str = Query("local", pattern="^(local|cloud)$"), limit: int = Query(40, ge=1, le=300), hours: int = Query(24, ge=1, le=168)):
+    """Send every unclear / failed capture of the last hours through the chosen agent again."""
+    return helmet.reanalyse_pending(agent=agent, limit=limit, hours=hours)
+
+@app.post("/api/helmet/{hid}/reanalyse")
+async def helmet_reanalyse(hid: str, agent: str = Query("local", pattern="^(local|cloud)$")):
+    """Second opinion on one capture: local = VLM on this GPU, cloud = Gemini/Claude."""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: helmet.reanalyse(hid, agent))
+
+@app.get("/api/helmet/{hid}/crop")
+def helmet_crop(hid: str):
+    p = helmet.crop_path(hid)
+    if not os.path.exists(p):
+        raise HTTPException(404, "no image")
+    return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=3600"})
+
+@app.get("/api/helmet/{hid}/frame")
+def helmet_frame(hid: str):
+    p = helmet.frame_path(hid)
+    if not os.path.exists(p):
+        raise HTTPException(404, "no image")
+    return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=3600"})
 
 @app.get("/api/traffic/roads")
 def traffic_roads(q: str = Query(None), limit: int = Query(50, ge=1, le=500)):
@@ -740,6 +848,8 @@ if os.path.isdir(WEB_DIST):
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 traffic.start()
+guidance.start()
+air.start()
 water_service.warm()
 rsc_service.warm(bma_scanner.cameras)
 bma_feed.start()
