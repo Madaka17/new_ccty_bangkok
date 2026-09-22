@@ -3,8 +3,9 @@ import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { motion } from 'framer-motion';
 import Hls from 'hls.js';
-import { fetchTrafficSummary, fetchLongdoCameras, fetchWaterSummary, fetchAirStations, fetchWindGrid } from '../lib/api.js';
+import { fetchTrafficSummary, fetchLongdoCameras, fetchWaterSummary, fetchAirStations, fetchWindGrid, fetchFloodStatus, fetchFloodStations } from '../lib/api.js';
 import { enrichCamerasWithFloodRisk } from '../lib/floodRisk.js';
+import { fmtTime } from './dashboard/format.js';
 import { Icon } from './dashboard/icons.jsx';
 
 
@@ -109,6 +110,22 @@ const POI_KIND = {
   parking: ['🅿️', 'ที่จอดรถ', '#475569'], fuel: ['⛽', 'ปั๊มน้ำมัน', '#475569'], charging_station: ['🔌', 'จุดชาร์จ EV', '#475569'],
   market: ['🧺', 'ตลาด', '#ea580c'],
 };
+// Water layer. Two different measurements share it, so they get two different marker shapes:
+//  * road sensors (BMA drainage, Bangkok only) - centimetres of water ON the road, a depth badge
+//  * river / canal gauges (ThaiWater, whole metro area) - % of bank capacity, a round dot
+const FLOOD_STYLE = {
+  flood: { color: '#dc2626', ring: 'rgba(220,38,38,.28)', label: 'น้ำท่วม' },
+  slight: { color: '#f59e0b', ring: 'rgba(245,158,11,.28)', label: 'น้ำท่วมเล็กน้อย' },
+  normal: { color: '#0ea5e9', ring: 'rgba(14,165,233,.18)', label: 'ปกติ' },
+  offline: { color: '#94a3b8', ring: 'rgba(148,163,184,.18)', label: 'เครื่องวัดขัดข้อง' },
+};
+const GAUGE_STYLE = {
+  overflow: { color: '#dc2626', label: 'ล้นตลิ่ง' },
+  high: { color: '#f59e0b', label: 'น้ำมาก' },
+  normal: { color: '#0284c7', label: 'ปกติ' },
+  low: { color: '#94a3b8', label: 'น้ำน้อย' },
+};
+
 const POI_MAX = 70;
 const POI_MIN_ZOOM = 15;
 // Label priority: public buildings first, then services, shops last (and capped) so a mall's
@@ -172,6 +189,14 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const [radarTileUrl, setRadarTileUrl] = useState(null);
   const [radarTime, setRadarTime] = useState(null);
   const [showPm, setShowPm] = useState(true);
+  // Water layer: BMA road-flood sensors (Bangkok) + ThaiWater river / canal gauges (metro area)
+  const [showFlood, setShowFlood] = useState(true);
+  const [floodDry, setFloodDry] = useState(false);
+  const [showGauges, setShowGauges] = useState(true);
+  const [flood, setFlood] = useState(null);
+  const [floodAll, setFloodAll] = useState(null);
+  const floodMarkersRef = useRef([]);
+  const gaugeMarkersRef = useRef([]);
   const [is3d, setIs3d] = useState(false);
   // Building details: flat footprints in 2D, POI name labels (DOM markers) and click-for-info on any building
   const [showPlaces, setShowPlaces] = useState(false);
@@ -464,6 +489,127 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
       clearPois();
     };
   }, [showPlaces, is3d]);
+
+  // Road-flood sensors: the wet ones every minute, the whole network only when dry ones are shown
+  useEffect(() => {
+    if (!isActive) return;
+    let alive = true;
+    const tick = () => fetchFloodStatus().then((d) => alive && setFlood(d)).catch(() => {});
+    tick();
+    const id = setInterval(tick, 60000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [isActive]);
+
+  useEffect(() => {
+    if (!isActive || !floodDry) return;
+    let alive = true;
+    fetchFloodStations({ limit: 1000 }).then((d) => alive && setFloodAll(d.items)).catch(() => {});
+    const id = setInterval(() => fetchFloodStations({ limit: 1000 }).then((d) => alive && setFloodAll(d.items)).catch(() => {}), 300000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [isActive, floodDry]);
+
+  const floodPoints = useMemo(() => {
+    if (!flood) return [];
+    return floodDry && floodAll ? floodAll : flood.wet;
+  }, [flood, floodAll, floodDry]);
+
+  const floodCounts = flood?.counts || { flood: 0, slight: 0, normal: 0, offline: 0 };
+  const floodTop = useMemo(() => (flood?.wet || []).slice(0, 6), [flood]);
+
+  // River + canal gauges for the six metro provinces, from the water summary already polled above
+  const gauges = useMemo(() => {
+    const out = [];
+    for (const r of waterSummary?.river || []) {
+      if (r.lat && r.lng) out.push({ ...r, kind: 'river' });
+    }
+    for (const c of waterSummary?.canals || []) {
+      if (c.lat && c.lng) out.push({ ...c, kind: 'canal' });
+    }
+    return out;
+  }, [waterSummary]);
+
+  const gaugeCounts = useMemo(() => {
+    const c = { overflow: 0, high: 0, normal: 0, low: 0 };
+    for (const g of gauges) c[g.level] = (c[g.level] || 0) + 1;
+    return c;
+  }, [gauges]);
+
+  const provinceCount = useMemo(() => new Set(gauges.map((g) => g.province).filter(Boolean)).size, [gauges]);
+
+  // One marker per road sensor: a depth badge when wet, a small dot when dry or broken
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    for (const m of floodMarkersRef.current) m.remove();
+    floodMarkersRef.current = [];
+    if (!showFlood) return;
+    for (const st of floodPoints) {
+      const sty = FLOOD_STYLE[st.status] || FLOOD_STYLE.offline;
+      const wet = st.status === 'flood' || st.status === 'slight';
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.title = `${st.short_name}: ${sty.label}${st.level_cm != null ? ` ${st.level_cm} ซม.` : ''}`;
+      if (wet) {
+        el.style.cssText = `display:flex;align-items:center;gap:3px;padding:2px 7px 2px 5px;border-radius:999px;background:${sty.color};color:#fff;font:700 11px/1 var(--font-sans);border:2px solid #fff;box-shadow:0 0 0 5px ${sty.ring},0 1px 4px rgba(15,23,42,.35);cursor:pointer`;
+        el.innerHTML = `<span style="font-size:11px">💧</span><span>${Math.round(st.level_cm)} ซม.</span>`;
+      } else {
+        el.style.cssText = `width:12px;height:12px;border-radius:999px;background:${sty.color};border:2px solid #fff;box-shadow:0 1px 3px rgba(15,23,42,.3);cursor:pointer;padding:0;opacity:.85`;
+      }
+      const popup = new maplibregl.Popup({ offset: 12, closeButton: true, maxWidth: '280px' }).setHTML(
+        `<div style="font-size:13px;line-height:1.45">
+          <b>${esc(st.short_name)}</b>
+          ${st.road ? `<br><span style="color:#64748b">${esc(st.road)}${st.district ? ` · เขต${esc(st.district)}` : ''}</span>` : ''}
+          <br><span style="color:${sty.color};font-weight:700">${sty.label}</span>
+          ${st.level_cm != null && st.status !== 'offline' ? ` <b>${st.level_cm} ซม.</b>` : ''}
+          ${st.trend_th ? ` <span style="color:#64748b">· ${esc(st.trend_th)}</span>` : ''}
+          ${st.kind === 'tunnel' ? `<br><span style="color:#64748b">อุโมงค์ทางลอด${st.side ? ` · ${esc(st.side)}` : ''}</span>` : ''}
+          ${st.started ? `<br><span style="color:#64748b">เริ่มท่วม ${esc(st.started)}</span>` : ''}
+          ${st.max_cm ? `<br><span style="color:#64748b">สูงสุด ${st.max_cm} ซม.</span>` : ''}
+          ${st.ts_th ? `<br><span style="color:#94a3b8;font-size:11px">ข้อมูล ${esc(st.ts_th)} · สำนักการระบายน้ำ กทม.</span>` : ''}
+        </div>`
+      );
+      floodMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([st.lng, st.lat]).setPopup(popup).addTo(map));
+    }
+  }, [floodPoints, showFlood]);
+
+  // River / canal gauges: a dot whose colour is the bank level, with the % of capacity inside
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    for (const m of gaugeMarkersRef.current) m.remove();
+    gaugeMarkersRef.current = [];
+    if (!showGauges) return;
+    for (const g of gauges) {
+      const sty = GAUGE_STYLE[g.level] || GAUGE_STYLE.normal;
+      const alarm = g.level === 'overflow' || g.level === 'high';
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.title = `${g.name} (${g.province}): ${sty.label} ${g.storage_pct}%`;
+      if (alarm) {
+        el.style.cssText = `display:flex;align-items:center;justify-content:center;min-width:34px;height:20px;padding:0 5px;border-radius:6px;background:${sty.color};color:#fff;font:700 10px/1 var(--font-sans);border:2px solid #fff;box-shadow:0 1px 4px rgba(15,23,42,.35);cursor:pointer`;
+        el.textContent = `${Math.round(g.storage_pct)}%`;
+      } else {
+        el.style.cssText = `width:10px;height:10px;border-radius:2px;background:${sty.color};border:2px solid #fff;box-shadow:0 1px 3px rgba(15,23,42,.3);cursor:pointer;padding:0;opacity:.8`;
+      }
+      const popup = new maplibregl.Popup({ offset: 12, closeButton: true, maxWidth: '280px' }).setHTML(
+        `<div style="font-size:13px;line-height:1.45">
+          <b>${esc(g.name)}</b>
+          <br><span style="color:#64748b">${g.kind === 'river' ? 'สถานีแม่น้ำ' : 'สถานีคลอง'}${g.district ? ` · ${esc(g.district)}` : ''}${g.province ? ` · ${esc(g.province)}` : ''}</span>
+          <br><span style="color:${sty.color};font-weight:700">${sty.label}</span> <b>${g.storage_pct}%</b> ของความจุตลิ่ง
+          ${g.msl != null ? `<br><span style="color:#64748b">ระดับน้ำ ${g.msl} ม.รทก.${g.bank != null ? ` · ตลิ่ง ${g.bank} ม.` : ''}</span>` : ''}
+          ${g.diff_text && g.diff_bank != null ? `<br><span style="color:#64748b">${esc(g.diff_text)} ${g.diff_bank}</span>` : ''}
+          ${g.ts ? `<br><span style="color:#94a3b8;font-size:11px">ข้อมูล ${new Date(g.ts * 1000).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น. · คลังข้อมูลน้ำแห่งชาติ</span>` : ''}
+        </div>`
+      );
+      gaugeMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([g.lng, g.lat]).setPopup(popup).addTo(map));
+    }
+  }, [gauges, showGauges]);
 
   // PM2.5 stations as DOM markers (rounded square with the µg/m³ value; the map style ships no
   // glyphs so a symbol layer cannot draw text). Colour = Thai AQI band.
@@ -810,6 +956,80 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
               </div>
             )}
           </div>
+        </div>
+
+        {/* น้ำท่วมขังถนน (เซ็นเซอร์ กทม.) + ระดับน้ำแม่น้ำ/คลอง (ปริมณฑล) */}
+        <div className="pt-2.5 border-t border-slate-100">
+          <div className="flex items-center justify-between mb-1">
+            <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
+              <input type="checkbox" checked={showFlood} onChange={(e) => setShowFlood(e.target.checked)} className="accent-blue-600 w-4 h-4" />
+              <Icon name="water" /> น้ำท่วมขังถนน กทม. (สด)
+            </label>
+            {flood?.feed_time && <span className="text-[11px] text-slate-500">{fmtTime(flood.feed_time)} น.</span>}
+          </div>
+          {flood ? (
+            <>
+              <p className="text-[11px] text-slate-500 mb-1.5">
+                {floodCounts.flood + floodCounts.slight > 0
+                  ? `ท่วม ${floodCounts.flood} จุด · เล็กน้อย ${floodCounts.slight} จุด จาก ${flood.total} จุดวัด`
+                  : `ไม่มีจุดน้ำท่วมขังขณะนี้ (ตรวจ ${flood.total} จุด)`}
+                {floodCounts.offline > 0 ? ` · ขัดข้อง ${floodCounts.offline}` : ''}
+              </p>
+              <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-slate-600 mb-1.5">
+                <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: FLOOD_STYLE.flood.color }} />ท่วม &gt;10 ซม.</span>
+                <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: FLOOD_STYLE.slight.color }} />เล็กน้อย 5-10</span>
+                <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: FLOOD_STYLE.normal.color }} />ปกติ &le;5</span>
+              </div>
+              <label className="inline-flex items-center gap-2 text-[11px] text-slate-600 cursor-pointer">
+                <input type="checkbox" checked={floodDry} onChange={(e) => setFloodDry(e.target.checked)} className="accent-blue-600" disabled={!showFlood} />
+                แสดงจุดวัดที่ยังไม่ท่วมด้วย
+              </label>
+              {floodTop.length > 0 && (
+                <ul className="mt-2 flex flex-col gap-1">
+                  {floodTop.map((r) => (
+                    <li key={r.code}>
+                      <button
+                        type="button"
+                        onClick={() => mapRef.current?.easeTo({ center: [r.lng, r.lat], zoom: 15.5, duration: 800 })}
+                        className="cursor-pointer w-full flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-2 py-1 text-left hover:border-slate-400 transition-colors"
+                      >
+                        <span className="min-w-0 truncate text-[12px] text-ink-900">{r.short_name}</span>
+                        <span className="shrink-0 text-[11px] font-semibold tabular-nums" style={{ color: FLOOD_STYLE[r.status].color }}>{r.level_cm} ซม.</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          ) : (
+            <p className="text-[11px] text-slate-500">กำลังโหลดจุดวัดน้ำท่วม ...</p>
+          )}
+          <p className="text-[11px] text-slate-400 mt-1">เซ็นเซอร์วัดน้ำบนผิวถนนมีเฉพาะ กทม. 50 เขต</p>
+        </div>
+
+        {/* ระดับน้ำแม่น้ำ / คลอง ทั่วเขตปริมณฑล (คลังข้อมูลน้ำแห่งชาติ) */}
+        <div className="pt-2.5 border-t border-slate-100">
+          <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
+            <input type="checkbox" checked={showGauges} onChange={(e) => setShowGauges(e.target.checked)} className="accent-blue-600 w-4 h-4" />
+            <Icon name="water" /> ระดับน้ำแม่น้ำ/คลอง (ปริมณฑล)
+          </label>
+          {gauges.length > 0 ? (
+            <>
+              <p className="text-[11px] text-slate-500 mt-1 mb-1.5">
+                {gauges.length} สถานีใน {provinceCount} จังหวัด (กทม. นนทบุรี ปทุมธานี สมุทรปราการ นครปฐม สมุทรสาคร) ·
+                {gaugeCounts.overflow > 0 ? ` ล้นตลิ่ง ${gaugeCounts.overflow} สถานี` : ' ไม่มีสถานีล้นตลิ่ง'}
+                {gaugeCounts.high > 0 ? ` · น้ำมาก ${gaugeCounts.high}` : ''}
+              </p>
+              <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-slate-600">
+                <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: GAUGE_STYLE.overflow.color }} />ล้นตลิ่ง</span>
+                <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: GAUGE_STYLE.high.color }} />น้ำมาก</span>
+                <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: GAUGE_STYLE.normal.color }} />ปกติ</span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">เป็นระดับน้ำในแม่น้ำ/คลอง เทียบ % ความจุตลิ่ง ไม่ใช่ความลึกของน้ำบนถนน</p>
+            </>
+          ) : (
+            <p className="text-[11px] text-slate-500 mt-1">กำลังโหลดสถานีวัดระดับน้ำ ...</p>
+          )}
         </div>
 
         {/* PM2.5 station toggle */}
