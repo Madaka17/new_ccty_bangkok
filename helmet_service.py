@@ -10,6 +10,7 @@ Flow (per camera, once per BMA scan cycle ~4 min, or on demand via check_now):
          no_helmet    -> the agent confirms it
          nothing seen -> the agent decides
     -> helmet agent (Gemini vision, else Claude): JSON {riders, no_helmet, confidence, note_th}
+       (no cloud provider: the crop is kept as 'unclear' - there is no local VLM fallback)
     -> verdict no_helmet (confidence >= HELMET_MIN_CONF): full frame with a red box + the crop are
        written to <HELMET_ARCHIVE_DIR>/<YYYY-MM-DD>/<camid>_<HHMMSS>.jpg (+ _crop.jpg) and one row
        goes to helmet.csv there.
@@ -32,8 +33,6 @@ from datetime import datetime
 import cv2
 import numpy as np
 
-from local_vision import LocalVisionAgent
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CACHE_DIR = os.path.join(BASE_DIR, "cache", "helmet")
 ARCHIVE_DIR = os.getenv("HELMET_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", r"D:\Data"), "helmet"))
@@ -55,12 +54,10 @@ HELMET_MIN_CONF = 0.7
 LOCAL_DET_CONF = 0.5
 WORKERS = int(os.getenv("HELMET_PATROL_WORKERS", "4"))   # cloud calls are network-bound (10-60 s each on the free tier)
 AGENT_BACKOFF_S = 600             # after a 402/401 (credits / key) from the agent: no calls for this long
-RATE_BACKOFF_S = 60               # after a 429 (per-minute rate limit): short pause, local VLM covers meanwhile
+RATE_BACKOFF_S = 60               # after a 429 (per-minute rate limit): short pause
 FALLBACK_MODEL = os.getenv("GEMINI_VISION_FALLBACK", "gemini-3.1-flash-lite")   # used when the main model returns 503
 CACHE_KEEP_H = 48
-VERDICT_TH = {"pending": "รอตรวจ", "helmet": "สวมหมวก", "no_helmet": "ไม่สวมหมวกกันน็อก", "suspect": "สงสัยไม่สวมหมวก (รอยืนยัน)",
-              "unclear": "มองไม่ชัด", "error": "ตรวจไม่สำเร็จ"}
-CONFIRM_EVERY_S = 30              # how often suspects from the local VLM are sent to the cloud agent for confirmation
+VERDICT_TH = {"pending": "รอตรวจ", "helmet": "สวมหมวก", "no_helmet": "ไม่สวมหมวกกันน็อก", "unclear": "มองไม่ชัด", "error": "ตรวจไม่สำเร็จ"}
 
 AGENT_PROMPT = (
     "You are the helmet-compliance agent of the Bangkok traffic control room. You receive one crop "
@@ -137,12 +134,9 @@ class HelmetPatrol:
             except Exception as e:  # noqa: BLE001
                 print(f"[Helmet] local detector failed to load: {e}")
                 self.local_det = None
-        # Second agent: local VLM on the GPU (local_vision.py). Takes over when the cloud agent is out.
-        self.local_vlm = LocalVisionAgent()
         for _ in range(WORKERS):
             threading.Thread(target=self._worker, daemon=True).start()
         threading.Thread(target=self._cleanup_loop, daemon=True).start()
-        threading.Thread(target=self._confirm_loop, daemon=True).start()
         # Captures left "pending" by a restart (the in-memory queue is gone): run them again
         threading.Thread(target=self._resume_pending, daemon=True).start()
         print(f"[Helmet] agent: {self.provider() or 'off'} · archive: {ARCHIVE_DIR}")
@@ -205,7 +199,7 @@ class HelmetPatrol:
         return getattr(v, "provider", None) if v and getattr(v, "client", None) else None
 
     def enabled(self):
-        return self.provider() is not None or self.local_det is not None or self.local_vlm.enabled
+        return self.provider() is not None or self.local_det is not None
 
     # ------------------------------------------------------------ capture (called from the scanner)
     def observe(self, cam, frame, boxes, force=False):
@@ -327,7 +321,7 @@ class HelmetPatrol:
         return None
 
     def _analyse(self, hid, camid, cam, crop, marked, agent="auto"):
-        """agent: auto (cloud when it can, else local VLM) | cloud | local."""
+        """agent: auto (cloud when budget allows) | cloud (force, used by reanalyse)."""
         now = time.time()
         local = self._local_verdict(crop)
         if agent == "auto" and local and local[0] == "helmet":
@@ -336,44 +330,31 @@ class HelmetPatrol:
             self.last_check = int(now)
             return
         provider = self.provider()
-        use = agent
-        if use == "auto":
-            use = "cloud" if provider and self._budget_ok(now) else ("local" if self.local_vlm.enabled else None)
-        if use == "cloud" and not provider:
-            use = "local" if self.local_vlm.enabled else None
-        if use is None:
-            reason = self._agent_reason(now) if provider else "ไม่มี AI agent ตรวจ (ตั้ง GEMINI_API_KEY / ANTHROPIC_API_KEY หรือ LOCAL_VLM)"
+        if not provider or (agent == "auto" and not self._budget_ok(now)):
+            reason = self._agent_reason(now) if provider else "ไม่มี AI agent ตรวจ (ตั้ง GEMINI_API_KEY หรือ ANTHROPIC_API_KEY)"
             self._settle_without_agent(hid, camid, cam, crop, marked, local, reason, provider or "none")
             return
         jpeg = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 90])[1].tobytes()
         hint = f" A local detector suspects no helmet ({local[1]:.0%})." if local else ""
         context = f"Camera: {cam.get('title') or camid}, Bangkok. One motorcycle crop from a 352x288 CCTV frame.{hint}"
-        if use == "cloud":
-            self._calls.append(now)
-            try:
-                text = self._ask(jpeg, context)
-            except Exception as e:  # noqa: BLE001
-                msg = str(e)
-                if "429" in msg or "RATE_LIMIT" in msg:
-                    self.agent_error = {"ts": now, "message": "ชนลิมิตต่อนาทีของ API", "for": RATE_BACKOFF_S}
-                    print(f"[Helmet] cloud agent rate-limited, pausing {RATE_BACKOFF_S}s")
-                elif any(k in msg for k in ("402", "401", "400", "RESOURCE_EXHAUSTED", "credits", "API key")):
-                    short = "เครดิต/โควตา API หมด" if ("402" in msg or "credits" in msg or "RESOURCE_EXHAUSTED" in msg) else msg[:120]
-                    self.agent_error = {"ts": now, "message": short, "for": AGENT_BACKOFF_S}
-                    print(f"[Helmet] cloud agent paused {AGENT_BACKOFF_S}s: {msg[:160]}")
-                else:
-                    print(f"[Helmet] cloud agent error: {msg[:160]}")
-                if self.local_vlm.enabled and agent == "auto":
-                    self._analyse(hid, camid, cam, crop, marked, agent="local")
-                else:
-                    self._settle_without_agent(hid, camid, cam, crop, marked, local, "AI agent ไม่ตอบ: " + msg[:100], provider)
-                return
-            self.agent_error = None
-            source = provider
-        else:
-            text = self.local_vlm.ask(jpeg, AGENT_PROMPT, context + " Reply with the JSON only; when a head is visible give a real judgement with confidence 0.6-0.9.")
-            source = self.local_vlm.name
-        self._apply_verdict(hid, camid, cam, crop, marked, text, source)
+        self._calls.append(now)
+        try:
+            text = self._ask(jpeg, context)
+        except Exception as e:  # noqa: BLE001
+            msg = str(e)
+            if "429" in msg or "RATE_LIMIT" in msg:
+                self.agent_error = {"ts": now, "message": "ชนลิมิตต่อนาทีของ API", "for": RATE_BACKOFF_S}
+                print(f"[Helmet] cloud agent rate-limited, pausing {RATE_BACKOFF_S}s")
+            elif any(k in msg for k in ("402", "401", "400", "RESOURCE_EXHAUSTED", "credits", "API key")):
+                short = "เครดิต/โควตา API หมด" if ("402" in msg or "credits" in msg or "RESOURCE_EXHAUSTED" in msg) else msg[:120]
+                self.agent_error = {"ts": now, "message": short, "for": AGENT_BACKOFF_S}
+                print(f"[Helmet] cloud agent paused {AGENT_BACKOFF_S}s: {msg[:160]}")
+            else:
+                print(f"[Helmet] cloud agent error: {msg[:160]}")
+            self._settle_without_agent(hid, camid, cam, crop, marked, local, "AI agent ไม่ตอบ: " + msg[:100], provider)
+            return
+        self.agent_error = None
+        self._apply_verdict(hid, camid, cam, crop, marked, text, provider)
 
     def _apply_verdict(self, hid, camid, cam, crop, marked, text, source):
         now = time.time()
@@ -385,12 +366,7 @@ class HelmetPatrol:
         note = (v.get("note_th") or "").strip()[:300]
         self.last_check = int(now)
         print(f"[Helmet] {source} · {cam.get('title') or camid}: riders {riders}, no helmet {bad}, conf {conf:.2f}")
-        is_local = source == self.local_vlm.name
-        if bad > 0 and is_local:
-            # The small local model over-reports missing helmets, so its "no helmet" is only a suspicion:
-            # nothing is archived until the cloud agent (or a person) confirms it.
-            self._update(hid, verdict="suspect", source=source, riders=riders, no_helmet=bad, confidence=round(conf, 2), note=note)
-        elif bad > 0 and conf >= HELMET_MIN_CONF:
+        if bad > 0 and conf >= HELMET_MIN_CONF:
             self._finish_no_helmet(hid, camid, cam, crop, marked, riders, bad, conf, note, source)
         elif conf >= 0.5 and riders > 0:
             self._update(hid, verdict="helmet", source=source, riders=riders, no_helmet=bad, confidence=round(conf, 2), note=note)
@@ -410,7 +386,7 @@ class HelmetPatrol:
         r["crop"], r["frame"] = f"/api/helmet/{hid}/crop", f"/api/helmet/{hid}/frame"
         return r
 
-    def reanalyse(self, hid, agent="local"):
+    def reanalyse(self, hid, agent="cloud"):
         """Second opinion on a saved capture from the page. Runs inline (a few seconds) and returns the row."""
         crop_p, frame_p = self.crop_path(hid), self.frame_path(hid)
         row = self._row(hid)
@@ -418,11 +394,7 @@ class HelmetPatrol:
             return {"ok": False, "error": "ไม่พบรายการ"}
         if not os.path.exists(crop_p):
             return {"ok": False, "error": "ไม่มีภาพนี้ในแคชแล้ว"}
-        if agent == "local" and not self.local_vlm.enabled:
-            return {"ok": False, "error": "LOCAL_VLM ปิดอยู่"}
-        if agent == "local" and not self.local_vlm.ready():
-            return {"ok": False, "error": "โมเดลในเครื่องยังโหลดไม่เสร็จ" + (f": {self.local_vlm.error}" if self.local_vlm.error else " ลองใหม่ใน 1 นาที")}
-        if agent == "cloud" and not self.provider():
+        if not self.provider():
             return {"ok": False, "error": "ไม่มี API key ของ Gemini/Claude"}
         camid = row["camid"]
         cam = next((c for c in (self.scanner.cameras if self.scanner else []) if str(c.get("camid")) == camid), None) \
@@ -447,34 +419,11 @@ class HelmetPatrol:
         if ids:
             print(f"[Helmet] resuming {len(ids)} captures left pending by the restart")
         for hid in ids:
-            self.reanalyse(hid, "cloud" if self.provider() else "local")
+            self.reanalyse(hid, "cloud")
 
-    def _confirm_loop(self):
-        """Every CONFIRM_EVERY_S: send the newest local-VLM suspects to the cloud agent while budget allows."""
-        while True:
-            time.sleep(CONFIRM_EVERY_S)
-            try:
-                if not self.provider() or not self._budget_ok(time.time()):
-                    continue
-                with self.lock:
-                    conn = self._db()
-                    ids = [r["id"] for r in conn.execute(
-                        "SELECT id FROM helmet_checks WHERE verdict = 'suspect' AND ts >= ? ORDER BY ts DESC LIMIT 5",
-                        (int(time.time() - 12 * 3600),))]
-                    conn.close()
-                for hid in ids:
-                    if not self._budget_ok(time.time()):
-                        break
-                    r = self.reanalyse(hid, "cloud")
-                    if not r.get("ok"):
-                        break
-            except Exception as e:  # noqa: BLE001
-                print(f"[Helmet] confirm loop: {e}")
-
-    def reanalyse_pending(self, agent="local", limit=40, hours=24):
-        """Re-run captures without a firm verdict through one agent, sequentially.
-        local: unclear / error / pending.  cloud: those plus the local model's suspects."""
-        verdicts = "('unclear','error','pending','suspect')" if agent == "cloud" else "('unclear','error','pending')"
+    def reanalyse_pending(self, agent="cloud", limit=40, hours=24):
+        """Re-run captures without a firm verdict (unclear / error / pending) through the cloud agent, sequentially."""
+        verdicts = "('unclear','error','pending')"
         with self.lock:
             conn = self._db()
             ids = [r["id"] for r in conn.execute(
@@ -589,10 +538,9 @@ class HelmetPatrol:
             "archive_dir": ARCHIVE_DIR, "archive_ok": os.path.isdir(os.path.dirname(ARCHIVE_DIR.rstrip("/\\"))),
             "calls_last_hour": len(self._calls), "calls_per_hour_max": MAX_PER_HOUR, "queue": self._queue.qsize(),
             "agent_error": (self.agent_error["message"] if self.agent_error and now - self.agent_error["ts"] < self.agent_error.get("for", AGENT_BACKOFF_S) else None),
-            "local_vlm": self.local_vlm.status(),
             "last_check": self.last_check, "cooldown_s": COOLDOWN, "per_camera": PER_CAM, "min_box_h": MIN_BOX_H,
             "today": {"captures": sum(today.values()), "pending": today.get("pending", 0), "helmet": today.get("helmet", 0),
-                      "no_helmet": today.get("no_helmet", 0), "suspect": today.get("suspect", 0),
+                      "no_helmet": today.get("no_helmet", 0),
                       "unclear": today.get("unclear", 0) + today.get("error", 0)},
             "total_no_helmet": total_no_helmet,
         }
@@ -656,7 +604,7 @@ class HelmetPatrol:
                 with self.lock:
                     conn = self._db()
                     # keep the no-helmet log forever (evidence is on the data drive); drop stale routine checks
-                    conn.execute("DELETE FROM helmet_checks WHERE ts < ? AND verdict NOT IN ('no_helmet','suspect')", (int(cutoff),))
+                    conn.execute("DELETE FROM helmet_checks WHERE ts < ? AND verdict != 'no_helmet'", (int(cutoff),))
                     conn.commit()
                     conn.close()
             except OSError:

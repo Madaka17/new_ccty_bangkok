@@ -7,11 +7,10 @@ import { fmtNum, fmtTime, fmtDateTime } from './dashboard/format.js';
 const POLL_MS = 30000;
 const TABS = [
   { id: 'violations', label: 'ไม่สวมหมวกกันน็อก' },
-  { id: 'suspects', label: 'สงสัย รอยืนยัน' },
   { id: 'captures', label: 'มอไซที่จับภาพได้' },
   { id: 'cameras', label: 'กล้องทุกตัว' },
 ];
-const VERDICT_TONE = { no_helmet: 'red', suspect: 'yellow', helmet: 'green', pending: 'blue', unclear: 'neutral', error: 'yellow' };
+const VERDICT_TONE = { no_helmet: 'red', helmet: 'green', pending: 'blue', unclear: 'neutral', error: 'yellow' };
 const LEVEL = { online: { tone: 'green', label: 'ออนไลน์' }, offline: { tone: 'neutral', label: 'ออฟไลน์' }, unknown: { tone: 'neutral', label: 'รอสแกน' } };
 
 // Helmet patrol over all 574 BMA cameras: every motorcycle the scanner sees is cropped, a vision
@@ -21,7 +20,6 @@ export default function HelmetPage({ isActive, onToast }) {
   const [tab, setTab] = useState('violations');
   const [status, setStatus] = useState(null);
   const [violations, setViolations] = useState(null);
-  const [suspects, setSuspects] = useState(null);
   const [captures, setCaptures] = useState(null);
   const [cameras, setCameras] = useState(null);
   const [hours, setHours] = useState(24);
@@ -34,15 +32,13 @@ export default function HelmetPage({ isActive, onToast }) {
 
   const load = useCallback(async () => {
     try {
-      const [st, v, sus, c] = await Promise.all([
+      const [st, v, c] = await Promise.all([
         fetchHelmetStatus(),
         fetchHelmetRecent({ hours, verdict: 'no_helmet', limit: 300 }),
-        fetchHelmetRecent({ hours, verdict: 'suspect', limit: 300 }),
         fetchHelmetRecent({ hours: Math.min(hours, 48), limit: 300 }),
       ]);
       setStatus(st);
       setViolations(v.items);
-      setSuspects(sus.items);
       setCaptures(c.items);
     } catch {
       /* keep the last data on a failed poll */
@@ -95,8 +91,8 @@ export default function HelmetPage({ isActive, onToast }) {
   const judgePending = async () => {
     setBulk(true);
     try {
-      const r = await reanalyseHelmetPending('local', 60);
-      onToast?.(r.queued ? `ส่งภาพที่ยังไม่ชัด ${r.queued} ภาพให้ AI ในเครื่องตรวจใหม่ ผลจะทยอยขึ้นใน 1-3 นาที` : 'ไม่มีภาพค้างตรวจ');
+      const r = await reanalyseHelmetPending('cloud', 60);
+      onToast?.(r.queued ? `ส่งภาพที่ยังไม่ชัด ${r.queued} ภาพให้ ${status?.agent_model || 'AI'} ตรวจใหม่ ผลจะทยอยขึ้นใน 1-3 นาที` : 'ไม่มีภาพค้างตรวจ');
       setTimeout(load, 8000);
     } catch {
       onToast?.('สั่งตรวจไม่สำเร็จ');
@@ -112,7 +108,6 @@ export default function HelmetPage({ isActive, onToast }) {
   }, [cameras, query, onlyMoto]);
 
   const t = status?.today || {};
-  const vlm = status?.local_vlm;
   const agentOff = status && !status.enabled;
 
   return (
@@ -140,7 +135,7 @@ export default function HelmetPage({ isActive, onToast }) {
       )}
       {status?.agent_error && (
         <StatusBanner tone="red" label="AI agent หยุดชั่วคราว">
-          {status.agent_error} — ระบบยังจับภาพมอไซต่อ แต่จะไม่มีคำตัดสินจนกว่า API จะกลับมา (เติมเครดิตที่ AI Studio หรือใส่ <code>ANTHROPIC_API_KEY</code>) ถ้ามี <code>helmet_det.pt</code> โมเดลในเครื่องจะตัดสินแทน
+          {status.agent_error} — ระบบยังจับภาพมอไซต่อ แต่จะไม่มีคำตัดสินจนกว่า API จะกลับมา (เติมเครดิตที่ AI Studio หรือใส่ <code>ANTHROPIC_API_KEY</code>) ถ้ามี <code>helmet_det.pt</code> โมเดลในเครื่องจะช่วยคัดกรองก่อน
         </StatusBanner>
       )}
       {status && !status.archive_ok && (
@@ -151,7 +146,7 @@ export default function HelmetPage({ isActive, onToast }) {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatTile label="มอไซที่จับภาพวันนี้" value={fmtNum(t.captures)} sub={`รอตรวจ ${fmtNum(t.pending ?? 0)} คัน`} loading={!status} />
-        <StatTile label="ไม่สวมหมวกวันนี้" value={fmtNum(t.no_helmet)} tone="red" sub={`สงสัยรอยืนยัน ${fmtNum(t.suspect ?? 0)} · สะสม ${fmtNum(status?.total_no_helmet)}`} loading={!status} />
+        <StatTile label="ไม่สวมหมวกวันนี้" value={fmtNum(t.no_helmet)} tone="red" sub={`สะสมทั้งหมด ${fmtNum(status?.total_no_helmet)} คัน`} loading={!status} />
         <StatTile label="สวมหมวก" value={fmtNum(t.helmet)} tone="green" sub={`มองไม่ชัด ${fmtNum(t.unclear ?? 0)}`} loading={!status} />
         <StatTile label="ตรวจล่าสุด" value={status?.last_check ? fmtTime(status.last_check) : '–'} sub={status ? `คิวรอ ${status.queue} · เก็บที่ ${status.archive_dir}` : ''} loading={!status} />
       </div>
@@ -160,27 +155,18 @@ export default function HelmetPage({ isActive, onToast }) {
         label="มุมมอง"
         value={tab}
         onChange={setTab}
-        tabs={TABS.map((x) => ({ ...x, badge: x.id === 'violations' ? violations?.length : x.id === 'suspects' ? suspects?.length : x.id === 'captures' ? captures?.length : cameras?.length }))}
+        tabs={TABS.map((x) => ({ ...x, badge: x.id === 'violations' ? violations?.length : x.id === 'captures' ? captures?.length : cameras?.length }))}
       />
 
       {tab === 'violations' && (
         <EvidenceGrid items={violations} onOpen={setOpen} empty={`ยังไม่พบผู้ไม่สวมหมวกใน ${hours} ชม.ที่ผ่านมา`} />
       )}
 
-      {tab === 'suspects' && (
-        <>
-          <p className="text-sm text-slate-600 -mt-1">
-            AI ในเครื่องสงสัยว่าไม่สวมหมวก ยังไม่บันทึกลงไดรฟ์จนกว่า {status?.agent_model || 'Gemini'} หรือคนจะยืนยัน ระบบส่งยืนยันเองทีละ 5 ภาพทุก 30 วินาทีเมื่อโควตาพอ
-          </p>
-          <EvidenceGrid items={suspects} onOpen={setOpen} empty={`ไม่มีภาพที่สงสัยใน ${hours} ชม.ที่ผ่านมา`} />
-        </>
-      )}
-
       {tab === 'captures' && (
         <>
           <div className="flex flex-wrap items-center gap-2 -mt-1">
-            <Button size="sm" variant="primary" onClick={judgePending} loading={bulk} disabled={!vlm?.ready} className="ml-auto">
-              ให้ AI ในเครื่องตรวจภาพที่ยังไม่ชัดทั้งหมด
+            <Button size="sm" variant="primary" onClick={judgePending} loading={bulk} disabled={!status?.agent || status.agent === 'off' || !!status?.agent_error} className="ml-auto">
+              ให้ {status?.agent_model || 'AI'} ตรวจภาพที่ยังไม่ชัดอีกครั้ง
             </Button>
           </div>
           <EvidenceGrid items={captures} onOpen={setOpen} compact empty="ยังไม่มีภาพมอไซที่จับได้ รอรอบสแกนถัดไปหรือกด 'ตรวจตอนนี้' ที่แท็บกล้อง" />
@@ -250,7 +236,7 @@ export default function HelmetPage({ isActive, onToast }) {
               <Badge tone={VERDICT_TONE[open.verdict]} dot={open.verdict === 'no_helmet'}>{open.verdict_th}</Badge>
               {open.riders != null && <span className="text-slate-700">ผู้ขับขี่/ซ้อน {open.riders} คน · ไม่สวม {open.no_helmet ?? 0} คน</span>}
               {open.confidence != null && <span className="text-slate-500 tabular-nums">ความมั่นใจ {Math.round(open.confidence * 100)}%</span>}
-              {open.source && <span className="text-slate-500">ตรวจโดย {open.source === 'local' ? 'โมเดลในเครื่อง' : open.source}</span>}
+              {open.source && <span className="text-slate-500">ตรวจโดย {open.source === 'local' ? 'helmet_det.pt' : open.source}</span>}
             </div>
             {open.note && <p className="text-sm text-slate-700">{open.note}</p>}
             <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200">

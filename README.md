@@ -58,10 +58,9 @@ GEMINI_API_KEY=AIza...
 GEMINI_MODEL=gemini-2.5-flash-lite
 # โมเดล vision สำหรับตรวจภาพ (อุบัติเหตุ/หมวก) ใช้รุ่น lite ที่ไม่ใช่ thinking จะเร็วกว่ามาก (2-6 วิ/ภาพ)
 GEMINI_VISION_MODEL=gemini-3.5-flash-lite
-# ตรวจหมวก: จำกัดการเรียก API ต่อชั่วโมง, โมเดลแยก, AI ในเครื่อง (LOCAL_VLM=0 ปิด)
+# ตรวจหมวก: จำกัดการเรียก API ต่อชั่วโมง, โมเดลแยก
 HELMET_PATROL_MAX_PER_HOUR=240
 HELMET_AGENT_MODEL=gemini-3.1-flash-lite
-LOCAL_VLM=Qwen/Qwen2-VL-2B-Instruct
 # ป้องกันสาธารณะ: ตั้งแล้วส่ง header X-Admin-Token เพื่อกดปุ่มควบคุมจากนอก LAN
 ADMIN_TOKEN=
 # โฟลเดอร์เก็บ CSV รอบนับกล้อง กทม. + ภาพหลักฐานฝ่าฝืน (ค่าเริ่มต้น D:\Data)
@@ -175,7 +174,6 @@ D:\New_CCTV\
 | `guidance_service.py` | คำแนะนำระบายรถรายเส้นทางหลัก 12 สาย ทุก 1 นาที จากเส้นสี Longdo (hotspots) + กล้อง กทม. + เหตุการณ์; Gemini เรียบเรียงข้อความทุก 5 นาที (`/api/traffic/guidance`) |
 | `air_service.py` | PM2.5 / AQI รายสถานีจาก Air4Thai ทุก 10 นาที (`/api/air/stations`) |
 | `helmet_service.py` | ตรวจหมวกกันน็อกทุกกล้อง กทม.: crop มอไซจากรอบสแกน → AI agent (Gemini/Claude หรือ `helmet_det.pt` ในเครื่อง) → ผู้ไม่สวมหมวกเก็บภาพ+CSV ที่ `BMA_DATA_DIR\helmet\` (`/api/helmet/*`) |
-| `local_vision.py` | AI agent ตัวที่ 2 ในเครื่อง (Qwen2-VL-2B บน GPU, ไม่ใช้ key) ใช้แทนเมื่อ Gemini หมดเครดิต/โควตา และให้ความเห็นซ้ำจากหน้าเว็บ |
 | `access_guard.py` | ป้องกันเมื่อเปิด Funnel สาธารณะ: POST ควบคุมทำได้จาก LAN/tailnet หรือ `X-Admin-Token`; `/api/chat` จำกัดต่อ IP |
 | `local/pipeline/backup_db.py` (`backup_db.bat`) | งานกลางคืน: ลบ `bma_history`/`samples` เกิน 90 วัน, VACUUM, สำเนา DB + CSV + .env ไป `BMA_DATA_DIRackup\` (ลงทะเบียน Task Scheduler 03:30 แล้ว) |
 | `local/pipeline/watchdog.bat` | ping `/api/health` ทุก 1 นาที ล้ม 3 ครั้งติดจึงรัน `restart_public.bat` |

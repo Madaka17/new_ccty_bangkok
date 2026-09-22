@@ -198,8 +198,7 @@ def health():
         "uptime_s": int(now - SERVER_START),
         "scan": {"cycle": scan.get("cycle_count"), "age_s": scan_age, "running": scan.get("is_scanning"), "ok": scan_ok},
         "ai_fps": detector.get_stats().get("fps"),
-        "helmet": {"agent": hs.get("agent"), "agent_error": hs.get("agent_error"), "queue": hs.get("queue"),
-                   "local_vlm_ready": (hs.get("local_vlm") or {}).get("ready")},
+        "helmet": {"agent": hs.get("agent"), "agent_error": hs.get("agent_error"), "queue": hs.get("queue")},
         "gpu": gpu, "data_disk": data_disk,
         "db_mb": round(os.path.getsize(os.path.join(BASE_DIR, "vehicle_counts.db")) / 2**20, 1),
     }
@@ -665,13 +664,13 @@ async def helmet_check(camid: str):
     return await loop.run_in_executor(None, lambda: helmet.check_now(camid))
 
 @app.post("/api/helmet/reanalyse_pending")
-async def helmet_reanalyse_pending(agent: str = Query("local", pattern="^(local|cloud)$"), limit: int = Query(40, ge=1, le=300), hours: int = Query(24, ge=1, le=168)):
+async def helmet_reanalyse_pending(agent: str = Query("cloud", pattern="^(cloud)$"), limit: int = Query(40, ge=1, le=300), hours: int = Query(24, ge=1, le=168)):
     """Send every unclear / failed capture of the last hours through the chosen agent again."""
     return helmet.reanalyse_pending(agent=agent, limit=limit, hours=hours)
 
 @app.post("/api/helmet/{hid}/reanalyse")
-async def helmet_reanalyse(hid: str, agent: str = Query("local", pattern="^(local|cloud)$")):
-    """Second opinion on one capture: local = VLM on this GPU, cloud = Gemini/Claude."""
+async def helmet_reanalyse(hid: str, agent: str = Query("cloud", pattern="^(cloud)$")):
+    """Run one capture through the cloud agent (Gemini/Claude) again."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, lambda: helmet.reanalyse(hid, agent))
 

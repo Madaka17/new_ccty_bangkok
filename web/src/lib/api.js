@@ -169,13 +169,13 @@ export async function triggerHelmetCheck(camid) {
   return res.json();
 }
 
-export async function reanalyseHelmet(hid, agent = 'local') {
+export async function reanalyseHelmet(hid, agent = 'cloud') {
   const res = await fetch(`/api/helmet/${encodeURIComponent(hid)}/reanalyse?agent=${agent}`, { method: 'POST' });
   if (!res.ok) throw new Error('helmet_reanalyse');
   return res.json();
 }
 
-export async function reanalyseHelmetPending(agent = 'local', limit = 40) {
+export async function reanalyseHelmetPending(agent = 'cloud', limit = 40) {
   const res = await fetch(`/api/helmet/reanalyse_pending?agent=${agent}&limit=${limit}`, { method: 'POST' });
   if (!res.ok) throw new Error('helmet_reanalyse_pending');
   return res.json();
