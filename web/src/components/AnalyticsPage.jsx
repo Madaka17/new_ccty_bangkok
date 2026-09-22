@@ -1,12 +1,11 @@
 // สรุปข้อมูลเมือง: five analytics sections from /api/analytics/summary
-// (traffic overview, flood watch + 1-6 h outlook, density tiers, black spots, visitors) with JSON/CSV export.
+// (traffic overview, flood watch + 1-6 h outlook, black spots, visitors) with JSON/CSV export.
 import { useCallback, useEffect, useState } from 'react';
 import { fetchAnalytics } from '../lib/api.js';
 import { trackView } from '../lib/telemetry.js';
 import { Button, Card, Badge, SectionHeader, Skeleton, EmptyState, ErrorState } from './dashboard/ui.jsx';
 import { PageHeader, StatTile, StatusBanner, Tabs, ShareBar } from './dashboard/primitives.jsx';
 import { fmtDateTime, fmtNum, ROAD_LEVEL, STATUS } from './dashboard/format.js';
-import DensityPanel from './dashboard/DensityPanel.jsx';
 import FloodPredictionCard from './dashboard/FloodPredictionCard.jsx';
 import HourlyViewsCard from './dashboard/HourlyViewsCard.jsx';
 
@@ -14,7 +13,6 @@ const POLL_MS = 60000;
 const SECTIONS = [
   { id: 'traffic', label: 'ภาพรวมการจราจร' },
   { id: 'flood', label: 'เฝ้าระวังน้ำท่วม' },
-  { id: 'density', label: 'ความหนาแน่นรายถนน' },
   { id: 'accidents', label: 'อุบัติเหตุและมาตรการ' },
   { id: 'visitors', label: 'ผู้เข้าใช้งาน' },
 ];
@@ -346,7 +344,6 @@ export default function AnalyticsPage({ isActive, onOpenRoad }) {
         <>
           {section === 'traffic' && <TrafficSection d={data.traffic} onOpenRoad={onOpenRoad} />}
           {section === 'flood' && <FloodSection d={data.flood} />}
-          {section === 'density' && <DensityPanel d={data.density} onOpenRoad={onOpenRoad} />}
           {section === 'accidents' && <AccidentSection d={data.accidents} />}
           {section === 'visitors' && <VisitorSection d={data.visitors} />}
         </>
