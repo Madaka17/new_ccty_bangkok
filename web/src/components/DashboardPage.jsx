@@ -136,7 +136,7 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
   return (
     <div className="flex flex-col gap-4 max-w-6xl mx-auto w-full">
       <PageHeader
-        title={source === 'bma' ? 'แดชบอร์ดสภาพจราจร' : 'แดชบอร์ดสภาพจราจร Longdo'}
+        title={source === 'bma' ? 'Dashboard' : 'แดชบอร์ดสภาพจราจร Longdo'}
         description={
           activeSummary
             ? `ข้อมูลล่าสุด ${fmtDateTime(activeSummary.updated_at)}`
