@@ -10,6 +10,7 @@ import DensityPanel from './dashboard/DensityPanel.jsx';
 import TrafficGuidanceCard from './dashboard/TrafficGuidanceCard.jsx';
 import CityStatusStrip from './dashboard/CityStatusStrip.jsx';
 import FloodPanel from './dashboard/FloodPanel.jsx';
+import RoadRiskPanel from './dashboard/RoadRiskPanel.jsx';
 import BMAEventFeed from './water/BMAEventFeed.jsx';
 
 const POLL_MS = 60000;
@@ -17,6 +18,7 @@ const POLL_MS = 60000;
 const SECTIONS = [
   { id: 'overview', label: 'ภาพรวมจราจร' },
   { id: 'flood', label: 'น้ำท่วมขังถนน' },
+  { id: 'road-risk', label: 'วิเคราะห์รายถนน' },
   { id: 'incidents', label: 'เหตุการณ์สด' },
   { id: 'bma-reports', label: 'รายงานสดจากศูนย์' },
 ];
@@ -197,6 +199,7 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
         </>
       )}
       {section === 'flood' && <FloodPanel isActive={isActive && section === 'flood'} onNavigate={onNavigate} />}
+      {section === 'road-risk' && <RoadRiskPanel isActive={isActive && section === 'road-risk'} onOpenRoad={onOpenRoad} />}
       {section === 'incidents' && <IncidentPanel incidents={incidents} onOpenAI={onOpenAI} onNavigate={onNavigate} />}
       {section === 'bma-reports' && <BMAEventFeed isActive={isActive && section === 'bma-reports'} onToast={onToast} />}
     </div>

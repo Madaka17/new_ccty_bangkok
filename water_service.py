@@ -545,7 +545,9 @@ def _load_ntw():
     return {
         "updated_at": int(time.time()),
         "dams": dams,
-        "rain": rain[:40], "rain_total": len(rain), "rain_counts": rain_counts,
+        # the page shows the wettest 40; rain_all is for road_service and is dropped
+        # from the summary payload again in _build_summary
+        "rain": rain[:40], "rain_all": rain, "rain_total": len(rain), "rain_counts": rain_counts,
         "rain_outlook": outlook, "storms": storms, "warnings": warnings,
     }
 
@@ -726,7 +728,8 @@ def _build_summary():
     threads = [threading.Thread(target=run, args=a, daemon=True) for a in (
         ("river", _load_river), ("canals", _load_canals), ("flood_roads", _load_flood_roads),
         ("tide", _load_tide), ("rain", _load_rain_warnings), ("official", _load_official_stations),
-        ("weather", _load_weather), ("ntw", lambda: _cache.get("ntw", NTW_TTL, _load_ntw)[0]))]
+        ("weather", _load_weather),
+        ("ntw", lambda: {k: v for k, v in _cache.get("ntw", NTW_TTL, _load_ntw)[0].items() if k != "rain_all"}))]
     for t in threads:
         t.start()
     for t in threads:
@@ -753,6 +756,14 @@ def _build_summary():
         "ntw": parts.get("ntw"),
         "errors": errors,
     }
+
+
+def rain_stations():
+    """Every metro rain gauge with its 24 h total, from the same cache the summary uses."""
+    try:
+        return _cache.get("ntw", NTW_TTL, _load_ntw)[0].get("rain_all") or []
+    except Exception:  # noqa: BLE001 - callers treat rain as optional context
+        return []
 
 
 def get_summary():

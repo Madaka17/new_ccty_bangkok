@@ -130,6 +130,18 @@ export async function fetchWindGrid() {
   return res.json();
 }
 
+// Per-road flood risk: rain + canal level + road sensors + traffic, scored and ranked
+export async function fetchRoadRisk({ level = null, province = null, q = null, measured = null, limit = 400 } = {}) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (level) params.set('level', level);
+  if (province) params.set('province', province);
+  if (q) params.set('q', q);
+  if (measured != null) params.set('measured', String(measured));
+  const res = await fetch(`/api/roads/risk?${params}`);
+  if (!res.ok) throw new Error('road_risk');
+  return res.json();
+}
+
 // Road flooding: BMA drainage sensors (weather.bangkok.go.th), depth over the road in cm
 export async function fetchFloodStatus() {
   const res = await fetch('/api/flood/status');

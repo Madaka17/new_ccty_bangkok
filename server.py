@@ -82,6 +82,7 @@ from helmet_service import HelmetPatrol
 from wrongway_service import WrongWayPatrol
 from air_service import air
 from flood_service import flood_roads
+from road_service import road_risk
 import chat_service
 import water_service
 import rsc_service
@@ -698,6 +699,13 @@ def helmet_frame(hid: str):
     return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=3600"})
 
 # ---------------------------------------------------------------- Road flooding (BMA drainage sensors)
+# ---------------------------------------------------------------- Per-road flood risk (BKK + metro)
+@app.get("/api/roads/risk")
+def roads_risk(level: str = Query(None, pattern="^(high|medium|low|none)$"), province: str = Query(None),
+               q: str = Query(None), measured: bool = Query(None), limit: int = Query(200, ge=1, le=2000)):
+    """Every named road with the rain, canal level and road-sensor water around it, scored and ranked."""
+    return road_risk.status(level=level, province=province, q=q, measured=measured, limit=limit)
+
 @app.get("/api/flood/status")
 def flood_status(min_cm: float = Query(None, ge=0, le=200)):
     """Counts, every wet station and the per-district roll-up, for the flood layer on the map."""
@@ -933,6 +941,8 @@ traffic.start()
 guidance.start()
 air.start()
 flood_roads.start()
+road_risk.traffic, road_risk.flood, road_risk.water = traffic, flood_roads, water_service
+road_risk.start()
 water_service.warm()
 rsc_service.warm(bma_scanner.cameras)
 bma_feed.start()

@@ -328,8 +328,14 @@ class TrafficService:
                             continue
                         totals[cls] += km
                         if name:
-                            r = roads.setdefault(name, {"name": name, "green": 0.0, "yellow": 0.0, "red": 0.0, "spots": {}})
+                            r = roads.setdefault(name, {"name": name, "green": 0.0, "yellow": 0.0, "red": 0.0,
+                                                       "spots": {}, "clat": 0.0, "clon": 0.0, "ckm": 0.0})
                             r[cls] += km
+                            # km-weighted centre of the whole road, so every road has a position
+                            # (hotspots below exist only where it is red)
+                            r["clat"] += mid[1] * km
+                            r["clon"] += mid[0] * km
+                            r["ckm"] += km
                             if cls == "red":
                                 # ~1 km grid cell so nearby red pieces merge into one hotspot
                                 cell = (round(mid[1] * 100), round(mid[0] * 100))
@@ -348,6 +354,8 @@ class TrafficService:
             hotspots = sorted(r["spots"].values(), key=lambda sp: -sp["km"])[:3]
             road_list.append({
                 "name": r["name"],
+                "lat": round(r["clat"] / r["ckm"], 5) if r["ckm"] else None,
+                "lng": round(r["clon"] / r["ckm"], 5) if r["ckm"] else None,
                 "length_km": round(length, 1),
                 "red_km": round(r["red"], 1),
                 "green_pct": round(100 * r["green"] / length),
