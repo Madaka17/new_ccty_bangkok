@@ -10,13 +10,25 @@ Four live measurements already exist in this server, each of them incomplete on 
 
 This module joins them by position: each road takes the flood sensors that sit on it (by name, or
 within NEAR_FLOOD_KM of its centre), the nearest rain gauge within NEAR_RAIN_KM and the nearest
-river or canal gauge within NEAR_GAUGE_KM, and gets a 0-100 risk score from what they say. That is
-also what makes the provinces usable: they have no road sensors, so a road in Nonthaburi is judged
-from the rain that fell on it and the canal next to it, and the row says as much.
+river or canal gauge within NEAR_GAUGE_KM. That is also what makes the provinces usable: they have
+no road sensors, so a road in Nonthaburi is judged from the rain that fell on it and the canal next
+to it, and the row says as much.
 
-A risk score is a ranking aid, not a measurement. The parts that make it up are kept on every row
-(flood_cm, rain_24h, gauge_pct, red_pct) so a person can see why a road is where it is, and rows
-built without a road sensor are marked `measured: false`.
+There is no invented scoring here. Every reading is put into the class its own authority publishes,
+and the road takes the class of what was actually measured on it:
+
+    water on the road   สำนักการระบายน้ำ กทม. for the sensor itself (<=5 / 5-10 / >10 cm) and
+                        กรมป้องกันและบรรเทาสาธารณภัย for what a driver can do at that depth
+                        (<20 passable, 20-40 short distances only, 60-80 high-clearance vehicles,
+                        >80 do not drive through)
+    rain in 24 h        กรมอุตุนิยมวิทยา: 0.1-10 light, 10.1-35 moderate, 35.1-90 heavy,
+                        >=90.1 very heavy
+    canal / river       คลังข้อมูลน้ำแห่งชาติ: >=100% of bank = over the bank, 80-99% = high
+
+A road with its own sensor takes the road-water class directly, because that is a measurement of
+the road. A road without one cannot be said to be flooded at all, so it is only ever raised to
+"watch": its rain and canal classes are halved and capped there, and the row is marked
+`measured: false`. Every class and the exact number behind it stay on the row.
 
 Gemini writes the short Thai read of the top roads, at most once every AI_INTERVAL and only when
 the picture changed; without a key a deterministic template says the same things from the numbers.
@@ -45,13 +57,41 @@ NEAR_GAUGE_KM = 5.0
 FLOOD_PROVINCE_KM = 1.5   # a road sensor further than this does not decide the road's province
 TOP_AI = 8
 
-# Risk weights. Water measured on the road dominates; rain and canal level are the only signals
-# the provinces have, so they have to be able to raise a row on their own.
-W_FLOOD, W_RAIN, W_GAUGE, W_TRAFFIC = 55.0, 25.0, 15.0, 5.0
-FLOOD_FULL_CM = 25.0         # cm that scores the whole flood weight
-RAIN_FULL_MM = 80.0          # mm in 24 h that scores the whole rain weight
-LEVELS = (("high", 60), ("medium", 35), ("low", 15), ("none", 0))
-LEVEL_TH = {"high": "เสี่ยงสูง", "medium": "เฝ้าระวัง", "low": "เสี่ยงต่ำ", "none": "ปกติ"}
+# ---------------------------------------------------------------- published classifications
+# Depth of water on the road. 0-2 are the thresholds the BMA drainage department draws its own map
+# with; 3-4 are the driving advice of the Department of Disaster Prevention and Mitigation.
+# (ปภ. states <20, 20-40, 60-80 and >80; 40-60 is not published separately and is kept with 20-40.)
+ROAD_WATER_BANDS = (
+    (5.0, 0, "ปกติ", "สนน. กทม.: ไม่เกิน 5 ซม."),
+    (10.0, 1, "น้ำท่วมเล็กน้อย", "สนน. กทม.: 5-10 ซม."),
+    (20.0, 2, "น้ำท่วม รถผ่านได้", "สนน. กทม.: เกิน 10 ซม. · ปภ.: ต่ำกว่า 20 ซม. รถยังผ่านได้"),
+    (60.0, 3, "ควรเลี่ยงเส้นทาง", "ปภ.: 20-40 ซม. ผ่านได้ระยะสั้น ควรเลี่ยง"),
+    (None, 4, "ห้ามขับผ่าน", "ปภ.: 60-80 ซม. เฉพาะรถยกสูง · เกิน 80 ซม. ห้ามผ่านเด็ดขาด"),
+)
+# 24 h rainfall, กรมอุตุนิยมวิทยา (tmd.go.th "เกณฑ์ปริมาณฝน")
+RAIN_BANDS = (
+    (0.1, 0, "ไม่มีฝน", "กรมอุตุฯ: ต่ำกว่า 0.1 มม."),
+    (10.0, 1, "ฝนเล็กน้อย", "กรมอุตุฯ: 0.1-10.0 มม."),
+    (35.0, 2, "ฝนปานกลาง", "กรมอุตุฯ: 10.1-35.0 มม."),
+    (90.0, 3, "ฝนหนัก", "กรมอุตุฯ: 35.1-90.0 มม."),
+    (None, 4, "ฝนหนักมาก", "กรมอุตุฯ: 90.1 มม. ขึ้นไป"),
+)
+# Water body against its bank, คลังข้อมูลน้ำแห่งชาติ / ThaiWater
+GAUGE_BANDS = (
+    (80.0, 0, "ปกติ", "คลังข้อมูลน้ำฯ: ต่ำกว่า 80% ของตลิ่ง"),
+    (100.0, 2, "น้ำมาก", "คลังข้อมูลน้ำฯ: 80-99% ของตลิ่ง"),
+    (None, 4, "ล้นตลิ่ง", "คลังข้อมูลน้ำฯ: 100% ของตลิ่งขึ้นไป"),
+)
+
+LEVEL_ORDER = ("none", "watch", "passable", "avoid", "closed")
+LEVEL_TH = {
+    "none": "ปกติ",
+    "watch": "เฝ้าระวัง",
+    "passable": "น้ำท่วม รถผ่านได้",
+    "avoid": "ควรเลี่ยงเส้นทาง",
+    "closed": "ห้ามขับผ่าน",
+}
+INFERRED_MAX = 1   # a road with no sensor of its own can never be called flooded, only "watch"
 
 
 def _km(lat1, lon1, lat2, lon2):
@@ -69,11 +109,14 @@ def _norm(name):
     return s.replace(" ", "").lower()
 
 
-def _level(score):
-    for key, floor in LEVELS:
-        if score >= floor:
-            return key
-    return "none"
+def _classify(value, bands):
+    """(class, label, the published rule it came from) for one reading, or a zero class when unknown."""
+    if value is None:
+        return None, None, None
+    for ceiling, cls, label, source in bands:
+        if ceiling is None or value <= ceiling:
+            return cls, label, source
+    return bands[-1][1], bands[-1][2], bands[-1][3]
 
 
 class RoadRisk:
@@ -163,15 +206,25 @@ class RoadRisk:
             gauge_pct = near_gauge["storage_pct"] if near_gauge else None
             red_pct = r.get("red_pct") or 0
 
-            score = 0.0
-            if flood_cm:
-                score += W_FLOOD * min(1.0, flood_cm / FLOOD_FULL_CM)
-            if rain_mm:
-                score += W_RAIN * min(1.0, rain_mm / RAIN_FULL_MM)
-            if gauge_pct:
-                score += W_GAUGE * min(1.0, max(0.0, (gauge_pct - 70.0) / 40.0))
-            score += W_TRAFFIC * min(1.0, red_pct / 100.0)
-            score = round(min(100.0, score), 1)
+            water_cls, water_label, water_src = _classify(flood_cm, ROAD_WATER_BANDS)
+            rain_cls, rain_label, rain_src = _classify(rain_mm, RAIN_BANDS)
+            gauge_cls, gauge_label, gauge_src = _classify(gauge_pct, GAUGE_BANDS)
+
+            # Rain and the canal beside the road are circumstantial: halved and capped at "watch",
+            # they can flag a road but never declare it flooded.
+            around = max(rain_cls or 0, gauge_cls or 0)
+            inferred = min(INFERRED_MAX, around // 2)
+            measured = water_cls or 0
+            # The higher of the two wins. A sensor reading zero does not clear the whole road -
+            # it measures one point of it - so heavy rain around it still raises the row to watch.
+            cls = max(measured, inferred)
+            if on_road and measured >= inferred:
+                basis = "sensor"
+            elif on_road and inferred > 0:
+                basis = "both"
+            else:
+                basis = "inferred" if inferred else ("sensor" if on_road else "none")
+            level = LEVEL_ORDER[cls]
 
             # Province: the nearest reference point of any kind wins. The road sensors are dense
             # inside Bangkok, so a Bangkok road resolves to Bangkok even when the closest canal
@@ -223,11 +276,16 @@ class RoadRisk:
                 "gauge_kind": (near_gauge or {}).get("kind"),
                 "gauge_level": (near_gauge or {}).get("level"),
                 "gauge_km": round(gauge_km, 1) if gauge_km else None,
-                "score": score,
-                "level": _level(score),
-                "level_th": LEVEL_TH[_level(score)],
+                "water_class": water_cls, "water_label": water_label, "water_source": water_src,
+                "rain_class": rain_cls, "rain_label": rain_label, "rain_source": rain_src,
+                "gauge_class": gauge_cls, "gauge_label": gauge_label, "gauge_source": gauge_src,
+                "basis": basis,
+                "class": cls,
+                "level": level,
+                "level_th": LEVEL_TH[level],
             })
-        out.sort(key=lambda x: (-x["score"], -(x["flood_cm"] or 0), x["road"]))
+        out.sort(key=lambda x: (-x["class"], -(x["flood_cm"] or 0), -(x["rain_24h"] or 0),
+                                -(x["gauge_pct"] or 0), x["road"]))
         return out
 
     # ------------------------------------------------------------ AI read
@@ -245,20 +303,22 @@ class RoadRisk:
 
     @staticmethod
     def _template(top, counts):
-        if not top or top[0]["score"] < 15:
+        if not top:
             return {"headline": "ยังไม่มีถนนสายใดเข้าเกณฑ์เฝ้าระวังน้ำท่วมขัง",
                     "detail": f"ประเมิน {counts['total']} สาย จากฝน 24 ชม. ระดับน้ำคลอง/แม่น้ำ และเซ็นเซอร์บนผิวถนน",
                     "roads": [], "source": "template"}
         first = top[0]
         return {
-            "headline": f"{first['road']} เสี่ยงที่สุดขณะนี้ (คะแนน {first['score']})",
-            "detail": f"เสี่ยงสูง {counts['high']} สาย · เฝ้าระวัง {counts['medium']} สาย จากทั้งหมด {counts['total']} สาย",
+            "headline": f"{first['road']}: {first['level_th']} ({first['water_label'] or first['rain_label'] or '-'})",
+            "detail": (f"ห้ามขับผ่าน {counts['closed']} สาย · ควรเลี่ยง {counts['avoid']} สาย · "
+                       f"ท่วมแต่ผ่านได้ {counts['passable']} สาย · เฝ้าระวัง {counts['watch']} สาย "
+                       f"จากทั้งหมด {counts['total']} สาย"),
             "roads": [{"road": t["road"],
                        "why": " · ".join(x for x in [
                            f"น้ำบนถนน {t['flood_cm']} ซม." if t.get("flood_cm") else None,
                            f"ฝน 24 ชม. {t['rain_24h']} มม." if t.get("rain_24h") else None,
                            f"{t['gauge_at']} {t['gauge_pct']}% ของตลิ่ง" if t.get("gauge_pct") else None,
-                           f"เส้นทางติดขัด {t['red_pct']}%" if (t.get("red_pct") or 0) >= 40 else None,
+                           f"{t['gauge_label']}" if t.get("gauge_label") and (t.get("gauge_class") or 0) > 0 else None,
                        ] if x) or "ไม่มีข้อมูลเด่น",
                        "advice": ""} for t in top[:5]],
             "source": "template",
@@ -266,10 +326,10 @@ class RoadRisk:
 
     def _analyse(self, items, force=False):
         counts = {"total": len(items)}
-        for k in ("high", "medium", "low", "none"):
+        for k in LEVEL_ORDER:
             counts[k] = sum(1 for i in items if i["level"] == k)
-        top = [i for i in items if i["score"] >= 15][:TOP_AI]
-        sig = json.dumps([(t["road"], t["level"], round(t["score"])) for t in top], ensure_ascii=False)
+        top = [i for i in items if i["class"] > 0][:TOP_AI]
+        sig = json.dumps([(t["road"], t["level"]) for t in top], ensure_ascii=False)
         now = time.time()
         base = self._template(top, counts)
         if not force and sig == self._ai_sig and self.analysis and now - self._ai_at < AI_INTERVAL:
@@ -280,7 +340,8 @@ class RoadRisk:
                 self.analysis = {**base, "counts": counts, "updated_at": int(now)}
             self._ai_sig, self._ai_at = sig, now
             return self.analysis
-        facts = [{"road": t["road"], "province": t["province"], "district": t["district"], "score": t["score"],
+        facts = [{"road": t["road"], "province": t["province"], "district": t["district"],
+                  "level": t["level_th"], "basis": t["basis"],
                   "flood_cm": t["flood_cm"], "flood_at": t["flood_at"], "flood_trend": t["flood_trend"],
                   "has_road_sensor": t["measured"],
                   "rain_24h_mm": t["rain_24h"], "rain_station": t["rain_at"], "rain_station_km": t["rain_km"],
@@ -294,6 +355,9 @@ class RoadRisk:
             "- rain_24h_mm = ฝนสะสม 24 ชม. ของสถานีวัดฝนที่ใกล้ที่สุด ห่าง rain_station_km กิโลเมตร\n"
             "- gauge_pct_of_bank = ระดับน้ำในคลอง/แม่น้ำที่ใกล้ที่สุด คิดเป็น % ของความจุตลิ่ง เกิน 100 คือล้นตลิ่ง\n"
             "- traffic_red_pct = สัดส่วนระยะทางที่รถติดตอนนี้\n"
+            "- level = ระดับตามเกณฑ์ทางการ (สนน. กทม. + ปภ. สำหรับน้ำบนถนน, กรมอุตุฯ สำหรับฝน, "
+            "คลังข้อมูลน้ำแห่งชาติ สำหรับระดับตลิ่ง) · basis = sensor คือวัดบนถนนจริง, "
+            "inferred คือประเมินจากฝน/ระดับน้ำรอบข้างเท่านั้น\n"
             "เขียนภาษาไทยจากตัวเลขที่ให้เท่านั้น ห้ามแต่งชื่อถนน ตัวเลข หรือพยากรณ์ฝนที่ไม่มีในข้อมูล\n"
             "ตอบเป็น JSON object เท่านั้น:\n"
             '{"headline":"<1 ประโยค ภาพรวมว่าสายไหนน่าห่วงที่สุดและเพราะอะไร ไม่เกิน 30 คำ>",'
@@ -368,19 +432,29 @@ class RoadRisk:
                 counts[i["level"]] += 1
                 p = i.get("province")
                 if p:
-                    d = provinces.setdefault(p, {"province": p, "roads": 0, "high": 0, "medium": 0, "max_score": 0.0})
+                    d = provinces.setdefault(p, {"province": p, "roads": 0, "flooded": 0, "watch": 0, "max_class": 0})
                     d["roads"] += 1
-                    if i["level"] in ("high", "medium"):
-                        d[i["level"]] += 1
-                    d["max_score"] = max(d["max_score"], i["score"])
+                    if i["class"] >= 2:
+                        d["flooded"] += 1
+                    elif i["class"] == 1:
+                        d["watch"] += 1
+                    d["max_class"] = max(d["max_class"], i["class"])
         return {
             "updated_at": updated, "error": error, "total": len(self.items), "counts": counts,
             "level_th": LEVEL_TH,
-            "provinces": sorted(provinces.values(), key=lambda p: (-p["high"], -p["max_score"])),
+            "provinces": sorted(provinces.values(), key=lambda p: (-p["max_class"], -p["flooded"], -p["watch"])),
             "analysis": analysis,
             "items": items[:limit],
-            "note": ("คะแนนเสี่ยงรวมจากน้ำบนผิวถนน (เฉพาะ กทม.), ฝนสะสม 24 ชม., ระดับน้ำคลอง/แม่น้ำใกล้เคียง "
-                     "และสภาพจราจร · สายที่ไม่มีเซ็นเซอร์บนถนนจะประเมินจากฝนและระดับน้ำรอบข้างเท่านั้น"),
+            "note": ("ระดับตามเกณฑ์ทางการ: น้ำบนผิวถนนใช้เกณฑ์สำนักการระบายน้ำ กทม. (5/10 ซม.) "
+                     "ร่วมกับคำแนะนำการขับขี่ของ ปภ. (20/60/80 ซม.) · ฝน 24 ชม. ใช้เกณฑ์กรมอุตุนิยมวิทยา "
+                     "(10/35/90 มม.) · ระดับคลองและแม่น้ำใช้เกณฑ์คลังข้อมูลน้ำแห่งชาติ (80%/100% ของตลิ่ง) · "
+                     "ถนนที่ไม่มีเซ็นเซอร์วัดน้ำบนผิวถนนจะไม่ถูกระบุว่าท่วม แต่ขึ้นได้สูงสุดแค่ 'เฝ้าระวัง' "
+                     "จากฝนและระดับน้ำรอบข้าง"),
+            "standards": {
+                "water": [{"upto_cm": b[0], "class": b[1], "label": b[2], "source": b[3]} for b in ROAD_WATER_BANDS],
+                "rain": [{"upto_mm": b[0], "class": b[1], "label": b[2], "source": b[3]} for b in RAIN_BANDS],
+                "gauge": [{"upto_pct": b[0], "class": b[1], "label": b[2], "source": b[3]} for b in GAUGE_BANDS],
+            },
         }
 
 

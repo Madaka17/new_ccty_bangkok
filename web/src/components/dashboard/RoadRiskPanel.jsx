@@ -1,7 +1,7 @@
-// Per-road flood outlook for Bangkok and the five metro provinces (/api/roads/risk, road_service.py).
-// Each row joins four different live measurements around one road: centimetres of water on the road
-// (Bangkok sensors only), 24 h rainfall at the nearest gauge, the nearest canal or river as a % of
-// its bank, and how congested the road is now. The score ranks them; the columns show why.
+// Per-road flood status for Bangkok and the five metro provinces (/api/roads/risk, road_service.py).
+// Every reading is shown in the class its own authority publishes - the BMA drainage thresholds and
+// the ปภ. driving advice for water on the road, the TMD bands for 24 h rain, the national water
+// catalogue's bank percentages - so a row can be traced back to a rule rather than to a weighting.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchRoadRisk } from '../../lib/api.js';
 import { Card, Badge, Button, SectionHeader, Segmented, Skeleton, EmptyState, Truncate, FOCUS } from './ui.jsx';
@@ -12,12 +12,16 @@ const POLL_MS = 120000;
 const PAGE = 25;
 
 const RISK = {
-  high: { tone: 'red', text: 'text-red-700', bar: 'bg-red-500' },
-  medium: { tone: 'yellow', text: 'text-amber-700', bar: 'bg-amber-500' },
-  low: { tone: 'blue', text: 'text-sky-700', bar: 'bg-sky-500' },
-  none: { tone: 'green', text: 'text-emerald-700', bar: 'bg-emerald-500' },
+  closed: { tone: 'red', text: 'text-red-700' },
+  avoid: { tone: 'red', text: 'text-red-700' },
+  passable: { tone: 'yellow', text: 'text-amber-700' },
+  watch: { tone: 'blue', text: 'text-sky-700' },
+  none: { tone: 'green', text: 'text-emerald-700' },
 };
-const LEVELS = [['all', 'ทุกระดับ'], ['high', 'เสี่ยงสูง'], ['medium', 'เฝ้าระวัง'], ['low', 'เสี่ยงต่ำ']];
+const LEVELS = [['all', 'ทุกระดับ'], ['closed', 'ห้ามผ่าน'], ['avoid', 'ควรเลี่ยง'], ['passable', 'ท่วม/ผ่านได้'], ['watch', 'เฝ้าระวัง']];
+// class 0-4 of one reading -> how strongly to show it
+const CLS_TEXT = ['text-slate-700', 'text-sky-700', 'text-amber-700', 'text-red-700', 'text-red-700'];
+const CLS_WEIGHT = (c) => ((c || 0) >= 2 ? 'font-semibold' : '');
 const TREND_MARK = { rising: '▲', falling: '▼', steady: '▬' };
 
 export default function RoadRiskPanel({ isActive, onOpenRoad }) {
@@ -74,19 +78,20 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
         <SectionHeader
           id="road-risk"
           title="ความเสี่ยงน้ำท่วมขังรายถนน"
-          description={`${fmtNum(data.total)} สายในกรุงเทพฯ และปริมณฑล · รวมฝน 24 ชม. ระดับน้ำคลอง/แม่น้ำ เซ็นเซอร์น้ำบนถนน และสภาพจราจร`}
+          description={`${fmtNum(data.total)} สายในกรุงเทพฯ และปริมณฑล · จัดระดับตามเกณฑ์ สนน. กทม. + ปภ. (น้ำบนถนน), กรมอุตุนิยมวิทยา (ฝน 24 ชม.) และคลังข้อมูลน้ำแห่งชาติ (ระดับตลิ่ง)`}
           action={
             <div className="flex items-center gap-2">
-              {data.updated_at && <Badge tone={c.high ? 'red' : 'green'} dot>{fmtTime(data.updated_at)} น.</Badge>}
+              {data.updated_at && <Badge tone={c.closed || c.avoid ? 'red' : c.passable ? 'yellow' : 'green'} dot>{fmtTime(data.updated_at)} น.</Badge>}
               <Button size="sm" onClick={load} loading={refreshing}>รีเฟรช</Button>
             </div>
           }
         />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
-          <StatTile label="เสี่ยงสูง" value={fmtNum(c.high || 0)} tone={c.high ? 'red' : undefined} sub="คะแนน 60 ขึ้นไป" />
-          <StatTile label="เฝ้าระวัง" value={fmtNum(c.medium || 0)} tone={c.medium ? 'yellow' : undefined} sub="คะแนน 35-59" />
-          <StatTile label="เสี่ยงต่ำ" value={fmtNum(c.low || 0)} sub="คะแนน 15-34" />
-          <StatTile label="ปกติ" value={fmtNum(c.none || 0)} tone="green" sub="คะแนนต่ำกว่า 15" />
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mt-4">
+          <StatTile label="ห้ามขับผ่าน" value={fmtNum(c.closed || 0)} tone={c.closed ? 'red' : undefined} sub="ปภ.: น้ำเกิน 60 ซม." />
+          <StatTile label="ควรเลี่ยงเส้นทาง" value={fmtNum(c.avoid || 0)} tone={c.avoid ? 'red' : undefined} sub="ปภ.: น้ำ 20-60 ซม." />
+          <StatTile label="ท่วม รถผ่านได้" value={fmtNum(c.passable || 0)} tone={c.passable ? 'yellow' : undefined} sub="สนน.: เกิน 10 ซม." />
+          <StatTile label="เฝ้าระวัง" value={fmtNum(c.watch || 0)} sub="น้ำ 5-10 ซม. หรือฝน/คลองสูง" />
+          <StatTile label="ปกติ" value={fmtNum(c.none || 0)} tone="green" sub="ไม่เข้าเกณฑ์ใด" />
         </div>
         {data.error && (
           <div className="mt-3"><StatusBanner tone="yellow" label="สร้างข้อมูลรอบล่าสุดไม่สำเร็จ">{data.error}</StatusBanner></div>
@@ -97,7 +102,7 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
       {ai?.headline && (
         <Card className="p-5 border border-slate-200">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={c.high ? 'red' : c.medium ? 'yellow' : 'green'} dot>AI วิเคราะห์รายถนน</Badge>
+            <Badge tone={c.closed || c.avoid ? 'red' : c.passable ? 'yellow' : 'green'} dot>AI วิเคราะห์รายถนน</Badge>
             <span className="text-xs text-slate-500">{ai.source && ai.source !== 'template' ? ai.source : 'สรุปอัตโนมัติจากตัวเลข'}</span>
           </div>
           <p className="mt-2 text-base font-semibold text-ink-900 leading-6">{ai.headline}</p>
@@ -132,8 +137,8 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
                   >
                     <span className="text-sm font-medium text-ink-900">{p.province}</span>
                     <span className="text-xs text-slate-500">{fmtNum(p.roads)} สาย</span>
-                    {p.high > 0 && <span className="text-xs font-semibold text-red-700">เสี่ยงสูง {p.high}</span>}
-                    {p.high === 0 && p.medium > 0 && <span className="text-xs font-semibold text-amber-700">เฝ้าระวัง {p.medium}</span>}
+                    {p.flooded > 0 && <span className="text-xs font-semibold text-red-700">น้ำท่วม {p.flooded}</span>}
+                    {p.flooded === 0 && p.watch > 0 && <span className="text-xs font-semibold text-sky-700">เฝ้าระวัง {p.watch}</span>}
                   </button>
                 </li>
               );
@@ -146,7 +151,7 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
         <SectionHeader
           id="road-table"
           title={province ? `ถนนในจังหวัด${province}` : 'ถนนทุกสาย'}
-          description="เรียงตามคะแนนเสี่ยง · แต่ละคอลัมน์คือค่าที่วัดได้จริง ไม่ใช่การพยากรณ์"
+          description="เรียงตามระดับตามเกณฑ์ · ทุกคอลัมน์คือค่าที่วัดได้จริงพร้อมชั้นตามเกณฑ์ของหน่วยงานเจ้าของข้อมูล"
           action={<Segmented label="กรองระดับ" options={LEVELS} value={level} onChange={(v) => { setLevel(v); setLimit(PAGE); }} />}
         />
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -174,7 +179,7 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
                     <th className="py-2 pr-3 font-medium text-right">ฝน 24 ชม.</th>
                     <th className="py-2 pr-3 font-medium text-right">คลอง/แม่น้ำ</th>
                     <th className="py-2 pr-3 font-medium text-right">รถติด</th>
-                    <th className="py-2 font-medium text-right">ความเสี่ยง</th>
+                    <th className="py-2 font-medium text-right">ระดับตามเกณฑ์</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -199,28 +204,29 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
                         <td className="py-2 pr-3 text-right whitespace-nowrap">
                           {r.measured ? (
                             <>
-                              <span className={`tabular-nums font-semibold ${r.flood_cm > 10 ? 'text-red-700' : r.flood_cm > 5 ? 'text-amber-700' : 'text-slate-700'}`}>
-                                {r.flood_cm} ซม.
-                              </span>
+                              <span className={`tabular-nums ${CLS_WEIGHT(r.water_class)} ${CLS_TEXT[r.water_class || 0]}`}>{r.flood_cm} ซม.</span>
+                              <span className="block text-[11px] text-slate-500" title={r.water_source || ''}>{r.water_label}</span>
                               {r.flood_trend && <span className="block text-[11px] text-slate-500">{TREND_MARK[r.flood_trend]} {r.wet_sensors}/{r.sensors} จุด</span>}
                             </>
                           ) : (
-                            <span className="text-[11px] text-slate-400" title="ถนนสายนี้ไม่มีเซ็นเซอร์วัดน้ำบนผิวถนน">ไม่มีเซ็นเซอร์</span>
+                            <span className="text-[11px] text-slate-400" title="ถนนสายนี้ไม่มีเซ็นเซอร์วัดน้ำบนผิวถนน จึงระบุไม่ได้ว่าท่วมหรือไม่">ไม่มีเซ็นเซอร์</span>
                           )}
                         </td>
                         <td className="py-2 pr-3 text-right whitespace-nowrap">
                           {r.rain_24h != null ? (
                             <>
-                              <span className={`tabular-nums ${r.rain_level === 'heavy' || r.rain_level === 'extreme' ? 'font-semibold text-red-700' : 'text-slate-700'}`}>{r.rain_24h} มม.</span>
-                              <span className="block text-[11px] text-slate-500">ห่าง {r.rain_km} กม.</span>
+                              <span className={`tabular-nums ${CLS_WEIGHT(r.rain_class)} ${CLS_TEXT[r.rain_class || 0]}`}>{r.rain_24h} มม.</span>
+                              <span className="block text-[11px] text-slate-500" title={r.rain_source || ''}>{r.rain_label}</span>
+                              <span className="block text-[11px] text-slate-400">ห่าง {r.rain_km} กม.</span>
                             </>
                           ) : <span className="text-slate-400">–</span>}
                         </td>
                         <td className="py-2 pr-3 text-right whitespace-nowrap">
                           {r.gauge_pct != null ? (
                             <>
-                              <span className={`tabular-nums ${r.gauge_level === 'overflow' ? 'font-semibold text-red-700' : r.gauge_level === 'high' ? 'font-semibold text-amber-700' : 'text-slate-700'}`}>{Math.round(r.gauge_pct)}%</span>
-                              <span className="block text-[11px] text-slate-500 max-w-[9rem] truncate">{r.gauge_at}</span>
+                              <span className={`tabular-nums ${CLS_WEIGHT(r.gauge_class)} ${CLS_TEXT[r.gauge_class || 0]}`}>{Math.round(r.gauge_pct)}%</span>
+                              <span className="block text-[11px] text-slate-500" title={r.gauge_source || ''}>{r.gauge_label}</span>
+                              <span className="block text-[11px] text-slate-400 max-w-[9rem] truncate">{r.gauge_at}</span>
                             </>
                           ) : <span className="text-slate-400">–</span>}
                         </td>
@@ -229,11 +235,10 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
                           {r.traffic_level && <span className="block text-[11px] text-slate-500">{r.traffic_level}</span>}
                         </td>
                         <td className="py-2 text-right whitespace-nowrap">
-                          <span className={`tabular-nums font-semibold ${rk.text}`}>{Math.round(r.score)}</span>
-                          <span className="mt-1 block h-1.5 w-20 ml-auto rounded-full bg-slate-100 overflow-hidden">
-                            <span className={`block h-full rounded-full ${rk.bar}`} style={{ width: `${Math.max(3, Math.min(100, r.score))}%` }} />
-                          </span>
                           <Badge tone={rk.tone} dot={r.level !== 'none'}>{r.level_th}</Badge>
+                          <span className="block text-[11px] text-slate-400 mt-0.5">
+                            {r.basis === 'sensor' ? 'วัดบนถนนจริง' : r.basis === 'both' ? 'เซ็นเซอร์ + รอบข้าง' : r.basis === 'inferred' ? 'ประเมินจากรอบข้าง' : '–'}
+                          </span>
                         </td>
                       </tr>
                     );
@@ -250,6 +255,35 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
         )}
         <p className="mt-3 text-[11px] text-slate-400">{data.note}</p>
       </Card>
+
+      {data.standards && (
+        <Card className="p-5">
+          <SectionHeader id="road-standards" title="เกณฑ์ที่ใช้จัดระดับ" description="ทุกชั้นมาจากประกาศของหน่วยงานเจ้าของข้อมูล ไม่ได้ตั้งเอง" />
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[['น้ำบนผิวถนน', data.standards.water, 'upto_cm', 'ซม.'],
+              ['ฝนสะสม 24 ชม.', data.standards.rain, 'upto_mm', 'มม.'],
+              ['ระดับคลอง/แม่น้ำ', data.standards.gauge, 'upto_pct', '%']].map(([title, bands, key, unit]) => (
+              <div key={title}>
+                <p className="text-sm font-medium text-ink-900">{title}</p>
+                <ul className="mt-1.5 flex flex-col gap-1">
+                  {bands.map((b, i) => (
+                    <li key={b.label} className="text-xs">
+                      <span className={`font-medium ${CLS_TEXT[b.class] || 'text-slate-700'}`}>{b.label}</span>
+                      <span className="text-slate-500">
+                        {' — '}
+                        {b[key] == null
+                          ? `มากกว่า ${bands[i - 1]?.[key]} ${unit}`
+                          : i === 0 ? `ไม่เกิน ${b[key]} ${unit}` : `${bands[i - 1][key]}-${b[key]} ${unit}`}
+                      </span>
+                      <span className="block text-[11px] text-slate-400">{b.source}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
