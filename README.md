@@ -202,7 +202,7 @@ D:\New_CCTV\
 | `components/dashboard/ui.jsx` | ชิ้นส่วนพื้นฐาน: Card, Badge, Button, Segmented, Skeleton, EmptyState, ErrorState |
 | `components/dashboard/primitives.jsx` | ชิ้นส่วนระดับหน้า: PageHeader, StatTile, StatusBanner, Tabs, Modal, ShareBar |
 | `components/dashboard/format.js` | ฟอร์แมตเวลา/ตัวเลข/สีสถานะ |
-| `components/DashboardPage.jsx` + `dashboard/*` | แดชบอร์ดจราจร 4 แท็บ: ภาพรวมจราจร, **น้ำท่วมขังถนน** (`dashboard/FloodPanel.jsx`: นับจุดท่วม/เล็กน้อย/ปกติ/ขัดข้อง, รายจุดเรียงตามความลึกพร้อมแถบระดับ-เวลาเริ่มท่วม-สูงสุด, สรุปรายเขต, สรุปรายถนน), เหตุการณ์สด, รายงานสดจากศูนย์ |
+| `components/DashboardPage.jsx` + `dashboard/*` | แดชบอร์ดจราจร 4 แท็บ: ภาพรวมจราจร, **วิเคราะห์รายถนน** (`dashboard/RoadRiskPanel.jsx`), เหตุการณ์สด, รายงานสดจากศูนย์ |
 | `components/SidePanel.jsx`, `CameraCard.jsx`, `CityWindow.jsx`, `VideoSlot.jsx` | หน้า "กล้องของฉัน": เลือกกล้อง + ดูภาพสด HLS สูงสุด 9 ช่อง |
 | `components/BmaCountPage.jsx` + `bma/*` | นับรถจากกล้อง กทม.: ภาพรวมตอนนี้, เทียบวัน/สัปดาห์/เดือน, กล้องทุกตัว + สตรีม YOLO |
 | `components/HelmetPage.jsx`, `components/WrongWayPage.jsx` | ตรวจหมวกกันน็อก / ตรวจรถย้อนศร จากกล้อง กทม. ทุกตัว: หลักฐาน, รถที่สงสัย (สั่งตรวจซ้ำด้วยโมเดลในเครื่องหรือ AI), กล้องทุกตัว + ตรวจตอนนี้ |

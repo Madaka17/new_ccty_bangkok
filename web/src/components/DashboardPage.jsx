@@ -9,7 +9,6 @@ import IncidentPanel from './dashboard/IncidentPanel.jsx';
 import DensityPanel from './dashboard/DensityPanel.jsx';
 import TrafficGuidanceCard from './dashboard/TrafficGuidanceCard.jsx';
 import CityStatusStrip from './dashboard/CityStatusStrip.jsx';
-import FloodPanel from './dashboard/FloodPanel.jsx';
 import RoadRiskPanel from './dashboard/RoadRiskPanel.jsx';
 import BMAEventFeed from './water/BMAEventFeed.jsx';
 
@@ -17,7 +16,6 @@ const POLL_MS = 60000;
 // Dashboard sections; each tab groups one topic
 const SECTIONS = [
   { id: 'overview', label: 'ภาพรวมจราจร' },
-  { id: 'flood', label: 'น้ำท่วมขังถนน' },
   { id: 'road-risk', label: 'วิเคราะห์รายถนน' },
   { id: 'incidents', label: 'เหตุการณ์สด' },
   { id: 'bma-reports', label: 'รายงานสดจากศูนย์' },
@@ -32,7 +30,7 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
   const [density, setDensity] = useState(null);
   const [onlineCount, setOnlineCount] = useState(null);
   const [summaryError, setSummaryError] = useState(false);
-  // Road-flood sensor counts (BMA drainage): badge on the tab + the city status strip
+  // Road-flood sensor counts (BMA drainage), for the flooded-road figure on the city status strip
   const [flood, setFlood] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -134,7 +132,6 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
 
   const activeSummary = source === 'bma' ? (bmaSummary || ready) : (ready || bmaSummary);
   const incidentCount = (incidents?.camera?.length || 0) + (incidents?.longdo?.length || 0);
-  const floodCount = (flood?.counts?.flood || 0) + (flood?.counts?.slight || 0);
 
   return (
     <div className="flex flex-col gap-4 max-w-6xl mx-auto w-full">
@@ -187,8 +184,7 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
           setSection(id);
           trackView(`dashboard:${id}`);
         }}
-        tabs={SECTIONS.map((t) => (t.id === 'incidents' ? { ...t, badge: incidentCount || undefined }
-          : t.id === 'flood' ? { ...t, badge: floodCount || undefined } : t))}
+        tabs={SECTIONS.map((t) => (t.id === 'incidents' ? { ...t, badge: incidentCount || undefined } : t))}
       />
 
       {section === 'overview' && (
@@ -198,7 +194,6 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
           <TrafficGuidanceCard onOpenRoad={onOpenRoad} onAsk={onAsk} />
         </>
       )}
-      {section === 'flood' && <FloodPanel isActive={isActive && section === 'flood'} onNavigate={onNavigate} />}
       {section === 'road-risk' && <RoadRiskPanel isActive={isActive && section === 'road-risk'} onOpenRoad={onOpenRoad} />}
       {section === 'incidents' && <IncidentPanel incidents={incidents} onOpenAI={onOpenAI} onNavigate={onNavigate} />}
       {section === 'bma-reports' && <BMAEventFeed isActive={isActive && section === 'bma-reports'} onToast={onToast} />}
