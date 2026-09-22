@@ -3,8 +3,10 @@ import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { motion } from 'framer-motion';
 import Hls from 'hls.js';
-import { fetchTrafficSummary, fetchLongdoCameras, fetchWaterSummary } from '../lib/api.js';
+import { fetchTrafficSummary, fetchLongdoCameras, fetchWaterSummary, fetchAirStations, fetchWindGrid } from '../lib/api.js';
 import { enrichCamerasWithFloodRisk } from '../lib/floodRisk.js';
+import { Icon } from './dashboard/icons.jsx';
+
 
 // Vite bundles maplibre into one chunk, so its worker module must be served separately (see public/assets/)
 maplibregl.setWorkerUrl(`${window.location.origin}/assets/maplibre-gl-worker.mjs`);
@@ -33,6 +35,8 @@ function mapStyle() {
     sources: {
       base: { type: 'raster', tiles: [`${origin}/api/tiles/base/{z}/{x}/{y}.png`], tileSize: 256, maxzoom: 19, attribution: '© OpenStreetMap contributors' },
       traffic: { type: 'vector', tiles: [`${origin}/api/traffic/tile/{z}/{x}/{y}.pbf`], minzoom: 5, maxzoom: 12, attribution: 'Traffic © Longdo' },
+      // OpenFreeMap (OpenMapTiles schema) only for the 3D building footprints + heights
+      omt: { type: 'vector', url: 'https://tiles.openfreemap.org/planet', attribution: '© OpenFreeMap' },
     },
     layers: [
       { id: 'base', type: 'raster', source: 'base', paint: { 'raster-saturation': -0.45, 'raster-brightness-min': 0.05, 'raster-contrast': -0.08 } },
@@ -53,6 +57,22 @@ function mapStyle() {
         filter: ['!=', ['get', 'fillcolor_r'], ''],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-opacity': 0.9, 'line-color': ['concat', '#', ['get', 'fillcolor_r']], 'line-width': LINE_WIDTH, 'line-offset': OFFSET(1) },
+      },
+      // Last so the extrusions sit above the raster overlays (rain radar is inserted before traffic-forward)
+      {
+        id: 'buildings-3d',
+        type: 'fill-extrusion',
+        source: 'omt',
+        'source-layer': 'building',
+        minzoom: 13,
+        filter: ['!', ['coalesce', ['get', 'hide_3d'], false]],
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-extrusion-color': ['interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 8], 0, '#cbd5e1', 40, '#94a3b8', 120, '#64748b', 250, '#334155'],
+          'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 13, 0, 14, ['coalesce', ['get', 'render_height'], 8]],
+          'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 13, 0, 14, ['coalesce', ['get', 'render_min_height'], 0]],
+          'fill-extrusion-opacity': 0.78,
+        },
       },
     ],
   };
@@ -110,6 +130,61 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const [radarOpacity, setRadarOpacity] = useState(0.65);
   const [radarTileUrl, setRadarTileUrl] = useState(null);
   const [radarTime, setRadarTime] = useState(null);
+  const [showPm, setShowPm] = useState(true);
+  const [is3d, setIs3d] = useState(false);
+  // Wind overlay drawn by us (Open-Meteo grid) so nothing sits on top of the traffic map
+  const [showWind, setShowWind] = useState(true);
+  const [wind, setWind] = useState(null);
+  const windMarkersRef = useRef([]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    let alive = true;
+    const tick = () => fetchWindGrid().then((w) => alive && setWind(w)).catch(() => {});
+    tick();
+    const id = setInterval(tick, 900000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [isActive]);
+
+  // Arrow per grid point: rotation = direction the wind blows TO, length/colour = speed
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !wind) return;
+    for (const m of windMarkersRef.current) m.remove();
+    windMarkersRef.current = [];
+    if (!showWind) return;
+    for (const p of wind.points || []) {
+      if (p.speed == null || p.dir == null) continue;
+      const kmh = p.speed;
+      const color = kmh < 10 ? '#60a5fa' : kmh < 20 ? '#22c55e' : kmh < 35 ? '#f59e0b' : '#ef4444';
+      const len = Math.min(34, 14 + kmh * 0.7);
+      const el = document.createElement('div');
+      el.style.cssText = 'pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:1px';
+      el.innerHTML =
+        `<svg width="36" height="36" viewBox="-18 -18 36 36" style="transform:rotate(${(p.dir + 180) % 360}deg);opacity:.85">` +
+        `<line x1="0" y1="${len / 2}" x2="0" y2="${-len / 2}" stroke="${color}" stroke-width="3" stroke-linecap="round"/>` +
+        `<path d="M -5 ${-len / 2 + 7} L 0 ${-len / 2} L 5 ${-len / 2 + 7}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>` +
+        `<span style="font:600 10px/1 var(--font-sans);color:#0f172a;background:rgba(255,255,255,.75);padding:1px 4px;border-radius:4px">${Math.round(kmh)}</span>`;
+      windMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map));
+    }
+  }, [wind, showWind]);
+  const [air, setAir] = useState(null);
+
+  // PM2.5 stations (Air4Thai) every 10 min while the page is open
+  useEffect(() => {
+    if (!isActive) return;
+    let alive = true;
+    const tick = () => fetchAirStations().then((a) => alive && setAir(a)).catch(() => {});
+    tick();
+    const id = setInterval(tick, 600000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [isActive]);
 
   // Load Longdo cameras exclusively
   useEffect(() => {
@@ -153,7 +228,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   useEffect(() => {
     if (!isActive || !mapEl.current || mapRef.current) return;
     const map = new maplibregl.Map({ container: mapEl.current, style: mapStyle(), center: [100.55, 13.78], zoom: 11, attributionControl: { compact: true } });
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), 'top-right');
     mapRef.current = map;
     map.on('error', (e) => console.warn('[map]', e?.error?.message || e));
     return () => {
@@ -225,6 +300,48 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
       clearInterval(interval);
     };
   }, [isActive]);
+
+  // 3D: tilt the camera and show extruded buildings (OpenFreeMap heights); 2D: flat, buildings hidden
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const apply = () => {
+      if (map.getLayer('buildings-3d')) {
+        map.setLayoutProperty('buildings-3d', 'visibility', is3d ? 'visible' : 'none');
+        map.moveLayer('buildings-3d'); // keep on top of any layer added later (rain radar, pm25)
+      }
+      map.easeTo({ pitch: is3d ? 58 : 0, bearing: is3d ? -17 : 0, duration: 900 });
+      if (is3d && map.getZoom() < 14) map.easeTo({ zoom: 14.5, duration: 900 });
+    };
+    if (map.isStyleLoaded()) apply();
+    else map.once('load', apply);
+  }, [is3d]);
+
+  // PM2.5 stations as DOM markers (rounded square with the µg/m³ value; the map style ships no
+  // glyphs so a symbol layer cannot draw text). Colour = Thai AQI band.
+  const pmMarkersRef = useRef([]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !air) return;
+    for (const m of pmMarkersRef.current) m.remove();
+    pmMarkersRef.current = [];
+    if (!showPm) return;
+    for (const s of air.items || []) {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.title = `${s.name}: PM2.5 ${s.pm25} µg/m³`;
+      el.style.cssText = `display:flex;align-items:center;justify-content:center;width:30px;height:22px;border-radius:7px;background:${s.color};color:#0f172a;font:700 11px/1 var(--font-sans);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);cursor:pointer;padding:0`;
+      el.textContent = Math.round(s.pm25);
+      const t = s.ts ? new Date(s.ts * 1000).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '';
+      const popup = new maplibregl.Popup({ offset: 14, closeButton: true, maxWidth: '260px' }).setHTML(
+        `<div style="font-size:13px;line-height:1.4"><b>${s.name}</b><br><span style="color:#64748b">${s.area} ${s.province}</span><br>` +
+          `PM2.5 <b style="color:${s.color}">${s.pm25} µg/m³</b> · AQI ${s.aqi ?? '-'} · ${s.label}` +
+          (t ? `<br><span style="color:#64748b;font-size:11px">ข้อมูล ${t} น. · Air4Thai (คพ.)</span>` : '') +
+          '</div>'
+      );
+      pmMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([s.lng, s.lat]).setPopup(popup).addTo(map));
+    }
+  }, [air, showPm]);
 
   // Sync Rain Radar tile layer to MapLibre with maxzoom: 7 (prevents Zoom Level Not Supported)
   useEffect(() => {
@@ -478,6 +595,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const updated = summary?.updated_at ? new Date(summary.updated_at * 1000).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : null;
 
   return (
+    <div className="flex flex-col gap-4">
     <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4 lg:h-[calc(100vh-11rem)] min-h-[520px]">
       <aside className="glass rounded-xl p-5 flex flex-col gap-4 overflow-hidden">
         <div>
@@ -519,7 +637,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                   onChange={(e) => setShowRainRadar(e.target.checked)}
                   className="accent-blue-600 w-4 h-4"
                 />
-                🌧️ ซ้อนเรดาร์ฝน (สด)
+                <Icon name="rain" /> ซ้อนเรดาร์ฝน (สด)
               </label>
               {radarTime && (
                 <span className="text-[11px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-full">
@@ -546,20 +664,70 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
           </div>
         </div>
 
+        {/* PM2.5 station toggle */}
+        <div className="pt-2.5 border-t border-slate-100">
+          <div className="flex items-center justify-between mb-1">
+            <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
+              <input type="checkbox" checked={showPm} onChange={(e) => setShowPm(e.target.checked)} className="accent-blue-600 w-4 h-4" />
+              <Icon name="mask" /> ฝุ่น PM2.5 รายสถานี
+            </label>
+            {air?.avg_pm25 != null && (
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">เฉลี่ย {air.avg_pm25}</span>
+            )}
+          </div>
+          <p className="text-[11px] text-slate-500 mb-1.5">
+            {air ? `${air.total} สถานี (คพ. + กทม.) หน่วย µg/m³ แตะจุดเพื่อดูรายละเอียด` : 'กำลังโหลด Air4Thai'}
+          </p>
+          <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-slate-600">
+            {[['#3BA0FF', 'ดีมาก ≤15'], ['#4CC74A', 'ดี ≤25'], ['#FFD400', 'ปานกลาง ≤37.5'], ['#FF8C00', 'เริ่มมีผล ≤75'], ['#E3272C', 'มีผล >75']].map(([c, l]) => (
+              <span key={l} className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: c }} />{l}</span>
+            ))}
+          </div>
+        </div>
+
+        {/* 2D / 3D */}
+        <div className="pt-2.5 border-t border-slate-100">
+          <div className="flex items-center justify-between">
+            <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
+              <input type="checkbox" checked={is3d} onChange={(e) => setIs3d(e.target.checked)} className="accent-blue-600 w-4 h-4" />
+              <Icon name="building" /> มุมมอง 3D (อาคาร)
+            </label>
+            <span className="text-[11px] text-slate-500">ลาก: ขวาคลิก / Ctrl+ลาก หมุน</span>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1">ความสูงอาคารจาก OpenFreeMap แสดงเมื่อซูม ≥ 14 · แผนที่เอียง 58°</p>
+        </div>
+
+        {/* Wind overlay toggle (own layer, Open-Meteo) */}
+        <div className="pt-2.5 border-t border-slate-100">
+          <div className="flex items-center justify-between mb-1">
+            <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
+              <input type="checkbox" checked={showWind} onChange={(e) => setShowWind(e.target.checked)} className="accent-blue-600 w-4 h-4" />
+              <Icon name="wind" /> ลูกศรลม (สด)
+            </label>
+            {wind?.points?.[24]?.time && <span className="text-[11px] text-slate-500">{wind.points[24].time.slice(11, 16)} น.</span>}
+          </div>
+          <p className="text-[11px] text-slate-500 mb-1.5">ทิศทางและความเร็วลม กม./ชม. ทุก 10 กม. จาก Open-Meteo อัปเดตทุก 15 นาที · ไม่บังแผนที่</p>
+          <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-slate-600">
+            {[['#60a5fa', '<10 เบา'], ['#22c55e', '10-20'], ['#f59e0b', '20-35 แรง'], ['#ef4444', '>35 พายุ']].map(([c, l]) => (
+              <span key={l} className="inline-flex items-center gap-1"><span className="w-3 h-1 rounded-full" style={{ background: c }} />{l}</span>
+            ))}
+          </div>
+        </div>
+
         <motion.button
           type="button"
           whileTap={{ scale: 0.96 }}
           onClick={locateMe}
           className="cursor-pointer inline-flex items-center justify-center gap-2 rounded-xl bg-white text-ink-900 border border-cream-200 px-4 py-2.5 text-sm font-medium hover:bg-cream-100 transition-colors duration-200"
         >
-          📍 ไปที่ตำแหน่งของฉัน
+          <Icon name="pin" /> ไปที่ตำแหน่งของฉัน
         </motion.button>
 
         {/* คำอธิบายสัญลักษณ์และไอคอนบนแผนที่ (Map Legend) */}
         <div className="rounded-xl bg-white border border-cream-200 p-3 flex flex-col gap-2.5">
           <div className="flex items-center justify-between pb-2 border-b border-cream-200">
             <p className="text-xs font-semibold text-ink-900 flex items-center gap-1.5">
-              <span>📍</span> สัญลักษณ์บนแผนที่
+              <Icon name="legend" /> สัญลักษณ์บนแผนที่
             </p>
             <span className="text-[11px] text-ink-600 font-medium">คำอธิบายหมุด</span>
           </div>
@@ -617,7 +785,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
 
             {/* เรดาร์ฝน */}
             <div className="pt-2 border-t border-cream-200 flex items-center gap-2.5 text-[11px]">
-              <span className="text-base leading-none shrink-0 w-5 text-center">🌧️</span>
+              <span className="shrink-0 w-5 text-center text-blue-500"><Icon name="rain" /></span>
               <div className="flex flex-col min-w-0">
                 <span className="font-medium text-ink-900">เรดาร์กลุ่มฝน (สด)</span>
                 <span className="text-[10px] text-ink-600 leading-tight">แถบสีฟ้า-เขียว-ส้ม แสดงความหนาแน่นของเมฆฝน</span>
@@ -661,9 +829,10 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
         </div>
       </aside>
 
-      <section aria-label="แผนที่จราจร" className="glass rounded-xl overflow-hidden min-h-[560px]">
+      <section aria-label="แผนที่จราจร" className="glass rounded-xl overflow-hidden min-h-[560px] relative">
         <div ref={mapEl} className="w-full h-full min-h-[540px]" />
       </section>
+    </div>
     </div>
   );
 }

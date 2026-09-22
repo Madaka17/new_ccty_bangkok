@@ -324,8 +324,15 @@ class TrafficService:
                             continue
                         totals[cls] += km
                         if name:
-                            r = roads.setdefault(name, {"name": name, "green": 0.0, "yellow": 0.0, "red": 0.0})
+                            r = roads.setdefault(name, {"name": name, "green": 0.0, "yellow": 0.0, "red": 0.0, "spots": {}})
                             r[cls] += km
+                            if cls == "red":
+                                # ~1 km grid cell so nearby red pieces merge into one hotspot
+                                cell = (round(mid[1] * 100), round(mid[0] * 100))
+                                sp = r["spots"].setdefault(cell, {"lat": 0.0, "lon": 0.0, "km": 0.0})
+                                sp["km"] += km
+                                sp["lat"] += mid[1] * km
+                                sp["lon"] += mid[0] * km
 
         total_km = sum(totals.values())
         road_list = []
@@ -334,6 +341,7 @@ class TrafficService:
             if length < 0.3:
                 continue
             score = (r["green"] * 1.0 + r["yellow"] * 0.5) / length
+            hotspots = sorted(r["spots"].values(), key=lambda sp: -sp["km"])[:3]
             road_list.append({
                 "name": r["name"],
                 "length_km": round(length, 1),
@@ -343,6 +351,9 @@ class TrafficService:
                 "red_pct": round(100 * r["red"] / length),
                 "flow": round(100 * score),
                 "level": "โล่ง" if score >= 0.75 else ("ปานกลาง" if score >= 0.45 else "ติดขัด"),
+                # Where the red is, km-weighted centre of each ~1 km cell (used by guidance_service)
+                "hotspots": [{"lat": round(sp["lat"] / sp["km"], 5), "lon": round(sp["lon"] / sp["km"], 5),
+                              "km": round(sp["km"], 1)} for sp in hotspots if sp["km"] >= 0.2],
             })
         road_list.sort(key=lambda r: (-r["red_km"], r["flow"]))
 

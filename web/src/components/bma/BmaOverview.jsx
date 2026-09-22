@@ -1,6 +1,7 @@
 import { Card, SectionHeader, Badge, Skeleton, EmptyState, Truncate, FOCUS } from '../dashboard/ui.jsx';
 import { StatTile, ShareBar } from '../dashboard/primitives.jsx';
 import { fmtNum } from '../dashboard/format.js';
+import { useMemo } from 'react';
 import { getBmaSnapshotUrl } from '../../lib/api.js';
 
 export const LEVEL = {
@@ -13,6 +14,8 @@ export const levelOf = (lv) => LEVEL[lv] || LEVEL.free;
 // KPI row + type/congestion shares + top spots + districts/roads. Everything here is "right now".
 export default function BmaOverview({ analytics, cameras, loading, onOpenCamera, onFilterDistrict, onFilterRoad }) {
   const s = analytics?.summary || null;
+  // New cache-buster on every analytics poll, otherwise the browser keeps the first thumbnail it loaded
+  const tick = useMemo(() => Date.now(), [analytics]);
   const online = s?.online_cameras ?? cameras.filter((c) => c.status === 'online').length;
   const total = s?.total_vehicles ?? cameras.reduce((a, c) => a + (c.total || 0), 0);
   const cars = s?.cars ?? 0;
@@ -93,7 +96,7 @@ export default function BmaOverview({ analytics, cameras, loading, onOpenCamera,
                   >
                     <span className="w-5 text-xs text-slate-500 tabular-nums text-right shrink-0">{i + 1}</span>
                     <div className="w-14 h-10 rounded-md bg-slate-900 shrink-0 overflow-hidden relative border border-slate-200">
-                      <img src={getBmaSnapshotUrl(cam.camid)} alt="" loading="lazy" className="w-full h-full object-cover" />
+                      <img src={getBmaSnapshotUrl(cam.camid, false, tick)} alt="" loading="lazy" className="w-full h-full object-cover" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <Truncate text={cam.title || `กล้อง ${cam.camid}`} className="text-sm font-medium text-slate-900" />

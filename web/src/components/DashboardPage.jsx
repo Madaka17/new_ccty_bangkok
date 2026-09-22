@@ -8,6 +8,7 @@ import FlowOverview from './dashboard/FlowOverview.jsx';
 import IncidentPanel from './dashboard/IncidentPanel.jsx';
 import DensityPanel from './dashboard/DensityPanel.jsx';
 import TrafficGuidanceCard from './dashboard/TrafficGuidanceCard.jsx';
+import CityStatusStrip from './dashboard/CityStatusStrip.jsx';
 import BMAEventFeed from './water/BMAEventFeed.jsx';
 
 const POLL_MS = 60000;
@@ -169,6 +170,8 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
       )}
 
 
+      <CityStatusStrip summary={activeSummary} incidents={incidents} onNavigate={onNavigate} isActive={isActive} />
+
       <Tabs
         label="หมวดข้อมูลแดชบอร์ด"
         value={section}
@@ -183,14 +186,7 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
         <>
           <FlowOverview summary={activeSummary} error={summaryError} onRetry={load} retrying={refreshing} />
           <DensityPanel d={density} onOpenRoad={onOpenRoad} showShare={false} />
-          <TrafficGuidanceCard
-            summary={activeSummary}
-            trafficSummary={summary}
-            incidents={incidents}
-            onOpenRoad={onOpenRoad}
-            onNavigate={onNavigate}
-            onAsk={onAsk}
-          />
+          <TrafficGuidanceCard onOpenRoad={onOpenRoad} onAsk={onAsk} />
         </>
       )}
       {section === 'incidents' && <IncidentPanel incidents={incidents} onOpenAI={onOpenAI} onNavigate={onNavigate} />}

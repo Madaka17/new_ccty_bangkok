@@ -33,6 +33,14 @@ LONGDO_BREAKDOWN_TYPE = "1"
 # Bangkok and vicinity
 BBOX = (13.3, 100.1, 14.3, 101.1)  # min lat, min lon, max lat, max lon
 
+
+def _feed_ts(text):
+    """Longdo 'YYYY-MM-DD HH:MM:SS' (local time) -> epoch seconds, or None."""
+    try:
+        return int(time.mktime(time.strptime(text, '%Y-%m-%d %H:%M:%S')))
+    except (TypeError, ValueError):
+        return None
+
 SYSTEM_PROMPT = (
     "You review a single frame from a Bangkok traffic CCTV camera. Our tracker flagged either a vehicle that has been "
     "standing still while other traffic keeps moving, or two vehicles that stopped abruptly while touching each other. "
@@ -65,6 +73,7 @@ class IncidentManager:
         self.camera_incidents = {}              # camid -> active incident dict
         self.longdo = []
         self.longdo_updated = 0
+        self.longdo_recent = []                 # Longdo events that ended within the last 24 h
         self.provider, self.client = self._client()
         print(f"[Incident] vision provider: {self.provider or 'none (set GEMINI_API_KEY or ANTHROPIC_API_KEY)'}")
         for inc in vehicle_log.active_incidents():
@@ -216,7 +225,7 @@ class IncidentManager:
         with urllib.request.urlopen(req, timeout=15) as resp:
             items = json.loads(resp.read().decode('utf-8'))
         now = time.strftime('%Y-%m-%d %H:%M:%S')
-        out = []
+        out, recent = [], []
         for e in items:
             etype = str(e.get('type') or '')
             title = (e.get('title') or '').strip()
@@ -239,17 +248,29 @@ class IncidentManager:
                 continue
             if not (BBOX[0] <= lat <= BBOX[2] and BBOX[1] <= lon <= BBOX[3]):
                 continue
-            if e.get('stop') and e['stop'] < now:
-                continue
-            out.append({
+            item = {
                 'id': f"longdo-{e.get('eid')}", 'source': 'longdo', 'kind': kind,
                 'title': title or default_title, 'description': desc,
                 'latitude': lat, 'longitude': lon, 'start': e.get('start'), 'stop': e.get('stop'),
                 'contributor': e.get('contributor', ''), 'severity': e.get('severity', ''),
-            })
+            }
+            if e.get('stop') and e['stop'] < now:
+                # Ended already: keep it for the "resolved in the last 24 h" list
+                ts, cleared = _feed_ts(e.get('start')), _feed_ts(e.get('stop'))
+                if cleared and time.time() - cleared <= 24 * 3600:
+                    recent.append({**item, 'ts': ts or cleared, 'cleared_ts': cleared})
+                continue
+            out.append(item)
         with self.lock:
             self.longdo = out
+            self.longdo_recent = recent
             self.longdo_updated = int(time.time())
+
+    def recent_longdo(self, hours=24):
+        """Longdo events that ended within the last `hours`, shaped like vehicle_log.recent_incidents()."""
+        since = time.time() - hours * 3600
+        with self.lock:
+            return [i for i in self.longdo_recent if i['cleared_ts'] >= since]
 
     # ---------------------------------------------------------------- API
     def status(self):
