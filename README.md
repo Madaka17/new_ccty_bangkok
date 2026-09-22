@@ -173,7 +173,7 @@ D:\New_CCTV\
 | `water_service.py` | ระดับน้ำ/คลอง/น้ำทะเลหนุน/ฝน จาก thaiwater.net + คาดการณ์ (ทางการ 7 วัน หรือโมเดลในเครื่อง 48 ชม.) + หาคีย์ API ใหม่อัตโนมัติ |
 | `guidance_service.py` | คำแนะนำระบายรถรายเส้นทางหลัก 12 สาย ทุก 1 นาที จากเส้นสี Longdo (hotspots) + กล้อง กทม. + เหตุการณ์; Gemini เรียบเรียงข้อความทุก 5 นาที (`/api/traffic/guidance`) |
 | `air_service.py` | PM2.5 / AQI รายสถานีจาก Air4Thai ทุก 10 นาที (`/api/air/stations`) |
-| `helmet_service.py` | ตรวจหมวกกันน็อกทุกกล้อง กทม.: crop มอไซจากรอบสแกน → AI agent (Gemini/Claude หรือ `helmet_det.pt` ในเครื่อง) → ผู้ไม่สวมหมวกเก็บภาพ+CSV ที่ `BMA_DATA_DIR\helmet\` (`/api/helmet/*`) |
+| `helmet_service.py` | ตรวจหมวกกันน็อกทุกกล้อง กทม.: crop มอไซจากรอบสแกน → โมเดลในเครื่อง (`HELMET_DET`, ค่าปัจจุบัน `helmet_det_blur.pt`) คัดกรอง → AI agent (Gemini/Claude) ยืนยัน → ผู้ไม่สวมหมวกเก็บภาพ+CSV ที่ `BMA_DATA_DIR\helmet\` (`/api/helmet/*`) |
 | `access_guard.py` | ป้องกันเมื่อเปิด Funnel สาธารณะ: POST ควบคุมทำได้จาก LAN/tailnet หรือ `X-Admin-Token`; `/api/chat` จำกัดต่อ IP |
 | `local/pipeline/backup_db.py` (`backup_db.bat`) | งานกลางคืน: ลบ `bma_history`/`samples` เกิน 90 วัน, VACUUM, สำเนา DB + CSV + .env ไป `BMA_DATA_DIRackup\` (ลงทะเบียน Task Scheduler 03:30 แล้ว) |
 | `local/pipeline/watchdog.bat` | ping `/api/health` ทุก 1 นาที ล้ม 3 ครั้งติดจึงรัน `restart_public.bat` |

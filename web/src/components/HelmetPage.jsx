@@ -28,7 +28,7 @@ export default function HelmetPage({ isActive, onToast }) {
   const [open, setOpen] = useState(null);
   const [checking, setChecking] = useState(null);
   const [judging, setJudging] = useState(null);
-  const [bulk, setBulk] = useState(false);
+  const [bulk, setBulk] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -71,7 +71,7 @@ export default function HelmetPage({ isActive, onToast }) {
     }
   };
 
-  // Second opinion on one capture (local VLM on the server GPU, or the cloud agent)
+  // Second opinion on one capture (trained helmet detector on the server GPU, or the cloud agent)
   const judge = async (item, agent) => {
     setJudging(agent);
     try {
@@ -88,16 +88,18 @@ export default function HelmetPage({ isActive, onToast }) {
     }
   };
 
-  const judgePending = async () => {
-    setBulk(true);
+  const judgePending = async (agent) => {
+    setBulk(agent);
     try {
-      const r = await reanalyseHelmetPending('cloud', 60);
-      onToast?.(r.queued ? `ส่งภาพที่ยังไม่ชัด ${r.queued} ภาพให้ ${status?.agent_model || 'AI'} ตรวจใหม่ ผลจะทยอยขึ้นใน 1-3 นาที` : 'ไม่มีภาพค้างตรวจ');
-      setTimeout(load, 8000);
+      const r = await reanalyseHelmetPending(agent, agent === 'local' ? 300 : 60);
+      const who = agent === 'local' ? localModel : status?.agent_model || 'AI';
+      const eta = agent === 'local' ? 'ผลจะขึ้นในไม่กี่วินาที' : 'ผลจะทยอยขึ้นใน 1-3 นาที';
+      onToast?.(r.queued ? `ส่งภาพที่ยังไม่ชัด ${r.queued} ภาพให้ ${who} ตรวจใหม่ ${eta}` : 'ไม่มีภาพค้างตรวจ');
+      setTimeout(load, agent === 'local' ? 3000 : 8000);
     } catch {
       onToast?.('สั่งตรวจไม่สำเร็จ');
     } finally {
-      setBulk(false);
+      setBulk(null);
     }
   };
 
@@ -109,12 +111,13 @@ export default function HelmetPage({ isActive, onToast }) {
 
   const t = status?.today || {};
   const agentOff = status && !status.enabled;
+  const localModel = status?.local_detector || null;
 
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
         title="ตรวจหมวกกันน็อกจากกล้อง กทม."
-        description="ทุกรอบสแกน (~4 นาที) ระบบตัดภาพมอไซทุกคันที่เห็นหัวชัดพอ ส่งให้ AI agent ตัดสินว่าสวมหมวกหรือไม่ ถ้าไม่สวมจะบันทึกภาพเต็ม + ภาพขยายลง Drive E: อัตโนมัติ"
+        description="ทุกรอบสแกน (~4 นาที) ระบบตัดภาพมอไซทุกคันที่เห็นหัวชัดพอ ให้โมเดลตรวจหมวกที่เทรนเอง (YOLO26x) คัดกรองก่อน แล้ว AI agent ยืนยัน ถ้าไม่สวมจะบันทึกภาพเต็ม + ภาพขยายลง Drive E: อัตโนมัติ"
         actions={
           <div className="flex items-center gap-2">
             <select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700">
@@ -133,11 +136,6 @@ export default function HelmetPage({ isActive, onToast }) {
           ตั้ง <code>GEMINI_API_KEY</code> (หรือ <code>ANTHROPIC_API_KEY</code>) ใน .env หรือวางโมเดล <code>helmet_det.pt</code> ที่ root แล้วรีสตาร์ต server
         </StatusBanner>
       )}
-      {status?.agent_error && (
-        <StatusBanner tone="red" label="AI agent หยุดชั่วคราว">
-          {status.agent_error} — ระบบยังจับภาพมอไซต่อ แต่จะไม่มีคำตัดสินจนกว่า API จะกลับมา (เติมเครดิตที่ AI Studio หรือใส่ <code>ANTHROPIC_API_KEY</code>) ถ้ามี <code>helmet_det.pt</code> โมเดลในเครื่องจะช่วยคัดกรองก่อน
-        </StatusBanner>
-      )}
       {status && !status.archive_ok && (
         <StatusBanner tone="red" label="ไม่พบไดรฟ์เก็บหลักฐาน">
           {status.archive_dir} เข้าไม่ได้ ระบบยังตรวจต่อแต่จะไม่มีไฟล์ภาพลงไดรฟ์
@@ -148,7 +146,7 @@ export default function HelmetPage({ isActive, onToast }) {
         <StatTile label="มอไซที่จับภาพวันนี้" value={fmtNum(t.captures)} sub={`รอตรวจ ${fmtNum(t.pending ?? 0)} คัน`} loading={!status} />
         <StatTile label="ไม่สวมหมวกวันนี้" value={fmtNum(t.no_helmet)} tone="red" sub={`สะสมทั้งหมด ${fmtNum(status?.total_no_helmet)} คัน`} loading={!status} />
         <StatTile label="สวมหมวก" value={fmtNum(t.helmet)} tone="green" sub={`มองไม่ชัด ${fmtNum(t.unclear ?? 0)}`} loading={!status} />
-        <StatTile label="ตรวจล่าสุด" value={status?.last_check ? fmtTime(status.last_check) : '–'} sub={status ? `คิวรอ ${status.queue} · เก็บที่ ${status.archive_dir}` : ''} loading={!status} />
+        <StatTile label="ตรวจล่าสุด" value={status?.last_check ? fmtTime(status.last_check) : '–'} sub={status ? `คิวรอ ${status.queue} · โมเดล ${localModel || 'ไม่มี'} + ${status.agent_model || 'ไม่มี agent'}` : ''} loading={!status} />
       </div>
 
       <Tabs
@@ -165,8 +163,12 @@ export default function HelmetPage({ isActive, onToast }) {
       {tab === 'captures' && (
         <>
           <div className="flex flex-wrap items-center gap-2 -mt-1">
-            <Button size="sm" variant="primary" onClick={judgePending} loading={bulk} disabled={!status?.agent || status.agent === 'off' || !!status?.agent_error} className="ml-auto">
-              ให้ {status?.agent_model || 'AI'} ตรวจภาพที่ยังไม่ชัดอีกครั้ง
+            <span className="text-xs text-slate-500">ตรวจภาพที่ยังไม่ชัดอีกครั้งด้วย:</span>
+            <Button size="sm" variant="primary" onClick={() => judgePending('local')} loading={bulk === 'local'} disabled={!localModel || !!bulk}>
+              {localModel || 'โมเดลในเครื่อง'} (ฟรี ทันที)
+            </Button>
+            <Button size="sm" onClick={() => judgePending('cloud')} loading={bulk === 'cloud'} disabled={!status?.agent || status.agent === 'off' || !!status?.agent_error || !!bulk}>
+              {status?.agent_model || 'AI agent'}
             </Button>
           </div>
           <EvidenceGrid items={captures} onOpen={setOpen} compact empty="ยังไม่มีภาพมอไซที่จับได้ รอรอบสแกนถัดไปหรือกด 'ตรวจตอนนี้' ที่แท็บกล้อง" />
@@ -236,12 +238,15 @@ export default function HelmetPage({ isActive, onToast }) {
               <Badge tone={VERDICT_TONE[open.verdict]} dot={open.verdict === 'no_helmet'}>{open.verdict_th}</Badge>
               {open.riders != null && <span className="text-slate-700">ผู้ขับขี่/ซ้อน {open.riders} คน · ไม่สวม {open.no_helmet ?? 0} คน</span>}
               {open.confidence != null && <span className="text-slate-500 tabular-nums">ความมั่นใจ {Math.round(open.confidence * 100)}%</span>}
-              {open.source && <span className="text-slate-500">ตรวจโดย {open.source === 'local' ? 'helmet_det.pt' : open.source}</span>}
+              {open.source && <span className="text-slate-500">ตรวจโดย {open.source === 'local' ? localModel || 'โมเดลในเครื่อง' : open.source}</span>}
             </div>
             {open.note && <p className="text-sm text-slate-700">{open.note}</p>}
             <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200">
               <span className="text-xs text-slate-500">วิเคราะห์ใหม่ด้วย:</span>
-              <Button size="sm" variant="primary" onClick={() => judge(open, 'cloud')} loading={judging === 'cloud'} disabled={!status?.agent || status.agent === 'off' || !!judging}>
+              <Button size="sm" variant="primary" onClick={() => judge(open, 'local')} loading={judging === 'local'} disabled={!localModel || !!judging}>
+                {localModel || 'โมเดลในเครื่อง'}
+              </Button>
+              <Button size="sm" onClick={() => judge(open, 'cloud')} loading={judging === 'cloud'} disabled={!status?.agent || status.agent === 'off' || !!judging}>
                 {status?.agent_model || 'Gemini'}{status?.agent_error ? ' (หยุดชั่วคราว)' : ''}
               </Button>
             </div>

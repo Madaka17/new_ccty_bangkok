@@ -323,9 +323,13 @@ class HelmetPatrol:
         return None
 
     def _analyse(self, hid, camid, cam, crop, marked, agent="auto"):
-        """agent: auto (cloud when budget allows) | cloud (force, used by reanalyse)."""
+        """agent: auto (cloud when budget allows) | cloud (force) | local (helmet detector only), the last two from reanalyse."""
         now = time.time()
         local = self._local_verdict(crop)
+        if agent == "local":
+            self._settle_local(hid, camid, cam, crop, marked, local)
+            self.last_check = int(now)
+            return
         if agent == "auto" and local and local[0] == "helmet":
             self._update(hid, verdict="helmet", source="local", riders=1, no_helmet=0, confidence=round(local[1], 2),
                          note=f"โมเดลในเครื่องเห็นหมวกกันน็อก ({local[1]:.0%})")
@@ -396,7 +400,9 @@ class HelmetPatrol:
             return {"ok": False, "error": "ไม่พบรายการ"}
         if not os.path.exists(crop_p):
             return {"ok": False, "error": "ไม่มีภาพนี้ในแคชแล้ว"}
-        if not self.provider():
+        if agent == "local" and self.local_det is None:
+            return {"ok": False, "error": "ไม่มีโมเดลในเครื่อง (helmet_det.pt)"}
+        if agent != "local" and not self.provider():
             return {"ok": False, "error": "ไม่มี API key ของ Gemini/Claude"}
         camid = row["camid"]
         cam = next((c for c in (self.scanner.cameras if self.scanner else []) if str(c.get("camid")) == camid), None) \
@@ -424,7 +430,7 @@ class HelmetPatrol:
             self.reanalyse(hid, "cloud")
 
     def reanalyse_pending(self, agent="cloud", limit=40, hours=24):
-        """Re-run captures without a firm verdict (unclear / error / pending) through the cloud agent, sequentially."""
+        """Re-run captures without a firm verdict (unclear / error / pending) through the cloud agent or the local detector, sequentially."""
         verdicts = "('unclear','error','pending')"
         with self.lock:
             conn = self._db()
@@ -439,6 +445,17 @@ class HelmetPatrol:
                 self.reanalyse(hid, agent)
         threading.Thread(target=run, daemon=True).start()
         return {"ok": True, "queued": len(ids), "agent": agent}
+
+    def _settle_local(self, hid, camid, cam, crop, marked, local):
+        """Verdict from the local helmet detector alone (reanalyse with agent=local): no API call at all."""
+        if not local:
+            self._update(hid, verdict="unclear", source="local", note="โมเดลในเครื่องไม่เห็นหัวผู้ขับขี่ชัดพอจะตัดสิน")
+        elif local[0] == "no_helmet":
+            self._finish_no_helmet(hid, camid, cam, crop, marked, 1, 1, local[1],
+                                   f"โมเดลในเครื่องไม่เห็นหมวกกันน็อก ({local[1]:.0%})", "local")
+        else:
+            self._update(hid, verdict="helmet", source="local", riders=1, no_helmet=0, confidence=round(local[1], 2),
+                         note=f"โมเดลในเครื่องเห็นหมวกกันน็อก ({local[1]:.0%})")
 
     def _settle_without_agent(self, hid, camid, cam, crop, marked, local, reason, provider):
         """Agent unavailable: trust the local detector when it flagged no helmet, else leave it unclear."""
