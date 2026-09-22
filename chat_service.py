@@ -103,6 +103,18 @@ def water_context(w):
     obs = [x for x in w.get("rain_warnings", []) if x["kind"] == "observed" and x.get("mm")]
     if obs:
         lines.append("ฝนตกหนักแล้ว 24 ชม.: " + ", ".join(f"{x['district']} {x['province']} {x['mm']:.0f} มม." for x in obs[:6]))
+    ntw = w.get("ntw") or {}
+    if ntw.get("dams"):
+        lines.append("เขื่อนต้นน้ำ (คลังข้อมูลน้ำแห่งชาติ): " + ", ".join(
+            f"{d['name']} {d['storage_pct']:.0f}% เข้า {d['inflow'] or 0:.1f} ระบาย {d['released'] or 0:.1f} ล้าน ลบ.ม./วัน" for d in ntw["dams"]))
+    if ntw.get("rain"):
+        top = [r for r in ntw["rain"] if (r.get("rain_24h") or 0) >= 35][:6]
+        if top:
+            lines.append("สถานีวัดฝนจริง 24 ชม. สูงสุด: " + ", ".join(f"{r['district']} {r['province']} {r['rain_24h']:.0f} มม." for r in top))
+    for o in ntw.get("rain_outlook") or []:
+        lines.append(f"คาดการณ์ฝน 3 วัน: {o['province']} {o['text']}")
+    for x in (ntw.get("storms") or []) + (ntw.get("warnings") or []):
+        lines.append(f"ประกาศเตือน: {x.get('name') or x.get('text')}")
     if w.get("weather"):
         lines.append("พยากรณ์ฝน/พายุ 24 ชม.ล่วงหน้า และระดับเฝ้าระวังรายพื้นที่ (เรียงเสี่ยงมากไปน้อย):")
         lines += [_fmt_zone(z) for z in w["weather"]]

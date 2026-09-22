@@ -1,60 +1,58 @@
 import { useState } from 'react';
 import { Card, Badge } from '../dashboard/ui.jsx';
 
-export default function WindyRadarCard() {
-  const [overlay, setOverlay] = useState('radar'); // 'radar', 'wind', 'satellite'
+const OVERLAYS = {
+  radar: { label: '🌧️ เรดาร์ฝน', product: 'radar' },
+  rain: { label: '☔ ฝนสะสม', product: 'ecmwf' },
+  wind: { label: '💨 ทิศทางลม', product: 'ecmwf' },
+  waves: { label: '🌊 คลื่น', product: 'ecmwfWaves' },
+  satellite: { label: '☁️ ดาวเทียม', product: 'satellite' },
+};
+const COMMON = '&menu=&message=true&marker=&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1';
+
+// Windy embed. `overlays` picks which layer buttons show; `lat/lon/zoom` set the initial view.
+export default function WindyRadarCard({
+  title = 'เรดาร์สภาพอากาศและกลุ่มฝน (Windy)',
+  overlays = ['radar', 'wind', 'satellite'],
+  defaultOverlay = 'radar',
+  lat = 13.75,
+  lon = 100.5,
+  zoom = 8,
+}) {
+  const [overlay, setOverlay] = useState(defaultOverlay);
 
   const getEmbedUrl = () => {
-    const base = 'https://embed.windy.com/embed2.html?lat=13.750&lon=100.500&detailLat=13.750&detailLon=100.500&width=650&height=480&zoom=8&level=surface';
-    const params = {
-      radar: '&overlay=radar&product=radar&menu=&message=true&marker=&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1',
-      wind: '&overlay=wind&product=ecmwf&menu=&message=true&marker=&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1',
-      satellite: '&overlay=satellite&product=satellite&menu=&message=true&marker=&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1',
-    };
-    return `${base}${params[overlay] || params.radar}`;
+    const o = OVERLAYS[overlay] || OVERLAYS.radar;
+    return `https://embed.windy.com/embed2.html?lat=${lat}&lon=${lon}&detailLat=${lat}&detailLon=${lon}&width=650&height=480&zoom=${zoom}&level=surface&overlay=${overlay}&product=${o.product}${COMMON}`;
   };
+  const siteUrl = `https://www.windy.com/?${overlay},${lat},${lon},${zoom}`;
 
   return (
     <Card className="p-4 flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <h2 className="text-base font-semibold text-slate-100 flex items-center gap-1.5">
-            <span>🛰️</span> เรดาร์สภาพอากาศและกลุ่มฝน (Windy)
+            <span>🛰️</span> {title}
           </h2>
           <Badge tone="blue" dot>
             สด Live
           </Badge>
         </div>
         <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setOverlay('radar')}
-            className={`cursor-pointer px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
-              overlay === 'radar' ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            🌧️ เรดาร์ฝน
-          </button>
-          <button
-            type="button"
-            onClick={() => setOverlay('wind')}
-            className={`cursor-pointer px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
-              overlay === 'wind' ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            💨 ทิศทางลม
-          </button>
-          <button
-            type="button"
-            onClick={() => setOverlay('satellite')}
-            className={`cursor-pointer px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
-              overlay === 'satellite' ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            ☁️ ดาวเทียม
-          </button>
+          {overlays.map((k) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setOverlay(k)}
+              className={`cursor-pointer px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
+                overlay === k ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              }`}
+            >
+              {OVERLAYS[k]?.label || k}
+            </button>
+          ))}
           <a
-            href="https://www.windy.com/th/-%E0%B9%80%E0%B8%A3%E0%B8%94%E0%B8%B2%E0%B8%A3%E0%B9%8C%E0%B8%AA%E0%B8%A0%E0%B8%B2%E0%B8%9E%E0%B8%AD%E0%B8%B2%E0%B8%81%E0%B8%B2%E0%B8%A8-radar?radar,13.750,100.500,8"
+            href={siteUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="ml-1 text-xs text-slate-400 hover:text-blue-400 transition-colors inline-flex items-center gap-0.5"

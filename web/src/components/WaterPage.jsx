@@ -4,10 +4,8 @@ import { Badge, Button, ErrorState } from './dashboard/ui.jsx';
 import { PageHeader, StatTile, StatusBanner } from './dashboard/primitives.jsx';
 import { fmtDateTime } from './dashboard/format.js';
 import ForecastChart from './water/ForecastChart.jsx';
-import BMAEventFeed from './water/BMAEventFeed.jsx';
-import WindyRadarCard from './water/WindyRadarCard.jsx';
 import FloodAnalysisGuide from './water/FloodAnalysisGuide.jsx';
-import { RiverStations, TideCard, CanalCard, RainCard, UpstreamCard } from './water/WaterLists.jsx';
+import { RiverStations, CanalCard, NtwRainCard } from './water/WaterLists.jsx';
 
 const POLL_MS = 60000;
 const DEFAULT_STATION = '1132'; // สะพานนวลฉวี: nearest official 7-day forecast to Bangkok
@@ -75,7 +73,7 @@ export default function WaterPage({ isActive, onToast, onNavigate, onAsk }) {
     <div className="flex flex-col gap-4 max-w-6xl mx-auto w-full">
       <PageHeader
         title="คาดการณ์ระดับน้ำ กรุงเทพฯ และปริมณฑล"
-        description={summary ? `ข้อมูล สสน. (thaiwater.net) และสำนักการระบายน้ำ กทม. · อัปเดต ${fmtDateTime(summary.updated_at)} · รีเฟรชเองทุก 2 นาที` : 'กำลังโหลดข้อมูลจาก thaiwater.net'}
+        description={summary ? `คลังข้อมูลน้ำแห่งชาติ (nationalthaiwater.onwr.go.th), สสน. และสำนักการระบายน้ำ กทม. · อัปเดต ${fmtDateTime(summary.updated_at)} · รีเฟรชเองทุก 2 นาที` : 'กำลังโหลดข้อมูลจากคลังข้อมูลน้ำแห่งชาติ'}
         actions={
           <>
             {summary?.stale && <Badge tone="yellow">ข้อมูลเก่า</Badge>}
@@ -139,25 +137,17 @@ export default function WaterPage({ isActive, onToast, onNavigate, onAsk }) {
 
       <FloodAnalysisGuide summary={summary} onNavigate={onNavigate} onAsk={onAsk} />
 
-      <WindyRadarCard />
 
-      <BMAEventFeed isActive={isActive} onToast={onToast} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-4">
-        <RiverStations rows={summary?.river} selectedId={stationId} onSelect={pickStation} loading={loading} />
-        <div className="flex flex-col gap-4">
-          <UpstreamCard rows={summary?.official_stations} onPick={pickStation} loading={loading} />
-          <TideCard rows={summary?.tide} loading={loading} />
-        </div>
-      </div>
+      <RiverStations rows={summary?.river} selectedId={stationId} onSelect={pickStation} loading={loading} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <CanalCard canals={summary?.canals} counts={summary?.canal_counts} total={summary?.canal_total} roads={roads} loading={loading} />
-        <RainCard rows={summary?.rain_warnings} loading={loading} />
+        <NtwRainCard ntw={summary?.ntw} loading={loading} />
       </div>
 
       <p className="text-xs text-slate-500 leading-5 px-1">
-        แหล่งข้อมูล: สถาบันสารสนเทศทรัพยากรน้ำ (สสน.) ผ่าน twa.thaiwater.net, สำนักการระบายน้ำ กรุงเทพมหานคร, ศูนย์ควบคุมระบบจราจร กทม. (cpudapp.bangkok.go.th) ·
+        แหล่งข้อมูล: คลังข้อมูลน้ำแห่งชาติ สทนช. (nationalthaiwater.onwr.go.th: เขื่อน ฝนรายสถานี คาดการณ์ฝน พายุ ประกาศเตือน), สถาบันสารสนเทศทรัพยากรน้ำ (สสน.) ผ่าน twa.thaiwater.net, สำนักการระบายน้ำ กรุงเทพมหานคร, ศูนย์ควบคุมระบบจราจร กทม. (cpudapp.bangkok.go.th) ·
         คาดการณ์ 7 วันเป็นของ สสน. ส่วนค่า “ประเมิน” 48 ชม. คำนวณจากแนวโน้มและรอบน้ำขึ้น-น้ำลงของสถานีนั้นเอง ใช้ประกอบการตัดสินใจเบื้องต้นเท่านั้น
       </p>
     </div>

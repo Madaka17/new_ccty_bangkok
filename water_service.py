@@ -22,6 +22,12 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 
 TWA_API = "https://twa-api-public.thaiwater.net"
+# National Thai Water portal (nationalthaiwater.onwr.go.th) backend: no key needed, one big
+# snapshot of every station in the country refreshed by HII every hour
+NTW_API = "https://api-v3.thaiwater.net/api/v1/thaiwater30"
+NTW_TTL = 600
+# Upstream reservoirs that decide how much water reaches the lower Chao Phraya
+NTW_DAMS = ["ภูมิพล", "สิริกิติ์", "แควน้อยบำรุงแดน", "ป่าสักชลสิทธิ์", "ขุนด่านปราการชล"]
 # Anonymous key that twa.thaiwater.net ships to every browser; override with TWA_API_KEY if it rotates
 TWA_API_KEY = os.getenv("TWA_API_KEY", "TPSXrHRvTHeVT2Lygq6YeTqqAm4xZ72x")
 USER_AGENT = "BKK-Traffic-CCTV/2.0 (personal dashboard)"
@@ -441,6 +447,108 @@ def _load_rain_warnings():
     return out
 
 
+# ---------------------------------------------------------------- National Thai Water (ONWR) portal
+def _ntw_get(path):
+    req = urllib.request.Request(NTW_API + path, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json",
+                                                          "Referer": "https://nationalthaiwater.onwr.go.th/"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _ntw_prov(x):
+    return ((x.get("geocode") or {}).get("province_name") or {}).get("th") or ""
+
+
+def _ntw_amphoe(x):
+    return ((x.get("geocode") or {}).get("amphoe_name") or {}).get("th") or ""
+
+
+def _rain_level(mm):
+    if mm is None:
+        return "none"
+    if mm > 90:
+        return "extreme"
+    if mm > 50:
+        return "heavy"
+    if mm > 20:
+        return "moderate"
+    if mm > 0:
+        return "light"
+    return "none"
+
+
+def _load_ntw():
+    """Dams, observed rain, rain outlook, storms and flood warnings for Bangkok + 5 provinces."""
+    t = _ntw_get("/public/thailand")
+    metro = set(METRO_PROVINCES.values())
+
+    def rows(block):
+        return ((t.get(block) or {}).get("data") or {}).get("data") or []
+
+    dams = []
+    for x in rows("dam"):
+        dam = x.get("dam") or {}
+        name = (dam.get("dam_name") or {}).get("th") or ""
+        if name not in NTW_DAMS:
+            continue
+        pct = _num(x.get("dam_storage_percent"))
+        dams.append({
+            "name": name, "date": x.get("dam_date"), "storage": _num(x.get("dam_storage")),
+            "max_storage": _num(dam.get("max_storage")), "storage_pct": pct,
+            "inflow": _num(x.get("dam_inflow")), "released": _num(x.get("dam_released")),
+            "uses_pct": _num(x.get("dam_uses_water_percent")),
+            "level": "high" if (pct or 0) >= 90 else ("normal" if (pct or 0) >= 50 else "low"),
+        })
+    dams.sort(key=lambda d: NTW_DAMS.index(d["name"]))
+
+    rain = []
+    for x in rows("rain"):
+        if _ntw_prov(x) not in metro:
+            continue
+        mm = _num(x.get("rain_24h"))
+        if mm is None:
+            continue
+        st = x.get("station") or {}
+        rain.append({
+            "name": (st.get("tele_station_name") or {}).get("th") or "",
+            "district": _ntw_amphoe(x), "province": _ntw_prov(x),
+            "lat": _num(st.get("tele_station_lat")), "lng": _num(st.get("tele_station_long")),
+            "rain_24h": mm, "rain_1h": _num(x.get("rain_1h")), "level": _rain_level(mm),
+            "ts": _ts(x.get("rainfall_datetime")),
+        })
+    rain.sort(key=lambda r: -(r["rain_24h"] or 0))
+    rain_counts = {k: sum(1 for r in rain if r["level"] == k) for k in ("extreme", "heavy", "moderate", "light", "none")}
+
+    level_text = ((t.get("pre_rain") or {}).get("setting") or {}).get("level-text") or {}
+    outlook = []
+    for x in rows("pre_rain"):
+        prov = (x.get("province_name") or {}).get("th") or ""
+        if prov in metro:
+            lv = str(x.get("rainforecast_level") or "")
+            outlook.append({"province": prov, "level": int(lv or 0),
+                            "text": (level_text.get(lv) or {}).get("text") or "ฝนตกหนัก"})
+
+    storms = []
+    for x in rows("storm"):
+        storms.append({"name": x.get("storm_name") or x.get("name") or "", "category": x.get("category") or "",
+                       "raw": {k: v for k, v in x.items() if isinstance(v, (str, int, float))}})
+
+    warn = t.get("warning") or {}
+    warnings = []
+    for kind in ("flood", "drought"):
+        for x in ((warn.get(kind) or {}).get("data") or []):
+            prov = _ntw_prov(x) or (x.get("province_name") or {}).get("th") or ""
+            if not prov or prov in metro:
+                warnings.append({"kind": kind, "province": prov, "text": x.get("title") or x.get("warning_text") or json.dumps(x, ensure_ascii=False)[:200]})
+
+    return {
+        "updated_at": int(time.time()),
+        "dams": dams,
+        "rain": rain[:40], "rain_total": len(rain), "rain_counts": rain_counts,
+        "rain_outlook": outlook, "storms": storms, "warnings": warnings,
+    }
+
+
 def _weather_alert(rain_24h, gust, storm):
     """Rain/storm watch level per zone. Thresholds follow TMD daily-rain classes:
     35 mm = heavy, 90 mm = very heavy; gusts >= 60 km/h count as a storm risk."""
@@ -451,6 +559,39 @@ def _weather_alert(rain_24h, gust, storm):
     if rain_24h >= 10 or storm or gust >= 40:
         return "yellow"
     return "green"
+
+
+# Wind field for the map overlay: a 7x7 grid over Bangkok + suburbs, current conditions only
+WIND_GRID_LAT = [13.45 + i * 0.1 for i in range(7)]
+WIND_GRID_LNG = [100.25 + i * 0.1 for i in range(7)]
+WIND_TTL = 900
+
+
+def _load_wind_grid():
+    pts = [(lat, lng) for lat in WIND_GRID_LAT for lng in WIND_GRID_LNG]
+    q = urllib.parse.urlencode({
+        "latitude": ",".join(f"{p[0]:.2f}" for p in pts),
+        "longitude": ",".join(f"{p[1]:.2f}" for p in pts),
+        "current": "wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation,cloud_cover,temperature_2m",
+        "timezone": "Asia/Bangkok", "wind_speed_unit": "kmh",
+    })
+    req = urllib.request.Request(f"{OPEN_METEO}?{q}", headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        blocks = json.loads(resp.read().decode("utf-8"))
+    if isinstance(blocks, dict):
+        blocks = [blocks]
+    out = []
+    for (lat, lng), b in zip(pts, blocks):
+        c = b.get("current") or {}
+        out.append({"lat": lat, "lng": lng, "speed": c.get("wind_speed_10m"), "dir": c.get("wind_direction_10m"),
+                    "gust": c.get("wind_gusts_10m"), "rain": c.get("precipitation"), "cloud": c.get("cloud_cover"),
+                    "temp": c.get("temperature_2m"), "time": c.get("time")})
+    return {"updated_at": int(time.time()), "points": out}
+
+
+def get_wind_grid():
+    data, stale = _cache.get("wind_grid", WIND_TTL, _load_wind_grid)
+    return {**data, "stale": stale}
 
 
 def _load_weather():
@@ -584,7 +725,7 @@ def _build_summary():
     threads = [threading.Thread(target=run, args=a, daemon=True) for a in (
         ("river", _load_river), ("canals", _load_canals), ("flood_roads", _load_flood_roads),
         ("tide", _load_tide), ("rain", _load_rain_warnings), ("official", _load_official_stations),
-        ("weather", _load_weather))]
+        ("weather", _load_weather), ("ntw", lambda: _cache.get("ntw", NTW_TTL, _load_ntw)[0]))]
     for t in threads:
         t.start()
     for t in threads:
@@ -608,6 +749,7 @@ def _build_summary():
         "rain_warnings": parts.get("rain", []),
         "official_stations": parts.get("official", []),
         "weather": weather,
+        "ntw": parts.get("ntw"),
         "errors": errors,
     }
 

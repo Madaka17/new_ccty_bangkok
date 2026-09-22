@@ -281,3 +281,133 @@ export function UpstreamCard({ rows, onPick, loading }) {
     </Card>
   );
 }
+
+// ---------------------------------------------------------------- National Thai Water portal (ONWR): observed rain
+const RAIN_LEVEL = {
+  extreme: { label: 'หนักมาก', tone: 'red' },
+  heavy: { label: 'หนัก', tone: 'red' },
+  moderate: { label: 'ปานกลาง', tone: 'yellow' },
+  light: { label: 'เล็กน้อย', tone: 'green' },
+  none: { label: 'ไม่มีฝน', tone: 'neutral' },
+};
+
+export function NtwRainCard({ ntw, loading }) {
+  const rows = ntw?.rain || [];
+  const counts = ntw?.rain_counts;
+  const outlook = ntw?.rain_outlook || [];
+  const warnings = ntw?.warnings || [];
+  const storms = ntw?.storms || [];
+  return (
+    <Card aria-labelledby="water-ntw-rain-title" className="p-5">
+      <SectionHeader
+        id="water-ntw-rain-title"
+        title="ฝนที่ตกจริงใน 24 ชม. กรุงเทพฯ และปริมณฑล"
+        description={ntw ? `สถานีวัดฝน ${ntw.rain_total} จุด · คลังข้อมูลน้ำแห่งชาติ (nationalthaiwater.onwr.go.th)` : 'คลังข้อมูลน้ำแห่งชาติ'}
+      />
+      <div className="mt-3 space-y-2">
+        {loading ? (
+          <Skeleton className="h-16 w-full" />
+        ) : !ntw ? (
+          <EmptyState title="เชื่อมต่อคลังข้อมูลน้ำแห่งชาติไม่สำเร็จ" />
+        ) : (
+          <>
+            {storms.map((s, i) => (
+              <div key={`s${i}`} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+                <b>พายุ {s.name}</b> {s.category}
+              </div>
+            ))}
+            {warnings.map((w, i) => (
+              <div key={`w${i}`} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <b>{w.kind === 'flood' ? 'เตือนน้ำท่วม' : 'เตือนภัยแล้ง'}</b> {w.province} · {w.text}
+              </div>
+            ))}
+            {outlook.length ? (
+              outlook.map((o, i) => (
+                <div key={`o${i}`} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  <b>คาดการณ์ {o.text}</b> {o.province} (ล่วงหน้า 3 วัน)
+                </div>
+              ))
+            ) : (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                ไม่มีเตือนฝนตกหนักล่วงหน้า 3 วันในเขตกรุงเทพฯ และปริมณฑล
+              </div>
+            )}
+            {counts && (
+              <p className="text-xs text-slate-500">
+                หนัก {counts.heavy + counts.extreme} · ปานกลาง {counts.moderate} · เล็กน้อย {counts.light} · ไม่มีฝน {counts.none} สถานี
+              </p>
+            )}
+            <ul className="divide-y divide-slate-100">
+              {rows.slice(0, 8).map((r, i) => {
+                const lv = RAIN_LEVEL[r.level] || RAIN_LEVEL.none;
+                const prefix = r.province === 'กรุงเทพมหานคร' ? 'เขต' : 'อ.';
+                return (
+                  <li key={i} className="py-1.5 flex items-center justify-between gap-3 text-sm">
+                    <div className="min-w-0">
+                      <Truncate text={`${r.district ? prefix + r.district : r.province} · ${r.name}`} className="text-slate-700" />
+                      <p className="text-xs text-slate-500">
+                        {r.province}
+                        {r.rain_1h != null ? ` · ชั่วโมงล่าสุด ${fmtM(r.rain_1h, 1)} มม.` : ''}
+                      </p>
+                    </div>
+                    <span className="tabular-nums font-semibold text-slate-900 whitespace-nowrap">{fmtM(r.rain_24h, 1)} มม.</span>
+                    <Badge tone={lv.tone}>{lv.label}</Badge>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------- National Thai Water portal (ONWR): upstream dams
+const DAM_LEVEL = {
+  high: { label: 'น้ำมาก', tone: 'red', bar: 'bg-red-600' },
+  normal: { label: 'ปกติ', tone: 'green', bar: 'bg-emerald-600' },
+  low: { label: 'น้ำน้อย', tone: 'yellow', bar: 'bg-amber-500' },
+};
+
+const fmtMcm = (v) => (v == null ? '–' : Math.round(v).toLocaleString('th-TH'));
+
+export function DamCard({ rows, loading }) {
+  return (
+    <Card aria-labelledby="water-dam-title" className="p-5">
+      <SectionHeader id="water-dam-title" title="เขื่อนต้นน้ำเจ้าพระยา-ป่าสัก" description="ปริมาณกักเก็บ น้ำไหลเข้า และการระบาย (ล้าน ลบ.ม./วัน) · คลังข้อมูลน้ำแห่งชาติ" />
+      <ul className="mt-3 divide-y divide-slate-100">
+        {loading
+          ? [...Array(4)].map((_, i) => (
+              <li key={i} className="py-2">
+                <Skeleton className="h-10 w-full" />
+              </li>
+            ))
+          : (rows || []).map((d) => {
+              const lv = DAM_LEVEL[d.level] || DAM_LEVEL.normal;
+              return (
+                <li key={d.name} className="py-2">
+                  <div className="flex items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-slate-900">เขื่อน{d.name}</p>
+                      <p className="text-xs text-slate-500 tabular-nums">
+                        เก็บ {fmtMcm(d.storage)} / {fmtMcm(d.max_storage)} ล้าน ลบ.ม. · เข้า {fmtM(d.inflow, 1)} · ระบาย {fmtM(d.released, 1)}
+                      </p>
+                    </div>
+                    <span className="text-sm tabular-nums font-semibold text-slate-900">{fmtM(d.storage_pct, 0)}%</span>
+                    <Badge tone={lv.tone} dot>
+                      {lv.label}
+                    </Badge>
+                  </div>
+                  <div className="mt-1.5 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div className={`h-full ${lv.bar}`} style={{ width: `${Math.min(100, d.storage_pct || 0)}%` }} />
+                  </div>
+                </li>
+              );
+            })}
+        {!loading && !(rows || []).length && <EmptyState title="ไม่มีข้อมูลเขื่อน" />}
+      </ul>
+      {rows?.[0]?.date && <p className="mt-2 text-xs text-slate-500">ข้อมูลวันที่ {rows[0].date}</p>}
+    </Card>
+  );
+}
