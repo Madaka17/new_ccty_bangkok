@@ -477,7 +477,7 @@ class ViolationMonitor:
             )
             return (resp.text or "").strip()
         response = vis.client.messages.create(
-            model=os.environ.get("CLAUDE_VISION_MODEL", "claude-opus-5"),
+            model=os.environ.get("CLAUDE_VISION_MODEL", "claude-opus-5-5"),
             output_config={"effort": "low"},
             max_tokens=200,
             system=HELMET_PROMPT,

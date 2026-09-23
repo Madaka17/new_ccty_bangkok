@@ -107,7 +107,7 @@ def make_vision():
 
         def ask(jpeg):
             resp = client.messages.create(
-                model=os.environ.get('CLAUDE_VISION_MODEL', 'claude-opus-5'), max_tokens=200, system=HELMET_PROMPT,
+                model=os.environ.get('CLAUDE_VISION_MODEL', 'claude-opus-5-5'), max_tokens=200, system=HELMET_PROMPT,
                 output_config={'effort': 'low'},
                 messages=[{'role': 'user', 'content': [
                     {'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/jpeg', 'data': base64.standard_b64encode(jpeg).decode('ascii')}},

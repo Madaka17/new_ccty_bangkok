@@ -527,7 +527,7 @@ class HelmetPatrol:
                     raise
             raise RuntimeError("503 Gemini overloaded on every model")
         response = vis.client.messages.create(
-            model=os.environ.get("CLAUDE_VISION_MODEL", "claude-opus-5"),
+            model=os.environ.get("CLAUDE_VISION_MODEL", "claude-opus-5-5"),
             output_config={"effort": "low"},
             max_tokens=200,
             system=AGENT_PROMPT,
@@ -553,7 +553,7 @@ class HelmetPatrol:
         return {
             "updated": int(now), "enabled": self.enabled(), "agent": self.provider() or "off",
             "agent_model": HELMET_MODEL if self.provider() == "gemini"
-            else (os.environ.get("CLAUDE_VISION_MODEL", "claude-opus-5") if self.provider() else None),
+            else (os.environ.get("CLAUDE_VISION_MODEL", "claude-opus-5-5") if self.provider() else None),
             "local_detector": os.path.basename(LOCAL_DET_PATH) if self.local_det is not None else None,
             "archive_dir": ARCHIVE_DIR, "archive_ok": os.path.isdir(os.path.dirname(ARCHIVE_DIR.rstrip("/\\"))),
             "calls_last_hour": len(self._calls), "calls_per_hour_max": MAX_PER_HOUR, "queue": self._queue.qsize(),

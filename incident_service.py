@@ -25,7 +25,7 @@ except ImportError:
     genai = None
 
 # Vision provider order mirrors chat_service: Gemini (GEMINI_API_KEY) first, then Claude
-CLAUDE_MODEL = "claude-opus-5"
+CLAUDE_MODEL = "claude-opus-5-5"
 GEMINI_MODEL = os.environ.get("GEMINI_VISION_MODEL", "gemini-3.6-flash")
 LONGDO_FEED = "https://event.longdo.com/feed/json"
 LONGDO_ACCIDENT_TYPE = "3"
