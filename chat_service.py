@@ -22,7 +22,7 @@ try:
 except ImportError:
     genai = None
 
-MODEL = "claude-opus-5"
+MODEL = "claude-opus-5-5"
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
 SYSTEM_PROMPT = """คุณคือ "ผู้ช่วยอัจฉริยะ" ของแอป BKK StreetSmart (กรุงเทพฯ และปริมณฑล)
@@ -38,9 +38,16 @@ SYSTEM_PROMPT = """คุณคือ "ผู้ช่วยอัจฉริ�
    (อุบัติเหตุ น้ำท่วม ปิดถนน ซ่อมถนน) และสถิติอุบัติเหตุ กทม. (ThaiRSC): วันนี้/ปีนี้ เขตเสี่ยง ประเภทรถ ช่วงเวลา จุดกล้องเสี่ยงสูง
 4) คำแนะนำเกี่ยวกับเมือง: การเตรียมตัวรับมือน้ำท่วม/พายุ ขับขี่ปลอดภัย วางแผนเดินทางในกรุงเทพฯ กฎจราจร เบอร์ฉุกเฉิน
    (1669 แพทย์ฉุกเฉิน, 1197 จราจร, 191 ตำรวจ, 1555 กทม., 1784 ปภ., 1460 ชลประทาน) วิธีใช้แอปนี้ (หน้าแดชบอร์ด/แผนที่/กล้อง/น้ำ/AI)
+5) ฝุ่น PM2.5/AQI รายสถานี (Air4Thai) ค่าเฉลี่ยเมืองและสถานีที่ค่าสูงสุด
+6) คำแนะนำระบายรถรายสายทางหลัก: จุดสะสม ทางเลี่ยงพร้อม flow สด และสิ่งที่ควรทำ
+7) ระดับน้ำท่วมรายถนนตามเกณฑ์ทางการ (ห้ามขับผ่าน/ควรเลี่ยง/ผ่านได้/เฝ้าระวัง) และบทวิเคราะห์เซ็นเซอร์น้ำบนถนน
+8) การฝ่าฝืนจากกล้อง AI: ไม่สวมหมวกกันน็อก และขับย้อนศร (วันนี้ สะสม และรายการล่าสุด)
+9) analytics แดชบอร์ด: ดัชนีความแออัดและสาเหตุ ความหนาแน่นถนน เขตน้ำเร่งด่วน คาดการณ์น้ำท่วม 1-6 ชม. จุดเสี่ยงอุบัติเหตุ (black spot)
 
 แนวทางตอบ
-- ตัวเลข/สถานะสดของจราจร น้ำ ฝน อุบัติเหตุ ใช้จากข้อมูลที่แนบมาเท่านั้น ห้ามเดา ถ้าไม่มีข้อมูลถนน/พื้นที่ที่ถาม ให้บอกตรง ๆ และเสนอสิ่งใกล้เคียงที่มีข้อมูล
+- ตัวเลข/สถานะสดของจราจร น้ำ ฝน ฝุ่น อุบัติเหตุ การฝ่าฝืน ใช้จากข้อมูลที่แนบมาเท่านั้น ห้ามเดา
+- ก่อนตอบว่า "ไม่มีข้อมูล" ให้หาในข้อมูลที่แนบมาทุกหมวดก่อน ชื่อถนน/เขตอาจอยู่คนละหมวด (เช่น ถนนในหมวดน้ำท่วมรายถนนหรือคำแนะนำระบายรถ เขตในสถานี PM2.5 หรือ black spot)
+  ถ้าหาไม่เจอจริง ให้บอกตรง ๆ ว่าไม่มีข้อมูลของที่ถามตอนนี้ แล้วเสนอพื้นที่ใกล้เคียงหรือภาพรวมที่มีข้อมูลแทนเสมอ
 - คำถามอื่นทุกเรื่อง ตอบเต็มที่จากความรู้ของคุณ ไม่ต้องอ้างข้อมูลสดและไม่ต้องดึงเรื่องกลับมาที่จราจร/น้ำท่วม
   ถ้าเป็นเรื่องที่เปลี่ยนเร็ว (ข่าว ราคา ผลกีฬา) บอกว่าเป็นความรู้ ณ ช่วงที่ฝึก อาจไม่ล่าสุด
 - ใช้ข้อมูลสดที่แนบมาเฉพาะเมื่อเกี่ยวกับคำถาม ไม่ต้องไล่ทุกหมวด ถ้าถามภาพรวมเมืองให้สรุปหมวดละ 1-2 บรรทัดแล้วชี้จุดที่น่าห่วงสุด
@@ -198,12 +205,154 @@ def tide_context(water):
     return [f"น้ำทะเลหนุน {t.get('name')} วันที่ {t.get('date')}: สูงสุด {round(t.get('max') or 0, 2)} ม. เวลา {t.get('max_time')}, ต่ำสุด {round(t.get('min') or 0, 2)} ม. เวลา {t.get('min_time')}"]
 
 
+def _asked(question, *names):
+    """True when any place name (with or without the เขต/แขวง prefix) appears in the question."""
+    for n in names:
+        n = (n or "").strip()
+        for v in (n, n.removeprefix("เขต").removeprefix("แขวง").strip()):
+            if len(v) >= 3 and v in question:
+                return True
+    return False
+
+
+def air_context(air, question):
+    """PM2.5 per station (Air4Thai): city average, worst stations and any station the user named."""
+    items = (air or {}).get("items") or []
+    if not items:
+        return []
+    counts = ", ".join(f"{k} {v}" for k, v in ((air or {}).get("counts") or {}).items())
+    lines = [f"ฝุ่น PM2.5 (Air4Thai {_hhmm(air.get('source_ts') or air.get('updated_at'))}): เฉลี่ย {air.get('avg_pm25')} µg/m³ "
+             f"จาก {air.get('total')} สถานี ({counts})"]
+    picked = [i for i in items if _asked(question, i.get("name"), i.get("area"))][:5]
+    for i in picked + [i for i in items[:5] if i not in picked]:
+        lines.append(f"  - {i.get('name')} ({i.get('area')} {i.get('province')}): PM2.5 {i.get('pm25')} µg/m³ {i.get('label')}")
+    return lines
+
+
+def guidance_context(guidance, question):
+    """Per-corridor dispersal advice: hotspots, bypass roads with live flow, what to do."""
+    items = (guidance or {}).get("items") or []
+    if not items:
+        return []
+    picked = [i for i in items if _asked(question, i.get("name"), i.get("search_road"))
+              or any(_asked(question, r.get("name")) for r in i.get("roads") or [])]
+    lines = ["คำแนะนำระบายรถรายสายทางหลัก (เส้นเลี่ยงพร้อม flow สด):"]
+    for i in (picked + [i for i in items if i not in picked])[:6]:
+        spots = ", ".join(s.get("label") for s in (i.get("hotspots") or [])[:3] if s.get("label"))
+        alts = ", ".join(f"{a['name']} {a['flow']}/100" for a in (i.get("alternatives") or [])[:3])
+        lines.append(f"  - {i['name']} ({i.get('zone')}): {i.get('status_label')} flow {i.get('flow')}/100"
+                     + (f", จุดสะสม {spots}" if spots else "") + (f", ทางเลี่ยง {alts}" if alts else "")
+                     + f" | แนะนำ: {i.get('action')}")
+    return lines
+
+
+def road_flood_context(road_risk, flood_report, question):
+    """Per-road flood level by official standards plus the AI read of the road sensors."""
+    lines = []
+    rr = road_risk or {}
+    if rr.get("items"):
+        c = rr.get("counts") or {}
+        lth = rr.get("level_th") or {}
+        lines.append("ระดับน้ำท่วมรายถนน (เกณฑ์ สนน.กทม./ปภ./กรมอุตุฯ): "
+                     + ", ".join(f"{lth.get(k, k)} {v} สาย" for k, v in c.items() if v) + f" จาก {rr.get('total')} สาย")
+        items = rr["items"]
+        by_road = [i for i in items if _asked(question, i.get("road"))]
+        picked = (by_road + [i for i in items if i not in by_road and _asked(question, i.get("district"))])[:8]
+        top = [i for i in items if i.get("class", 0) > 0 and i not in picked][:8]
+        for i in picked + top:
+            why = " · ".join(x for x in [
+                f"น้ำบนถนน {i['flood_cm']} ซม." if i.get("flood_cm") else None,
+                f"ฝน 24 ชม. {i['rain_24h']} มม." if i.get("rain_24h") else None,
+                f"{i['gauge_at']} {i['gauge_pct']}% ของตลิ่ง" if i.get("gauge_pct") else None] if x)
+            lines.append(f"  - {i['road']} ({i.get('district')} {i.get('province')}): {i.get('level_th')}" + (f" ({why})" if why else ""))
+        if not picked and not top:
+            lines.append("  - ไม่มีถนนสายใดเข้าเกณฑ์เฝ้าระวังตอนนี้")
+    fr = flood_report or {}
+    if fr.get("headline"):
+        lines.append(f"บทวิเคราะห์น้ำท่วมขังจากเซ็นเซอร์ถนน ({fr.get('severity')}): {fr['headline']} {fr.get('detail', '')}")
+        for h in fr.get("hotspots") or []:
+            lines.append(f"  - จับตา {h['where']}: {h.get('note', '')}")
+        if fr.get("outlook"):
+            lines.append(f"  แนวโน้ม: {fr['outlook']}")
+    return lines
+
+
+KIND_TH = {"wrong_way": "ย้อนศร", "no_helmet": "ไม่สวมหมวกกันน็อก"}
+
+
+def patrol_context(helmet, wrongway, violations):
+    """Traffic violations caught by the AI patrols (no helmet / wrong way) today."""
+    lines = []
+    h = (helmet or {}).get("status") or {}
+    if h.get("today"):
+        t = h["today"]
+        lines.append(f"ตรวจหมวกกันน็อกจากกล้อง กทม. วันนี้: ตรวจ {t['captures']} ภาพ ไม่สวม {t['no_helmet']} สวม {t['helmet']} "
+                     f"ไม่ชัด {t['unclear']} รอตรวจ {t['pending']} (สะสมไม่สวมทั้งหมด {h.get('total_no_helmet')})")
+    for r in (helmet or {}).get("recent") or []:
+        lines.append(f"  - [{_hhmm(r.get('ts'))}] ไม่สวมหมวก {r.get('title')} เขต{r.get('district')}")
+    w = (wrongway or {}).get("status") or {}
+    if w.get("today"):
+        t = w["today"]
+        lines.append(f"ตรวจย้อนศรจากกล้อง กทม. วันนี้: ตรวจ {t['captures']} ภาพ ย้อนศร {t['wrong_way']} ไม่ใช่ {t['ok']} "
+                     f"ไม่ชัด {t['unclear']} รอตรวจ {t['pending']} (สะสมย้อนศรทั้งหมด {w.get('total_wrong_way')})")
+    for r in (wrongway or {}).get("recent") or []:
+        lines.append(f"  - [{_hhmm(r.get('ts'))}] ย้อนศร {r.get('title')} เขต{r.get('district')} (วิ่ง{r.get('heading_th')} ช่องนี้ปกติ{r.get('expected_th')})")
+    v = violations or {}
+    if v.get("counts"):
+        lines.append("กล้อง AI ที่เปิดอยู่ พบการฝ่าฝืน 24 ชม.: " + ", ".join(f"{KIND_TH.get(k, k)} {n}" for k, n in v["counts"].items()))
+    return lines
+
+
+def analytics_context(a):
+    """Dashboard analytics: congestion index + causes, density tiers, flood 1-6 h outlook, accident black spots."""
+    if not a:
+        return []
+    lines = []
+    t = a.get("traffic") or {}
+    if t.get("ready"):
+        lines.append(f"ดัชนีความแออัด (แดชบอร์ด): {t.get('congestion_index')} ({t.get('congestion_level')}), "
+                     f"รายงานเหตุ 6 ชม. {t.get('reports_6h')} เรื่อง")
+        for r in (t.get("top5") or [])[:5]:
+            lines.append(f"  - ติดสุด {r['name']}: แดง {r['red_km']} กม. flow {r['flow']} สาเหตุ: {r.get('cause_text')}")
+    d = a.get("density") or {}
+    if d.get("ready"):
+        lines.append("ความหนาแน่นถนน: " + ", ".join(
+            f"{x['label']} {x['roads']} สาย ({x['km_pct']}% ของระยะ) เช่น {', '.join(x.get('examples', [])[:3])}" for x in d.get("tiers", [])))
+    f = a.get("flood") or {}
+    if f.get("ready"):
+        urgent = f.get("urgent_districts") or []
+        if urgent:
+            lines.append("เขตน้ำเร่งด่วน: " + ", ".join(
+                f"{u['district']} (ล้น {u['overflow']} ใกล้เต็ม {u['high']} ถนนท่วม {u['flood_roads']} ลึกสุด {u['max_depth_cm']} ซม.)" for u in urgent[:6]))
+        pred = [p for p in f.get("prediction") or [] if p.get("peak_level")]
+        if pred:
+            lines.append("คาดการณ์เสี่ยงน้ำท่วม 1-6 ชม.: " + ", ".join(
+                f"{p['zone']} สูงสุดชั่วโมงที่ {p['peak_h']} ระดับ {p['peak_level']} (คะแนน {p['peak_score']})" for p in pred[:6]))
+    acc = a.get("accidents") or {}
+    spots = acc.get("black_spots") or []
+    if spots:
+        lines.append("จุดเสี่ยงอุบัติเหตุ (black spot) สูงสุด:")
+        for b in spots[:5]:
+            lines.append(f"  - {b['place']} เขต{b['district']} ({b['road_type']}): {b['cases']} เคส ตาย {b['dead']} เจ็บ {b['injured']} "
+                         f"ความสำคัญ{b['priority']} มาตรการ: {' / '.join(b.get('measures', [])[:2])}")
+    return lines
+
+
+def site_context(question, ex):
+    """Every other data set shown on the website, so the bot never says 'no data' for something on screen."""
+    return (air_context(ex.get("air"), question) + guidance_context(ex.get("guidance"), question)
+            + road_flood_context(ex.get("road_risk"), ex.get("flood_report"), question)
+            + patrol_context(ex.get("helmet"), ex.get("wrongway"), ex.get("violations"))
+            + analytics_context(ex.get("analytics")))
+
+
 def build_context(traffic, question, camera_stats=None, water=None, extra=None):
     s = traffic.get_summary(top=8)
     if not s.get("ready"):
         ex = extra or {}
         return "ยังไม่มีข้อมูลจราจร (ระบบกำลังโหลด)\n" + "\n".join(
-            water_context(water) + incident_context(ex.get("incidents"), ex.get("bma_events")) + accident_stats_context(ex.get("rsc"), ex.get("camera_risk")))
+            water_context(water) + incident_context(ex.get("incidents"), ex.get("bma_events")) + accident_stats_context(ex.get("rsc"), ex.get("camera_risk"))
+            + site_context(question, ex))
     lines = [
         f"เวลาข้อมูล: {time.strftime('%H:%M', time.localtime(s['updated_at']))} "
         f"({'ออนไลน์' if s.get('online') else 'ออฟไลน์ ใช้ข้อมูลล่าสุดที่บันทึกไว้'})",
@@ -235,6 +384,8 @@ def build_context(traffic, question, camera_stats=None, water=None, extra=None):
     lines += bma_count_context(ex.get("bma_analytics"))
     lines += incident_context(ex.get("incidents"), ex.get("bma_events"))
     lines += accident_stats_context(ex.get("rsc"), ex.get("camera_risk"))
+    lines.append("")
+    lines += site_context(question, ex)
     return "\n".join(lines)
 
 

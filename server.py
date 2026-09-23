@@ -916,7 +916,13 @@ def chat_endpoint(payload: dict = Body(...)):
     extra = {}
     for key, fn in (("incidents", incidents.status), ("bma_events", lambda: bma_feed.get(hours=12, limit=20)),
                     ("bma_analytics", bma_scanner.get_analytics), ("rsc", rsc_service.get_summary),
-                    ("camera_risk", lambda: rsc_service.get_camera_risk(limit=8))):
+                    ("camera_risk", lambda: rsc_service.get_camera_risk(limit=8)),
+                    ("air", air.status), ("guidance", guidance.status),
+                    ("road_risk", lambda: road_risk.status(limit=2000)), ("flood_report", flood_roads.report),
+                    ("helmet", lambda: {"status": helmet.status(), "recent": helmet.recent(verdict="no_helmet", limit=5)["items"]}),
+                    ("wrongway", lambda: {"status": wrongway.status(), "recent": wrongway.recent(verdict="wrong_way", limit=5)["items"]}),
+                    ("violations", lambda: violations.recent(hours=24, limit=1)),
+                    ("analytics", analytics_service.get_summary)):
         try:
             extra[key] = fn()
         except Exception as e:
