@@ -183,7 +183,9 @@ def health():
     Returns 503 when the BMA scan is stale (> 3 cycles) so an external monitor can restart the server."""
     now = time.time()
     scan = bma_scanner.get_status()
-    last_scan = scan.get("last_scan_time") or 0
+    # bma_service stores last_scan_time as "%Y-%m-%d %H:%M:%S" text (the UI shows it as is)
+    last_scan = scan.get("last_scan_time")
+    last_scan = datetime.strptime(last_scan, "%Y-%m-%d %H:%M:%S").timestamp() if last_scan else 0
     scan_age = int(now - last_scan) if last_scan else None
     # Fresh process: the first cycle over 574 cameras takes a few minutes, so give it a grace period
     scan_ok = (scan_age is not None and scan_age < 15 * 60) or (not last_scan and now - SERVER_START < 20 * 60)
