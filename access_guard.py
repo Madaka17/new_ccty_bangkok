@@ -83,7 +83,8 @@ def client_ip(request: Request) -> str:
     if peer in ("127.0.0.1", "::1"):
         fwd = request.headers.get("x-forwarded-for", "")
         if fwd:
-            return fwd.split(",")[0].strip()
+            # The proxy appends the real peer; earlier entries come from the client and can be forged
+            return fwd.split(",")[-1].strip()
     return peer
 
 
