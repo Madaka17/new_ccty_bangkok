@@ -10,6 +10,8 @@ echo   BKK StreetSmart CCTV + YOLO26x AI Server
 echo ======================================================================
 echo.
 
+call build_web.bat
+
 if exist ".venv\Scripts\python.exe" goto USE_VENV
 goto USE_GLOBAL
 

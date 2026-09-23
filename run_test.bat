@@ -28,6 +28,8 @@ if not exist "local\stage\cache" (
 )
 if not exist "local\stage\data" mkdir "local\stage\data"
 
+call build_web.bat
+
 echo [*] Starting TEST server at http://localhost:8001 ...
 echo.
 if exist ".venv\Scripts\python.exe" (

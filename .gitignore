@@ -60,3 +60,6 @@ weights/
 *.db-journal
 *.db-wal
 *.db-shm
+
+# React build output: produced by build_web.bat / npm run build, not committed
+web/dist/

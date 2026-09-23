@@ -34,6 +34,8 @@ echo [*] Local  URL: http://localhost:8000
 echo [*] Close this window to stop the server. Funnel stays on until "tailscale funnel reset".
 echo.
 
+call build_web.bat
+
 if exist ".venv\Scripts\python.exe" (
     .venv\Scripts\python.exe server.py
 ) else (
