@@ -197,6 +197,20 @@ export async function runFloodAgent(question = '') {
   return res.json();
 }
 
+// Water Forecast analyst (water_agent.py): AI outlook, three waters, measures and public guide
+export async function fetchWaterAgent() {
+  const res = await fetch('/api/water/agent');
+  if (!res.ok) throw new Error('water_agent');
+  return res.json();
+}
+
+export async function runWaterAgent() {
+  const res = await fetch('/api/water/agent/run', { method: 'POST' });
+  if (res.status === 403) throw new Error('forbidden');
+  if (!res.ok) throw new Error('water_agent_run');
+  return res.json();
+}
+
 // BMA traffic-risk analysis (riskbkk_agent.py): AI report + the per-district / per-hour numbers
 export async function fetchRiskAnalysis() {
   const res = await fetch('/api/riskbkk/analysis');

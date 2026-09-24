@@ -95,6 +95,7 @@ import access_guard
 from alert_service import AlertService
 from flood_agent import FloodAgent
 from riskbkk_agent import RiskAgent
+from water_agent import WaterAgent
 
 app = FastAPI(title="BKK StreetSmart CCTV & YOLO11x Vehicle Detection")
 
@@ -957,6 +958,19 @@ def flood_agent_run(payload: dict = Body(None)):
     """Run the agent now (operator only through access_guard); an optional question is answered in `answer`."""
     return flood_agent.run(question=(payload or {}).get("question"), force=True)
 
+# ---------------------------------------------------------------- Water Forecast analyst (local model)
+water_agent = WaterAgent(DATA_DIR, flood_agent)
+
+@app.get("/api/water/agent")
+def water_agent_status():
+    """AI flood outlook / three waters / measures / public guide for the Water Forecast page."""
+    return water_agent.status()
+
+@app.post("/api/water/agent/run")
+def water_agent_run():
+    """Re-run it now (operator only through access_guard)."""
+    return water_agent.run(force=True)
+
 # ---------------------------------------------------------------- BMA traffic-risk analyst (local model)
 risk_agent = RiskAgent(DATA_DIR, os.path.join(BASE_DIR, "web", "public", "riskbkk"))
 
@@ -1042,6 +1056,7 @@ rsc_service.warm(bma_scanner.cameras)
 bma_feed.start()
 flood_agent.start()
 risk_agent.start()
+water_agent.start()
 alerts.start()
 
 def start_browser_when_ready(url="http://localhost:8000"):

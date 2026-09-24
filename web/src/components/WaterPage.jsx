@@ -135,7 +135,7 @@ export default function WaterPage({ isActive, onToast, onNavigate, onAsk }) {
 
       {stations.length > 0 && <ForecastChart stations={stations} stationId={stationId} onPickStation={setStationId} anchorRef={chartRef} />}
 
-      <FloodAnalysisGuide summary={summary} onNavigate={onNavigate} onAsk={onAsk} />
+      <FloodAnalysisGuide isActive={isActive} onNavigate={onNavigate} onAsk={onAsk} />
 
 
 
