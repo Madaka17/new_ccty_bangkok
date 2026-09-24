@@ -9,8 +9,9 @@ Flow (per camera, once per BMA scan cycle ~4 min, or on demand via check_now):
          helmet only  -> verdict "helmet" with no API call
          no_helmet    -> the agent confirms it
          nothing seen -> the agent decides
-    -> helmet agent (Gemini vision, else Claude): JSON {riders, no_helmet, confidence, note_th}
-       (no cloud provider: the crop is kept as 'unclear' - there is no local VLM fallback)
+    -> helmet agent (the Qwen vision model behind LOCAL_LLM_* by default, HELMET_AGENT=cloud for Gemini
+       vision, else Claude): JSON {riders, no_helmet, confidence, note_th}
+       (no provider at all: the crop is kept as 'unclear')
     -> verdict no_helmet (confidence >= HELMET_MIN_CONF): full frame with a red box + the crop are
        written to <HELMET_ARCHIVE_DIR>/<YYYY-MM-DD>/<camid>_<HHMMSS>.jpg (+ _crop.jpg) and one row
        goes to helmet.csv there.
@@ -33,6 +34,8 @@ from datetime import datetime
 import cv2
 import numpy as np
 
+import local_llm
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 from instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "helmet")
@@ -43,6 +46,8 @@ if not os.path.isabs(LOCAL_DET_PATH):
 # Fast non-thinking model on purpose: a 300-px crop needs no reasoning, and the thinking models
 # (gemini-3.6-flash) take 15-40 s per call and hit 504 under load. Falls back to GEMINI_VISION_MODEL.
 HELMET_MODEL = os.getenv("HELMET_AGENT_MODEL", os.getenv("GEMINI_VISION_MODEL", "gemini-3.1-flash-lite"))
+# qwen = the OpenAI-compatible vision model behind LOCAL_LLM_* (Qwen 3.8 27B reads images); cloud = Gemini / Claude
+HELMET_AGENT = os.getenv("HELMET_AGENT", "qwen").strip().lower()
 AGENT_TIMEOUT_MS = 40000
 
 MOTO_CLASS = 3                    # COCO motorcycle
@@ -198,6 +203,8 @@ class HelmetPatrol:
         return os.path.join(CACHE_DIR, f"{hid}_frame.jpg")
 
     def provider(self):
+        if HELMET_AGENT == "qwen" and local_llm.default.enabled():
+            return "qwen"
         v = self.vision
         return getattr(v, "provider", None) if v and getattr(v, "client", None) else None
 
@@ -338,7 +345,7 @@ class HelmetPatrol:
             return
         provider = self.provider()
         if not provider or (agent == "auto" and not self._budget_ok(now)):
-            reason = self._agent_reason(now) if provider else "ไม่มี AI agent ตรวจ (ตั้ง GEMINI_API_KEY หรือ ANTHROPIC_API_KEY)"
+            reason = self._agent_reason(now) if provider else "ไม่มี AI agent ตรวจ (ตั้ง LOCAL_LLM_MODEL, GEMINI_API_KEY หรือ ANTHROPIC_API_KEY)"
             self._settle_without_agent(hid, camid, cam, crop, marked, local, reason, provider or "none")
             return
         jpeg = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 90])[1].tobytes()
@@ -404,7 +411,7 @@ class HelmetPatrol:
         if agent == "local" and self.local_det is None:
             return {"ok": False, "error": "ไม่มีโมเดลในเครื่อง (helmet_det.pt)"}
         if agent != "local" and not self.provider():
-            return {"ok": False, "error": "ไม่มี API key ของ Gemini/Claude"}
+            return {"ok": False, "error": "ไม่มีโมเดล AI (Qwen/Gemini/Claude)"}
         camid = row["camid"]
         cam = next((c for c in (self.scanner.cameras if self.scanner else []) if str(c.get("camid")) == camid), None) \
             or {"camid": camid, "title": row["title"], "district": row["district"]}
@@ -505,6 +512,12 @@ class HelmetPatrol:
             return None
 
     def _ask(self, jpeg, context):
+        if self.provider() == "qwen":
+            image = "data:image/jpeg;base64," + base64.standard_b64encode(jpeg).decode("ascii")
+            return local_llm.default.chat(
+                [{"role": "system", "content": AGENT_PROMPT},
+                 {"role": "user", "content": [{"type": "image_url", "image_url": {"url": image}}, {"type": "text", "text": context}]}],
+                max_tokens=300, temperature=0.1, timeout=AGENT_TIMEOUT_MS / 1000)
         vis = self.vision
         if vis.provider == "gemini":
             from google.genai import types as genai_types
@@ -552,7 +565,8 @@ class HelmetPatrol:
         self._calls = [t for t in self._calls if now - t < 3600]
         return {
             "updated": int(now), "enabled": self.enabled(), "agent": self.provider() or "off",
-            "agent_model": HELMET_MODEL if self.provider() == "gemini"
+            "agent_model": local_llm.default.model if self.provider() == "qwen"
+            else HELMET_MODEL if self.provider() == "gemini"
             else (os.environ.get("CLAUDE_VISION_MODEL", "claude-opus-5-5") if self.provider() else None),
             "local_detector": os.path.basename(LOCAL_DET_PATH) if self.local_det is not None else None,
             "archive_dir": ARCHIVE_DIR, "archive_ok": os.path.isdir(os.path.dirname(ARCHIVE_DIR.rstrip("/\\"))),

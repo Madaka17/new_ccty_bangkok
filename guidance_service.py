@@ -8,15 +8,18 @@ live data only:
   * alternatives           - candidate bypass roads with their live flow; only roads that are
                              actually free right now are recommended
   * incidents              - camera / Longdo incidents whose text mentions the corridor
-The action / signal sentences are written by Gemini from those facts (one call per AI_INTERVAL for
-all corridors, JSON in / JSON out) and fall back to a deterministic Thai template when no key or
-the call fails, so the card is always populated.
+The action / signal sentences are written by the AI model from those facts (one call per AI_INTERVAL
+for all corridors, JSON in / JSON out): the Qwen model behind LOCAL_LLM_* (local_llm.default), else
+Gemini. They fall back to a deterministic Thai template when neither answers, so the card is always
+populated.
 """
 import json
 import math
 import os
 import threading
 import time
+
+import local_llm
 
 try:
     from google import genai
@@ -26,7 +29,7 @@ except Exception:  # pragma: no cover
     genai_types = None
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
-AI_INTERVAL = int(os.environ.get("GUIDANCE_AI_SECONDS", "300"))   # seconds between Gemini rewrites
+AI_INTERVAL = int(os.environ.get("GUIDANCE_AI_SECONDS", "300"))   # seconds between AI rewrites
 BUILD_INTERVAL = 60.0
 
 # Corridor catalogue: which Longdo road names form the corridor, and which roads are realistic
@@ -246,8 +249,8 @@ class GuidanceService:
         return {"action": action, "signal": signal, "bypass": bypass, "ai": False}
 
     def _ai_refresh(self, items):
-        """One Gemini call for every corridor; only when the picture changed or AI_INTERVAL passed."""
-        if not self.client:
+        """One AI call for every corridor; only when the picture changed or AI_INTERVAL passed."""
+        if not self.client and not local_llm.default.enabled():
             return
         sig = json.dumps([(i["id"], i["status"], [s["label"] for s in i["hotspots"]],
                            [a["name"] for a in i["alternatives"] if a["recommended"]]) for i in items], ensure_ascii=False)
@@ -266,25 +269,30 @@ class GuidanceService:
             "- action: วิธีระบายรถตอนนี้ 1 ประโยคสั้น (ไม่เกิน 25 คำ) บอกว่าผันรถจากจุดไหนไปทางเลี่ยงใดที่ flow สูงจริง "
             "(ห้ามแนะนำทางเลี่ยงที่ free=false และไม่ต้องทวนรายการจุดสะสม เพราะแสดงแยกอยู่แล้ว)\n"
             "- signal: มาตรการสัญญาณไฟ/ตำรวจจราจร 1 ประโยคสั้น (ไม่เกิน 20 คำ) เจาะจงจุด\n"
+            "- ห้ามเขียนชื่อฟิลด์ภาษาอังกฤษ (flow, red_km, free) ในข้อความ ให้เขียนเป็น 'ระบายได้ 96/100' แทน\n"
             "ตอบเป็น JSON array เท่านั้น รูปแบบ [{\"id\":..., \"action\":..., \"signal\":...}]\n\n"
             + json.dumps(facts, ensure_ascii=False)
         )
         try:
-            resp = self.client.models.generate_content(
-                model=GEMINI_MODEL, contents=prompt,
-                config=genai_types.GenerateContentConfig(temperature=0.3, max_output_tokens=3000,
-                                                         response_mime_type="application/json"))
-            data = json.loads(resp.text or "[]")
+            if local_llm.default.enabled():
+                text, mode = local_llm.default.chat([{"role": "user", "content": prompt}], max_tokens=3000, temperature=0.3), "qwen"
+            else:
+                resp = self.client.models.generate_content(
+                    model=GEMINI_MODEL, contents=prompt,
+                    config=genai_types.GenerateContentConfig(temperature=0.3, max_output_tokens=3000,
+                                                             response_mime_type="application/json"))
+                text, mode = resp.text or "[]", "gemini"
+            data = json.loads(text[text.find("["):text.rfind("]") + 1] or "[]")
             out = {}
             for row in data:
                 if isinstance(row, dict) and row.get("id") and row.get("action"):
                     out[row["id"]] = {"action": str(row["action"]).strip(), "signal": str(row.get("signal") or "").strip()}
             if out:
                 self._ai_text = out
-                self.ai_mode = "gemini"
-                print(f"[Guidance] Gemini rewrote {len(out)} corridors")
+                self.ai_mode = mode
+                print(f"[Guidance] {mode} rewrote {len(out)} corridors")
         except Exception as e:
-            print(f"[Guidance] Gemini failed, using template: {e}")
+            print(f"[Guidance] AI failed, using template: {e}")
         self._ai_sig, self._ai_at = sig, now
 
     # ------------------------------------------------------------------ loop

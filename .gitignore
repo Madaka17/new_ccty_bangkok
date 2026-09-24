@@ -64,5 +64,6 @@ weights/
 # React build output: produced by build_web.bat / npm run build, not committed
 web/dist/
 
-# AI analyst report caches written next to the data (riskbkk_agent)
+# AI analyst report caches written next to the data (riskbkk_agent, water_agent)
 riskbkk_analysis.json
+water_agent.json
