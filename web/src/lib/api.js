@@ -171,6 +171,13 @@ export async function fetchFloodRoads(limit = 60) {
   return res.json();
 }
 
+// Flood complaints residents filed on Traffy Fondue in the last few hours (flood_feeds.py)
+export async function fetchFloodReports() {
+  const res = await fetch('/api/flood/reports');
+  if (!res.ok) throw new Error('flood_reports');
+  return res.json();
+}
+
 export async function fetchAirStations() {
   const res = await fetch('/api/air/stations');
   if (!res.ok) throw new Error('air');

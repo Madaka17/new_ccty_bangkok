@@ -3,7 +3,7 @@ import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { motion } from 'framer-motion';
 import Hls from 'hls.js';
-import { fetchTrafficSummary, fetchLongdoCameras, fetchWaterSummary, fetchAirStations, fetchWindGrid, fetchFloodStatus, fetchFloodStations } from '../lib/api.js';
+import { fetchTrafficSummary, fetchLongdoCameras, fetchWaterSummary, fetchAirStations, fetchWindGrid, fetchFloodStatus, fetchFloodStations, fetchFloodReports } from '../lib/api.js';
 import { enrichCamerasWithFloodRisk } from '../lib/floodRisk.js';
 import { fmtTime } from './dashboard/format.js';
 import { Icon } from './dashboard/icons.jsx';
@@ -126,6 +126,10 @@ const GAUGE_STYLE = {
   low: { color: '#94a3b8', label: 'น้ำน้อย' },
 };
 
+// Citizen flood reports (Traffy Fondue): a speech-bubble pin, hotter the fresher the report
+const REPORT_COLOR = '#7c3aed';
+const REPORT_FRESH_S = 3600;
+
 const POI_MAX = 70;
 const POI_MIN_ZOOM = 15;
 // Label priority: public buildings first, then services, shops last (and capped) so a mall's
@@ -196,6 +200,9 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const [flood, setFlood] = useState(null);
   const [floodAll, setFloodAll] = useState(null);
   const floodMarkersRef = useRef([]);
+  const [showReports, setShowReports] = useState(true);
+  const [reports, setReports] = useState(null);
+  const reportMarkersRef = useRef([]);
   const gaugeMarkersRef = useRef([]);
   const [is3d, setIs3d] = useState(false);
   // Building details: flat footprints in 2D, POI name labels (DOM markers) and click-for-info on any building
@@ -514,6 +521,28 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
     };
   }, [isActive, floodDry]);
 
+  // Traffy Fondue flood complaints; the server refreshes them every 5 min
+  useEffect(() => {
+    if (!isActive) return;
+    let alive = true;
+    const tick = () => fetchFloodReports().then((d) => alive && setReports(d)).catch(() => {});
+    tick();
+    const id = setInterval(tick, 300000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [isActive]);
+
+  const reportPoints = useMemo(() => (reports?.items || []).filter((r) => r.lat && r.lng), [reports]);
+  const reportFresh = useMemo(() => reportPoints.filter((r) => Date.now() / 1000 - r.ts <= REPORT_FRESH_S).length, [reportPoints]);
+  // Districts with the most reports, busiest first: that is where the sois are under water
+  const reportDistricts = useMemo(() => {
+    const by = {};
+    for (const r of reportPoints) (by[r.district || 'ไม่ระบุเขต'] ||= []).push(r);
+    return Object.entries(by).map(([name, items]) => ({ name, items })).sort((a, b) => b.items.length - a.items.length).slice(0, 5);
+  }, [reportPoints]);
+
   const floodPoints = useMemo(() => {
     if (!flood) return [];
     return floodDry && floodAll ? floodAll : flood.wet;
@@ -577,6 +606,35 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
       floodMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([st.lng, st.lat]).setPopup(popup).addTo(map));
     }
   }, [floodPoints, showFlood]);
+
+  // One pin per citizen report: solid and ringed in the last hour, faded when older
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    for (const m of reportMarkersRef.current) m.remove();
+    reportMarkersRef.current = [];
+    if (!showReports) return;
+    for (const r of reportPoints) {
+      const fresh = Date.now() / 1000 - r.ts <= REPORT_FRESH_S;
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.title = `ประชาชนแจ้งน้ำท่วม ${agoTh(r.ts)}${r.district ? ` · เขต${r.district}` : ''}`;
+      el.style.cssText = `width:24px;height:24px;border-radius:999px 999px 999px 3px;background:${REPORT_COLOR};border:2px solid #fff;box-shadow:${fresh ? `0 0 0 5px ${REPORT_COLOR}44,` : ''}0 1px 4px rgba(15,23,42,.35);color:#fff;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;opacity:${fresh ? 1 : 0.6}`;
+      el.textContent = '📣';
+      const popup = new maplibregl.Popup({ offset: 14, closeButton: true, maxWidth: '300px' }).setHTML(
+        `<div style="font-size:13px;line-height:1.45">
+          <b style="color:${REPORT_COLOR}">ประชาชนแจ้งน้ำท่วม</b> <span style="color:#64748b">· ${agoTh(r.ts)}</span>
+          ${r.depth ? `<br>ระดับน้ำ: <b>${esc(r.depth)}</b>` : ''}
+          <br><span>${esc(r.text.length > 180 ? `${r.text.slice(0, 180)}…` : r.text)}</span>
+          ${r.photo ? `<br><img src="${esc(r.photo)}" alt="" loading="lazy" style="margin-top:6px;width:100%;max-height:160px;object-fit:cover;border-radius:6px">` : ''}
+          <br><span style="color:#64748b">${esc(r.address)}</span>
+          <br><span style="color:#64748b">สถานะ: ${esc(r.state || '-')}</span>
+          · <a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" style="color:#2563eb">ดูใน Traffy Fondue</a>
+        </div>`
+      );
+      reportMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([r.lng, r.lat]).setPopup(popup).addTo(map));
+    }
+  }, [reportPoints, showReports]);
 
   // River / canal gauges: a dot whose colour is the bank level, with the % of capacity inside
   useEffect(() => {
@@ -891,7 +949,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   return (
     <div className="flex flex-col gap-4">
     <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4 lg:h-[calc(100vh-11rem)] min-h-[520px]">
-      <aside className="glass rounded-xl p-5 flex flex-col gap-4 overflow-hidden">
+      <aside className="glass rounded-xl p-5 flex flex-col gap-4 overflow-y-auto scroll-soft">
         <div>
           <h1 className="text-xl font-semibold text-slate-900 leading-7">แผนที่จราจร</h1>
           <p className="text-[13px] text-slate-600 mt-0.5">เส้นสีบอกการระบายรถแบบสด จิ้มหมุดเพื่อเปิดกล้อง</p>
@@ -1005,6 +1063,46 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
             <p className="text-[11px] text-slate-500">กำลังโหลดจุดวัดน้ำท่วม ...</p>
           )}
           <p className="text-[11px] text-slate-400 mt-1">เซ็นเซอร์วัดน้ำบนผิวถนนมีเฉพาะ กทม. 50 เขต</p>
+        </div>
+
+        {/* ประชาชนแจ้งน้ำท่วม (Traffy Fondue) */}
+        <div className="pt-2.5 border-t border-slate-100">
+          <div className="flex items-center justify-between mb-1">
+            <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
+              <input type="checkbox" checked={showReports} onChange={(e) => setShowReports(e.target.checked)} className="accent-blue-600 w-4 h-4" />
+              <span aria-hidden="true">📣</span> ประชาชนแจ้งน้ำท่วม
+            </label>
+            {reports?.updated_at && <span className="text-[11px] text-slate-500">{fmtTime(reports.updated_at)} น.</span>}
+          </div>
+          {reports ? (
+            <>
+              <p className="text-[11px] text-slate-500 mb-1.5">
+                {reportPoints.length > 0
+                  ? `${reportPoints.length} เรื่องใน 6 ชม. · ชั่วโมงล่าสุด ${reportFresh} เรื่อง`
+                  : 'ไม่มีเรื่องแจ้งน้ำท่วมใน 6 ชม.'}
+                {reports.error ? ' · ดึงข้อมูลล่าสุดไม่สำเร็จ' : ''}
+              </p>
+              {reportDistricts.length > 0 && (
+                <ul className="flex flex-col gap-1">
+                  {reportDistricts.map((d) => (
+                    <li key={d.name}>
+                      <button
+                        type="button"
+                        onClick={() => mapRef.current?.easeTo({ center: [d.items[0].lng, d.items[0].lat], zoom: 14.5, duration: 800 })}
+                        className="cursor-pointer w-full flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-2 py-1 text-left hover:border-slate-400 transition-colors"
+                      >
+                        <span className="min-w-0 truncate text-[12px] text-ink-900">เขต{d.name}</span>
+                        <span className="shrink-0 text-[11px] font-semibold tabular-nums" style={{ color: REPORT_COLOR }}>{d.items.length} เรื่อง</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          ) : (
+            <p className="text-[11px] text-slate-500">กำลังโหลดเรื่องแจ้งจาก Traffy Fondue ...</p>
+          )}
+          <p className="text-[11px] text-slate-400 mt-1">จาก Traffy Fondue คัดด้วยคำว่า น้ำท่วม/น้ำขัง ยังไม่ผ่านการตรวจสอบจากเขต</p>
         </div>
 
         {/* ระดับน้ำแม่น้ำ / คลอง ทั่วเขตปริมณฑล (คลังข้อมูลน้ำแห่งชาติ) */}
@@ -1185,7 +1283,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
           );
         })()}
 
-        <div className="flex-1 min-h-0 flex flex-col">
+        <div className="flex-1 min-h-40 flex flex-col">
           <p className="text-xs text-ink-600 mb-2">กล้องที่เปิดอยู่ ({activeCams.length})</p>
           {activeCams.length === 0 ? (
             <p className="text-sm text-ink-400">ยังไม่มีกล้องที่เปิด จิ้มหมุดบนแผนที่ได้เลย</p>

@@ -5,8 +5,10 @@ Every CHECK_SECONDS the service reads the live sources the server already keeps 
 alert candidates, each with a stable key and a severity:
 
     flood      water on a road sensor above FLOOD_CM (ปภ.: over 20 cm drivers should avoid the road,
-               over 60 cm do not drive through) - flood_service
-    zone       an area forecast at the red watch level, or a river / canal gauge over its bank - water_service
+               over 60 cm do not drive through) - flood_service; and a burst of Traffy Fondue flood
+               complaints in one district (TRAFFY_MIN within TRAFFY_WINDOW) - flood_feeds
+    zone       an area forecast at the red watch level, or a river / canal gauge over its bank - water_service;
+               and a TMD heavy-rain / storm warning that names Bangkok - flood_feeds
     incident   an accident / breakdown confirmed by the camera AI, a Longdo accident report, and BMA
                traffic-centre reports of accidents, fires, fallen trees and road closures
     air        a PM2.5 station at the "มีผลต่อสุขภาพ" band (> 75 µg/m³) - air_service
@@ -46,6 +48,10 @@ CHECK_SECONDS = 60
 CLEAR_SECONDS = 30 * 60
 FLOOD_CM = 20.0
 CLOSED_CM = 60.0
+# Residents file a few flood complaints a day in normal weather; several in one district within an hour is rain now
+TRAFFY_WINDOW = 3600
+TRAFFY_MIN = 3
+TRAFFY_SEVERE = 8
 BMA_EVENT_KINDS = ("accident", "fire", "tree")
 BMA_EVENT_HOURS = 2
 DISK_MIN_GB = 5.0
@@ -63,7 +69,7 @@ def _event_key(title):
 
 class AlertService:
     def __init__(self, data_dir, sources):
-        """sources: {name: callable} for flood, water, incidents, bma_events, air, health (any may fail)."""
+        """sources: {name: callable} for flood, traffy, tmd, water, incidents, bma_events, air, health (any may fail)."""
         self.sources = sources
         cache = os.path.join(data_dir, "cache")
         os.makedirs(cache, exist_ok=True)
@@ -117,8 +123,9 @@ class AlertService:
             print(f"[Alerts] source {name} failed: {str(e)[:120]}")
             return None
 
-    def candidates(self):
+    def candidates(self, now=None):
         """Every alert condition true right now: [{topic, key, level, title, body}]."""
+        now = now or time.time()
         out = []
         flood = self._call("flood") or {}
         for s in flood.get("wet") or []:
@@ -129,6 +136,18 @@ class AlertService:
                             "title": f"{'ห้ามขับผ่าน' if closed else 'ควรเลี่ยง'}: {s.get('name')}",
                             "body": f"น้ำบนถนน {cm:.0f} ซม. · {s.get('road') or '-'} เขต{s.get('district') or '-'}"})
 
+        by_district = {}
+        for r in (self._call("traffy") or {}).get("items") or []:
+            if r.get("district") and now - (r.get("ts") or 0) <= TRAFFY_WINDOW:
+                by_district.setdefault(r["district"], []).append(r)
+        for district, reps in by_district.items():
+            if len(reps) >= TRAFFY_MIN:
+                depths = sorted({r["depth"] for r in reps if r.get("depth")})
+                depth = f" · ระดับ{'/'.join(depths)}" if depths else ""
+                out.append({"topic": "flood", "key": f"traffy:{district}", "level": 2 if len(reps) >= TRAFFY_SEVERE else 1,
+                            "title": f"ประชาชนแจ้งน้ำท่วม {len(reps)} เรื่อง: เขต{district}",
+                            "body": f"Traffy Fondue ในชั่วโมงที่ผ่านมา{depth} · {reps[0].get('text', '')[:100]}"})
+
         water = self._call("water") or {}
         for z in water.get("weather") or []:
             if z.get("watch") == "red":
@@ -136,6 +155,12 @@ class AlertService:
                 out.append({"topic": "zone", "key": f"zone:{z.get('id')}", "level": 1,
                             "title": f"เตือนภัยสีแดง: {z.get('name')}",
                             "body": f"{z.get('areas')} · ฝน 24 ชม. {z.get('rain_24h')} มม. ลมกระโชก {z.get('gust_max', 0):.0f} กม./ชม.{storm}"})
+        series = set()
+        for w in (self._call("tmd") or {}).get("active") or []:    # newest issue first
+            if w.get("bkk") and w.get("series") not in series:
+                series.add(w.get("series"))
+                out.append({"topic": "zone", "key": f"tmd:{w.get('series')}", "level": 1,
+                            "title": f"กรมอุตุฯ เตือน: {w.get('title')}", "body": (w.get("summary") or "")[:160]})
         for r in (water.get("river") or []) + (water.get("canals") or []):
             if r.get("level") == "overflow":
                 pct = f" {r['storage_pct']:.0f}% ของตลิ่ง" if r.get("storage_pct") is not None else ""
@@ -190,7 +215,7 @@ class AlertService:
         fresh = []
         with self.lock:
             found = {}
-            for c in self.candidates():
+            for c in self.candidates(now):
                 found.setdefault(c["key"], c)    # the same event from two feeds counts once
             self.pending = {k: t for k, t in self.pending.items() if k in found}
             for c in found.values():

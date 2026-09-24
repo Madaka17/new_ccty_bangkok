@@ -82,6 +82,7 @@ from helmet_service import HelmetPatrol
 from wrongway_service import WrongWayPatrol
 from air_service import air
 from flood_service import flood_roads
+from flood_feeds import traffy_reports, tmd_warnings
 from road_service import road_risk
 import chat_service
 import water_service
@@ -935,8 +936,19 @@ def chat_endpoint(payload: dict = Body(...)):
 alerts = AlertService(DATA_DIR, {
     "flood": flood_roads.status, "water": water_service.get_summary, "incidents": incidents.status,
     "bma_events": lambda: bma_feed.get(hours=2, limit=60), "air": air.status,
+    "traffy": traffy_reports.status, "tmd": tmd_warnings.status,
     "health": lambda: json.loads(health().body),
 })
+
+@app.get("/api/flood/reports")
+def flood_reports():
+    """Flood complaints from Traffy Fondue in the last few hours, newest first."""
+    return traffy_reports.status()
+
+@app.get("/api/weather/warnings")
+def weather_warnings():
+    """TMD heavy-rain / storm warnings; `active` holds the ones issued in the last two days."""
+    return tmd_warnings.status()
 
 @app.get("/api/alerts/status")
 def alerts_status(endpoint: str = Query(None)):
@@ -979,6 +991,8 @@ traffic.start()
 guidance.start()
 air.start()
 flood_roads.start()
+traffy_reports.start()
+tmd_warnings.start()
 road_risk.traffic, road_risk.flood, road_risk.water = traffic, flood_roads, water_service
 road_risk.start()
 water_service.warm()

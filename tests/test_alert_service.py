@@ -131,3 +131,30 @@ def test_push_only_to_subscribers_of_topic(tmp_path, monkeypatch):
 def test_vapid_public_key_is_stable(tmp_path):
     a = AlertService(str(tmp_path), {}).public_key
     assert a and a == AlertService(str(tmp_path), {}).public_key
+
+
+def _traffy(n, district="บางนา", age=600, now=10_000):
+    return lambda: {"items": [{"id": f"t{i}", "ts": now - age, "district": district, "depth": "ข้อเท้า",
+                               "text": "น้ำท่วมขังหน้าซอย"} for i in range(n)]}
+
+
+def test_traffy_needs_a_burst_in_one_district(tmp_path, monkeypatch):
+    for n, expect in ((2, None), (3, 1), (8, 2)):
+        svc, _ = _svc(tmp_path / str(n), monkeypatch, traffy=_traffy(n))
+        found = svc.candidates(now=10_000)
+        assert (found[0]["level"] if found else None) == expect
+    svc, _ = _svc(tmp_path / "old", monkeypatch, traffy=_traffy(5, age=alert_service.TRAFFY_WINDOW + 60))
+    assert svc.candidates(now=10_000) == []
+
+
+def test_tmd_alerts_once_per_event_and_only_for_bangkok(tmp_path, monkeypatch):
+    issue = {"n": 1}
+    warn = lambda: {"active": [
+        {"title": f"ฝนตกหนักบริเวณประเทศไทย ฉบับที่ {issue['n']}", "series": "ฝนตกหนักบริเวณประเทศไทย",
+         "summary": "ภาคกลาง รวมทั้งกรุงเทพมหานครและปริมณฑล", "bkk": True},
+        {"title": "คลื่นลมแรง ฉบับที่ 1", "series": "คลื่นลมแรง", "summary": "ภาคใต้", "bkk": False}]}
+    svc, pushed = _svc(tmp_path, monkeypatch, tmd=warn)
+    assert [a["key"] for a in svc.check(now=1000)] == ["tmd:ฝนตกหนักบริเวณประเทศไทย"]
+    issue["n"] = 2
+    assert svc.check(now=1060) == []
+    assert len(pushed) == 1
