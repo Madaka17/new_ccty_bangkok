@@ -1,6 +1,7 @@
 """Slim the BMA risk-map (cpudapp.bangkok.go.th/riskbkk) traffic layers for the Traffic Map.
 
-Reads the raw ArcGIS GeoJSON downloads in cache/riskbkk/ and writes one small GeoJSON per map
+Reads the raw ArcGIS GeoJSON downloads in cache/riskbkk/ (and the Thai RSC accident cases 2566-2568
+through rsc_service) and writes one small GeoJSON per map
 layer to web/public/riskbkk/, keeping only a title and a few "label: value" lines per point.
 
     python local/pipeline/build_riskbkk_layers.py
@@ -81,9 +82,88 @@ def build(name, feats, title, info, lat_key=None, lng_key=None, extra=None):
 
 os.makedirs(OUT, exist_ok=True)
 
-# ITIC accident events 2020-01 .. 2022-05 (BkkAccidentNew = the TYPE 3 "accident" subset of BkkAccident)
-build('accident', load('risk_all__Risk_All_-_RISK_ADMIN_BkkAccidentNew.geojson'),
-      lambda p: clean(p['TITLE'])[:60], lambda p: [('เวลา', (p.get('START_') or '')[:16])])  # 35k points: keep it small
+def build_accidents():
+    """Thai RSC accident cases 2566-2568 (CE 2023-2025) for all 50 districts, instead of the riskbkk ITIC
+    layer (Jan 2563 - May 2565). ~200k cases is too many points for the map, so they are pooled into
+    ~110 m cells (3-decimal lat/lon) with the case count `n`; accident_stats.json keeps the per-case
+    numbers (district, month, weekday, injured, dead) for riskbkk_agent. Thai RSC has the date only.
+    The cells carry short property names, unlike the other layers (see below)."""
+    import collections
+    import sys
+    from concurrent.futures import ThreadPoolExecutor
+    from datetime import date
+    sys.path.insert(0, ROOT)
+    import rsc_service
+
+    jobs = [(y - 543, d) for y in ACCIDENT_YEARS_BE for d in range(1001, 1051)]
+    with ThreadPoolExecutor(8) as ex:
+        pages = list(ex.map(lambda a: rsc_service.fetch_district_points(*a)['points'], jobs))
+    cells = {}
+    stats = {'years_be': list(ACCIDENT_YEARS_BE), 'source': 'Thai RSC (thairsc.com)', 'cases': 0, 'injured': 0, 'dead': 0, 'outside': 0,
+             'by_year': collections.Counter(), 'by_month': collections.Counter(), 'by_weekday': collections.Counter(),
+             'by_district': collections.defaultdict(lambda: {'cases': 0, 'injured': 0, 'dead': 0})}
+    for pts in pages:
+        for p in pts:
+            try:
+                lat, lon = float(p['lat']), float(p['lon'])
+                day = date.fromisoformat(p['date'][:10])
+            except (KeyError, TypeError, ValueError):
+                continue
+            # the case's own district name is sometimes another province's: place it by the BMA polygons
+            dist = district_of(lon, lat)
+            if not dist:
+                stats['outside'] += 1
+                continue
+            inj, dead = int(p.get('injured') or 0), int(p.get('dead') or 0)
+            year_be = day.year + 543
+            stats['cases'] += 1
+            stats['injured'] += inj
+            stats['dead'] += dead
+            stats['by_year'][year_be] += 1
+            stats['by_month'][day.month] += 1
+            stats['by_weekday'][day.weekday()] += 1
+            row = stats['by_district'][dist]
+            row['cases'] += 1
+            row['injured'] += inj
+            row['dead'] += dead
+            c = cells.setdefault((round(lon, 3), round(lat, 3)), {'n': 0, 'inj': 0, 'dead': 0, 'years': collections.Counter(),
+                                                                   'district': collections.Counter(), 'place': collections.Counter()})
+            c['n'] += 1
+            c['inj'] += inj
+            c['dead'] += dead
+            c['years'][year_be] += 1
+            c['district'][dist] += 1
+            place = clean(p.get('place')).lstrip('- ').strip()
+            if place:
+                c['place'][place[:60]] += 1
+
+    # short property names keep ~30k cells small; MapPage builds the popup text from them
+    #   n cases, i injured, k killed, y cases per year (ACCIDENT_YEARS_BE order), d district, p commonest place
+    out = []
+    for (x, y), c in cells.items():
+        place = next((pl for pl, _ in c['place'].most_common(3) if 'ไม่ระบุ' not in pl), '')
+        props = {'n': c['n'], 'i': c['inj'], 'k': c['dead'], 'y': [c['years'][yr] for yr in ACCIDENT_YEARS_BE],
+                 'd': c['district'].most_common(1)[0][0] if c['district'] else ''}
+        if place:
+            props['p'] = place
+        out.append({'type': 'Feature', 'geometry': {'type': 'Point', 'coordinates': [x, y]}, 'properties': props})
+    out.sort(key=lambda f: f['properties']['n'])   # busiest cells drawn last, on top
+    path = os.path.join(OUT, 'accident.geojson')
+    json.dump({'type': 'FeatureCollection', 'features': out}, open(path, 'w', encoding='utf-8'),
+              ensure_ascii=False, separators=(',', ':'))
+    print(f'accident: {stats["cases"]} cases ({stats["outside"]} outside Bangkok dropped) in {len(out)} cells, {os.path.getsize(path) // 1024} KB')
+
+    stats['by_year'] = {str(k): v for k, v in sorted(stats['by_year'].items())}
+    stats['by_month'] = [stats['by_month'][m] for m in range(1, 13)]
+    stats['by_weekday'] = [stats['by_weekday'][d] for d in range(7)]
+    stats['by_district'] = dict(sorted(stats['by_district'].items(), key=lambda kv: -kv[1]['cases']))
+    stats['top_cells'] = [{'place': f['properties'].get('p', ''), 'district': f['properties']['d'], 'cases': f['properties']['n'],
+                           'injured': f['properties']['i'], 'dead': f['properties']['k']} for f in out[::-1][:12]]
+    json.dump(stats, open(os.path.join(OUT, 'accident_stats.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+
+
+ACCIDENT_YEARS_BE = (2566, 2567, 2568)
+build_accidents()
 
 build('risk100', load('risk_all__Risk_All_-_RISK_ADMIN_RISK_ADMIN_Risk100Transport.geojson'),
       lambda p: p['PROPERTI_1'], lambda p: [('เขต', p['PROPERTI_2']), ('จำนวนอุบัติเหตุ', f"{p['NCASE']} ครั้ง")])

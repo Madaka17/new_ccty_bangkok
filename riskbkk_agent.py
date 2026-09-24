@@ -6,7 +6,8 @@ web/public/riskbkk/ by local/pipeline/build_riskbkk_layers.py), works out the nu
 (per district, per hour, top points) and has the AI model (local_llm.default, LOCAL_LLM_* in .env)
 write one Thai analysis as JSON by REPORT_SCHEMA for the City Analytics page.
 
-    accident          ITIC accident events Jan 2020 - May 2022 (time + district)
+    accident          Thai RSC accident cases 2566-2568, pooled into ~110 m cells; the per-case numbers
+                      (district, month, weekday, injured, dead) come from accident_stats.json
     accident_risk     BMA accident risk points 2566-2568 with cause and fix
     risk100 / _solve  the 100 traffic risk points (cases) and how far each fix has got
     friction          recurring congestion points with period, cause and fix
@@ -31,6 +32,7 @@ REPLY_TOKENS = int(os.getenv("RISKBKK_AGENT_REPLY_TOKENS", "3000"))
 LAYERS = ("accident", "accident_risk", "risk100", "risk100_solve", "friction", "construction",
           "crosswalk", "bus_stop", "motorcycle_taxi", "parking", "rail_crossing", "js100")
 WEEKDAYS = ("จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์", "อาทิตย์")
+MONTHS = ("ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค.")
 # district hotspot score: how much each layer's per-district count weighs
 WEIGHTS = {"accident": 3, "accident_risk": 2, "risk100": 2, "friction": 2, "construction": 1}
 
@@ -38,7 +40,8 @@ SYSTEM_PROMPT = """คุณคือนักวิเคราะห์คว�
 หน้าที่: อ่านสถิติที่คำนวณจากข้อมูลจุดเสี่ยงของ กทม. (riskbkk) ที่แนบมา วิเคราะห์ แล้วส่งรายงานเป็น JSON
 
 ข้อมูลที่ได้รับ
-- accident: เหตุอุบัติเหตุจากศูนย์ ITIC ม.ค. 2563 - พ.ค. 2565 แยกรายเขต รายชั่วโมง รายวัน รายปี
+- accident: อุบัติเหตุปี 2566-2568 จาก Thai RSC (เคลม พ.ร.บ.) จำนวนเหตุ ผู้บาดเจ็บ ผู้เสียชีวิต แยกรายเขต รายเดือน รายวันในสัปดาห์ รายปี และจุดที่เกิดบ่อยสุด
+  (by_month และ by_weekday เป็นยอดรวมทั้ง 3 ปี ไม่ใช่ค่าเฉลี่ยต่อวัน)
 - accident_risk: จุดเสี่ยงอุบัติเหตุที่ กทม. ประกาศปี 2566-2568 พร้อมสาเหตุ
 - risk100 / risk100_solve: 100 จุดเสี่ยงจราจร (จำนวนอุบัติเหตุ) และสถานะการแก้ไข
 - friction: จุดฝืด (รถติดประจำ) ช่วงเวลาและสาเหตุ
@@ -51,16 +54,17 @@ SYSTEM_PROMPT = """คุณคือนักวิเคราะห์คว�
 - ห้ามเขียนชื่อฟิลด์ภาษาอังกฤษ (เช่น risk100, risk100_cases, friction, score) ในข้อความ ให้ใช้คำไทย:
   "100 จุดเสี่ยงจราจร", "อุบัติเหตุสะสมใน 100 จุดเสี่ยง", "จุดฝืด", "คะแนนความเสี่ยง"
 - เชื่อมโยงหลายชั้นข้อมูล: เขตที่อุบัติเหตุสูง + มีจุดเสี่ยงประกาศ + จุดฝืด + ก่อสร้าง = ต้องจัดการก่อน
-- หาแพทเทิร์นเวลา (ชั่วโมง/วัน) จาก accident และช่วงรถติดจาก friction
+- หาแพทเทิร์นเวลา (เดือน/วันในสัปดาห์/แนวโน้มรายปี) จาก accident และช่วงรถติดจาก friction
 - ชี้จุดเสี่ยงที่ยังแก้ไม่เสร็จ (risk100_solve) และจุดที่อุบัติเหตุสูงที่สุด
-- ระบุข้อจำกัดข้อมูล: ข้อมูลอุบัติเหตุ ITIC สิ้นสุด พ.ค. 2565, ชั้น จส.100 หยุดอัปเดตตั้งแต่ ก.ย. 2567
+- ระบุข้อจำกัดข้อมูล: Thai RSC นับเฉพาะเหตุที่มีผู้บาดเจ็บเคลม พ.ร.บ. และไม่มีเวลาเกิดเหตุ,
+  ชั้นเหตุจราจรจากวิทยุ จส.100/FM91 (js100 ไม่เกี่ยวกับ 100 จุดเสี่ยง) หยุดอัปเดตตั้งแต่ ก.ย. 2567
 
 รูปแบบรายงาน (ภาษาไทย กระชับ ข้อความล้วน ไม่ใช้ Markdown)
 - headline: 1 ประโยค สรุปภาพรวมความเสี่ยงจราจรของกรุงเทพฯ
 - summary: 2-4 ประโยค
 - key_findings: 4-6 ข้อ แต่ละข้อมี title สั้น และ detail ที่อ้างตัวเลข
 - hotspots: 5-8 เขตที่ควรจัดการก่อน level (สูง/ปานกลาง/ต่ำ) และ reasons อ้างตัวเลขจาก districts
-- time_patterns: 1-3 ประโยค ช่วงเวลาและวันที่เสี่ยง
+- time_patterns: 1-3 ประโยค เดือน วันในสัปดาห์ และแนวโน้มรายปีที่เสี่ยง
 - recommendations: police (ตำรวจ/จราจร), engineering (สำนักการจราจรและขนส่ง/วิศวกรรม), public (ประชาชน) อย่างละ 2-4 ข้อ
 - data_caveats: ข้อจำกัดของข้อมูล 1-3 ข้อ"""
 
@@ -110,6 +114,13 @@ class RiskAgent:
             pass
 
     # ------------------------------------------------------------ facts
+    def _accident_stats(self):
+        try:
+            with open(os.path.join(self.layer_dir, "accident_stats.json"), "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return {}
+
     def _layers(self):
         out = {}
         for name in LAYERS:
@@ -122,22 +133,30 @@ class RiskAgent:
 
     def _signature(self):
         parts = []
-        for name in LAYERS:
+        for name in LAYERS + ("accident_stats",):
             try:
-                st = os.stat(os.path.join(self.layer_dir, f"{name}.geojson"))
+                st = os.stat(os.path.join(self.layer_dir, f"{name}.json" if name == "accident_stats" else f"{name}.geojson"))
                 parts.append(f"{name}:{st.st_size}:{int(st.st_mtime)}")
             except OSError:
                 parts.append(f"{name}:-")
         return hashlib.sha1("|".join(parts).encode()).hexdigest()
 
     @staticmethod
-    def _stats(L):
-        """Every number the report needs, worked out here so the model only has to read and explain."""
+    def _stats(L, acc=None):
+        """Every number the report needs, worked out here so the model only has to read and explain.
+        L: the slim layers; acc: accident_stats.json (the accident layer is cells, not cases)."""
+        acc = acc or {}
         by_d = collections.defaultdict(lambda: collections.Counter())
         for name, feats in L.items():
+            if name == "accident":
+                continue
             for f in feats:
                 d = f["properties"].get("district") or "-"
                 by_d[d][name] += 1
+        for d, row in (acc.get("by_district") or {}).items():
+            by_d[d]["accident"] = row["cases"]
+            by_d[d]["injured"] = row["injured"]
+            by_d[d]["dead"] = row["dead"]
         risk_cases = collections.Counter()
         for f in L["risk100"]:
             try:
@@ -151,21 +170,11 @@ class RiskAgent:
                 continue
             score = sum(w * c[k] / top[k] for k, w in WEIGHTS.items()) / sum(WEIGHTS.values()) * 100
             districts.append({"district": d, "score": round(score), "accidents": c["accident"],
+                              "injured": c["injured"], "dead": c["dead"],
                               "risk_points_2566_68": c["accident_risk"], "risk100_points": c["risk100"],
                               "risk100_cases": risk_cases[d], "friction": c["friction"], "construction": c["construction"],
                               "crosswalk": c["crosswalk"], "bus_stop": c["bus_stop"], "motorcycle_taxi": c["motorcycle_taxi"]})
         districts.sort(key=lambda r: -r["score"])
-
-        hours, days, years = collections.Counter(), collections.Counter(), collections.Counter()
-        for f in L["accident"]:
-            t = _info(f, "เวลา")
-            try:
-                tm = time.strptime(t, "%Y-%m-%d %H:%M")
-            except ValueError:
-                continue
-            hours[tm.tm_hour] += 1
-            days[tm.tm_wday] += 1
-            years[tm.tm_year] += 1
 
         risk100 = sorted(L["risk100"], key=lambda f: -int((_info(f, "จำนวนอุบัติเหตุ").split() or ["0"])[0] or 0))
         solve = collections.Counter(_info(f, "สถานะ") for f in L["risk100_solve"])
@@ -176,13 +185,15 @@ class RiskAgent:
                     periods[part.split("(")[0].strip()] += 1
         risk_years = collections.Counter(_info(f, "ปี") for f in L["accident_risk"])
         return {
-            "counts": {k: len(v) for k, v in L.items()},
+            "counts": {**{k: len(v) for k, v in L.items()}, "accident": acc.get("cases", 0)},
             "districts": districts,
             "accident": {
-                "period": "ม.ค. 2563 - พ.ค. 2565 (ITIC)",
-                "by_hour": [hours[h] for h in range(24)],
-                "by_weekday": [{"day": WEEKDAYS[i], "n": days[i]} for i in range(7)],
-                "by_year": [{"year": y + 543, "n": n} for y, n in sorted(years.items())],
+                "period": "ปี 2566 - 2568 (Thai RSC)",
+                "cases": acc.get("cases", 0), "injured": acc.get("injured", 0), "dead": acc.get("dead", 0),
+                "by_month": [{"month": MONTHS[i], "n": n} for i, n in enumerate(acc.get("by_month") or [])],
+                "by_weekday": [{"day": WEEKDAYS[i], "n": n} for i, n in enumerate(acc.get("by_weekday") or [])],
+                "by_year": [{"year": int(y), "n": n} for y, n in (acc.get("by_year") or {}).items()],
+                "top_places": acc.get("top_cells") or [],
             },
             "accident_risk": {"by_year": [{"year": y, "n": n} for y, n in sorted(risk_years.items())],
                               "points": [{"name": f["properties"]["title"], "district": f["properties"].get("district"),
@@ -216,23 +227,23 @@ class RiskAgent:
         """Thai template from the same numbers, so the card still has something without the model."""
         top = stats["districts"][:6]
         acc = stats["accident"]
-        peak_h = max(range(24), key=lambda h: acc["by_hour"][h]) if any(acc["by_hour"]) else None
+        peak_m = max(acc["by_month"], key=lambda r: r["n"])["month"] if acc["by_month"] else None
         peak_d = max(acc["by_weekday"], key=lambda r: r["n"])["day"] if acc["by_weekday"] else "-"
         solve = stats["risk100"]["solve_status"]
         return {
             "headline": f"เขตที่ควรจัดการก่อน: {', '.join(d['district'] for d in top[:3])}",
-            "summary": (f"อุบัติเหตุ ITIC {stats['counts']['accident']:,} เหตุ จุดเสี่ยงประกาศ {stats['counts']['accident_risk']} จุด "
+            "summary": (f"อุบัติเหตุปี 2566-2568 {acc['cases']:,} เหตุ บาดเจ็บ {acc['injured']:,} เสียชีวิต {acc['dead']:,} คน จุดเสี่ยงประกาศ {stats['counts']['accident_risk']} จุด "
                         f"จุดฝืด {stats['counts']['friction']} จุด 100 จุดเสี่ยงแก้เสร็จ {solve.get('ดำเนินการแล้วเสร็จ', 0)} จุด"),
             "key_findings": [{"title": d["district"], "detail": f"อุบัติเหตุ {d['accidents']} เหตุ · จุดเสี่ยง {d['risk_points_2566_68']} · จุดฝืด {d['friction']}"}
                              for d in top[:4]],
             "hotspots": [{"district": d["district"], "level": "สูง" if d["score"] >= 50 else "ปานกลาง" if d["score"] >= 25 else "ต่ำ",
                           "reasons": f"คะแนน {d['score']} · อุบัติเหตุ {d['accidents']} · จุดเสี่ยง {d['risk_points_2566_68']} · จุดฝืด {d['friction']}"}
                          for d in top],
-            "time_patterns": f"อุบัติเหตุมากที่สุดช่วง {peak_h:02d}:00 น. และวัน{peak_d}" if peak_h is not None else "",
+            "time_patterns": f"อุบัติเหตุมากที่สุดเดือน {peak_m} และวัน{peak_d}" if peak_m else "",
             "recommendations": {"police": ["กวดขันวินัยจราจรในเขตคะแนนสูง"],
                                 "engineering": ["เร่งแก้ 100 จุดเสี่ยงที่ยังไม่เสร็จ"],
                                 "public": ["ระวังเป็นพิเศษในช่วงเวลาและเขตที่เสี่ยง"]},
-            "data_caveats": ["ข้อมูลอุบัติเหตุ ITIC สิ้นสุด พ.ค. 2565", "ชั้น จส.100 หยุดอัปเดตตั้งแต่ ก.ย. 2567",
+            "data_caveats": ["Thai RSC นับเฉพาะเหตุที่มีผู้บาดเจ็บเคลม พ.ร.บ. และไม่มีเวลาเกิดเหตุ", "ชั้น จส.100 หยุดอัปเดตตั้งแต่ ก.ย. 2567",
                              "โหมดออฟไลน์: ไม่ได้ใช้โมเดล AI"],
         }
 
@@ -246,7 +257,7 @@ class RiskAgent:
             with self.lock:
                 self.running = True
             started, err = time.time(), None
-            stats = self._stats(self._layers())
+            stats = self._stats(self._layers(), self._accident_stats())
             report, source = None, "rules"
             if local_llm.default.enabled():
                 try:

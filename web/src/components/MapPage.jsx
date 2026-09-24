@@ -161,7 +161,8 @@ const agoTh = (ts) => {
 // BMA risk-map traffic layers (cpudapp.bangkok.go.th/riskbkk), slimmed by local/pipeline/build_riskbkk_layers.py
 // into web/public/riskbkk/<id>.geojson; each is loaded only when first switched on.
 const RISK_LAYERS = [
-  { id: 'accident', label: 'จุดเกิดอุบัติเหตุ (ITIC ม.ค. 63 – พ.ค. 65)', color: '#dc2626', heat: true },
+  // accident: Thai RSC cases 2566-2568 pooled into ~110 m cells (n cases, i injured, k killed, y per year, d district, p place)
+  { id: 'accident', label: 'จุดเกิดอุบัติเหตุ ปี 2566–2568 (ThaiRSC)', color: '#dc2626', heat: true, weight: 'n', source: 'ศูนย์ข้อมูลอุบัติเหตุ Thai RSC' },
   { id: 'accident_risk', label: 'จุดเสี่ยงอุบัติเหตุ ปี 2566–2568', color: '#be123c' },
   { id: 'risk100', label: '100 จุดเสี่ยงจราจร', color: '#ea580c' },
   { id: 'risk100_solve', label: 'ผลการแก้ไขจุดเสี่ยง (เขียว = เสร็จ)', color: ['case', ['get', 'done'], '#16a34a', '#f59e0b'], legend: '#16a34a' },
@@ -220,19 +221,19 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const [riskOn, setRiskOn] = useState({}); // RISK_LAYERS id -> visible
   const [summary, setSummary] = useState(null);
   const [waterSummary, setWaterSummary] = useState(null);
-  const [showRainRadar, setShowRainRadar] = useState(true);
+  const [showRainRadar, setShowRainRadar] = useState(false);
   const [radarOpacity, setRadarOpacity] = useState(0.65);
   const [radarTileUrl, setRadarTileUrl] = useState(null);
   const [radarTime, setRadarTime] = useState(null);
-  const [showPm, setShowPm] = useState(true);
+  const [showPm, setShowPm] = useState(false);
   // Water layer: BMA road-flood sensors (Bangkok) + ThaiWater river / canal gauges (metro area)
-  const [showFlood, setShowFlood] = useState(true);
+  const [showFlood, setShowFlood] = useState(false);
   const [floodDry, setFloodDry] = useState(false);
-  const [showGauges, setShowGauges] = useState(true);
+  const [showGauges, setShowGauges] = useState(false);
   const [flood, setFlood] = useState(null);
   const [floodAll, setFloodAll] = useState(null);
   const floodMarkersRef = useRef([]);
-  const [showReports, setShowReports] = useState(true);
+  const [showReports, setShowReports] = useState(false);
   const [reports, setReports] = useState(null);
   const reportMarkersRef = useRef([]);
   const gaugeMarkersRef = useRef([]);
@@ -242,7 +243,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const showPlacesRef = useRef(false);
   const poiMarkersRef = useRef([]);
   // Wind overlay drawn by us (Open-Meteo grid) so nothing sits on top of the traffic map
-  const [showWind, setShowWind] = useState(true);
+  const [showWind, setShowWind] = useState(false);
   const [wind, setWind] = useState(null);
   const windMarkersRef = useRef([]);
 
@@ -389,13 +390,26 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
     if (!map) return;
     const onClick = (e) => {
       const p = e.features[0].properties;
-      const info = JSON.parse(p.info || '[]');
+      const layer = RISK_LAYERS.find((l) => `risk-${l.id}-pt` === e.features[0].layer.id);
+      let title = p.title;
+      let info = JSON.parse(p.info || '[]');
+      if (p.n != null) {
+        // an accident cell: build the text from its short properties
+        const years = JSON.parse(p.y || '[]');
+        title = `อุบัติเหตุ ${p.n} ครั้ง (ปี 2566–2568)`;
+        info = [
+          [2566, 2567, 2568].map((yr, i) => (years[i] ? `ปี ${yr}: ${years[i]}` : '')).filter(Boolean).join(' · '),
+          `บาดเจ็บ ${p.i} · เสียชีวิต ${p.k}`,
+          p.p ? `สถานที่: ${p.p}` : '',
+          p.d ? `เขต${p.d}` : '',
+        ].filter(Boolean);
+      }
       new maplibregl.Popup({ offset: 8, closeButton: true, maxWidth: '300px' })
         .setLngLat(e.features[0].geometry.coordinates)
         .setHTML(
-          `<div style="font-size:13px;line-height:1.45"><b>${esc(p.title)}</b>` +
+          `<div style="font-size:13px;line-height:1.45"><b>${esc(title)}</b>` +
             info.map((l) => `<br><span style="font-size:12px">${esc(l)}</span>`).join('') +
-            '<br><span style="color:#94a3b8;font-size:11px">ข้อมูลจุดเสี่ยง กทม. (riskbkk)</span></div>'
+            `<br><span style="color:#94a3b8;font-size:11px">${esc(layer?.source || 'ข้อมูลจุดเสี่ยง กทม. (riskbkk)')}</span></div>`
         )
         .addTo(map);
     };
@@ -407,7 +421,8 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
           if (!on) continue;
           map.addSource(src, { type: 'geojson', data: `${window.location.origin}/riskbkk/${l.id}.geojson`, attribution: 'จุดเสี่ยง © กรุงเทพมหานคร' });
           if (l.heat) {
-            map.addLayer({ id: `${src}-heat`, type: 'heatmap', source: src, maxzoom: 13, paint: { 'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 9, 6, 13, 14], 'heatmap-opacity': 0.6, 'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 9, 0.08, 13, 0.4] } }, 'buildings-3d');
+            const weight = l.weight ? { 'heatmap-weight': ['interpolate', ['linear'], ['get', l.weight], 1, 0.2, 50, 1] } : {};
+            map.addLayer({ id: `${src}-heat`, type: 'heatmap', source: src, maxzoom: 13, paint: { ...weight, 'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 9, 6, 13, 14], 'heatmap-opacity': 0.6, 'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 9, 0.08, 13, 0.4] } }, 'buildings-3d');
           }
           map.addLayer(
             {
@@ -415,7 +430,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
               type: 'circle',
               source: src,
               minzoom: l.heat ? 13 : l.minzoom || 0,
-              paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 3, 15, 6], 'circle-color': l.color, 'circle-stroke-color': '#0f172a', 'circle-stroke-width': 1, 'circle-opacity': 0.9 },
+              paint: { 'circle-radius': l.weight ? ['interpolate', ['linear'], ['get', l.weight], 1, 3, 20, 6, 200, 11] : ['interpolate', ['linear'], ['zoom'], 10, 3, 15, 6], 'circle-color': l.color, 'circle-stroke-color': '#0f172a', 'circle-stroke-width': 1, 'circle-opacity': 0.9 },
             },
             'buildings-3d'
           );

@@ -1,5 +1,6 @@
-// BMA traffic-risk analysis (riskbkk_agent.py): the local model reads the per-district / per-hour numbers
-// worked out from the riskbkk layers (accidents, risk points, congestion points, building sites) and
+// BMA traffic-risk analysis (riskbkk_agent.py): the AI model reads the per-district / per-month numbers
+// worked out from the riskbkk layers and the Thai RSC accidents 2566-2568 (risk points, congestion
+// points, building sites) and
 // writes one Thai report. The numbers themselves are drawn here too, so they stay visible without the model.
 import { useCallback, useEffect, useState } from 'react';
 import { fetchRiskAnalysis, runRiskAnalysis } from '../../lib/api.js';
@@ -81,7 +82,7 @@ export default function RiskAnalysisCard({ isActive }) {
   const s = data.stats;
   const solve = s.risk100.solve_status || {};
   const busy = running || data.running;
-  const hours = s.accident.by_hour;
+  const months = s.accident.by_month || [];
 
   return (
     <div className="flex flex-col gap-4">
@@ -116,7 +117,7 @@ export default function RiskAnalysisCard({ isActive }) {
       </Card>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatTile label="อุบัติเหตุ (ITIC 2563–65)" value={fmtNum(s.counts.accident)} sub="ศูนย์ ITIC ม.ค. 63 – พ.ค. 65" tone="red" />
+        <StatTile label="อุบัติเหตุ ปี 2566–68" value={fmtNum(s.accident.cases)} sub={`บาดเจ็บ ${fmtNum(s.accident.injured)} · เสียชีวิต ${fmtNum(s.accident.dead)} (ThaiRSC)`} tone="red" />
         <StatTile label="จุดเสี่ยงอุบัติเหตุ 2566–68" value={fmtNum(s.counts.accident_risk)} sub="ประกาศโดย กทม." tone="yellow" />
         <StatTile label="100 จุดเสี่ยง แก้เสร็จ" value={`${solve['ดำเนินการแล้วเสร็จ'] || 0}/100`} sub={`กำลังทำ ${solve['อยู่ระหว่างดำเนินการ'] || 0} · รอ ${solve['รอดำเนินการ'] || 0}`} tone="blue" />
         <StatTile label="จุดฝืด (รถติดประจำ)" value={fmtNum(s.counts.friction)} sub={`ก่อสร้างอาคารใหญ่ ${fmtNum(s.counts.construction)} แห่ง`} />
@@ -142,9 +143,9 @@ export default function RiskAnalysisCard({ isActive }) {
         </Card>
 
         <Card className="p-5">
-          <SectionHeader id="risk-time" title="ช่วงเวลาที่เกิดอุบัติเหตุ" description={`รายชั่วโมง ${s.accident.period}`} />
+          <SectionHeader id="risk-time" title="ช่วงเวลาที่เกิดอุบัติเหตุ" description={`รายเดือน รวม ${s.accident.period}${(s.accident.by_year || []).length ? ' · ' + s.accident.by_year.map((y) => `${y.year}: ${fmtNum(y.n)}`).join(' · ') : ''}`} />
           <div className="mt-3">
-            <Bars values={hours} labels={hours.map((_, h) => (h % 3 === 0 ? h : ''))} label="จำนวนอุบัติเหตุรายชั่วโมง" />
+            <Bars values={months.map((m) => m.n)} labels={months.map((m) => m.month)} label="จำนวนอุบัติเหตุรายเดือน" />
           </div>
           <div className="mt-3 grid grid-cols-7 gap-1 text-center">
             {s.accident.by_weekday.map((d) => (
@@ -159,14 +160,15 @@ export default function RiskAnalysisCard({ isActive }) {
       </div>
 
       <Card className="p-5">
-        <SectionHeader id="risk-districts" title="ตารางความเสี่ยงรายเขต" description="คะแนน = อุบัติเหตุ ×3 + จุดเสี่ยงประกาศ ×2 + 100 จุดเสี่ยง ×2 + จุดฝืด ×2 + ก่อสร้าง ×1 (เทียบกับเขตที่สูงสุด)" />
+        <SectionHeader id="risk-districts" title="ตารางความเสี่ยงรายเขต" description="คะแนน = อุบัติเหตุ 2566–68 ×3 + จุดเสี่ยงประกาศ ×2 + 100 จุดเสี่ยง ×2 + จุดฝืด ×2 + ก่อสร้าง ×1 (เทียบกับเขตที่สูงสุด)" />
         <div className="mt-3 overflow-x-auto scroll-soft">
           <table className="w-full text-[13px]">
             <thead>
               <tr className="text-left text-xs text-slate-600 border-b border-slate-200">
                 <th className="py-2 pr-3 font-medium">เขต</th>
                 <th className="py-2 pr-3 font-medium">คะแนน</th>
-                <th className="py-2 pr-3 font-medium text-right">อุบัติเหตุ</th>
+                <th className="py-2 pr-3 font-medium text-right">อุบัติเหตุ 66–68</th>
+                <th className="py-2 pr-3 font-medium text-right">เสียชีวิต</th>
                 <th className="py-2 pr-3 font-medium text-right">จุดเสี่ยง 66–68</th>
                 <th className="py-2 pr-3 font-medium text-right">100 จุดเสี่ยง (เหตุ)</th>
                 <th className="py-2 pr-3 font-medium text-right">จุดฝืด</th>
@@ -184,6 +186,7 @@ export default function RiskAnalysisCard({ isActive }) {
                     </div>
                   </td>
                   <td className="py-1.5 pr-3 text-right tabular-nums">{fmtNum(d.accidents)}</td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums">{fmtNum(d.dead)}</td>
                   <td className="py-1.5 pr-3 text-right tabular-nums">{d.risk_points_2566_68}</td>
                   <td className="py-1.5 pr-3 text-right tabular-nums">{d.risk100_points} ({fmtNum(d.risk100_cases)})</td>
                   <td className="py-1.5 pr-3 text-right tabular-nums">{d.friction}</td>
