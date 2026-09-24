@@ -5,6 +5,27 @@ import { Card, Badge, SectionHeader, EmptyState, FOCUS } from './ui.jsx';
 import { StatusBanner, ShareBar } from './primitives.jsx';
 import { fmtNum, STATUS } from './format.js';
 
+const TIER_CONFIG = {
+  red: {
+    topBar: 'from-rose-500 via-red-400 to-transparent',
+    glow: 'bg-rose-500/10 dark:bg-rose-500/15',
+    statusColor: 'text-rose-600 dark:text-rose-400',
+    badgeTone: 'red',
+  },
+  yellow: {
+    topBar: 'from-amber-500 via-orange-400 to-transparent',
+    glow: 'bg-amber-500/10 dark:bg-amber-500/15',
+    statusColor: 'text-amber-600 dark:text-amber-400',
+    badgeTone: 'yellow',
+  },
+  green: {
+    topBar: 'from-emerald-500 via-teal-400 to-transparent',
+    glow: 'bg-emerald-500/10 dark:bg-emerald-500/15',
+    statusColor: 'text-emerald-600 dark:text-emerald-400',
+    badgeTone: 'green',
+  },
+};
+
 // showShare=false hides the network share card (dashboard overview only needs the tier cards)
 export default function DensityPanel({ d, onOpenRoad, showShare = true }) {
   const [open, setOpen] = useState(null); // tier id whose roads are listed
@@ -24,24 +45,74 @@ export default function DensityPanel({ d, onOpenRoad, showShare = true }) {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {d.tiers.map((t) => {
           const on = open === t.id;
+          const cfg = TIER_CONFIG[t.color] || TIER_CONFIG.green;
           return (
-            <Card
+            <button
               key={t.id}
-              as="button"
               type="button"
               aria-pressed={on}
               onClick={() => setOpen(on ? null : t.id)}
-              className={`cursor-pointer text-left p-5 border transition-colors duration-150 hover:bg-slate-50 ${FOCUS} ${on ? `${STATUS[t.color].border} ring-2 ring-blue-600` : STATUS[t.color].border}`}
+              className={`group relative cursor-pointer text-left rounded-2xl border p-4 sm:p-5 flex flex-col justify-between overflow-hidden bg-white/95 dark:bg-slate-900/90 backdrop-blur-md transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl dark:hover:shadow-black/50 ${
+                on
+                  ? 'border-blue-500 ring-2 ring-blue-500/30 dark:ring-blue-400/40 shadow-lg'
+                  : 'border-slate-200/90 dark:border-slate-800/90 hover:border-slate-300 dark:hover:border-slate-700'
+              } ${FOCUS}`}
             >
-              <div className="flex items-center justify-between">
-                <Badge tone={t.color} dot>{t.label}</Badge>
-                <span className="text-xs text-slate-500">{t.speed}</span>
+              {/* Top accent gradient line */}
+              <span className={`absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r ${cfg.topBar}`} />
+
+              {/* Subtle ambient corner glow */}
+              <span className={`pointer-events-none absolute -top-10 -right-10 w-28 h-28 rounded-full blur-2xl transition-opacity duration-300 opacity-40 group-hover:opacity-100 ${cfg.glow}`} />
+
+              <div className="relative z-10 w-full">
+                {/* Header row: Status badge + Speed info */}
+                <div className="flex items-center justify-between gap-2">
+                  <Badge tone={cfg.badgeTone} dot>
+                    {t.label}
+                  </Badge>
+                  <span className="text-xs px-2 py-0.5 rounded-md font-medium border bg-slate-50/90 dark:bg-slate-800/80 border-slate-200/80 dark:border-slate-700/80 text-slate-600 dark:text-slate-300">
+                    {t.speed}
+                  </span>
+                </div>
+
+                {/* Big percentage metric */}
+                <div className="mt-3.5 mb-1 flex items-baseline gap-2">
+                  <span className={`text-3xl sm:text-4xl font-extrabold tracking-tight tabular-nums ${cfg.statusColor}`}>
+                    {t.km_pct}%
+                  </span>
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                    ของระยะทาง
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
+                  {t.road_pct}% ของจำนวนสาย ({fmtNum(t.roads)} สาย)
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  {t.note}
+                </p>
               </div>
-              <p className={`text-3xl font-semibold mt-2 tabular-nums ${STATUS[t.color].text}`}>{t.km_pct}%</p>
-              <p className="text-xs text-slate-600">ของระยะทาง · {t.road_pct}% ของจำนวนสาย ({fmtNum(t.roads)} สาย)</p>
-              <p className="text-xs text-slate-500 mt-1">{t.note}</p>
-              <p className="text-xs text-blue-700 mt-2">{on ? 'ซ่อนรายชื่อถนน' : `ดูถนนทั้ง ${fmtNum(t.roads)} สาย`}</p>
-            </Card>
+
+              {/* Action row at bottom with divider */}
+              <div className="relative z-10 mt-3.5 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between w-full">
+                <span className={`text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+                  on ? 'text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-blue-400'
+                }`}>
+                  {on ? 'ซ่อนรายชื่อถนน' : `ดูถนนทั้ง ${fmtNum(t.roads)} สาย`}
+                  <svg
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={`w-3.5 h-3.5 transition-transform duration-200 ${on ? 'rotate-90' : 'group-hover:translate-x-0.5'}`}
+                  >
+                    <path d="M6 12l4-4-4-4" />
+                  </svg>
+                </span>
+              </div>
+            </button>
           );
         })}
       </div>

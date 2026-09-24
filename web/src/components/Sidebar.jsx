@@ -5,9 +5,8 @@ import NavIcon from './NavIcons.jsx';
 export const NAV_ITEMS = [
   { id: 'dashboard', label: 'Traffic Dashboard' },
   { id: 'analytics', label: 'City Analytics' },
+  { id: 'yolo', label: 'Camera AI & Analysis' },
   { id: 'map', label: 'Traffic Map' },
-  { id: 'bma-count', label: 'BMA Camera Counts' },
-  { id: 'yolo', label: 'Live Vehicle AI' },
   { id: 'helmet', label: 'Helmet Check' },
   { id: 'wrongway', label: 'Wrong-Way Check' },
   { id: 'water', label: 'Water Forecast' },
@@ -16,12 +15,6 @@ export const NAV_ITEMS = [
 ];
 
 export const PAGE_TITLES = Object.fromEntries(NAV_ITEMS.map((i) => [i.id, i.label]));
-
-const THEMES = [
-  ['light', 'สว่าง'],
-  ['dark', 'มืด'],
-  ['system', 'ตามเครื่อง'],
-];
 
 // Sidebar colours are fixed hex values on purpose: the .dark remaps in index.css
 // (bg-white, text-slate-*) must not touch this panel — it is always navy.
@@ -41,7 +34,7 @@ function LogoMark() {
   );
 }
 
-export default function Sidebar({ page, onNavigate, liveCount, totalCount, aiActive, theme, onTheme, onClose }) {
+export default function Sidebar({ page, onNavigate, liveCount, totalCount, aiActive, onClose }) {
   return (
     <div className={`h-full flex flex-col ${NAVY} text-[#e6edf7]`}>
       <div className="px-4 pt-5 pb-4 flex items-center gap-3">
@@ -86,28 +79,6 @@ export default function Sidebar({ page, onNavigate, liveCount, totalCount, aiAct
           <span className="live-dot inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 align-middle" aria-hidden="true" />
           {liveCount > 0 ? `เปิดกล้องอยู่ ${liveCount} ตัว` : `กล้องพร้อมใช้ ${totalCount} ตัว`}
         </p>
-        <div>
-          <p className="text-[10.5px] text-[#9fb2cc] mb-1">ธีม</p>
-          <div role="tablist" aria-label="ธีม" className="inline-flex rounded-md bg-white/8 p-0.5">
-            {THEMES.map(([k, text]) => {
-              const on = theme === k;
-              return (
-                <button
-                  key={k}
-                  type="button"
-                  role="tab"
-                  aria-selected={on}
-                  onClick={() => onTheme(k)}
-                  className={`cursor-pointer rounded px-2.5 h-6 text-[11px] font-medium transition-colors duration-150 ${FOCUS_NAVY} ${
-                    on ? 'bg-[#dbe6f5] text-[#0f1f3d]' : 'text-[#b7c6dc] hover:text-white'
-                  }`}
-                >
-                  {text}
-                </button>
-              );
-            })}
-          </div>
-        </div>
       </div>
     </div>
   );

@@ -38,6 +38,8 @@ function mapStyle() {
       traffic: { type: 'vector', tiles: [`${origin}/api/traffic/tile/{z}/{x}/{y}.pbf`], minzoom: 5, maxzoom: 12, attribution: 'Traffic © Longdo' },
       // OpenFreeMap (OpenMapTiles schema) only for the 3D building footprints + heights
       omt: { type: 'vector', url: 'https://tiles.openfreemap.org/planet', attribution: '© OpenFreeMap' },
+      // BTS / MRT / ARL / SRT Red lines + stations, a static snapshot of OSM route relations
+      rail: { type: 'geojson', data: `${origin}/rail_bkk.geojson`, attribution: 'Rail © OpenStreetMap' },
     },
     layers: [
       { id: 'base', type: 'raster', source: 'base', paint: { 'raster-saturation': -0.45, 'raster-brightness-min': 0.05, 'raster-contrast': -0.08 } },
@@ -72,6 +74,17 @@ function mapStyle() {
         filter: ['!=', ['get', 'fillcolor_r'], ''],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-opacity': 0.9, 'line-color': ['concat', '#', ['get', 'fillcolor_r']], 'line-width': LINE_WIDTH, 'line-offset': OFFSET(1) },
+      },
+      // Rail: a white casing under each coloured line so it reads apart from the traffic colours
+      { id: 'rail-casing', type: 'line', source: 'rail', filter: ['==', ['get', 'kind'], 'line'], layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 9, 4, 14, 8] } },
+      { id: 'rail-line', type: 'line', source: 'rail', filter: ['==', ['get', 'kind'], 'line'], layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'colour'], 'line-width': ['interpolate', ['linear'], ['zoom'], 9, 2, 14, 4.5] } },
+      {
+        id: 'rail-station',
+        type: 'circle',
+        source: 'rail',
+        filter: ['==', ['get', 'kind'], 'station'],
+        layout: { visibility: 'none' },
+        paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 2.5, 14, 6], 'circle-color': '#ffffff', 'circle-stroke-color': ['get', 'colour'], 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 14, 3] },
       },
       // Last so the extrusions sit above the raster overlays (rain radar is inserted before traffic-forward)
       {
@@ -145,6 +158,23 @@ const agoTh = (ts) => {
   const m = Math.round((Date.now() / 1000 - ts) / 60);
   return m < 1 ? 'เมื่อสักครู่' : m < 60 ? `${m} นาทีก่อน` : `${Math.round(m / 60)} ชม.ก่อน`;
 };
+// BMA risk-map traffic layers (cpudapp.bangkok.go.th/riskbkk), slimmed by local/pipeline/build_riskbkk_layers.py
+// into web/public/riskbkk/<id>.geojson; each is loaded only when first switched on.
+const RISK_LAYERS = [
+  { id: 'accident', label: 'จุดเกิดอุบัติเหตุ (ITIC ม.ค. 63 – พ.ค. 65)', color: '#dc2626', heat: true },
+  { id: 'accident_risk', label: 'จุดเสี่ยงอุบัติเหตุ ปี 2566–2568', color: '#be123c' },
+  { id: 'risk100', label: '100 จุดเสี่ยงจราจร', color: '#ea580c' },
+  { id: 'risk100_solve', label: 'ผลการแก้ไขจุดเสี่ยง (เขียว = เสร็จ)', color: ['case', ['get', 'done'], '#16a34a', '#f59e0b'], legend: '#16a34a' },
+  { id: 'friction', label: 'จุดฝืด (รถติดประจำ)', color: '#9333ea' },
+  { id: 'js100', label: 'เหตุจราจร จส.100 / FM91 (ข้อมูลเก่า ก.ย. 67)', color: '#e11d48' },
+  { id: 'construction', label: 'สถานที่ก่อสร้างอาคารใหญ่', color: '#ca8a04' },
+  { id: 'crosswalk', label: 'ทางม้าลาย', color: '#e2e8f0', minzoom: 13 },
+  { id: 'rail_crossing', label: 'จุดตัดทางรถไฟ', color: '#78350f' },
+  { id: 'bus_stop', label: 'ป้ายรถเมล์', color: '#0284c7', minzoom: 13 },
+  { id: 'motorcycle_taxi', label: 'วินมอเตอร์ไซค์', color: '#f97316', minzoom: 13 },
+  { id: 'parking', label: 'ที่จอดรถ', color: '#2563eb' },
+];
+
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // Pulsing warning marker for an incident
@@ -186,6 +216,8 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const incidentMarkersRef = useRef([]);
   const [longdoCameras, setLongdoCameras] = useState([]);
   const [showTraffic, setShowTraffic] = useState(true);
+  const [showRail, setShowRail] = useState(false);
+  const [riskOn, setRiskOn] = useState({}); // RISK_LAYERS id -> visible
   const [summary, setSummary] = useState(null);
   const [waterSummary, setWaterSummary] = useState(null);
   const [showRainRadar, setShowRainRadar] = useState(true);
@@ -349,6 +381,78 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
     if (map.isStyleLoaded()) apply();
     else map.once('load', apply);
   }, [showTraffic]);
+
+  // BMA risk layers: add source + layers the first time one is switched on, then only toggle visibility.
+  // Dense layers (accidents) are a heatmap when zoomed out and points from z13.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const onClick = (e) => {
+      const p = e.features[0].properties;
+      const info = JSON.parse(p.info || '[]');
+      new maplibregl.Popup({ offset: 8, closeButton: true, maxWidth: '300px' })
+        .setLngLat(e.features[0].geometry.coordinates)
+        .setHTML(
+          `<div style="font-size:13px;line-height:1.45"><b>${esc(p.title)}</b>` +
+            info.map((l) => `<br><span style="font-size:12px">${esc(l)}</span>`).join('') +
+            '<br><span style="color:#94a3b8;font-size:11px">ข้อมูลจุดเสี่ยง กทม. (riskbkk)</span></div>'
+        )
+        .addTo(map);
+    };
+    const apply = () => {
+      for (const l of RISK_LAYERS) {
+        const on = !!riskOn[l.id];
+        const src = `risk-${l.id}`;
+        if (!map.getSource(src)) {
+          if (!on) continue;
+          map.addSource(src, { type: 'geojson', data: `${window.location.origin}/riskbkk/${l.id}.geojson`, attribution: 'จุดเสี่ยง © กรุงเทพมหานคร' });
+          if (l.heat) {
+            map.addLayer({ id: `${src}-heat`, type: 'heatmap', source: src, maxzoom: 13, paint: { 'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 9, 6, 13, 14], 'heatmap-opacity': 0.6, 'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 9, 0.08, 13, 0.4] } }, 'buildings-3d');
+          }
+          map.addLayer(
+            {
+              id: `${src}-pt`,
+              type: 'circle',
+              source: src,
+              minzoom: l.heat ? 13 : l.minzoom || 0,
+              paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 3, 15, 6], 'circle-color': l.color, 'circle-stroke-color': '#0f172a', 'circle-stroke-width': 1, 'circle-opacity': 0.9 },
+            },
+            'buildings-3d'
+          );
+          map.on('click', `${src}-pt`, onClick);
+          map.on('mouseenter', `${src}-pt`, () => (map.getCanvas().style.cursor = 'pointer'));
+          map.on('mouseleave', `${src}-pt`, () => (map.getCanvas().style.cursor = ''));
+        }
+        [`${src}-heat`, `${src}-pt`].forEach((id) => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'));
+      }
+    };
+    if (map.getLayer('buildings-3d')) apply();
+    else map.once('styledata', apply);
+  }, [riskOn]);
+
+  // BTS / MRT layer toggle; a station click shows its name and line
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const onStationClick = (e) => {
+      const p = e.features[0].properties;
+      new maplibregl.Popup({ offset: 8, closeButton: true, maxWidth: '260px' })
+        .setLngLat(e.features[0].geometry.coordinates)
+        .setHTML(
+          `<div style="font-size:13px;line-height:1.45"><b>🚇 ${esc(p.name)}</b>` +
+            (p.name_en ? `<br><span style="color:#64748b">${esc(p.name_en)}</span>` : '') +
+            `<br><span style="color:${esc(p.colour)};font-weight:600">${esc(p.line)}</span></div>`
+        )
+        .addTo(map);
+    };
+    const apply = () => {
+      ['rail-casing', 'rail-line', 'rail-station'].forEach((id) => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', showRail ? 'visible' : 'none'));
+    };
+    if (map.getLayer('rail-station')) apply();
+    else map.once('styledata', apply);
+    map.on('click', 'rail-station', onStationClick);
+    return () => map.off('click', 'rail-station', onStationClick);
+  }, [showRail]);
 
   // Fetch RainViewer radar timestamp & tile url
   useEffect(() => {
@@ -978,6 +1082,31 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
               ทั้งเมืองระบายได้ <span className="text-base text-ink-900">{summary.flow_index}</span>/100 · แดง {summary.red_pct}%
             </p>
           )}
+
+          {/* BTS / MRT overlay toggle */}
+          <div className="mt-2.5 pt-2.5 border-t border-slate-100">
+            <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
+              <input type="checkbox" checked={showRail} onChange={(e) => setShowRail(e.target.checked)} className="accent-blue-600 w-4 h-4" />
+              🚇 รถไฟฟ้า BTS / MRT
+            </label>
+            <p className="text-[11px] text-slate-500 mt-1">BTS, MRT, Airport Rail Link และสายสีแดง จาก OpenStreetMap · คลิกสถานีเพื่อดูชื่อ</p>
+          </div>
+
+          {/* BMA risk-map traffic layers */}
+          <div className="mt-2.5 pt-2.5 border-t border-slate-100">
+            <p className="text-sm text-ink-900 font-medium">⚠️ จุดเสี่ยงจราจร กทม.</p>
+            <p className="text-[11px] text-slate-500 mt-0.5 mb-1.5">จากแผนที่จุดเสี่ยงกรุงเทพมหานคร (riskbkk) · คลิกจุดเพื่อดูรายละเอียด</p>
+            <div className="flex flex-col gap-1">
+              {RISK_LAYERS.map((l) => (
+                <label key={l.id} className="inline-flex items-center gap-2 text-[13px] text-ink-900 cursor-pointer">
+                  <input type="checkbox" checked={!!riskOn[l.id]} onChange={(e) => setRiskOn((s) => ({ ...s, [l.id]: e.target.checked }))} className="accent-blue-600 w-4 h-4" />
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0 border border-slate-400" style={{ background: l.legend || l.color }} />
+                  {l.label}
+                </label>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1">ทางม้าลาย ป้ายรถเมล์ และวินมอเตอร์ไซค์ แสดงเมื่อซูม ≥ 13</p>
+          </div>
 
           {/* Rain radar overlay toggle */}
           <div className="mt-2.5 pt-2.5 border-t border-slate-100">

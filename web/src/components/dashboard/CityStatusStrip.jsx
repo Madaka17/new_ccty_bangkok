@@ -5,53 +5,127 @@ import { fmtTime } from './format.js';
 // One glance, four answers: traffic / rain-water / dust / incidents. Each tile is a link to its page.
 // tone: green = fine, yellow = watch, red = act, neutral = no data
 
-const TONE = {
-  green: 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-200',
-  yellow: 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200',
-  red: 'border-red-200 bg-red-50 text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200',
-  neutral: 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200',
+const TONE_CONFIG = {
+  green: {
+    border: 'border-slate-200/90 dark:border-slate-800/90 hover:border-emerald-500/50 dark:hover:border-emerald-500/50',
+    topBar: 'from-emerald-500 via-teal-400 to-transparent',
+    glow: 'bg-emerald-500/10 dark:bg-emerald-500/15',
+    iconBg: 'bg-emerald-50 text-emerald-600 border-emerald-200/80 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
+    statusColor: 'text-emerald-600 dark:text-emerald-400',
+    dot: 'bg-emerald-500',
+    ping: 'bg-emerald-400',
+  },
+  yellow: {
+    border: 'border-slate-200/90 dark:border-slate-800/90 hover:border-amber-500/50 dark:hover:border-amber-500/50',
+    topBar: 'from-amber-500 via-orange-400 to-transparent',
+    glow: 'bg-amber-500/10 dark:bg-amber-500/15',
+    iconBg: 'bg-amber-50 text-amber-600 border-amber-200/80 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
+    statusColor: 'text-amber-600 dark:text-amber-400',
+    dot: 'bg-amber-500',
+    ping: 'bg-amber-400',
+  },
+  red: {
+    border: 'border-slate-200/90 dark:border-slate-800/90 hover:border-rose-500/50 dark:hover:border-rose-500/50',
+    topBar: 'from-rose-500 via-red-400 to-transparent',
+    glow: 'bg-rose-500/10 dark:bg-rose-500/15',
+    iconBg: 'bg-rose-50 text-rose-600 border-rose-200/80 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20',
+    statusColor: 'text-rose-600 dark:text-rose-400',
+    dot: 'bg-rose-500',
+    ping: 'bg-rose-400',
+  },
+  neutral: {
+    border: 'border-slate-200/90 dark:border-slate-800/90 hover:border-slate-300 dark:hover:border-slate-700',
+    topBar: 'from-slate-400 via-slate-300 to-transparent dark:from-slate-600 dark:via-slate-700',
+    glow: 'bg-slate-400/5 dark:bg-slate-500/5',
+    iconBg: 'bg-slate-100 text-slate-600 border-slate-200/80 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700/50',
+    statusColor: 'text-slate-800 dark:text-slate-100',
+    dot: 'bg-slate-400',
+    ping: 'bg-slate-400',
+  },
 };
-const DOT = { green: 'bg-emerald-500', yellow: 'bg-amber-500', red: 'bg-red-500', neutral: 'bg-slate-400' };
 
 const ICONS = {
   traffic: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
       <path d="M5 17h14M5 12h14M5 7h14" />
     </svg>
   ),
   water: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
       <path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z" />
     </svg>
   ),
   air: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
       <path d="M3 8h11a3 3 0 1 0-3-3M3 14h14a3 3 0 1 1-3 3M3 11h7" />
     </svg>
   ),
   incident: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
       <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01" />
     </svg>
   ),
 };
 
-function Tile({ icon, title, status, tone, detail, onClick }) {
+function Tile({ icon, title, status, tone = 'neutral', detail, onClick }) {
+  const cfg = TONE_CONFIG[tone] || TONE_CONFIG.neutral;
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`cursor-pointer text-left rounded-xl border px-4 py-3 flex items-start gap-3 transition-colors hover:brightness-95 dark:hover:brightness-110 focus-visible:outline-2 focus-visible:outline-blue-500 ${TONE[tone] || TONE.neutral}`}
+      className={`group relative cursor-pointer text-left rounded-2xl border p-4 sm:p-5 flex flex-col justify-between overflow-hidden bg-white/95 dark:bg-slate-900/90 backdrop-blur-md transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl dark:hover:shadow-black/50 ${cfg.border} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900`}
     >
-      <span className="mt-0.5 shrink-0 opacity-80">{icon}</span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-xs opacity-80">{title}</span>
-        <span className="flex items-center gap-2 text-lg font-semibold leading-7">
-          <span className={`inline-block w-2.5 h-2.5 rounded-full ${DOT[tone] || DOT.neutral}`} />
-          {status}
-        </span>
-        <span className="block text-sm opacity-90 leading-5">{detail}</span>
-      </span>
+      {/* Top accent gradient line */}
+      <span className={`absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r ${cfg.topBar}`} />
+
+      {/* Subtle ambient corner glow */}
+      <span className={`pointer-events-none absolute -top-10 -right-10 w-28 h-28 rounded-full blur-2xl transition-opacity duration-300 opacity-40 group-hover:opacity-100 ${cfg.glow}`} />
+
+      <div className="relative z-10 w-full">
+        {/* Header row: Icon & Title on left, Live Beacon & Arrow on right */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className={`w-8 h-8 rounded-xl border flex items-center justify-center shrink-0 transition-all duration-300 group-hover:scale-105 shadow-xs ${cfg.iconBg}`}>
+              {icon}
+            </span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
+              {title}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5 py-1 px-2 rounded-full text-[11px] font-medium border bg-slate-50/90 dark:bg-slate-800/80 border-slate-200/80 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 shrink-0">
+            <span className="relative flex h-2 w-2">
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${cfg.ping}`} />
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${cfg.dot}`} />
+            </span>
+            <svg
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="w-3 h-3 opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all duration-200"
+            >
+              <path d="M6 12l4-4-4-4" />
+            </svg>
+          </div>
+        </div>
+
+        {/* Status metric */}
+        <div className="mt-3.5 flex items-baseline">
+          <p className={`text-lg sm:text-[19px] font-bold tracking-tight leading-snug ${cfg.statusColor}`}>
+            {status}
+          </p>
+        </div>
+      </div>
+
+      {/* Detail / Description bottom row */}
+      <div className="relative z-10 mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 w-full">
+        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed line-clamp-2">
+          {detail || '–'}
+        </p>
+      </div>
     </button>
   );
 }

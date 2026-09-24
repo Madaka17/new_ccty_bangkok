@@ -1,15 +1,23 @@
-import { useCallback, useEffect, useState } from 'react';
-import { fetchAlertStatus, fetchAlertRecent, subscribeAlerts, unsubscribeAlerts, testAlert } from '../lib/api.js';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { fetchAlertStatus, fetchAlertRecent, subscribeAlerts, unsubscribeAlerts, testAlert, fetchFloodReports, fetchWeatherWarnings } from '../lib/api.js';
+import { inPageAlertsOn, setInPageAlerts } from './AlertPopups.jsx';
 import { Card, Badge, Button, Skeleton, EmptyState } from './dashboard/ui.jsx';
 import { PageHeader, StatusBanner } from './dashboard/primitives.jsx';
 import { fmtDateTime } from './dashboard/format.js';
 
 const POLL_MS = 30000;
+const REPORTS_SHOWN = 3;   // per district, until the district is expanded
 const TOPIC_TONE = { flood: 'blue', zone: 'red', incident: 'yellow', air: 'neutral', system: 'green' };
 const SUPPORTED = typeof window !== 'undefined' && window.isSecureContext
   && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 
 // VAPID public key (base64url) -> the byte array pushManager.subscribe expects
+const agoTh = (ts) => {
+  const m = Math.round((Date.now() / 1000 - ts) / 60);
+  return m < 1 ? 'เมื่อสักครู่' : m < 60 ? `${m} นาทีก่อน` : `${Math.floor(m / 60)} ชม. ${m % 60} นาทีก่อน`;
+};
+const thaiDate = (iso) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '-');
+
 function keyBytes(b64) {
   const s = atob((b64 + '='.repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
   return Uint8Array.from(s, (c) => c.charCodeAt(0));
@@ -25,9 +33,16 @@ export default function AlertsPage({ isActive, onToast }) {
   const [topics, setTopics] = useState([]);
   const [busy, setBusy] = useState(null);
   const [problem, setProblem] = useState('');
+  const [popups, setPopups] = useState(inPageAlertsOn);
+  const [warnings, setWarnings] = useState(null);
+  const [reports, setReports] = useState(null);
+  const [openDistrict, setOpenDistrict] = useState(null);
 
   const load = useCallback(async (endpoint) => {
     try {
+      // The flood feeds are extras: the page still works when one of them is down
+      fetchWeatherWarnings().then(setWarnings).catch(() => {});
+      fetchFloodReports().then(setReports).catch(() => {});
       const [st, rc] = await Promise.all([fetchAlertStatus(endpoint), fetchAlertRecent(50)]);
       setStatus(st);
       setRecent(rc.items);
@@ -114,6 +129,23 @@ export default function AlertsPage({ isActive, onToast }) {
     onToast?.(r.ok ? 'ส่งแจ้งเตือนทดสอบแล้ว' : 'ส่งไม่สำเร็จ ลองปิดแล้วเปิดรับแจ้งเตือนใหม่');
   });
 
+  // Reports grouped by district, busiest first
+  const districts = useMemo(() => {
+    const by = {};
+    for (const r of reports?.items || []) (by[r.district || 'ไม่ระบุเขต'] ||= []).push(r);
+    return Object.entries(by).map(([name, items]) => ({ name, items })).sort((a, b) => b.items.length - a.items.length || b.items[0].ts - a.items[0].ts);
+  }, [reports]);
+  // One row per event: the newest issue (the list is newest first), with how many came before it
+  const activeWarnings = useMemo(() => {
+    const out = [];
+    for (const w of warnings?.active || []) {
+      const hit = out.find((x) => x.series === w.series);
+      if (hit) hit.older += 1;
+      else out.push({ ...w, older: 0 });
+    }
+    return out;
+  }, [warnings]);
+
   const toggle = (t) => saveTopics(topics.includes(t) ? topics.filter((x) => x !== t) : [...topics, t]);
   const topicNames = status?.topics || {};
 
@@ -168,6 +200,85 @@ export default function AlertsPage({ isActive, onToast }) {
             ))}
           </div>
         </fieldset>
+
+        <label className="flex items-start gap-2 text-sm text-slate-800 cursor-pointer">
+          <input type="checkbox" className="accent-blue-600 mt-1" checked={popups}
+                 onChange={(e) => { setPopups(e.target.checked); setInPageAlerts(e.target.checked); }} />
+          <span>
+            เด้งเตือนบนหน้าเว็บอัตโนมัติ
+            <span className="block text-xs text-slate-500">
+              ระหว่างเปิดเว็บนี้อยู่ ไม่ว่าจะอยู่หน้าไหน จะมีการ์ดเตือนขึ้นมุมขวาบนเมื่อมีแจ้งเตือนใหม่ ไม่ต้องสมัครและไม่ต้องใช้ https (ไม่รวมเรื่องระบบ)
+            </span>
+          </span>
+        </label>
+      </Card>
+
+      <Card className="p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <p className="text-sm font-semibold text-slate-900">ประกาศเตือนภัยกรมอุตุนิยมวิทยา</p>
+          {warnings?.updated_at && <span className="text-xs text-slate-500">อัปเดต {fmtDateTime(warnings.updated_at)}</span>}
+        </div>
+        {warnings === null ? (
+          <Skeleton className="h-16" />
+        ) : activeWarnings.length === 0 ? (
+          <EmptyState title="ไม่มีประกาศเตือนภัยใน 2 วันล่าสุด" description={warnings.error ? 'ดึงข้อมูลจาก tmd.go.th ไม่สำเร็จ แสดงข้อมูลรอบล่าสุดที่มี' : 'ข้อมูลจาก tmd.go.th ตรวจทุก 15 นาที'} />
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {activeWarnings.map((w) => (
+              <li key={w.url} className="py-2.5">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  {w.bkk ? <Badge tone="red" dot>กระทบ กทม.</Badge> : <Badge>ต่างจังหวัด</Badge>}
+                  <span className="text-xs text-slate-500">{thaiDate(w.date)}{w.older ? ` · ออกมาแล้ว ${w.older + 1} ฉบับ` : ''}</span>
+                </div>
+                <a href={w.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-slate-900 hover:text-blue-700 leading-5">{w.title}</a>
+                {w.summary && <p className="text-xs text-slate-600 leading-5 mt-0.5">{w.summary}</p>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      <Card className="p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+          <p className="text-sm font-semibold text-slate-900">ประชาชนแจ้งน้ำท่วม (6 ชม.ล่าสุด)</p>
+          {reports?.updated_at && <span className="text-xs text-slate-500">อัปเดต {fmtDateTime(reports.updated_at)}</span>}
+        </div>
+        <p className="text-xs text-slate-500 mb-3">
+          จาก Traffy Fondue คัดด้วยคำว่า น้ำท่วม/น้ำขัง ยังไม่ผ่านการตรวจสอบจากเขต · แจ้งเตือนเมื่อเขตเดียวกันมีตั้งแต่ 3 เรื่องใน 1 ชม.
+        </p>
+        {reports === null ? (
+          <div className="space-y-2">{[0, 1].map((i) => <Skeleton key={i} className="h-12" />)}</div>
+        ) : districts.length === 0 ? (
+          <EmptyState title="ไม่มีเรื่องแจ้งน้ำท่วม" description="ยังไม่มีประชาชนแจ้งน้ำท่วมใน 6 ชั่วโมงที่ผ่านมา" />
+        ) : (
+          <div className="space-y-3">
+            {districts.map((d) => (
+              <section key={d.name}>
+                <p className="text-xs font-semibold text-slate-700 mb-1">เขต{d.name} · {d.items.length} เรื่อง</p>
+                <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+                  {(openDistrict === d.name ? d.items : d.items.slice(0, REPORTS_SHOWN)).map((r) => (
+                    <li key={r.id} className="p-2.5 flex gap-3">
+                      {r.photo && <img src={r.photo} alt="" loading="lazy" className="w-16 h-16 rounded-md object-cover shrink-0" />}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-slate-900 leading-5 line-clamp-2">{r.text}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {agoTh(r.ts)}{r.depth ? ` · ระดับ${r.depth}` : ''} · {r.state || '-'} ·{' '}
+                          <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-blue-700 hover:underline">ดูใน Traffy</a>
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                {d.items.length > REPORTS_SHOWN && (
+                  <button type="button" onClick={() => setOpenDistrict(openDistrict === d.name ? null : d.name)}
+                          className="cursor-pointer mt-1 text-xs text-blue-700 hover:underline">
+                    {openDistrict === d.name ? 'ย่อ' : `ดูอีก ${d.items.length - REPORTS_SHOWN} เรื่อง`}
+                  </button>
+                )}
+              </section>
+            ))}
+          </div>
+        )}
       </Card>
 
       <Card className="p-4">

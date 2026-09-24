@@ -17,6 +17,11 @@ DB_PATH = os.path.join(DATA_DIR, "cache", "telemetry.db")
 BKK_TZ = timezone(timedelta(hours=7))
 
 ONLINE_WINDOW = 90       # seconds since last heartbeat to count as "online now"
+# A heartbeat can only be stamped with the clock of the machine that received it. When that clock
+# is wrong (or is corrected afterwards) a session ends up stamped in the future and would then sit
+# in the "online now" window for as long as the clock is behind it. Anything further ahead than
+# this is a clock artefact, not a visitor.
+FUTURE_SLACK = 120       # seconds a timestamp may lead "now" before it is treated as bad
 PEAK_DAYS = 7            # days of history used for peak-hour ranking
 
 # Every view key the UI sends -> one of the four public topics
@@ -67,10 +72,31 @@ class Telemetry:
             self.conn.commit()
         return True
 
+    def _window(self, now):
+        """The bounds of "online now": recent enough, and not stamped in the future."""
+        return now - ONLINE_WINDOW, now + FUTURE_SLACK
+
+    def purge_future(self, now=None):
+        """Drop sessions stamped ahead of the clock, at startup. A session row is transient
+        heartbeat state, so losing it costs nothing; the `views` rows are kept because they are
+        real page views that happened and only their timestamp is wrong - the queries above bound
+        them out of the counts instead."""
+        now = int(now or time.time())
+        cutoff = now + FUTURE_SLACK
+        with self.lock:
+            n = self.conn.execute("DELETE FROM sessions WHERE last_ts > ?", (cutoff,)).rowcount
+            self.conn.commit()
+            future_views = self.conn.execute("SELECT COUNT(*) FROM views WHERE ts > ?", (cutoff,)).fetchone()[0]
+        if n or future_views:
+            print(f"[Telemetry] dropped {n} session(s) stamped in the future"
+                  + (f"; {future_views} view row(s) also carry a future timestamp and are excluded from the counts" if future_views else ""))
+        return {"sessions": n, "future_views": future_views}
+
     def online_count(self):
         now = int(time.time())
+        lo, hi = self._window(now)
         with self.lock:
-            return self.conn.execute("SELECT COUNT(*) FROM sessions WHERE last_ts >= ?", (now - ONLINE_WINDOW,)).fetchone()[0]
+            return self.conn.execute("SELECT COUNT(*) FROM sessions WHERE last_ts BETWEEN ? AND ?", (lo, hi)).fetchone()[0]
 
     def stats(self):
         now = int(time.time())
@@ -78,14 +104,17 @@ class Telemetry:
         week_start = now - PEAK_DAYS * 86400
         with self.lock:
             q = self.conn.execute
-            online = q("SELECT COUNT(*) FROM sessions WHERE last_ts >= ?", (now - ONLINE_WINDOW,)).fetchone()[0]
-            online_views = q("SELECT view, COUNT(*) FROM sessions WHERE last_ts >= ? GROUP BY view", (now - ONLINE_WINDOW,)).fetchall()
-            dau = q("SELECT COUNT(DISTINCT sid) FROM views WHERE ts >= ?", (day_start,)).fetchone()[0]
+            lo, hi = now - ONLINE_WINDOW, now + FUTURE_SLACK
+            online = q("SELECT COUNT(*) FROM sessions WHERE last_ts BETWEEN ? AND ?", (lo, hi)).fetchone()[0]
+            online_views = q("SELECT view, COUNT(*) FROM sessions WHERE last_ts BETWEEN ? AND ? GROUP BY view", (lo, hi)).fetchall()
+            dau = q("SELECT COUNT(DISTINCT sid) FROM views WHERE ts BETWEEN ? AND ?", (day_start, hi)).fetchone()[0]
             dau_prev = q("SELECT COUNT(DISTINCT sid) FROM views WHERE ts >= ? AND ts < ?", (day_start - 86400, day_start)).fetchone()[0]
-            views_today = q("SELECT COUNT(*) FROM views WHERE ts >= ?", (day_start,)).fetchone()[0]
-            by_view = q("SELECT view, COUNT(*) FROM views WHERE ts >= ? GROUP BY view ORDER BY 2 DESC", (day_start,)).fetchall()
-            week_rows = q("SELECT ts FROM views WHERE ts >= ?", (week_start,)).fetchall()
-            daily = q("SELECT ts, sid FROM views WHERE ts >= ?", (week_start,)).fetchall()
+            # Yesterday up to this time of day: a fair comparison while today is still running
+            dau_prev_now = q("SELECT COUNT(DISTINCT sid) FROM views WHERE ts >= ? AND ts <= ?", (day_start - 86400, now - 86400)).fetchone()[0]
+            views_today = q("SELECT COUNT(*) FROM views WHERE ts BETWEEN ? AND ?", (day_start, hi)).fetchone()[0]
+            by_view = q("SELECT view, COUNT(*) FROM views WHERE ts BETWEEN ? AND ? GROUP BY view ORDER BY 2 DESC", (day_start, hi)).fetchall()
+            week_rows = q("SELECT ts FROM views WHERE ts BETWEEN ? AND ?", (week_start, hi)).fetchall()
+            daily = q("SELECT ts, sid FROM views WHERE ts BETWEEN ? AND ?", (week_start, hi)).fetchall()
 
         by_topic = {t: 0 for t in TOPICS}
         for view, n in by_view:
@@ -97,6 +126,10 @@ class Telemetry:
         for (ts,) in week_rows:
             hours[datetime.fromtimestamp(ts, BKK_TZ).hour] += 1
         peak = sorted(range(24), key=lambda h: -hours[h])[:3]
+        hours_today = [0] * 24
+        for ts, _ in daily:
+            if ts >= day_start:
+                hours_today[datetime.fromtimestamp(ts, BKK_TZ).hour] += 1
 
         per_day = {}
         for ts, sid in daily:
@@ -109,7 +142,10 @@ class Telemetry:
             "online_by_view": [{"view": v, "users": n} for v, n in online_views],
             "dau": dau,
             "dau_yesterday": dau_prev,
+            "dau_yesterday_same_time": dau_prev_now,
             "views_today": views_today,
+            "hours_today": hours_today,
+            "current_hour": datetime.fromtimestamp(now, BKK_TZ).hour,
             "by_view": [{"view": v, "views": n} for v, n in by_view],
             "by_topic": topic_share,
             "hours": hours,

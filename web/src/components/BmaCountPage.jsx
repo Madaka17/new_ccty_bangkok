@@ -13,7 +13,6 @@ const TABS = [
   { id: 'compare', label: 'เทียบวัน / สัปดาห์ / เดือน' },
   { id: 'cameras', label: 'กล้องทุกตัว' },
 ];
-
 // Counts vehicles in every BMA traffic camera snapshot (574 cameras, one scan every ~4 min),
 // keeps hourly cycles on disk as CSV and compares periods. Three views, one data load.
 export default function BmaCountPage({ isActive, onToast }) {

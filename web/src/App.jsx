@@ -8,22 +8,24 @@ import AiPage from './components/AiPage.jsx';
 import MapPage from './components/MapPage.jsx';
 import DashboardPage from './components/DashboardPage.jsx';
 import BottomNav from './components/BottomNav.jsx';
-import YoloPage from './components/YoloPage.jsx';
+import CameraAiPage from './components/CameraAiPage.jsx';
 import WaterPage from './components/WaterPage.jsx';
-import BmaCountPage from './components/BmaCountPage.jsx';
 import AlertsPage from './components/AlertsPage.jsx';
+import AlertPopups from './components/AlertPopups.jsx';
 import AnalyticsPage from './components/AnalyticsPage.jsx';
 import HelmetPage from './components/HelmetPage.jsx';
 import WrongWayPage from './components/WrongWayPage.jsx';
 import NavIcon from './components/NavIcons.jsx';
 import { fetchCameras, fetchAIStats, fetchIncidents, fetchSurveyRanking, fetchRoadCameras } from './lib/api.js';
-import { useActiveCameras, useFavorites, useUserName, useTheme } from './lib/store.js';
+import { useActiveCameras, useFavorites, useUserName } from './lib/store.js';
 import { trackView, startHeartbeat } from './lib/telemetry.js';
 
-const PAGES = ['dashboard', 'analytics', 'bma-count', 'cameras', 'map', 'water', 'yolo', 'helmet', 'wrongway', 'ai', 'alerts'];
+const PAGES = ['dashboard', 'analytics', 'cameras', 'map', 'water', 'yolo', 'helmet', 'wrongway', 'ai', 'alerts'];
 
 function pageFromHash() {
  const h = window.location.hash.replace(/^#\/?/, '');
+ // Old BMA counts link: the counts now live as a tab on the camera AI page
+ if (h === 'bma-count') return 'yolo';
  return PAGES.includes(h) ? h : 'dashboard';
 }
 
@@ -32,13 +34,13 @@ export default function App() {
  const [favorites, toggleFav] = useFavorites();
  const { active, toggle, remove, clear, addMany } = useActiveCameras();
  const [userName, saveName] = useUserName();
- const [theme, setTheme] = useTheme();
  const [menuOpen, setMenuOpen] = useState(false);
  const [page, setPage] = useState(pageFromHash);
  const [filter, setFilter] = useState('all');
  const [query, setQuery] = useState('');
  const [userPos, setUserPos] = useState(null);
  const [aiCamid, setAiCamid] = useState('ITICM_BMAMI0188');
+ const [cameraTab, setCameraTab] = useState(() => (window.location.hash.replace(/^#\/?/, '') === 'bma-count' ? 'bma' : 'live'));
  const [pendingQuestion, setPendingQuestion] = useState('');
  const [aiActive, setAiActive] = useState(false);
  const [toast, setToast] = useState('');
@@ -162,6 +164,7 @@ export default function App() {
  const openAI = useCallback(
     (camid) => {
  if (camid) setAiCamid(camid);
+ setCameraTab('live');
  navigate('yolo');
     },
     [navigate]
@@ -206,7 +209,7 @@ export default function App() {
     <div className="min-h-full lg:grid lg:grid-cols-[220px_1fr]">
       {/* Desktop sidebar */}
       <aside className="hidden lg:block sticky top-0 h-screen">
-        <Sidebar page={page} onNavigate={navigate} userName={userName} onSaveName={saveName} liveCount={activeCams.length} totalCount={cameras.length} aiActive={aiActive} theme={theme} onTheme={setTheme} />
+        <Sidebar page={page} onNavigate={navigate} userName={userName} onSaveName={saveName} liveCount={activeCams.length} totalCount={cameras.length} aiActive={aiActive} />
       </aside>
 
       {/* Mobile top bar + drawer */}
@@ -220,7 +223,7 @@ export default function App() {
       {menuOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex">
           <div className="w-72 max-w-[85vw] h-full">
-            <Sidebar page={page} onNavigate={navigate} userName={userName} onSaveName={saveName} liveCount={activeCams.length} totalCount={cameras.length} aiActive={aiActive} theme={theme} onTheme={setTheme} onClose={() => setMenuOpen(false)} />
+            <Sidebar page={page} onNavigate={navigate} userName={userName} onSaveName={saveName} liveCount={activeCams.length} totalCount={cameras.length} aiActive={aiActive} onClose={() => setMenuOpen(false)} />
           </div>
           <button type="button" aria-label="ปิดเมนู" onClick={() => setMenuOpen(false)} className="flex-1 bg-slate-900/50" />
         </div>
@@ -238,12 +241,6 @@ export default function App() {
           {page === 'analytics' && (
             <motion.div key="analytics" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
               <AnalyticsPage isActive onNavigate={navigate} onOpenRoad={openRoadCameras} />
-            </motion.div>
-          )}
-
-          {page === 'bma-count' && (
-            <motion.div key="bma-count" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
-              <BmaCountPage isActive onToast={showToast} />
             </motion.div>
           )}
 
@@ -300,7 +297,7 @@ export default function App() {
 
           {page === 'yolo' && (
             <motion.div key="yolo" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
-              <YoloPage active cameras={cameras} favorites={favorites} camid={aiCamid} incidents={incidents} onPickCamera={setAiCamid} onToast={showToast} onAsk={askAI} />
+              <CameraAiPage tab={cameraTab} onTab={setCameraTab} cameras={cameras} favorites={favorites} camid={aiCamid} incidents={incidents} onPickCamera={setAiCamid} onToast={showToast} onAsk={askAI} />
             </motion.div>
           )}
 
@@ -351,6 +348,8 @@ export default function App() {
           </span>
         </button>
       )}
+
+      <AlertPopups onNavigate={navigate} />
 
       <AnimatePresence>
         {toast && (

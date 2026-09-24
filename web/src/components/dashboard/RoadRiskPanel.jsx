@@ -69,7 +69,6 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
   }
 
   const c = data.counts || {};
-  const ai = data.analysis;
   const provinces = data.provinces || [];
 
   return (
@@ -98,29 +97,6 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
         )}
         {failed && !data.error && <p className="mt-3 text-xs text-amber-700">รีเฟรชรอบล่าสุดไม่สำเร็จ แสดงค่าก่อนหน้า</p>}
       </Card>
-
-      {ai?.headline && (
-        <Card className="p-5 border border-slate-200">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={c.closed || c.avoid ? 'red' : c.passable ? 'yellow' : 'green'} dot>AI วิเคราะห์รายถนน</Badge>
-            <span className="text-xs text-slate-500">{ai.source && ai.source !== 'template' ? ai.source : 'สรุปอัตโนมัติจากตัวเลข'}</span>
-          </div>
-          <p className="mt-2 text-base font-semibold text-ink-900 leading-6">{ai.headline}</p>
-          {ai.detail && <p className="mt-1 text-sm text-slate-700 leading-6">{ai.detail}</p>}
-          {ai.roads?.length > 0 && (
-            <ol className="mt-3 flex flex-col gap-2">
-              {ai.roads.map((r, i) => (
-                <li key={`${r.road}-${i}`} className="text-sm">
-                  <span className="font-medium text-ink-900">{i + 1}. {r.road}</span>
-                  {r.why && <span className="text-slate-700"> — {r.why}</span>}
-                  {r.advice && <span className="block text-xs text-slate-500 ml-4">→ {r.advice}</span>}
-                </li>
-              ))}
-            </ol>
-          )}
-          <p className="mt-3 text-[11px] text-slate-400">{data.note}</p>
-        </Card>
-      )}
 
       {provinces.length > 0 && (
         <Card className="p-5">

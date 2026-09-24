@@ -45,6 +45,7 @@ def main():
     ap.add_argument('--name', default='yolo26x')
     ap.add_argument('--resume', action='store_true', help='continue from runs/wrongway_det/<name>/weights/last.pt')
     ap.add_argument('--lr0', type=float, default=None, help='initial LR; stage-2 fine-tunes use a smaller one (e.g. 0.002)')
+    ap.add_argument('--patience', type=int, default=25, help='epochs without improvement before stopping (0 to disable)')
     ap.add_argument('--out', default=os.path.join(BASE_DIR, 'wrongway_det.pt'))
     args = ap.parse_args()
     if not os.path.exists(DATA_YAML):
@@ -70,7 +71,7 @@ def main():
             name=args.name,
             exist_ok=True,
             pretrained=True,
-            patience=15,
+            patience=args.patience,
             # heading lives in the vehicle's shape: no mirror (left<->right), mild geometry, strong photometric
             fliplr=0.0,
             flipud=0.0,

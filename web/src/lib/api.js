@@ -197,6 +197,28 @@ export async function runFloodAgent(question = '') {
   return res.json();
 }
 
+// BMA traffic-risk analysis (riskbkk_agent.py): AI report + the per-district / per-hour numbers
+export async function fetchRiskAnalysis() {
+  const res = await fetch('/api/riskbkk/analysis');
+  if (!res.ok) throw new Error('riskbkk_analysis');
+  return res.json();
+}
+
+// Re-run it now; operator only (403 from anywhere else)
+export async function runRiskAnalysis() {
+  const res = await fetch('/api/riskbkk/analysis/run', { method: 'POST' });
+  if (res.status === 403) throw new Error('forbidden');
+  if (!res.ok) throw new Error('riskbkk_analysis_run');
+  return res.json();
+}
+
+// TMD heavy-rain / storm warnings; `active` = issued in the last two days (flood_feeds.py)
+export async function fetchWeatherWarnings() {
+  const res = await fetch('/api/weather/warnings');
+  if (!res.ok) throw new Error('weather_warnings');
+  return res.json();
+}
+
 export async function fetchAirStations() {
   const res = await fetch('/api/air/stations');
   if (!res.ok) throw new Error('air');
@@ -456,6 +478,12 @@ export async function fetchViolationStatus(camid) {
 export async function fetchAnalytics(refresh = false) {
   const res = await fetch(`/api/analytics/summary${refresh ? '?refresh=true' : ''}`);
   if (!res.ok) throw new Error('analytics failed');
+  return res.json();
+}
+
+export async function fetchVisitorStats() {
+  const res = await fetch('/api/telemetry/stats');
+  if (!res.ok) throw new Error('visitor stats failed');
   return res.json();
 }
 

@@ -94,6 +94,7 @@ from telemetry_service import telemetry
 import access_guard
 from alert_service import AlertService
 from flood_agent import FloodAgent
+from riskbkk_agent import RiskAgent
 
 app = FastAPI(title="BKK StreetSmart CCTV & YOLO11x Vehicle Detection")
 
@@ -898,6 +899,11 @@ def analytics_export(format: str = Query("json", pattern="^(json|csv)$"),
 def telemetry_online():
     return {"ok": True, "online": telemetry.online_count()}
 
+@app.get("/api/telemetry/stats")
+def telemetry_stats():
+    """Uncached visitor stats for the live visitors tab (the analytics summary is cached 60 s)."""
+    return {"ready": True, **telemetry.stats()}
+
 @app.post("/api/telemetry/view")
 def telemetry_view(payload: dict = Body(...)):
     return {"ok": telemetry.view(payload.get("sid"), payload.get("view"))}
@@ -932,7 +938,7 @@ def chat_endpoint(payload: dict = Body(...)):
             print(f"[Chat] {key} unavailable: {e}")
     return chat_service.chat(traffic, messages, detector.get_stats(), water, extra)
 
-# ---------------------------------------------------------------- Flood analyst agent (Claude tool use)
+# ---------------------------------------------------------------- Flood analyst agent (local model)
 flood_agent = FloodAgent(DATA_DIR, {
     "flood": flood_roads.status, "water": water_service.get_summary,
     "forecast": lambda: analytics_service.get_summary().get("flood"),
@@ -950,6 +956,19 @@ def flood_agent_status():
 def flood_agent_run(payload: dict = Body(None)):
     """Run the agent now (operator only through access_guard); an optional question is answered in `answer`."""
     return flood_agent.run(question=(payload or {}).get("question"), force=True)
+
+# ---------------------------------------------------------------- BMA traffic-risk analyst (local model)
+risk_agent = RiskAgent(DATA_DIR, os.path.join(BASE_DIR, "web", "public", "riskbkk"))
+
+@app.get("/api/riskbkk/analysis")
+def riskbkk_analysis():
+    """AI analysis of the BMA risk-map traffic layers plus the numbers behind it."""
+    return risk_agent.status()
+
+@app.post("/api/riskbkk/analysis/run")
+def riskbkk_analysis_run():
+    """Re-run the analysis now (operator only through access_guard)."""
+    return risk_agent.run(force=True)
 
 # ---------------------------------------------------------------- Web Push alerts (operator team)
 # POSTs here are operator-only through access_guard, so only the team can subscribe or send a test.
@@ -1014,12 +1033,15 @@ air.start()
 flood_roads.start()
 traffy_reports.start()
 tmd_warnings.start()
+# Heartbeats stamped by a wrong clock would otherwise sit in the online count forever
+telemetry.purge_future()
 road_risk.traffic, road_risk.flood, road_risk.water = traffic, flood_roads, water_service
 road_risk.start()
 water_service.warm()
 rsc_service.warm(bma_scanner.cameras)
 bma_feed.start()
 flood_agent.start()
+risk_agent.start()
 alerts.start()
 
 def start_browser_when_ready(url="http://localhost:8000"):

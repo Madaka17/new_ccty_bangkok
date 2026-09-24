@@ -27,7 +27,15 @@ def tail(path, n=20000):
         with open(path, 'rb') as f:
             f.seek(0, 2)
             f.seek(max(0, f.tell() - n))
-            return ANSI_RE.sub('', f.read().decode('utf-8', 'ignore')).replace('\r', '\n')
+            raw = f.read()
+            if b'\x00' in raw[:200]:
+                try:
+                    txt = raw.decode('utf-16', 'ignore')
+                except Exception:
+                    txt = raw.replace(b'\x00', b'').decode('utf-8', 'ignore')
+            else:
+                txt = raw.decode('utf-8', 'ignore')
+            return ANSI_RE.sub('', txt).replace('\r', '\n')
     except OSError:
         return ''
 

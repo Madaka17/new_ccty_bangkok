@@ -3,7 +3,6 @@ import { useEffect, useState, useCallback } from 'react';
 const FAV_KEY = 'bkk_cctv_favs';
 const ACTIVE_KEY = 'bkk_cctv_active_slots';
 const NAME_KEY = 'bkk_cctv_user_name';
-const THEME_KEY = 'bkk_cctv_theme';
 const DEFAULT_NAME = 'เพื่อนบ้าน';
 
 function readJSON(key, fallback) {
@@ -68,31 +67,6 @@ export function useUserName() {
   return [name, save];
 }
 
-// 'light' | 'dark' | 'system'. Adds the `dark` class on <html>; index.css does the rest.
-export function useTheme() {
-  const [theme, setTheme] = useState(() => {
-    try {
-      return localStorage.getItem(THEME_KEY) || 'system';
-    } catch {
-      return 'system';
-    }
-  });
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const apply = () => {
-      const dark = theme === 'dark' || (theme === 'system' && mq.matches);
-      document.documentElement.classList.toggle('dark', dark);
-      document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
-    };
-    apply();
-    mq.addEventListener('change', apply);
-    try {
-      localStorage.setItem(THEME_KEY, theme);
-    } catch {}
-    return () => mq.removeEventListener('change', apply);
-  }, [theme]);
-  return [theme, setTheme];
-}
 
 export function greetingByHour(d = new Date()) {
   const h = d.getHours();

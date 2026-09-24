@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* dark: utilities follow the app theme (`dark` class set on <html> in index.html), not the OS setting */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: "Prompt", ui-sans-serif, system-ui, sans-serif;
 
@@ -107,7 +110,7 @@ body {
 }
 
 /* ---------------------------------------------------------------- dark theme
-   Enabled by the `dark` class on <html> (see useTheme in lib/store.js).
+   Enabled by the `dark` class on <html> (set in index.html; the app is always dark + hf).
    Tailwind v4 utilities read colour tokens through var(--color-*), so the light
    tints and neutral surfaces are remapped once here instead of adding dark:
    variants to every element. Text shades are overridden per utility because the
@@ -167,3 +170,76 @@ body {
 .dark .scroll-soft::-webkit-scrollbar-thumb { background: #334155; }
 .dark .maplibregl-popup-content { background: #0f172a; color: #f1f5f9; border-color: #334155; }
 .dark svg text { fill: #94a3b8; }
+
+/* Camera AI & Analysis view switch (CameraAiPage.jsx) */
+.seg-tray { background: #eef2f7; border: 1px solid #e2e8f0; }
+.seg-off { color: #475569; }
+.seg-off:hover { background: rgba(255, 255, 255, 0.7); color: #0f172a; }
+.seg-on { background: #ffffff; color: #1d4ed8; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.08); }
+.seg-icon { background: #e2e8f0; color: #64748b; }
+.seg-hint { color: #64748b; font-weight: 400; }
+.dark .seg-tray { background: #0b1222; border-color: #1e293b; }
+.dark .seg-off { color: #94a3b8; }
+.dark .seg-off:hover { background: #1e293b; color: #f1f5f9; }
+.dark .seg-on { background: #1e293b; color: #93c5fd; box-shadow: 0 0 0 1px #334155, 0 6px 16px rgba(0, 0, 0, 0.35); }
+.dark .seg-icon { background: #1e293b; color: #94a3b8; }
+.dark .seg-hint { color: #94a3b8; }
+
+/* ---------------------------------------------------------------- hf theme
+   Hugging Face Spaces look in dark: near-black page, 2px light outlines with a hard
+   offset shadow on cards, yellow for the active/primary state, Mitr headings and
+   mono tab labels. index.html sets both `dark` and `hf` on <html>, so the .dark
+   remaps above do the text colours and this block only restyles on top. */
+.hf {
+  --hf-line: #e8e3d6;
+  --hf-yellow: #ffd21e;
+  --hf-on-yellow: #1a1a1a;
+  --hf-paper: #121620;
+  --color-slate-50: #1a1f2b;
+  --color-slate-100: #222836;
+  --color-slate-200: #2e3544;
+  --color-slate-300: #3d4556;
+  --color-cream: #121620;
+  --color-cream-100: #1a1f2b;
+  --color-cream-200: #2e3544;
+  --color-cream-300: #3d4556;
+}
+.hf body { background: #0a0c11; color: #f3f1ea; }
+.hf .bg-white, .hf .glass, .hf .glass-strong { background-color: var(--hf-paper); }
+
+/* cards and panels */
+.hf .rounded-xl.border, .hf .rounded-2xl.border, .hf .glass, .hf .glass-strong {
+  border: 2px solid var(--hf-line);
+  border-radius: 16px;
+  box-shadow: 4px 4px 0 #000;
+}
+
+/* headings */
+.hf h1, .hf h2, .hf h3 { font-family: "Mitr", var(--font-sans); font-weight: 600; letter-spacing: -0.01em; }
+.hf h1 { font-size: 1.6rem; line-height: 2.1rem; }
+
+/* tabs and segmented switches: mono labels, active = yellow pill */
+.hf [role="tab"] { font-family: "IBM Plex Mono", var(--font-sans); letter-spacing: 0.02em; }
+.hf [role="tab"][aria-selected="true"] {
+  background: var(--hf-yellow);
+  color: var(--hf-on-yellow);
+  border: 2px solid #000;
+  border-radius: 999px;
+  box-shadow: 2px 2px 0 #000;
+}
+
+/* primary buttons: blue fill becomes yellow with dark text */
+.hf .bg-blue-600, .hf .bg-lavender-600 {
+  background-color: var(--hf-yellow);
+  color: var(--hf-on-yellow);
+  border: 2px solid #000;
+  box-shadow: 2px 2px 0 #000;
+}
+.hf .hover\:bg-blue-700:hover, .hf .hover\:bg-lavender-700:hover { background-color: #f5c400; }
+
+.hf :focus-visible { outline: 2px solid var(--hf-yellow); outline-offset: 2px; }
+.hf .scroll-soft::-webkit-scrollbar-thumb { background: #3d4556; }
+.hf .maplibregl-popup-content { background: var(--hf-paper); color: #f3f1ea; border: 2px solid var(--hf-line); border-radius: 12px; box-shadow: 3px 3px 0 #000; }
+.hf .maplibregl-ctrl-group { box-shadow: 0 0 0 2px var(--hf-line), 3px 3px 0 2px #000 !important; }
+.hf .seg-tray { background: #1a1f2b; border: 2px solid var(--hf-line); }
+.hf .seg-on { background: var(--hf-yellow); color: var(--hf-on-yellow); box-shadow: 2px 2px 0 #000; }
