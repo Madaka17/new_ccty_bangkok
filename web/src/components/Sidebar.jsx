@@ -12,6 +12,7 @@ export const NAV_ITEMS = [
   { id: 'wrongway', label: 'Wrong-Way Check' },
   { id: 'water', label: 'Water Forecast' },
   { id: 'ai', label: 'Ask AI (Routes)' },
+  { id: 'alerts', label: 'Alerts' },
 ];
 
 export const PAGE_TITLES = Object.fromEntries(NAV_ITEMS.map((i) => [i.id, i.label]));

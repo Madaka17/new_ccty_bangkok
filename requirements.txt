@@ -17,3 +17,5 @@ lap>=0.5.12
 kagglehub>=0.3.0
 # Tests: .venv\Scripts\python -m pytest tests
 pytest>=8.0
+# Web Push alerts (alert_service.py)
+pywebpush>=2.0

@@ -11,6 +11,7 @@ import BottomNav from './components/BottomNav.jsx';
 import YoloPage from './components/YoloPage.jsx';
 import WaterPage from './components/WaterPage.jsx';
 import BmaCountPage from './components/BmaCountPage.jsx';
+import AlertsPage from './components/AlertsPage.jsx';
 import AnalyticsPage from './components/AnalyticsPage.jsx';
 import HelmetPage from './components/HelmetPage.jsx';
 import WrongWayPage from './components/WrongWayPage.jsx';
@@ -19,7 +20,7 @@ import { fetchCameras, fetchAIStats, fetchIncidents, fetchSurveyRanking, fetchRo
 import { useActiveCameras, useFavorites, useUserName, useTheme } from './lib/store.js';
 import { trackView, startHeartbeat } from './lib/telemetry.js';
 
-const PAGES = ['dashboard', 'analytics', 'bma-count', 'cameras', 'map', 'water', 'yolo', 'helmet', 'wrongway', 'ai'];
+const PAGES = ['dashboard', 'analytics', 'bma-count', 'cameras', 'map', 'water', 'yolo', 'helmet', 'wrongway', 'ai', 'alerts'];
 
 function pageFromHash() {
  const h = window.location.hash.replace(/^#\/?/, '');
@@ -312,6 +313,12 @@ export default function App() {
           {page === 'wrongway' && (
             <motion.div key="wrongway" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
               <WrongWayPage isActive onToast={showToast} />
+            </motion.div>
+          )}
+
+          {page === 'alerts' && (
+            <motion.div key="alerts" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
+              <AlertsPage isActive onToast={showToast} />
             </motion.div>
           )}
 

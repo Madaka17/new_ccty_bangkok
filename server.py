@@ -91,6 +91,7 @@ from bma_service import BmaScanner
 import analytics_service
 from telemetry_service import telemetry
 import access_guard
+from alert_service import AlertService
 
 app = FastAPI(title="BKK StreetSmart CCTV & YOLO11x Vehicle Detection")
 
@@ -929,6 +930,35 @@ def chat_endpoint(payload: dict = Body(...)):
             print(f"[Chat] {key} unavailable: {e}")
     return chat_service.chat(traffic, messages, detector.get_stats(), water, extra)
 
+# ---------------------------------------------------------------- Web Push alerts (operator team)
+# POSTs here are operator-only through access_guard, so only the team can subscribe or send a test.
+alerts = AlertService(DATA_DIR, {
+    "flood": flood_roads.status, "water": water_service.get_summary, "incidents": incidents.status,
+    "bma_events": lambda: bma_feed.get(hours=2, limit=60), "air": air.status,
+    "health": lambda: json.loads(health().body),
+})
+
+@app.get("/api/alerts/status")
+def alerts_status(endpoint: str = Query(None)):
+    """VAPID public key, topics, subscriber count and whether this browser (endpoint) is subscribed."""
+    return alerts.status(endpoint)
+
+@app.get("/api/alerts/recent")
+def alerts_recent(limit: int = Query(50, ge=1, le=200)):
+    return alerts.recent(limit)
+
+@app.post("/api/alerts/subscribe")
+def alerts_subscribe(payload: dict = Body(...)):
+    return alerts.subscribe(payload.get("subscription"), payload.get("topics"), payload.get("label", ""))
+
+@app.post("/api/alerts/unsubscribe")
+def alerts_unsubscribe(payload: dict = Body(...)):
+    return alerts.unsubscribe(payload.get("endpoint"))
+
+@app.post("/api/alerts/test")
+def alerts_test(payload: dict = Body(None)):
+    return alerts.test((payload or {}).get("endpoint"))
+
 # Static files for web frontend
 @app.get("/")
 def read_root():
@@ -954,6 +984,7 @@ road_risk.start()
 water_service.warm()
 rsc_service.warm(bma_scanner.cameras)
 bma_feed.start()
+alerts.start()
 
 def start_browser_when_ready(url="http://localhost:8000"):
     """Opens browser only when server is confirmed responsive."""

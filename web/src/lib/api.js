@@ -467,3 +467,33 @@ export async function deleteAIAccuracy(id) {
 export function resetAIPassed() {
   return fetch('/api/ai/reset_passed', { method: 'POST' });
 }
+
+// ---------------------------------------------------------------- Web Push alerts (alert_service.py)
+export async function fetchAlertStatus(endpoint) {
+  const params = endpoint ? `?${new URLSearchParams({ endpoint })}` : '';
+  const res = await fetch(`/api/alerts/status${params}`);
+  if (!res.ok) throw new Error('alerts_status');
+  return res.json();
+}
+
+export async function fetchAlertRecent(limit = 50) {
+  const res = await fetch(`/api/alerts/recent?limit=${limit}`);
+  if (!res.ok) throw new Error('alerts_recent');
+  return res.json();
+}
+
+// Subscribing and the test push are operator-only (access_guard): a 403 means "not on the team network"
+async function postAlert(path, body) {
+  const res = await fetch(`/api/alerts/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 403) throw new Error('forbidden');
+  if (!res.ok) throw new Error(`alerts_${path}`);
+  return res.json();
+}
+
+export const subscribeAlerts = (subscription, topics, label) => postAlert('subscribe', { subscription, topics, label });
+export const unsubscribeAlerts = (endpoint) => postAlert('unsubscribe', { endpoint });
+export const testAlert = (endpoint) => postAlert('test', { endpoint });
