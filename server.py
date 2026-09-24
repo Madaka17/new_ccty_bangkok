@@ -93,6 +93,7 @@ import analytics_service
 from telemetry_service import telemetry
 import access_guard
 from alert_service import AlertService
+from flood_agent import FloodAgent
 
 app = FastAPI(title="BKK StreetSmart CCTV & YOLO11x Vehicle Detection")
 
@@ -931,9 +932,29 @@ def chat_endpoint(payload: dict = Body(...)):
             print(f"[Chat] {key} unavailable: {e}")
     return chat_service.chat(traffic, messages, detector.get_stats(), water, extra)
 
+# ---------------------------------------------------------------- Flood analyst agent (Claude tool use)
+flood_agent = FloodAgent(DATA_DIR, {
+    "flood": flood_roads.status, "water": water_service.get_summary,
+    "forecast": lambda: analytics_service.get_summary().get("flood"),
+    "traffy": traffy_reports.status, "tmd": tmd_warnings.status,
+    "road_risk": lambda: road_risk.status(limit=2000),
+    "bma_events": lambda: bma_feed.get(kind="flood", hours=6, limit=20),
+})
+
+@app.get("/api/flood/agent")
+def flood_agent_status():
+    """Latest agent situation report, the level history and whether a run is in progress."""
+    return flood_agent.status()
+
+@app.post("/api/flood/agent/run")
+def flood_agent_run(payload: dict = Body(None)):
+    """Run the agent now (operator only through access_guard); an optional question is answered in `answer`."""
+    return flood_agent.run(question=(payload or {}).get("question"), force=True)
+
 # ---------------------------------------------------------------- Web Push alerts (operator team)
 # POSTs here are operator-only through access_guard, so only the team can subscribe or send a test.
 alerts = AlertService(DATA_DIR, {
+    "agent": lambda: flood_agent.status()["report"],
     "flood": flood_roads.status, "water": water_service.get_summary, "incidents": incidents.status,
     "bma_events": lambda: bma_feed.get(hours=2, limit=60), "air": air.status,
     "traffy": traffy_reports.status, "tmd": tmd_warnings.status,
@@ -998,6 +1019,7 @@ road_risk.start()
 water_service.warm()
 rsc_service.warm(bma_scanner.cameras)
 bma_feed.start()
+flood_agent.start()
 alerts.start()
 
 def start_browser_when_ready(url="http://localhost:8000"):

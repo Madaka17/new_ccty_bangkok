@@ -8,7 +8,8 @@ alert candidates, each with a stable key and a severity:
                over 60 cm do not drive through) - flood_service; and a burst of Traffy Fondue flood
                complaints in one district (TRAFFY_MIN within TRAFFY_WINDOW) - flood_feeds
     zone       an area forecast at the red watch level, or a river / canal gauge over its bank - water_service;
-               and a TMD heavy-rain / storm warning that names Bangkok - flood_feeds
+               and a TMD heavy-rain / storm warning that names Bangkok - flood_feeds;
+               and the flood agent's overall level at warning / critical - flood_agent
     incident   an accident / breakdown confirmed by the camera AI, a Longdo accident report, and BMA
                traffic-centre reports of accidents, fires, fallen trees and road closures
     air        a PM2.5 station at the "มีผลต่อสุขภาพ" band (> 75 µg/m³) - air_service
@@ -52,6 +53,8 @@ CLOSED_CM = 60.0
 TRAFFY_WINDOW = 3600
 TRAFFY_MIN = 3
 TRAFFY_SEVERE = 8
+# The flood agent's overall level at warning / critical, while its report is this fresh
+AGENT_MAX_AGE = 2 * 3600
 BMA_EVENT_KINDS = ("accident", "fire", "tree")
 BMA_EVENT_HOURS = 2
 DISK_MIN_GB = 5.0
@@ -167,6 +170,12 @@ class AlertService:
                 out.append({"topic": "zone", "key": f"bank:{r.get('id') or r.get('name')}", "level": 1,
                             "title": f"ล้นตลิ่ง: {r.get('name')}",
                             "body": f"{r.get('district') or '-'} {r.get('province') or ''}{pct}".strip()})
+        rep = self._call("agent") or {}
+        if rep.get("overall_level") in ("warning", "critical") and now - (rep.get("generated_at") or 0) <= AGENT_MAX_AGE:
+            names = ", ".join(d.get("name", "") for d in (rep.get("districts") or [])[:4])
+            out.append({"topic": "zone", "key": "agent:overall", "level": 2 if rep["overall_level"] == "critical" else 1,
+                        "title": f"AI วิเคราะห์น้ำท่วม: {rep.get('level_th') or rep['overall_level']}",
+                        "body": f"{rep.get('headline', '')}{' · เขต ' + names if names else ''}"[:180]})
 
         inc = self._call("incidents") or {}
         for i in inc.get("camera") or []:

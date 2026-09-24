@@ -178,6 +178,25 @@ export async function fetchFloodReports() {
   return res.json();
 }
 
+// Flood analyst agent (flood_agent.py): latest situation report, level history, whether a run is going
+export async function fetchFloodAgent() {
+  const res = await fetch('/api/flood/agent');
+  if (!res.ok) throw new Error('flood_agent');
+  return res.json();
+}
+
+// Run the agent now; operator only (403 from anywhere else). `question` is answered in report.answer
+export async function runFloodAgent(question = '') {
+  const res = await fetch('/api/flood/agent/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question }),
+  });
+  if (res.status === 403) throw new Error('forbidden');
+  if (!res.ok) throw new Error('flood_agent_run');
+  return res.json();
+}
+
 export async function fetchAirStations() {
   const res = await fetch('/api/air/stations');
   if (!res.ok) throw new Error('air');
