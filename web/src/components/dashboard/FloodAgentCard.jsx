@@ -1,6 +1,6 @@
-// Flood analyst agent (flood_agent.py): Claude reads the road sensors, river/canal gauges, rain outlook,
-// Traffy reports, TMD warnings and road risk through tools and files one situation report. The server
-// re-runs it on a timer; operators can run it now or ask it a question (POST is operator-only).
+// Flood analyst agent (flood_agent.py): the local model reads the road sensors, river/canal gauges, rain
+// outlook, Traffy reports, TMD warnings and road risk and writes one situation report. The server re-runs
+// it on a timer; operators can run it now or ask it a question (POST is operator-only).
 import { useCallback, useEffect, useState } from 'react';
 import { fetchFloodAgent, runFloodAgent } from '../../lib/api.js';
 import { Card, Badge, Button, SectionHeader, Skeleton, EmptyState, FOCUS } from './ui.jsx';
@@ -14,7 +14,7 @@ const LEVEL = {
   warning: { tone: 'red', label: 'เตือนภัย', bar: 'bg-orange-500' },
   critical: { tone: 'red', label: 'วิกฤต', bar: 'bg-red-600' },
 };
-const SOURCE = { claude: 'Claude', local: 'โมเดลในเครื่อง', gemini: 'Gemini', rules: 'กฎพื้นฐาน (ออฟไลน์)' };
+const SOURCE = { local: 'AI', rules: 'กฎพื้นฐาน (ออฟไลน์)' };
 const CONFIDENCE = { low: 'ต่ำ', medium: 'ปานกลาง', high: 'สูง' };
 const TOOL_TH = {
   get_road_sensors: 'เซ็นเซอร์น้ำบนถนน',
@@ -89,7 +89,7 @@ export default function FloodAgentCard({ isActive, onOpenRoad }) {
         id="flood-agent"
         title="AI วิเคราะห์สถานการณ์น้ำท่วม"
         description={r
-          ? `${SOURCE[r.source] || r.source} · ${fmtTime(r.generated_at)} น. (${agoText(r.generated_at)}) · วิเคราะห์อัตโนมัติทุก ${Math.round((data.interval_s || 900) / 60)} นาที`
+          ? `${r.source === 'local' && r.model ? r.model : SOURCE[r.source] || r.source} · ${fmtTime(r.generated_at)} น. (${agoText(r.generated_at)}) · วิเคราะห์อัตโนมัติทุก ${Math.round((data.interval_s || 900) / 60)} นาที`
           : 'ยังไม่มีรายงาน รอบแรกจะเริ่มหลังเปิดเซิร์ฟเวอร์ราว 2 นาที'}
         action={
           <div className="flex items-center gap-2">
@@ -100,8 +100,8 @@ export default function FloodAgentCard({ isActive, onOpenRoad }) {
       />
 
       {runError && <p role="alert" className="mt-3 text-xs text-red-700">{runError}</p>}
-      {data.error && r?.source !== 'claude' && (
-        <p className="mt-3 text-xs text-amber-700">ใช้ผู้ให้บริการสำรอง: {data.error}</p>
+      {data.error && r?.source === 'rules' && (
+        <p className="mt-3 text-xs text-amber-700">เชื่อมต่อโมเดล AI ไม่ได้ ใช้รายงานตามเกณฑ์แทน: {data.error}</p>
       )}
 
       {r && (

@@ -1,24 +1,26 @@
 """
 Flood analyst agent.
 
-A Claude tool-use loop that reads every flood source the server already keeps and writes one situation
-report for Bangkok: overall level, districts at risk and why, roads to avoid, a 1-6 h outlook and what the
-public and the operator team should do. Claude decides which sources to look at (and how deep) through the
-read-only tools below, then files the report with `submit_report`.
+Reads every flood source the server already keeps and has the AI model (local_llm.default, set by
+LOCAL_LLM_* in .env) write one situation report for Bangkok: overall level, districts at risk and why,
+roads to avoid, a 1-6 h outlook and what the public and the operator team should do. The report comes
+back as JSON by REPORT_SCHEMA.
 
-    get_road_sensors      BMA drainage sensors: water on the road surface, rising / falling (flood_service)
-    get_rivers_canals     river and canal gauges near or over the bank, main stations, tide (water_service)
-    get_rain_outlook      per-zone rain / storm forecast, watch level and the 1-6 h risk score (analytics_service)
-    get_citizen_reports   Traffy Fondue flood complaints by district (flood_feeds)
-    get_weather_warnings  TMD heavy-rain / storm warnings (flood_feeds)
-    get_road_risk         per-road class by the official thresholds (road_service)
-    get_bma_events        flood reports from the BMA traffic centre (bma_events)
+    road sensors      BMA drainage sensors: water on the road surface, rising / falling (flood_service)
+    rivers / canals   gauges near or over the bank, main stations, tide (water_service)
+    rain outlook      per-zone rain / storm forecast, watch level and the 1-6 h risk score (analytics_service)
+    citizen reports   Traffy Fondue flood complaints by district (flood_feeds)
+    weather warnings  TMD heavy-rain / storm warnings (flood_feeds)
+    road risk         per-road class by the official thresholds (road_service)
+    BMA events        flood reports from the BMA traffic centre (bma_events)
+
+A small model gets every source at once, trimmed to the top rows so it fits an 8k context. It may not
+report below the level the fixed thresholds already give (_rules), and only roads with water measured on
+them stay in roads_to_avoid.
 
 Runs on a timer (AGENT_SECONDS) and on demand (POST /api/flood/agent/run, operator only). A timed run is
-skipped when the facts have not changed and the last report is younger than MAX_AGE, so a dry day costs
-nothing. Provider order: Claude, then a local model (FLOOD_AGENT_LOCAL_MODEL on an OpenAI-compatible server
-such as LM Studio) and Gemini, both with every tool result pasted in, then a Thai rule-based report, so the
-dashboard card always has something to show.
+skipped when the facts have not changed and the last report is younger than MAX_AGE. With the local
+server off, the Thai rule-based report stands in, so the dashboard card always has something to show.
 """
 import hashlib
 import json
@@ -26,42 +28,27 @@ import os
 import threading
 import time
 
-import requests
+import local_llm
 
-try:
-    import anthropic
-except ImportError:  # keeps the server bootable without the SDK
-    anthropic = None
-try:
-    from google import genai
-    from google.genai import types as genai_types
-except ImportError:
-    genai = None
-
-MODEL = os.getenv("FLOOD_AGENT_MODEL", "claude-opus-5-5")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
-# Local model on an OpenAI-compatible server (LM Studio default port 1234, Ollama :11434/v1); empty = off
-LOCAL_URL = os.getenv("FLOOD_AGENT_LOCAL_URL", "http://localhost:1234/v1")
-LOCAL_MODEL = os.getenv("FLOOD_AGENT_LOCAL_MODEL", "")
-LOCAL_MAX_TOKENS = int(os.getenv("FLOOD_AGENT_LOCAL_MAX_TOKENS", "2500"))
-LOCAL_REASONING = os.getenv("FLOOD_AGENT_LOCAL_REASONING", "none")
-LOCAL_TIMEOUT = int(os.getenv("FLOOD_AGENT_LOCAL_TIMEOUT", "240"))
 AGENT_SECONDS = int(os.getenv("FLOOD_AGENT_SECONDS", "900"))
 MAX_AGE = int(os.getenv("FLOOD_AGENT_MAX_AGE", "3600"))   # re-run an unchanged picture at least this often
-MAX_TURNS = 10
+REPLY_TOKENS = int(os.getenv("FLOOD_AGENT_REPLY_TOKENS", "2500"))
 HISTORY_KEEP = 48
 LEVELS = ("normal", "watch", "warning", "critical")
 LEVEL_TH = {"normal": "ปกติ", "watch": "เฝ้าระวัง", "warning": "เตือนภัย", "critical": "วิกฤต"}
+SOURCES = ("get_road_sensors", "get_rivers_canals", "get_rain_outlook", "get_citizen_reports",
+           "get_weather_warnings", "get_road_risk", "get_bma_events")
 
 SYSTEM_PROMPT = """คุณคือนักวิเคราะห์สถานการณ์น้ำท่วมของศูนย์ปฏิบัติการ BKK StreetSmart (กรุงเทพฯ และปริมณฑล)
-หน้าที่: ดึงข้อมูลสดผ่านเครื่องมือที่มี วิเคราะห์ แล้วส่งรายงานสถานการณ์ด้วย submit_report หนึ่งครั้งเสมอ
+หน้าที่: อ่านข้อมูลสดทุกแหล่งที่แนบมา วิเคราะห์ แล้วส่งรายงานสถานการณ์เป็น JSON
 
-วิธีทำงาน
-- เริ่มด้วยภาพรวม: เซ็นเซอร์น้ำบนถนน, แม่น้ำ/คลอง, พยากรณ์ฝน เรียกพร้อมกันได้
-- เจาะต่อเมื่อมีสัญญาณ: เช่น ฝนหนักหรือคลองใกล้ล้นในเขตใด ให้ดูรายงานประชาชน ประกาศกรมอุตุฯ และถนนเสี่ยงในเขตนั้น
+วิธีวิเคราะห์
+- แหล่งข้อมูล: get_road_sensors (น้ำบนถนน ซม.), get_rivers_canals (แม่น้ำ/คลอง % ของตลิ่ง), get_rain_outlook
+  (ฝนรายโซนและคะแนนเสี่ยง 1-6 ชม.), get_citizen_reports (Traffy), get_weather_warnings (กรมอุตุฯ),
+  get_road_risk (ถนนเสี่ยง), get_bma_events (ศูนย์จราจร กทม.)
 - เชื่อมโยงหลายแหล่ง: เขตที่ฝนตกหนัก + คลองสูง + ประชาชนแจ้งหลายเรื่อง = เสี่ยงสูงกว่าสัญญาณเดียว
   แนวโน้มน้ำที่กำลังเพิ่ม (rising) และฝนที่ยังจะตกใน 1-6 ชม. ทำให้ระดับสูงขึ้น
-- ใช้ตัวเลขจากเครื่องมือเท่านั้น ห้ามแต่งจุด ถนน หรือค่า ถ้าแหล่งใดโหลดไม่ได้หรือไม่มีข้อมูล ให้ใส่ใน data_gaps
+- ใช้ตัวเลขจากข้อมูลที่แนบมาเท่านั้น ห้ามแต่งจุด ถนน หรือค่า ถ้าแหล่งใดมี error ให้ใส่ใน data_gaps
 - ไม่มีเซ็นเซอร์ ≠ ไม่ท่วม: ปริมณฑลไม่มีเซ็นเซอร์บนถนน ให้ใช้ฝน คลอง และรายงานประชาชนแทน
 
 เกณฑ์ระดับ
@@ -73,7 +60,7 @@ SYSTEM_PROMPT = """คุณคือนักวิเคราะห์สถ�
 รูปแบบรายงาน (ภาษาไทย กระชับ ข้อความล้วน ไม่ใช้ Markdown)
 - headline ไม่เกิน 1 ประโยค summary 2-4 ประโยค
 - districts เรียงจากเสี่ยงมากไปน้อย สูงสุด 8 เขต ใส่เฉพาะเขตที่ระดับ watch ขึ้นไป
-- roads_to_avoid สูงสุด 8 สาย เฉพาะที่มีค่าวัดจริงหรือรายงานยืนยัน
+- roads_to_avoid สูงสุด 8 สาย เฉพาะที่มีค่าวัดน้ำบนถนนจริง
 - actions.public 2-4 ข้อสำหรับประชาชน actions.operators 2-4 ข้อสำหรับทีมปฏิบัติการ (เช่น เปิดกล้องจุดไหน ส่งทีมสูบน้ำเขตไหน)
 - ถ้าผู้ใช้ถามคำถามเฉพาะ ให้ตอบใน answer ถ้าไม่มีคำถามให้ answer เป็นสตริงว่าง"""
 
@@ -107,35 +94,6 @@ REPORT_SCHEMA = {
         "answer": {"type": "string"},
     },
 }
-
-_NO_INPUT = {"type": "object", "properties": {}, "additionalProperties": False}
-_DISTRICT_INPUT = {"type": "object", "additionalProperties": False, "properties": {
-    "district": {"type": "string", "description": "ชื่อเขตภาษาไทยไม่ต้องมีคำว่า 'เขต' เช่น บางนา; เว้นว่างเพื่อดูทุกเขต"}}}
-TOOLS = [
-    {"name": "get_road_sensors", "input_schema": _DISTRICT_INPUT,
-     "description": "เซ็นเซอร์วัดน้ำบนผิวถนน/อุโมงค์ของสำนักการระบายน้ำ กทม. (~250 จุด อัปเดตทุก 5 นาที): "
-                    "จุดที่มีน้ำ ความลึก ซม. แนวโน้ม (rising/falling/steady) และสรุปรายเขต"},
-    {"name": "get_rivers_canals", "input_schema": _NO_INPUT,
-     "description": "ระดับน้ำแม่น้ำและคลอง (ThaiWater): สถานีที่ล้นตลิ่งหรือใกล้เต็ม % ของตลิ่ง แนวโน้ม "
-                    "สถานีหลัก (ม.รทก. เทียบระดับเตือน/วิกฤต) น้ำทะเลหนุน และเขื่อนต้นน้ำ"},
-    {"name": "get_rain_outlook", "input_schema": _NO_INPUT,
-     "description": "พยากรณ์ฝน/พายุรายโซน 24 ชม. (Open-Meteo) ระดับเฝ้าระวัง ฝนที่ตกแล้ว "
-                    "และคะแนนเสี่ยงน้ำท่วม 1-6 ชม. ข้างหน้ารายโซน (0-100)"},
-    {"name": "get_citizen_reports", "input_schema": {"type": "object", "additionalProperties": False, "properties": {
-        "hours": {"type": "integer", "description": "ย้อนหลังกี่ชั่วโมง (1-6) ค่าเริ่มต้น 3"},
-        "district": {"type": "string", "description": "กรองเฉพาะเขต (ไม่บังคับ)"}}},
-     "description": "เรื่องร้องเรียนน้ำท่วมจากประชาชนผ่าน Traffy Fondue: จำนวนรายเขต ระดับความลึกที่แจ้ง และข้อความล่าสุด"},
-    {"name": "get_weather_warnings", "input_schema": _NO_INPUT,
-     "description": "ประกาศเตือนฝนตกหนัก/พายุของกรมอุตุนิยมวิทยาที่ออกใน 2 วันล่าสุด และว่าระบุกรุงเทพฯ หรือไม่"},
-    {"name": "get_road_risk", "input_schema": {"type": "object", "additionalProperties": False, "properties": {
-        "province": {"type": "string", "description": "กรองจังหวัด เช่น กรุงเทพมหานคร นนทบุรี (ไม่บังคับ)"}}},
-     "description": "ระดับความเสี่ยงรายถนนตามเกณฑ์ทางการ (ห้ามผ่าน/ควรเลี่ยง/ผ่านได้/เฝ้าระวัง) "
-                    "จากน้ำบนถนน ฝน 24 ชม. และระดับคลองใกล้เคียง ครอบคลุม กทม. และปริมณฑล"},
-    {"name": "get_bma_events", "input_schema": _NO_INPUT,
-     "description": "รายงานน้ำท่วม/น้ำขังจากศูนย์จราจร กทม. ใน 6 ชม. ล่าสุด"},
-    {"name": "submit_report", "input_schema": REPORT_SCHEMA, "strict": True,
-     "description": "ส่งรายงานสถานการณ์น้ำท่วมฉบับสุดท้าย เรียกครั้งเดียวเมื่อวิเคราะห์เสร็จ"},
-]
 
 
 def _round(v, n=1):
@@ -300,14 +258,12 @@ class FloodAgent:
             return {"error": f"unknown tool {name}"}, True
         try:
             return fn(), False
-        except Exception as e:  # noqa: BLE001 - hand the failure back to the model
+        except Exception as e:  # noqa: BLE001 - a broken source shows up as an error entry
             return {"error": str(e)[:200]}, True
 
     def _all_facts(self):
-        """Every tool with default arguments, for the Gemini / rule-based paths and the change signature."""
-        return {name: self._run_tool(name, {})[0] for name in
-                ("get_road_sensors", "get_rivers_canals", "get_rain_outlook", "get_citizen_reports",
-                 "get_weather_warnings", "get_road_risk", "get_bma_events")}
+        """Every source with default arguments: the model prompt, the rule-based report and the change signature."""
+        return {name: self._run_tool(name, {})[0] for name in SOURCES}
 
     @staticmethod
     def _signature(facts):
@@ -326,78 +282,7 @@ class FloodAgent:
         }
         return hashlib.sha1(json.dumps(key, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
-    # ------------------------------------------------------------ providers
-    @staticmethod
-    def _claude():
-        if anthropic is None:
-            return None
-        if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")
-                or os.path.exists(os.path.join(os.path.expanduser("~"), ".config", "anthropic"))):
-            return None
-        try:
-            return anthropic.Anthropic()
-        except Exception:  # noqa: BLE001
-            return None
-
-    def _run_claude(self, client, question):
-        task = "วิเคราะห์สถานการณ์น้ำท่วมตอนนี้แล้วส่งรายงานด้วย submit_report"
-        if question:
-            task += f"\nคำถามจากผู้ใช้ (ตอบใน answer): {question}"
-        task += f"\nเวลาปัจจุบัน {time.strftime('%Y-%m-%d %H:%M')} (เวลาไทย)"
-        messages = [{"role": "user", "content": task}]
-        steps = []
-        for _ in range(MAX_TURNS):
-            resp = client.messages.create(
-                model=MODEL,
-                max_tokens=16000,
-                system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
-                tools=TOOLS,
-                output_config={"effort": "medium"},
-                messages=messages,
-            )
-            if resp.stop_reason == "refusal":
-                raise RuntimeError("model refused")
-            # the whole content goes back unchanged: thinking blocks must be replayed as they came
-            messages.append({"role": "assistant", "content": resp.content})
-            calls = [b for b in resp.content if b.type == "tool_use"]
-            submit = next((b for b in calls if b.name == "submit_report"), None)
-            if submit is not None:
-                return dict(submit.input), steps
-            if not calls:
-                if resp.stop_reason == "max_tokens":
-                    raise RuntimeError("ran out of tokens before the report")
-                messages.append({"role": "user", "content": "ส่งรายงานด้วย submit_report"})
-                continue
-            results = []
-            for b in calls:
-                out, err = self._run_tool(b.name, b.input)
-                steps.append({"tool": b.name, "input": dict(b.input or {}), "error": err})
-                results.append({"type": "tool_result", "tool_use_id": b.id, "is_error": err,
-                                "content": json.dumps(out, ensure_ascii=False, default=str)})
-            messages.append({"role": "user", "content": results})    # every result in one message
-        raise RuntimeError("no report after the turn limit")
-
-    @staticmethod
-    def _gemini():
-        key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-        if genai is None or not key:
-            return None
-        try:
-            return genai.Client(api_key=key)
-        except Exception:  # noqa: BLE001
-            return None
-
-    def _run_gemini(self, client, facts, question):
-        schema = json.dumps(REPORT_SCHEMA, ensure_ascii=False)
-        prompt = (f"ข้อมูลสดทุกแหล่ง (JSON):\n{json.dumps(facts, ensure_ascii=False, default=str)}\n\n"
-                  f"{'คำถามจากผู้ใช้: ' + question if question else ''}\n"
-                  f"ตอบเป็น JSON ตาม schema นี้เท่านั้น:\n{schema}")
-        resp = client.models.generate_content(
-            model=GEMINI_MODEL, contents=prompt,
-            config=genai_types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, temperature=0.3,
-                                                     max_output_tokens=4000, response_mime_type="application/json"))
-        return json.loads(resp.text)
-
+    # ------------------------------------------------------------ model
     @staticmethod
     def _compact(facts):
         """Shorter facts for a small local context window: top rows only, no prose fields the model can skip."""
@@ -415,27 +300,13 @@ class FloodAgent:
         return trim(facts)
 
     def _run_local(self, facts, question):
-        """OpenAI-compatible local server (LM Studio / Ollama): one call, every fact pasted in, JSON by schema."""
-        body = {
-            "model": LOCAL_MODEL,
-            "temperature": 0.2,
-            "max_tokens": LOCAL_MAX_TOKENS,
-            # the facts are already gathered; a small thinking model otherwise spends every token reasoning
-            "reasoning_effort": LOCAL_REASONING,
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": (
-                    f"ข้อมูลสดทุกแหล่ง (JSON):\n{json.dumps(self._compact(facts), ensure_ascii=False, separators=(',', ':'), default=str)}\n\n"
-                    f"{'คำถามจากผู้ใช้: ' + question if question else ''}\n"
-                    f"เวลาปัจจุบัน {time.strftime('%Y-%m-%d %H:%M')} (เวลาไทย)\n"
-                    "ส่งรายงานเป็น JSON ตาม schema เท่านั้น")},
-            ],
-            "response_format": {"type": "json_schema",
-                                "json_schema": {"name": "flood_report", "strict": True, "schema": REPORT_SCHEMA}},
-        }
-        resp = requests.post(f"{LOCAL_URL.rstrip('/')}/chat/completions", json=body, timeout=LOCAL_TIMEOUT)
-        resp.raise_for_status()
-        text = resp.json()["choices"][0]["message"]["content"] or ""
+        """Every fact pasted in at once, the report back as JSON by REPORT_SCHEMA."""
+        prompt = (f"ข้อมูลสดทุกแหล่ง (JSON):\n{json.dumps(self._compact(facts), ensure_ascii=False, separators=(',', ':'), default=str)}\n\n"
+                  f"{'คำถามจากผู้ใช้: ' + question if question else ''}\n"
+                  f"เวลาปัจจุบัน {time.strftime('%Y-%m-%d %H:%M')} (เวลาไทย)\n"
+                  "ส่งรายงานเป็น JSON ตาม schema เท่านั้น")
+        text = local_llm.default.chat([{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}],
+                              max_tokens=REPLY_TOKENS, temperature=0.2, json_schema=REPORT_SCHEMA)
         return json.loads(text[text.find("{"):text.rfind("}") + 1])
 
     @staticmethod
@@ -497,7 +368,7 @@ class FloodAgent:
                                       else "ติดตามเซ็นเซอร์ทุก 15 นาที"]},
             "confidence": "low",
             "data_gaps": [k for k, v in facts.items() if isinstance(v, dict) and v.get("error")],
-            "answer": "โหมดออฟไลน์ตอบคำถามเฉพาะไม่ได้ ใส่ ANTHROPIC_API_KEY เพื่อเปิด AI" if question else "",
+            "answer": "โหมดออฟไลน์ตอบคำถามเฉพาะไม่ได้ เชื่อมต่อโมเดล AI ไม่ได้ตอนนี้" if question else "",
         }
 
     # ------------------------------------------------------------ run
@@ -514,40 +385,26 @@ class FloodAgent:
             age = time.time() - ((self.report or {}).get("generated_at") or 0)
             if not question and not force and self.report and sig == self._sig and age < MAX_AGE:
                 return self.report
-            started, steps, source, err = time.time(), [], None, None
-            report = None
-            client = self._claude()
-            if client is not None:
-                try:
-                    report, steps = self._run_claude(client, question)
-                    source = "claude"
-                except Exception as e:  # noqa: BLE001 - fall through to Gemini / rules
-                    err = f"Claude: {str(e)[:160]}"
-                    print(f"[FloodAgent] {err}")
-            if report is None and LOCAL_MODEL:
+            started, report, source, err = time.time(), None, None, None
+            if local_llm.default.enabled():
                 try:
                     report, source = self._run_local(facts, question), "local"
-                except Exception as e:  # noqa: BLE001 - server off, context too small, bad JSON
-                    err = f"{err + ' | ' if err else ''}Local: {str(e)[:160]}"
+                except Exception as e:  # noqa: BLE001 - server off, model unloaded, context too small, bad JSON
+                    err = f"{local_llm.default.model}: {str(e)[:160]}"
                     print(f"[FloodAgent] local model failed: {e}")
-            if report is None and (gem := self._gemini()) is not None:
-                try:
-                    report, source = self._run_gemini(gem, facts, question), "gemini"
-                except Exception as e:  # noqa: BLE001
-                    err = f"{err + ' | ' if err else ''}Gemini: {str(e)[:160]}"
-                    print(f"[FloodAgent] Gemini failed: {e}")
             if report is None:
                 report, source = self._rules(facts, question), "rules"
             if report.get("overall_level") not in LEVELS:
                 report["overall_level"] = "watch"
-            if source in ("local", "gemini"):
-                # smaller models under-call the level; never report below what the fixed thresholds already say
+            if source == "local":
+                # a small model under-calls the level; never report below what the fixed thresholds already say
                 floor = self._rules(facts, None)["overall_level"]
                 if LEVELS.index(floor) > LEVELS.index(report["overall_level"]):
                     report["overall_level"] = floor
                 # and keep only roads with water actually measured on them
                 report["roads_to_avoid"] = [r for r in report.get("roads_to_avoid") or [] if (r.get("depth_cm") or 0) > 0]
-            report.update({"source": source, "model": {"claude": MODEL, "local": LOCAL_MODEL, "gemini": GEMINI_MODEL}.get(source),
+            steps = [{"tool": k, "input": {}, "error": bool(isinstance(v, dict) and v.get("error"))} for k, v in facts.items()]
+            report.update({"source": source, "model": local_llm.default.model if source == "local" else None,
                            "generated_at": int(time.time()), "took_s": round(time.time() - started, 1),
                            "steps": steps, "question": question, "level_th": LEVEL_TH[report["overall_level"]]})
             with self.lock:

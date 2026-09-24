@@ -1,10 +1,10 @@
-"""Flood agent: tool loop with a fake Claude, offline rules, skipping unchanged runs, and the alert it feeds."""
+"""Flood agent: local model report, offline rules, the level floor, skipping unchanged runs, and the alert it feeds."""
+import json
 import time
-from types import SimpleNamespace
 
-import flood_agent
+import local_llm
 from alert_service import AlertService
-from flood_agent import FloodAgent
+from flood_agent import REPORT_SCHEMA, FloodAgent
 
 
 def _sources(cm=30, traffy=0):
@@ -23,18 +23,58 @@ def _sources(cm=30, traffy=0):
     }
 
 
-def _agent(tmp_path, monkeypatch, client=None, **kw):
-    monkeypatch.setattr(FloodAgent, "_claude", staticmethod(lambda: client))
-    monkeypatch.setattr(FloodAgent, "_gemini", staticmethod(lambda: None))
-    return FloodAgent(str(tmp_path), _sources(**kw))
+def _report(level="critical", roads=()):
+    return {"overall_level": level, "headline": "บางนาน้ำท่วมหนัก", "summary": "", "districts": [{"name": "บางนา", "level": level,
+            "reason": "", "outlook": ""}], "roads_to_avoid": list(roads), "outlook": "",
+            "actions": {"public": [], "operators": []}, "confidence": "high", "data_gaps": [], "answer": ""}
 
 
-def test_rules_report_without_keys(tmp_path, monkeypatch):
+def _agent(tmp_path, monkeypatch, reply=None, **kw):
+    """reply: the report the fake local model returns, an exception to raise, or None for the model off."""
+    monkeypatch.setattr(local_llm.default, "model", "qwen" if reply is not None else "")
+    seen = []
+
+    def fake_chat(messages, **opts):
+        seen.append((messages, opts))
+        if isinstance(reply, Exception):
+            raise reply
+        return "```json\n" + json.dumps(reply, ensure_ascii=False) + "\n```"
+    monkeypatch.setattr(local_llm.default, "chat", fake_chat)
+    agent = FloodAgent(str(tmp_path), _sources(**kw))
+    agent.seen = seen
+    return agent
+
+
+def test_rules_report_when_model_off(tmp_path, monkeypatch):
     rep = _agent(tmp_path, monkeypatch, cm=65, traffy=3).run(force=True)
     assert rep["source"] == "rules"
     assert rep["overall_level"] == "warning"       # canal over its bank, one road over 60 cm
     assert rep["roads_to_avoid"][0]["advice"] == "ห้ามขับผ่าน"
     assert {d["name"] for d in rep["districts"]} >= {"บางนา", "ประเวศ"}
+
+
+def test_local_model_report(tmp_path, monkeypatch):
+    agent = _agent(tmp_path, monkeypatch, reply=_report())
+    rep = agent.run(force=True)
+    assert rep["source"] == "local" and rep["model"] == "qwen" and rep["overall_level"] == "critical"
+    messages, opts = agent.seen[0]
+    assert opts["json_schema"] is REPORT_SCHEMA
+    assert "หน้าวัด" in messages[1]["content"]                 # the facts go into the prompt
+    assert {s["tool"] for s in rep["steps"]} >= {"get_road_sensors", "get_rain_outlook"}
+
+
+def test_local_model_level_floor_and_measured_roads(tmp_path, monkeypatch):
+    roads = [{"road": "ก", "district": "", "depth_cm": 0, "advice": ""}, {"road": "ข", "district": "", "depth_cm": 30, "advice": ""}]
+    rep = _agent(tmp_path, monkeypatch, reply=_report("normal", roads), cm=65).run(force=True)
+    assert rep["overall_level"] == "warning"                # canal over its bank + 65 cm road
+    assert [r["road"] for r in rep["roads_to_avoid"]] == ["ข"]
+
+
+def test_model_failure_falls_back_to_rules(tmp_path, monkeypatch):
+    agent = _agent(tmp_path, monkeypatch, reply=RuntimeError("connection refused"))
+    rep = agent.run(force=True)
+    assert rep["source"] == "rules"
+    assert "connection refused" in agent.status()["error"]
 
 
 def test_unchanged_facts_skip_the_timed_run(tmp_path, monkeypatch):
@@ -52,60 +92,14 @@ def test_question_does_not_replace_standing_report(tmp_path, monkeypatch):
     assert agent.status()["report"]["generated_at"] == standing["generated_at"]
 
 
-class _FakeClaude:
-    """Asks for two tools in parallel, then submits a report built from what it saw."""
-    def __init__(self):
-        self.calls = []
-        self.messages = SimpleNamespace(create=self._create)
-
-    def _create(self, **kw):
-        self.calls.append(kw)
-        block = lambda **b: SimpleNamespace(**b)
-        if len(self.calls) == 1:
-            return SimpleNamespace(stop_reason="tool_use", content=[
-                block(type="tool_use", id="t1", name="get_road_sensors", input={}),
-                block(type="tool_use", id="t2", name="get_citizen_reports", input={"hours": 2}),
-            ])
-        return SimpleNamespace(stop_reason="tool_use", content=[block(type="tool_use", id="t3", name="submit_report", input={
-            "overall_level": "critical", "headline": "บางนาน้ำท่วมหนัก", "summary": "", "districts": [],
-            "roads_to_avoid": [], "outlook": "", "actions": {"public": [], "operators": []},
-            "confidence": "high", "data_gaps": [], "answer": ""})])
-
-
-def test_claude_tool_loop(tmp_path, monkeypatch):
-    fake = _FakeClaude()
-    rep = _agent(tmp_path, monkeypatch, client=fake).run(force=True)
-    assert rep["source"] == "claude" and rep["overall_level"] == "critical"
-    assert [s["tool"] for s in rep["steps"]] == ["get_road_sensors", "get_citizen_reports"]
-    results = fake.calls[1]["messages"][2]["content"]    # task, assistant tool calls, tool results
-    assert [r["tool_use_id"] for r in results] == ["t1", "t2"]     # both results in one user message
-    assert "หน้าวัด" in results[0]["content"]
-
-
 def test_critical_report_raises_zone_alert(tmp_path, monkeypatch):
-    agent = _agent(tmp_path, monkeypatch, client=_FakeClaude())
+    agent = _agent(tmp_path, monkeypatch, reply=_report())
     agent.run(force=True)
     svc = AlertService(str(tmp_path), {"agent": lambda: agent.status()["report"]})
     found = [c for c in svc.candidates() if c["key"] == "agent:overall"]
     assert found and found[0]["level"] == 2
 
 
-def test_local_model_level_floor(tmp_path, monkeypatch):
-    agent = _agent(tmp_path, monkeypatch, cm=65)
-    monkeypatch.setattr(flood_agent, "LOCAL_MODEL", "qwen")
-    monkeypatch.setattr(agent, "_run_local", lambda facts, q: {
-        "overall_level": "normal", "headline": "ปกติ", "summary": "", "districts": [], "outlook": "",
-        "roads_to_avoid": [{"road": "ก", "district": "", "depth_cm": 0, "advice": ""},
-                           {"road": "ข", "district": "", "depth_cm": 30, "advice": ""}],
-        "actions": {"public": [], "operators": []}, "confidence": "high", "data_gaps": [], "answer": ""})
-    rep = agent.run(force=True)
-    assert rep["source"] == "local"
-    assert rep["overall_level"] == "warning"                # canal over its bank + 65 cm road
-    assert [r["road"] for r in rep["roads_to_avoid"]] == ["ข"]
-
-
-def test_tools_schema_is_strict_ready():
-    submit = next(t for t in flood_agent.TOOLS if t["name"] == "submit_report")
-    schema = submit["input_schema"]
-    assert submit["strict"] and schema["additionalProperties"] is False
-    assert set(schema["required"]) == set(schema["properties"])
+def test_report_schema_is_strict_ready():
+    assert REPORT_SCHEMA["additionalProperties"] is False
+    assert set(REPORT_SCHEMA["required"]) == set(REPORT_SCHEMA["properties"])

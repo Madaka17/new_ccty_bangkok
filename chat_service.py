@@ -4,26 +4,21 @@ Traffic assistant chatbot.
 Answers questions about how traffic is flowing on Bangkok roads, grounded in
 the live per-road aggregation from traffic_service plus the YOLO camera counts.
 Provider order:
-  1. Gemini Flash-Lite  - GEMINI_API_KEY (or GOOGLE_API_KEY), model from GEMINI_MODEL
-  2. Claude             - ANTHROPIC_API_KEY or an `ant auth login` profile
-  3. Rule-based summary - no key needed, so the page still works offline
+  1. AI model           - local_llm.chat_client (CHAT_LLM_*, else LOCAL_LLM_* in .env)
+  2. Rule-based summary - when the local server is off, so the page still works
+
+The live data is split into topics (traffic, flood, accident, air) and only the topics the question is
+about go into the prompt, most relevant first, cut to what fits the local model's context window.
 """
-import json
-import os
 import time
 
-try:
-    import anthropic
-except ImportError:  # keeps the server bootable without the SDK
-    anthropic = None
-try:
-    from google import genai
-    from google.genai import types as genai_types
-except ImportError:
-    genai = None
+import local_llm
 
-MODEL = "claude-opus-5-5"
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
+llm = local_llm.chat_client
+
+REPLY_TOKENS = 1200
+HISTORY_KEEP = 6            # past messages sent with the question
+HISTORY_CHARS = 800         # per past message
 
 SYSTEM_PROMPT = """คุณคือ "ผู้ช่วยอัจฉริยะ" ของแอป BKK StreetSmart (กรุงเทพฯ และปริมณฑล)
 ตอบได้ทุกคำถาม ทั้งเรื่องที่มีข้อมูลสดแนบมา และเรื่องทั่วไปทุกหัวข้อ (ความรู้ ภาษา คณิต เทคโนโลยี สุขภาพ อาหาร ท่องเที่ยว งาน ชีวิตประจำวัน เขียน/แปล/สรุป ฯลฯ)
@@ -45,6 +40,11 @@ SYSTEM_PROMPT = """คุณคือ "ผู้ช่วยอัจฉริ�
 9) analytics แดชบอร์ด: ดัชนีความแออัดและสาเหตุ ความหนาแน่นถนน เขตน้ำเร่งด่วน คาดการณ์น้ำท่วม 1-6 ชม. จุดเสี่ยงอุบัติเหตุ (black spot)
 
 แนวทางตอบ
+- ประโยคแรกต้องตอบสิ่งที่ถามตรง ๆ ก่อน แล้วค่อยให้รายละเอียดสนับสนุน 2-4 บรรทัด
+  เช่น ถาม "ใช้เวลานานไหม" ตอบเป็นช่วงนาที, ถาม "ติดไหม" ตอบติด/ไม่ติด, ถาม "ท่วมไหม" ตอบท่วม/ไม่ท่วม
+  ห้ามเล่าข้อมูลหมวดที่ไม่ได้ถาม (ถามเส้นทางอย่าเล่าน้ำท่วม/ฝุ่น ยกเว้นมีน้ำท่วมหรือเหตุบนเส้นทางนั้นจริง)
+- ถามเวลาเดินทางจาก A ไป B: ประเมินระยะทางจากความรู้ทั่วไปเรื่องกรุงเทพฯ ปรับตาม flow ของถนนที่เกี่ยวข้องในข้อมูลสด
+  ตอบเป็นช่วงเวลา (เช่น 35-50 นาที) บอกเส้นทางแนะนำ 1 เส้น และบอกว่าถนนช่วงไหนติดถ้ามี
 - ตัวเลข/สถานะสดของจราจร น้ำ ฝน ฝุ่น อุบัติเหตุ การฝ่าฝืน ใช้จากข้อมูลที่แนบมาเท่านั้น ห้ามเดา
 - ก่อนตอบว่า "ไม่มีข้อมูล" ให้หาในข้อมูลที่แนบมาทุกหมวดก่อน ชื่อถนน/เขตอาจอยู่คนละหมวด (เช่น ถนนในหมวดน้ำท่วมรายถนนหรือคำแนะนำระบายรถ เขตในสถานี PM2.5 หรือ black spot)
   ถ้าหาไม่เจอจริง ให้บอกตรง ๆ ว่าไม่มีข้อมูลของที่ถามตอนนี้ แล้วเสนอพื้นที่ใกล้เคียงหรือภาพรวมที่มีข้อมูลแทนเสมอ
@@ -69,7 +69,7 @@ SYSTEM_PROMPT = """คุณคือ "ผู้ช่วยอัจฉริ�
 - หน้าจอแสดงข้อความล้วน: ห้ามใช้ Markdown ตัวหนา (**), หัวข้อ (#), ตาราง หรือสูตร LaTeX ($...$) เขียนสูตรเป็นข้อความธรรมดา เช่น H2O, 480 x 0.25 = 120"""
 
 WATCH_TH = {"green": "เขียว-ปกติ", "yellow": "เหลือง-ติดตาม", "orange": "ส้ม-เฝ้าระวัง", "red": "แดง-เตือนภัย"}
-FLOOD_WORDS = ("น้ำ", "ฝน", "ท่วม", "พายุ", "ลม", "คลอง", "แม่น้ำ", "ระบายน้ำ", "เตือน", "เฝ้าระวัง", "ป้องกัน", "อากาศ")
+FLOOD_WORDS = ("น้ำ", "ฝน", "ท่วม", "พายุ", "ลมแรง", "ลมกระโชก", "คลอง", "แม่น้ำ", "ระบายน้ำ", "เตือน", "เฝ้าระวัง", "ป้องกัน")
 
 
 def _fmt_zone(z):
@@ -305,20 +305,27 @@ def patrol_context(helmet, wrongway, violations):
 
 def analytics_context(a):
     """Dashboard analytics: congestion index + causes, density tiers, flood 1-6 h outlook, accident black spots."""
-    if not a:
-        return []
+    return analytics_traffic(a) + analytics_flood(a) + analytics_accidents(a)
+
+
+def analytics_traffic(a):
     lines = []
-    t = a.get("traffic") or {}
+    t = (a or {}).get("traffic") or {}
     if t.get("ready"):
         lines.append(f"ดัชนีความแออัด (แดชบอร์ด): {t.get('congestion_index')} ({t.get('congestion_level')}), "
                      f"รายงานเหตุ 6 ชม. {t.get('reports_6h')} เรื่อง")
         for r in (t.get("top5") or [])[:5]:
             lines.append(f"  - ติดสุด {r['name']}: แดง {r['red_km']} กม. flow {r['flow']} สาเหตุ: {r.get('cause_text')}")
-    d = a.get("density") or {}
+    d = (a or {}).get("density") or {}
     if d.get("ready"):
         lines.append("ความหนาแน่นถนน: " + ", ".join(
             f"{x['label']} {x['roads']} สาย ({x['km_pct']}% ของระยะ) เช่น {', '.join(x.get('examples', [])[:3])}" for x in d.get("tiers", [])))
-    f = a.get("flood") or {}
+    return lines
+
+
+def analytics_flood(a):
+    lines = []
+    f = (a or {}).get("flood") or {}
     if f.get("ready"):
         urgent = f.get("urgent_districts") or []
         if urgent:
@@ -328,7 +335,12 @@ def analytics_context(a):
         if pred:
             lines.append("คาดการณ์เสี่ยงน้ำท่วม 1-6 ชม.: " + ", ".join(
                 f"{p['zone']} สูงสุดชั่วโมงที่ {p['peak_h']} ระดับ {p['peak_level']} (คะแนน {p['peak_score']})" for p in pred[:6]))
-    acc = a.get("accidents") or {}
+    return lines
+
+
+def analytics_accidents(a):
+    lines = []
+    acc = (a or {}).get("accidents") or {}
     spots = acc.get("black_spots") or []
     if spots:
         lines.append("จุดเสี่ยงอุบัติเหตุ (black spot) สูงสุด:")
@@ -346,88 +358,103 @@ def site_context(question, ex):
             + analytics_context(ex.get("analytics")))
 
 
-def build_context(traffic, question, camera_stats=None, water=None, extra=None):
+# Tie order matters: a route question that also names a place goes to traffic first
+TOPIC_WORDS = {
+    "traffic": ("ถนน", "จราจร", "รถ", "ติด", "ทาง", "เส้น", "ไป", "โล่ง", "แยก", "ซอย", "สะพาน", "ด่วน", "flow", "กล้อง",
+                "ใช้เวลา", "นานไหม", "กี่นาที", "เดินทาง", "จาก"),
+    "flood": FLOOD_WORDS,
+    "accident": ("อุบัติเหตุ", "ชน", "รถคว่ำ", "เสียชีวิต", "บาดเจ็บ", "เหตุการณ์", "ปิดถนน", "หมวก", "ย้อนศร",
+                 "ฝ่าฝืน", "จุดเสี่ยง", "black spot"),
+    "air": ("ฝุ่น", "PM", "pm", "AQI", "aqi", "มลพิษ", "คุณภาพอากาศ"),
+}
+OVERVIEW_WORDS = ("ภาพรวม", "สรุป", "เมือง", "สถานการณ์", "วันนี้", "ตอนนี้", "กรุงเทพ", "กทม")
+# Place names and words that contain a topic word but are not about it (สี"ลม", ท่า"น้ำ", "น้ำ"มัน)
+NOT_TOPIC = ("สีลม", "ท่าน้ำ", "น้ำมัน", "น้ำใจ", "น้ำหอม", "ลมหายใจ", "ทางด่วน")
+
+
+def question_topics(question):
+    """Topics the question is about, most matched first ([] for a general question)."""
+    q = question or ""
+    for w in NOT_TOPIC:
+        q = q.replace(w, " ทาง " if w == "ทางด่วน" else " ")
+    hits = {k: sum(w in q for w in words) for k, words in TOPIC_WORDS.items()}
+    return [k for k in sorted(hits, key=lambda k: -hits[k]) if hits[k]]
+
+
+def context_sections(traffic, question, camera_stats=None, water=None, extra=None):
+    """Live data as {topic: [lines]}; "base" is the one-line picture of the city that always goes in."""
+    ex = extra or {}
     s = traffic.get_summary(top=8)
+    sec = {"base": [f"ตอนนี้ {time.strftime('%Y-%m-%d %H:%M')} (เวลาไทย)"], "traffic": [], "flood": [], "accident": [], "air": []}
     if not s.get("ready"):
-        ex = extra or {}
-        return "ยังไม่มีข้อมูลจราจร (ระบบกำลังโหลด)\n" + "\n".join(
-            water_context(water) + incident_context(ex.get("incidents"), ex.get("bma_events")) + accident_stats_context(ex.get("rsc"), ex.get("camera_risk"))
-            + site_context(question, ex))
-    lines = [
-        f"เวลาข้อมูล: {time.strftime('%H:%M', time.localtime(s['updated_at']))} "
-        f"({'ออนไลน์' if s.get('online') else 'ออฟไลน์ ใช้ข้อมูลล่าสุดที่บันทึกไว้'})",
-        f"ภาพรวมทั้งเมือง: flow index {s['flow_index']}/100, เขียว {s['green_pct']}% เหลือง {s['yellow_pct']}% "
-        f"แดง {s['red_pct']}%, ถนนที่มีข้อมูล {s['road_count']} สาย รวม {s['total_km']} กม.",
-    ]
-    hist = s.get("history", [])
-    if len(hist) >= 2:
-        lines.append(f"แนวโน้ม 1 ชม.ล่าสุด: flow index {' -> '.join(str(h['flow']) for h in hist[-20::4])}")
-    mentioned = traffic.find_roads_in_text(question)
-    if mentioned:
-        lines.append("ถนนที่ผู้ใช้ถามถึง:")
-        lines += [_fmt_road(r) for r in mentioned]
-    lines.append("ถนนที่ติดขัดมากที่สุดตอนนี้:")
-    lines += [_fmt_road(r) for r in s["congested"][:8]]
-    lines.append("ถนนสายหลักที่ระบายดี:")
-    lines += [_fmt_road(r) for r in s["free_flow"][:5]]
+        sec["base"].append("ยังไม่มีข้อมูลจราจร (ระบบกำลังโหลด)")
+    else:
+        sec["base"] += [
+            f"เวลาข้อมูล: {time.strftime('%H:%M', time.localtime(s['updated_at']))} "
+            f"({'ออนไลน์' if s.get('online') else 'ออฟไลน์ ใช้ข้อมูลล่าสุดที่บันทึกไว้'})",
+            f"ภาพรวมทั้งเมือง: flow index {s['flow_index']}/100, เขียว {s['green_pct']}% เหลือง {s['yellow_pct']}% "
+            f"แดง {s['red_pct']}%, ถนนที่มีข้อมูล {s['road_count']} สาย รวม {s['total_km']} กม.",
+        ]
+        t = sec["traffic"]
+        mentioned = traffic.find_roads_in_text(question)
+        if mentioned:
+            t.append("ถนนที่ผู้ใช้ถามถึง:")
+            t += [_fmt_road(r) for r in mentioned]
+        hist = s.get("history", [])
+        if len(hist) >= 2:
+            t.append(f"แนวโน้ม 1 ชม.ล่าสุด: flow index {' -> '.join(str(h['flow']) for h in hist[-20::4])}")
+        t.append("ถนนที่ติดขัดมากที่สุดตอนนี้:")
+        t += [_fmt_road(r) for r in s["congested"][:8]]
+        t.append("ถนนสายหลักที่ระบายดี:")
+        t += [_fmt_road(r) for r in s["free_flow"][:5]]
     if camera_stats and camera_stats.get("active"):
-        lines.append(
+        sec["traffic"].append(
             f"กล้อง AI ที่เปิดอยู่: {camera_stats.get('title')} ({camera_stats.get('province')}) "
             f"รถยนต์ {camera_stats.get('cars', 0)} มอเตอร์ไซค์ {camera_stats.get('motorcycles', 0)} "
-            f"รถบรรทุก {camera_stats.get('trucks', 0)} รวม {camera_stats.get('total', 0)} คัน — {camera_stats.get('traffic_level', '')}"
-        )
-    lines.append("")
-    lines += water_context(water)
-    lines += tide_context(water)
-    ex = extra or {}
-    lines.append("")
-    lines += bma_count_context(ex.get("bma_analytics"))
-    lines += incident_context(ex.get("incidents"), ex.get("bma_events"))
-    lines += accident_stats_context(ex.get("rsc"), ex.get("camera_risk"))
-    lines.append("")
-    lines += site_context(question, ex)
+            f"รถบรรทุก {camera_stats.get('trucks', 0)} รวม {camera_stats.get('total', 0)} คัน — {camera_stats.get('traffic_level', '')}")
+    sec["traffic"] += (guidance_context(ex.get("guidance"), question) + bma_count_context(ex.get("bma_analytics"))
+                       + analytics_traffic(ex.get("analytics")))
+    sec["flood"] += (water_context(water) + tide_context(water)
+                     + road_flood_context(ex.get("road_risk"), ex.get("flood_report"), question)
+                     + analytics_flood(ex.get("analytics")))
+    sec["accident"] += (incident_context(ex.get("incidents"), ex.get("bma_events"))
+                        + accident_stats_context(ex.get("rsc"), ex.get("camera_risk"))
+                        + patrol_context(ex.get("helmet"), ex.get("wrongway"), ex.get("violations"))
+                        + analytics_accidents(ex.get("analytics")))
+    sec["air"] += air_context(ex.get("air"), question)
+    return sec
+
+
+def pick_topics(question, sections):
+    """Topics for the prompt; a named road puts traffic in, an overview question takes every topic."""
+    chosen = question_topics(question)
+    if "traffic" not in chosen and any(x.startswith("ถนนที่ผู้ใช้ถามถึง") for x in sections.get("traffic", [])):
+        chosen.append("traffic")
+    if not chosen and any(w in (question or "") for w in OVERVIEW_WORDS):
+        chosen = ["traffic", "flood", "accident", "air"]
+    return chosen
+
+
+def build_context(traffic, question, camera_stats=None, water=None, extra=None, max_chars=None, topics=None):
+    """The live-data block for the prompt. With max_chars, only the asked topics go in, cut to fit."""
+    sec = context_sections(traffic, question, camera_stats, water, extra)
+    if max_chars is None and topics is None:
+        order = ["traffic", "flood", "accident", "air"]
+    else:
+        order = pick_topics(question, sec) if topics is None else topics
+    lines = list(sec["base"])
+    budget = (max_chars or 10 ** 9) - sum(len(x) + 1 for x in lines)
+    for k in order:
+        if not sec[k] or budget <= 0:
+            continue
+        lines.append("")
+        for x in sec[k]:          # rows are ranked inside each builder, so cutting keeps the important ones
+            if len(x) + 1 > budget:
+                break
+            lines.append(x)
+            budget -= len(x) + 1
     return "\n".join(lines)
 
-
-def _gemini_client():
-    key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    if genai is None or not key:
-        return None
-    try:
-        return genai.Client(api_key=key)
-    except Exception:
-        return None
-
-
-def _gemini_chat(client, history, question):
-    """history: list of {role, content}; last entry is the grounded user turn."""
-    contents = [
-        genai_types.Content(role="model" if m["role"] == "assistant" else "user",
-                            parts=[genai_types.Part(text=m["content"])])
-        for m in history
-    ]
-    resp = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=contents,
-        config=genai_types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            temperature=0.4,
-            max_output_tokens=2500,
-        ),
-    )
-    return (resp.text or "").strip()
-
-
-def _client():
-    if anthropic is None:
-        return None
-    if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")
-            or os.path.exists(os.path.join(os.path.expanduser("~"), ".config", "anthropic"))):
-        return None
-    try:
-        return anthropic.Anthropic()
-    except Exception:
-        return None
 
 
 def _flood_reply(w):
@@ -463,17 +490,22 @@ def _accident_reply(extra):
     return "\n".join(lines) if lines else "ยังไม่มีข้อมูลอุบัติเหตุตอนนี้"
 
 
+OFFLINE_NOTE = "(โหมดออฟไลน์: เชื่อมต่อโมเดล AI ไม่ได้ตอนนี้ ตอบจากข้อมูลสดแทน)"
 TRAFFIC_WORDS = ("ถนน", "จราจร", "รถ", "ติด", "ทาง", "เส้น", "ไป", "โล่ง", "แยก", "ซอย", "สะพาน", "ด่วน")
 
 
 def rule_based_reply(traffic, question, water=None, extra=None):
-    if not any(k in question for k in ACCIDENT_WORDS + FLOOD_WORDS + TRAFFIC_WORDS):
-        return ("โหมดออฟไลน์ตอบได้เฉพาะสรุปจราจร น้ำท่วม/ฝน และอุบัติเหตุจากข้อมูลสด" + chr(10) +
-                "ถ้าอยากถามเรื่องอื่น ใส่ GEMINI_API_KEY ในไฟล์ .env แล้วเปิด run_server.bat ใหม่ จะถามได้ทุกเรื่องเลย")
-    if any(k in question for k in ACCIDENT_WORDS):
-        return _accident_reply(extra) + "\n(โหมดออฟไลน์: ใส่ GEMINI_API_KEY ในไฟล์ .env เพื่อเปิดผู้ช่วย AI เต็มรูปแบบ)"
-    if any(k in question for k in FLOOD_WORDS):
-        return _flood_reply(water) + "\n(โหมดออฟไลน์: ใส่ GEMINI_API_KEY ในไฟล์ .env เพื่อเปิดผู้ช่วย AI เต็มรูปแบบ)"
+    topics = question_topics(question)
+    if not topics:
+        return ("โหมดออฟไลน์ตอบได้เฉพาะสรุปจราจร น้ำท่วม/ฝน อุบัติเหตุ และฝุ่นจากข้อมูลสด" + chr(10) +
+                "เชื่อมต่อโมเดล AI ไม่ได้ตอนนี้ ลองถามใหม่อีกครั้งในอีกสักครู่")
+    if topics[0] == "accident":
+        return _accident_reply(extra) + "\n" + OFFLINE_NOTE
+    if topics[0] == "flood":
+        return _flood_reply(water) + "\n" + OFFLINE_NOTE
+    if topics[0] == "air":
+        lines = air_context((extra or {}).get("air"), question)
+        return ("\n".join(lines) if lines else "ยังไม่มีข้อมูลฝุ่นตอนนี้") + "\n" + OFFLINE_NOTE
     s = traffic.get_summary(top=5)
     if not s.get("ready"):
         return "ผู้ช่วยกำลังโหลดข้อมูลจราจรอยู่ รอสักครู่แล้วถามใหม่นะ"
@@ -491,54 +523,36 @@ def rule_based_reply(traffic, question, water=None, extra=None):
         out.append(f"แนะนำ: เลี่ยง {worst['name']} ไปก่อนนะ")
     else:
         out.append("แนะนำ: ไปได้เลย ทางค่อนข้างสะดวก")
-    out.append("(โหมดออฟไลน์: ใส่ GEMINI_API_KEY ในไฟล์ .env เพื่อเปิดผู้ช่วย AI เต็มรูปแบบ)")
+    out.append(OFFLINE_NOTE)
     return "\n".join(out)
 
 
 def chat(traffic, messages, camera_stats=None, water=None, extra=None):
     """messages: list of {role: user|assistant, content: str}. Returns {reply, mode}.
     `water` is water_service.get_summary() or None when it is unavailable.
-    `extra` holds optional sources: incidents, bma_events, bma_analytics, rsc, camera_risk."""
+    `extra` holds optional sources: incidents, bma_events, bma_analytics, rsc, camera_risk, air, guidance, ..."""
     question = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
-    context = build_context(traffic, question, camera_stats, water, extra)
+    offline = lambda: {"reply": rule_based_reply(traffic, question, water, extra), "mode": "offline"}
+    if not llm.enabled():
+        return offline()
 
-    history = [{"role": m["role"], "content": m["content"]} for m in messages[-12:] if m.get("content")]
+    history = [{"role": m["role"], "content": m["content"][:HISTORY_CHARS]}
+               for m in messages[-HISTORY_KEEP:] if m.get("content")]
     if not history or history[-1]["role"] != "user":
         history.append({"role": "user", "content": question or "สรุปสภาพจราจรตอนนี้"})
-    history[-1] = {
-        "role": "user",
-        "content": f"ข้อมูลจราจรและน้ำท่วมสด:\n{context}\n\nคำถาม: {history[-1]['content']}",
-    }
-
-    gem = _gemini_client()
-    if gem is not None:
+    asked = history[-1]["content"]
+    room = llm.token_budget(SYSTEM_PROMPT, *(m["content"] for m in history), reply_tokens=REPLY_TOKENS + 300)
+    max_chars = max(0, int(room * local_llm.CHARS_PER_TOKEN))
+    for share in (1.0, 0.5, 0.0):        # the character estimate can be off; shrink the data and retry
+        context = build_context(traffic, question, camera_stats, water, extra, max_chars=int(max_chars * share))
+        turn = {"role": "user", "content": f"ข้อมูลสดที่เกี่ยวข้อง:\n{context}\n\nคำถาม: {asked}"}
         try:
-            text = _gemini_chat(gem, history, question)
-            return {"reply": text or rule_based_reply(traffic, question, water, extra), "mode": "gemini"}
-        except Exception as e:
-            print(f"[Chat] Gemini error: {e}")
-            # fall through to Claude / offline
-
-    client = _client()
-    if client is None:
-        return {"reply": rule_based_reply(traffic, question, water, extra), "mode": "offline"}
-    try:
-        resp = client.messages.create(
-            model=MODEL,
-            max_tokens=3000,
-            system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
-            thinking={"type": "adaptive"},
-            output_config={"effort": "medium"},
-            messages=history,
-        )
-        if resp.stop_reason == "refusal":
-            return {"reply": "ขอโทษนะ คำถามนี้ผู้ช่วยตอบให้ไม่ได้", "mode": "claude"}
-        text = "".join(b.text for b in resp.content if b.type == "text").strip()
-        return {"reply": text or rule_based_reply(traffic, question, water, extra), "mode": "claude"}
-    except anthropic.AuthenticationError:
-        return {"reply": rule_based_reply(traffic, question, water, extra), "mode": "offline"}
-    except anthropic.RateLimitError:
-        return {"reply": "ผู้ช่วยตอบถี่เกินไป รอสักครู่แล้วลองใหม่นะ\n\n" + rule_based_reply(traffic, question, water, extra), "mode": "offline"}
-    except (anthropic.APIConnectionError, anthropic.APIStatusError) as e:
-        print(f"[Chat] Claude error: {e}")
-        return {"reply": rule_based_reply(traffic, question, water, extra), "mode": "offline"}
+            text = llm.chat([{"role": "system", "content": SYSTEM_PROMPT}] + history[:-1] + [turn],
+                                  max_tokens=REPLY_TOKENS)
+            return {"reply": text, "mode": "local", "model": llm.model}
+        except local_llm.ContextTooLong:
+            continue
+        except Exception as e:  # noqa: BLE001 - local server off / model unloaded: answer from the data
+            print(f"[Chat] local model error: {str(e)[:200]}")
+            break
+    return offline()

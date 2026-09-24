@@ -12,14 +12,14 @@ const WATCH = {
 };
 const WINDY_RADAR = 'https://embed.windy.com/embed2.html?lat=13.750&lon=100.500&detailLat=13.750&detailLon=100.500&width=340&height=260&zoom=8&level=surface&overlay=radar&product=radar&menu=&message=true&marker=&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1';
 
-function Bubble({ role, text, mode }) {
+function Bubble({ role, text, mode, model }) {
  const me = role === 'user';
  return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }} className={`flex ${me ? 'justify-end' : 'justify-start'}`}>
       <div className={`max-w-[85%] rounded-xl px-4 py-3 text-[15px] leading-relaxed whitespace-pre-wrap ${me ? 'bg-lavender-600 text-white rounded-br-lg' : 'bg-white border border-cream-200 text-ink-900 rounded-bl-lg'}`}>
         {text}
-        {!me && mode === 'gemini' && <span className="block mt-1 text-[11px] text-ink-400">Gemini Flash-Lite</span>}
-        {!me && mode === 'offline' && <span className="block mt-1 text-[11px] text-ink-400">โหมดออฟไลน์ (สรุปจากข้อมูลสด ยังไม่ได้ใส่ GEMINI_API_KEY)</span>}
+        {!me && mode === 'local' && <span className="block mt-1 text-[11px] text-ink-400">AI: {model || 'Qwen'}</span>}
+        {!me && mode === 'offline' && <span className="block mt-1 text-[11px] text-ink-400">โหมดออฟไลน์ (สรุปจากข้อมูลสด เชื่อมต่อโมเดล AI ไม่ได้)</span>}
       </div>
     </motion.div>
   );
@@ -122,7 +122,7 @@ export default function AiPage({ active, cameras, camid, onPickCamera, onToast, 
  setBusy(true);
  try {
  const res = await sendChat(next.filter((m) => m.role !== 'assistant' || m.content !== WELCOME).map((m) => ({ role: m.role, content: m.content })));
- setMessages([...next, { role: 'assistant', content: res.reply, mode: res.mode }]);
+ setMessages([...next, { role: 'assistant', content: res.reply, mode: res.mode, model: res.model }]);
     } catch (e) {
  const msg = e?.message === 'rate_limited'
    ? 'ถามบ่อยเกินไป รอสักครู่แล้วลองใหม่นะ'
@@ -168,7 +168,7 @@ export default function AiPage({ active, cameras, camid, onPickCamera, onToast, 
 
         <div ref={listRef} className="flex-1 overflow-y-auto scroll-soft px-5 py-2 space-y-3 min-h-[280px]">
           {messages.map((m, i) => (
-            <Bubble key={i} role={m.role} text={m.content} mode={m.mode} />
+            <Bubble key={i} role={m.role} text={m.content} mode={m.mode} model={m.model} />
           ))}
           {busy && (
             <div className="flex items-center gap-2 text-sm text-ink-600 pl-10">
