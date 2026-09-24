@@ -38,7 +38,7 @@ SYSTEM_PROMPT = """คุณคือ "ผู้ช่วยอัจฉริ�
    (อุบัติเหตุ น้ำท่วม ปิดถนน ซ่อมถนน) และสถิติอุบัติเหตุ กทม. (ThaiRSC): วันนี้/ปีนี้ เขตเสี่ยง ประเภทรถ ช่วงเวลา จุดกล้องเสี่ยงสูง
 4) คำแนะนำเกี่ยวกับเมือง: การเตรียมตัวรับมือน้ำท่วม/พายุ ขับขี่ปลอดภัย วางแผนเดินทางในกรุงเทพฯ กฎจราจร เบอร์ฉุกเฉิน
    (1669 แพทย์ฉุกเฉิน, 1197 จราจร, 191 ตำรวจ, 1555 กทม., 1784 ปภ., 1460 ชลประทาน) วิธีใช้แอปนี้ (หน้าแดชบอร์ด/แผนที่/กล้อง/น้ำ/AI)
-5) ฝุ่น PM2.5/AQI รายสถานี (Air4Thai) ค่าเฉลี่ยเมืองและสถานีที่ค่าสูงสุด
+5) ฝุ่น PM2.5/AQI รายชั่วโมงรายสถานี (AirBKK + Air4Thai) ค่าเฉลี่ยเมืองและสถานีที่ค่าสูงสุด
 6) คำแนะนำระบายรถรายสายทางหลัก: จุดสะสม ทางเลี่ยงพร้อม flow สด และสิ่งที่ควรทำ
 7) ระดับน้ำท่วมรายถนนตามเกณฑ์ทางการ (ห้ามขับผ่าน/ควรเลี่ยง/ผ่านได้/เฝ้าระวัง) และบทวิเคราะห์เซ็นเซอร์น้ำบนถนน
 8) การฝ่าฝืนจากกล้อง AI: ไม่สวมหมวกกันน็อก และขับย้อนศร (วันนี้ สะสม และรายการล่าสุด)
@@ -216,12 +216,12 @@ def _asked(question, *names):
 
 
 def air_context(air, question):
-    """PM2.5 per station (Air4Thai): city average, worst stations and any station the user named."""
+    """PM2.5 per station (AirBKK + Air4Thai): city average, worst stations and any station the user named."""
     items = (air or {}).get("items") or []
     if not items:
         return []
     counts = ", ".join(f"{k} {v}" for k, v in ((air or {}).get("counts") or {}).items())
-    lines = [f"ฝุ่น PM2.5 (Air4Thai {_hhmm(air.get('source_ts') or air.get('updated_at'))}): เฉลี่ย {air.get('avg_pm25')} µg/m³ "
+    lines = [f"ฝุ่น PM2.5 รายชั่วโมง (AirBKK + Air4Thai {_hhmm(air.get('source_ts') or air.get('updated_at'))}): เฉลี่ย {air.get('avg_pm25')} µg/m³ "
              f"จาก {air.get('total')} สถานี ({counts})"]
     picked = [i for i in items if _asked(question, i.get("name"), i.get("area"))][:5]
     for i in picked + [i for i in items[:5] if i not in picked]:

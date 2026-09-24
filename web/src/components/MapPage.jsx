@@ -630,7 +630,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
       const popup = new maplibregl.Popup({ offset: 14, closeButton: true, maxWidth: '260px' }).setHTML(
         `<div style="font-size:13px;line-height:1.4"><b>${s.name}</b><br><span style="color:#64748b">${s.area} ${s.province}</span><br>` +
           `PM2.5 <b style="color:${s.color}">${s.pm25} µg/m³</b> · AQI ${s.aqi ?? '-'} · ${s.label}` +
-          (t ? `<br><span style="color:#64748b;font-size:11px">ข้อมูล ${t} น. · Air4Thai (คพ.)</span>` : '') +
+          (t ? `<br><span style="color:#64748b;font-size:11px">ข้อมูล ${t} น. · ${s.source_label || 'Air4Thai (คพ.)'}</span>` : '') +
           '</div>'
       );
       pmMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([s.lng, s.lat]).setPopup(popup).addTo(map));
@@ -1044,7 +1044,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
             )}
           </div>
           <p className="text-[11px] text-slate-500 mb-1.5">
-            {air ? `${air.total} สถานี (คพ. + กทม.) หน่วย µg/m³ แตะจุดเพื่อดูรายละเอียด` : 'กำลังโหลด Air4Thai'}
+            {air ? `${air.total} สถานี (คพ. + กทม.) หน่วย µg/m³ แตะจุดเพื่อดูรายละเอียด` : 'กำลังโหลด AirBKK + Air4Thai'}
           </p>
           <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-slate-600">
             {[['#3BA0FF', 'ดีมาก ≤15'], ['#4CC74A', 'ดี ≤25'], ['#FFD400', 'ปานกลาง ≤37.5'], ['#FF8C00', 'เริ่มมีผล ≤75'], ['#E3272C', 'มีผล >75']].map(([c, l]) => (
