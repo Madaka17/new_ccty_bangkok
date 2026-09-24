@@ -7,6 +7,7 @@ import { fetchTrafficSummary, fetchLongdoCameras, fetchWaterSummary, fetchAirSta
 import { enrichCamerasWithFloodRisk } from '../lib/floodRisk.js';
 import { fmtTime } from './dashboard/format.js';
 import { Icon } from './dashboard/icons.jsx';
+import { sunPosition, buildingShadows } from '../lib/shade.js';
 
 
 // Vite bundles maplibre into one chunk, so its worker module must be served separately (see public/assets/)
@@ -40,10 +41,13 @@ function mapStyle() {
       omt: { type: 'vector', url: 'https://tiles.openfreemap.org/planet', attribution: '© OpenFreeMap' },
       // BTS / MRT / ARL / SRT Red lines + stations, a static snapshot of OSM route relations
       rail: { type: 'geojson', data: `${origin}/rail_bkk.geojson`, attribution: 'Rail © OpenStreetMap' },
+      shade: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } },
     },
     layers: [
       { id: 'base', type: 'raster', source: 'base', paint: { 'raster-saturation': -0.45, 'raster-brightness-min': 0.05, 'raster-contrast': -0.08 } },
-      // Flat building footprints for the "รายละเอียดสิ่งปลูกสร้าง" toggle in 2D (the 3D view extrudes them instead)
+      // Building shadows for the shade view, filled in by the shade effect from the footprints in view
+      { id: 'shade-fill', type: 'fill', source: 'shade', minzoom: 14, layout: { visibility: 'none' }, paint: { 'fill-color': '#1e293b', 'fill-opacity': 0.32, 'fill-antialias': false } },
+      // Flat building footprints for the "รายละเอียดสิ่งปลูกสร้าง" toggle and the shade view
       {
         id: 'buildings-2d',
         type: 'fill',
@@ -86,7 +90,8 @@ function mapStyle() {
         layout: { visibility: 'none' },
         paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 2.5, 14, 6], 'circle-color': '#ffffff', 'circle-stroke-color': ['get', 'colour'], 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 14, 3] },
       },
-      // Last so the extrusions sit above the raster overlays (rain radar is inserted before traffic-forward)
+      // Hidden anchor: overlay layers (risk layers, heatmaps) are inserted below it. The 3D view it drew
+      // was replaced by the shade view.
       {
         id: 'buildings-3d',
         type: 'fill-extrusion',
@@ -237,7 +242,11 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const [reports, setReports] = useState(null);
   const reportMarkersRef = useRef([]);
   const gaugeMarkersRef = useRef([]);
-  const [is3d, setIs3d] = useState(false);
+  // Shade view (replaces the 3D view): building shadows for the chosen time of day, in minutes after midnight
+  const [shade, setShade] = useState(false);
+  const nowMinutes = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
+  const [shadeMin, setShadeMin] = useState(nowMinutes);
+  const [sun, setSun] = useState(null);
   // Building details: flat footprints in 2D, POI name labels (DOM markers) and click-for-info on any building
   const [showPlaces, setShowPlaces] = useState(false);
   const showPlacesRef = useRef(false);
@@ -498,21 +507,48 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
     };
   }, [isActive]);
 
-  // 3D: tilt the camera and show extruded buildings (OpenFreeMap heights); 2D: flat, buildings hidden
+  // Shade view: shadows of the buildings in view for the chosen time today (sun position + OpenFreeMap
+  // heights), redrawn when the map moves or the time changes. Footprints come from zoom 14 tiles.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const apply = () => {
-      if (map.getLayer('buildings-3d')) {
-        map.setLayoutProperty('buildings-3d', 'visibility', is3d ? 'visible' : 'none');
-        map.moveLayer('buildings-3d'); // keep on top of any layer added later (rain radar, pm25)
+    const when = new Date();
+    when.setHours(Math.floor(shadeMin / 60), shadeMin % 60, 0, 0);
+    const draw = () => {
+      const src = map.getSource('shade');
+      if (!src) return;
+      const c = map.getCenter();
+      const pos = sunPosition(when, c.lat, c.lng);
+      setSun((old) => (old && Math.abs(old.altitude - pos.altitude) < 0.05 && Math.abs(old.azimuth - pos.azimuth) < 0.05 ? old : pos));
+      if (!shade || map.getZoom() < 14) {
+        src.setData({ type: 'FeatureCollection', features: [] });
+        return;
       }
-      map.easeTo({ pitch: is3d ? 58 : 0, bearing: is3d ? -17 : 0, duration: 900 });
-      if (is3d && map.getZoom() < 14) map.easeTo({ zoom: 14.5, duration: 900 });
+      const feats = map.querySourceFeatures('omt', { sourceLayer: 'building' }).slice(0, 12000);
+      src.setData(buildingShadows(feats, pos));
     };
-    if (map.getLayer('buildings-3d')) apply();
+    const apply = () => {
+      map.setLayoutProperty('shade-fill', 'visibility', shade ? 'visible' : 'none');
+      if (shade && map.getZoom() < 15) map.easeTo({ zoom: 16, duration: 800 });
+      draw();
+    };
+    if (map.getLayer('shade-fill')) apply();
     else map.once('styledata', apply);
-  }, [is3d]);
+    // tiles keep arriving after a move: redraw once they settle, not on every tile
+    let timer = null;
+    const later = () => {
+      clearTimeout(timer);
+      timer = setTimeout(draw, 200);
+    };
+    const onData = (e) => e.sourceId === 'omt' && e.isSourceLoaded && shade && later();
+    map.on('moveend', later);
+    map.on('sourcedata', onData);
+    return () => {
+      clearTimeout(timer);
+      map.off('moveend', later);
+      map.off('sourcedata', onData);
+    };
+  }, [shade, shadeMin]);
 
   // Building details toggle: 2D footprints + POI labels + click info. Labels are rebuilt on every
   // moveend from the vector tiles in view (rank = OpenMapTiles importance, lower is bigger).
@@ -596,7 +632,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
         .addTo(map);
     };
     const apply = () => {
-      if (map.getLayer('buildings-2d')) map.setLayoutProperty('buildings-2d', 'visibility', showPlaces && !is3d ? 'visible' : 'none');
+      if (map.getLayer('buildings-2d')) map.setLayoutProperty('buildings-2d', 'visibility', showPlaces || shade ? 'visible' : 'none');
       if (showPlaces && map.getZoom() < POI_MIN_ZOOM) map.easeTo({ zoom: POI_MIN_ZOOM, duration: 700 });
       drawPois();
     };
@@ -614,7 +650,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
       map.off('click', onBuildingClick);
       clearPois();
     };
-  }, [showPlaces, is3d]);
+  }, [showPlaces, shade]);
 
   // Road-flood sensors: the wet ones every minute, the whole network only when dry ones are shown
   useEffect(() => {
@@ -1295,16 +1331,45 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
           </div>
         </div>
 
-        {/* 2D / 3D */}
+        {/* Shade view (replaces the 3D view) */}
         <div className="pt-2.5 border-t border-slate-100">
           <div className="flex items-center justify-between">
             <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
-              <input type="checkbox" checked={is3d} onChange={(e) => setIs3d(e.target.checked)} className="accent-blue-600 w-4 h-4" />
-              <Icon name="building" /> มุมมอง 3D (อาคาร)
+              <input type="checkbox" checked={shade} onChange={(e) => setShade(e.target.checked)} className="accent-blue-600 w-4 h-4" />
+              <Icon name="building" /> เงาอาคาร (Shade)
             </label>
-            <span className="text-[11px] text-slate-500">ลาก: ขวาคลิก / Ctrl+ลาก หมุน</span>
+            {sun && (
+              <span className="text-[11px] text-slate-500 tabular-nums">
+                {sun.altitude > 0 ? `☀ สูง ${Math.round(sun.altitude)}° ทิศ ${Math.round(sun.azimuth)}°` : '🌙 ดวงอาทิตย์ตกแล้ว'}
+              </span>
+            )}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">ความสูงอาคารจาก OpenFreeMap แสดงเมื่อซูม ≥ 14 · แผนที่เอียง 58°</p>
+          {shade && (
+            <div className="mt-1.5">
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min={360}
+                  max={1110}
+                  step={15}
+                  value={Math.min(1110, Math.max(360, shadeMin))}
+                  onChange={(e) => setShadeMin(Number(e.target.value))}
+                  aria-label="เวลาของเงา"
+                  className="flex-1 accent-blue-600"
+                />
+                <span className="text-sm font-semibold tabular-nums text-ink-900 w-12 text-right">
+                  {String(Math.floor(shadeMin / 60)).padStart(2, '0')}:{String(shadeMin % 60).padStart(2, '0')}
+                </span>
+                <button type="button" onClick={() => setShadeMin(nowMinutes())} className="text-[11px] px-2 py-0.5 rounded-md border border-slate-300 hover:bg-slate-50 cursor-pointer">
+                  ตอนนี้
+                </button>
+              </div>
+              {sun && sun.altitude <= 0.5 && <p className="text-[11px] text-amber-700 mt-1">ช่วงนี้ไม่มีแดด เลื่อนเวลาเป็น 06:00–18:30 เพื่อดูเงา</p>}
+            </div>
+          )}
+          <p className="text-[11px] text-slate-500 mt-1">
+            พื้นที่สีเข้ม = ร่มเงาอาคารวันนี้ ณ เวลาที่เลือก เดินเลาะฝั่งเงาเพื่อหลบแดด · คำนวณจากตำแหน่งดวงอาทิตย์และความสูงอาคาร OpenFreeMap · ซูม ≥ 14
+          </p>
           <label className="mt-2 inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
             <input type="checkbox" checked={showPlaces} onChange={(e) => setShowPlaces(e.target.checked)} className="accent-blue-600 w-4 h-4" />
             <Icon name="pin" /> รายละเอียดสิ่งปลูกสร้าง
