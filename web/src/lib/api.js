@@ -172,6 +172,13 @@ export async function fetchFloodRoads(limit = 60) {
 }
 
 // Flood complaints residents filed on Traffy Fondue in the last few hours (flood_feeds.py)
+// Flooded-road reports on the Longdo Traffic feed (iTIC / FM91), newest first (incident_service.floods)
+export async function fetchLongdoFloods() {
+  const res = await fetch('/api/flood/longdo');
+  if (!res.ok) throw new Error('longdo_floods');
+  return res.json();
+}
+
 export async function fetchFloodReports() {
   const res = await fetch('/api/flood/reports');
   if (!res.ok) throw new Error('flood_reports');

@@ -5,9 +5,9 @@ import NavIcon from './NavIcons.jsx';
 export const NAV_ITEMS = [
   { id: 'dashboard', label: 'Traffic Dashboard' },
   { id: 'yolo', label: 'Camera AI & Analysis' },
+  { id: 'water', label: 'Water Forecast' },
   { id: 'map', label: 'Traffic Map' },
   { id: 'safety', label: 'Accidents & Risk' },
-  { id: 'water', label: 'Water Forecast' },
   { id: 'ai', label: 'Ask AI (Routes)' },
   { id: 'alerts', label: 'Alerts' },
   { id: 'visitors', label: 'Visitors' },

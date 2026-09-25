@@ -1,5 +1,5 @@
 // เฝ้าระวังน้ำท่วม: river / canal stations against their banks, flooded roads, the 1-6 h zone outlook,
-// urgent districts and the AI reading of the Traffy flood reports (flood part of /api/analytics/summary).
+// urgent districts (flood part of /api/analytics/summary).
 // Was a tab of City Analytics; now a tab of the Water Forecast page.
 import { useCallback, useEffect, useState } from 'react';
 import { fetchAnalytics } from '../../lib/api.js';
@@ -7,7 +7,6 @@ import { Card, Badge, SectionHeader, Skeleton, EmptyState, ErrorState } from '..
 import { StatTile, StatusBanner } from '../dashboard/primitives.jsx';
 import { fmtNum } from '../dashboard/format.js';
 import FloodPredictionCard from '../dashboard/FloodPredictionCard.jsx';
-import TraffyAnalysisCard from '../dashboard/TraffyAnalysisCard.jsx';
 
 const POLL_MS = 60000;
 const RISK_TONE = { สูง: 'red', ปานกลาง: 'yellow', ต่ำ: 'green' };
@@ -33,7 +32,6 @@ function FloodSection({ d, isActive }) {
 
       <FloodPredictionCard prediction={d.prediction} modelNote={d.model_note} />
 
-      <TraffyAnalysisCard isActive={isActive} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="p-5">

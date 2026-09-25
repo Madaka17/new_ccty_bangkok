@@ -2,9 +2,10 @@ import { FOCUS } from './dashboard/ui.jsx';
 import NavIcon from './NavIcons.jsx';
 
 // Segmented switch between the views of one page (Camera AI, Accidents & Risk): each view is a card,
-// the open one lifts out of the tray. tabs: [{ id, label, hint, icon }]
+// the open one lifts out of the tray. tabs: [{ id, label, icon }] (label only: no description line under it)
 export default function ViewSwitch({ tabs, value, onChange, label }) {
-  const cols = tabs.length === 3 ? 'grid-cols-1 md:grid-cols-3' : tabs.length > 3 ? 'grid-cols-2 xl:grid-cols-4' : 'grid-cols-2';
+  const cols = { 2: 'grid-cols-2', 3: 'grid-cols-1 md:grid-cols-3', 4: 'grid-cols-2 xl:grid-cols-4' }[tabs.length]
+    || 'grid-cols-2 md:grid-cols-3 xl:grid-cols-5';
   return (
     <div role="tablist" aria-label={label} className={`seg-tray grid ${cols} gap-1.5 p-1.5 rounded-2xl w-full ${tabs.length > 2 ? '' : 'sm:w-fit sm:min-w-[520px]'}`}>
       {tabs.map((t) => {
@@ -23,7 +24,6 @@ export default function ViewSwitch({ tabs, value, onChange, label }) {
             </span>
             <span className="min-w-0">
               <span className="block text-sm font-semibold truncate">{t.label}</span>
-              <span className="seg-hint block text-[11.5px] truncate">{t.hint}</span>
             </span>
           </button>
         );
