@@ -383,6 +383,13 @@ export async function fetchBMAEvents({ kind, hours = 24, limit = 60 } = {}) {
 }
 
 // ---- BMA Traffic & YOLO Vehicle Counting
+// Every metro water / rain gauge and the upstream dams as map points (Water Forecast station map)
+export async function fetchWaterMap() {
+  const res = await fetch('/api/water/map');
+  if (!res.ok) throw new Error('water_map');
+  return res.json();
+}
+
 export async function fetchBmaCameras() {
   const res = await fetch('/api/bma/cameras');
   if (!res.ok) throw new Error('bma_cameras');

@@ -142,6 +142,13 @@ export function TideCard({ rows, loading }) {
 }
 
 // ---------------------------------------------------------------- canals + flood road sensors (BMA)
+// Water to the lower bank: "ต่ำ 35 ซม." below it, "เกิน 12 ซม." over it; % of the channel for ThaiWater-only rows
+function canalGap(c) {
+  if (c.diff_bank == null) return c.storage_pct != null ? `${fmtM(c.storage_pct, 0)}%` : '–';
+  const cm = Math.round(Math.abs(c.diff_bank) * 100);
+  return c.diff_bank > 0 ? `ต่ำ ${cm} ซม.` : `เกิน ${cm} ซม.`;
+}
+
 export function CanalCard({ canals, counts, total, roads, loading }) {
   const [tab, setTab] = useState('canal');
   const risky = (canals || []).filter((c) => c.level !== 'normal');
@@ -153,12 +160,13 @@ export function CanalCard({ canals, counts, total, roads, loading }) {
       <SectionHeader
         id="water-canal-title"
         title="คลองและถนนในกรุงเทพฯ"
-        description="เซ็นเซอร์สำนักการระบายน้ำ กทม. · คลอง = % ความจุ, ถนน = ความลึกน้ำท่วมขัง (ซม.)"
+        description="เซ็นเซอร์สำนักการระบายน้ำ กทม. (อัปเดตทุก 5 นาที) · คลอง = ระยะจากผิวน้ำถึงตลิ่งที่ต่ำกว่า, ถนน = ความลึกน้ำท่วมขัง (ซม.)"
         action={<Segmented label="ประเภท" value={tab} onChange={setTab} options={[['canal', `คลอง ${total || ''}`], ['road', `ถนน ${roads ? roads.flooding + roads.slight + roads.normal : ''}`]]} />}
       />
       {tab === 'canal' ? (
         <p className="mt-2 text-xs text-slate-600">
-          ล้นตลิ่ง <b className="text-red-700">{counts?.overflow ?? 0}</b> · ใกล้ล้น <b className="text-amber-700">{counts?.high ?? 0}</b> · ปกติ <b className="text-emerald-700">{counts?.normal ?? 0}</b>
+          ล้นตลิ่ง <b className="text-red-700">{counts?.overflow ?? 0}</b> · ใกล้ล้น (≤ 20 ซม.) <b className="text-amber-700">{counts?.high ?? 0}</b> · ปกติ <b className="text-emerald-700">{counts?.normal ?? 0}</b>
+          {counts?.offline ? ` · ขาดข้อมูล ${counts.offline}` : ''}
           {!loading && ` · แสดง${risky.length ? 'คลองที่น้ำสูงและ' : ''}คลองที่น้ำสูงสุด ${canalList.length} แห่ง`}
         </p>
       ) : (
@@ -184,9 +192,17 @@ export function CanalCard({ canals, counts, total, roads, loading }) {
             return (
               <li key={c.id} className="py-2 flex items-center gap-3">
                 <div className="min-w-0 flex-1">
-                  <Truncate text={c.name} className="text-sm text-slate-900" />
+                  {c.url ? (
+                    <a href={c.url} target="_blank" rel="noreferrer" className={`block hover:underline ${FOCUS}`}>
+                      <Truncate text={c.name} className="text-sm text-slate-900" />
+                    </a>
+                  ) : (
+                    <Truncate text={c.name} className="text-sm text-slate-900" />
+                  )}
                   <p className="text-xs text-slate-500">
-                    เขต{c.district} · {agoText(c.ts)}
+                    {c.province && c.province !== 'กรุงเทพมหานคร' ? `${c.district} ${c.province}` : `เขต${c.district}`} · {agoText(c.ts)}
+                    {tab === 'canal' && c.msl != null && ` · ${fmtM(c.msl)} ม.รทก.`}
+                    {tab === 'canal' && c.control === 'critical' && <span className="text-slate-600"> · เกินระดับควบคุม สนน.</span>}
                   </p>
                 </div>
                 <div className="w-24 hidden sm:block">
@@ -194,7 +210,7 @@ export function CanalCard({ canals, counts, total, roads, loading }) {
                     <div className={`h-full ${lv.bar}`} style={{ width: `${pct}%` }} />
                   </div>
                 </div>
-                <span className="text-sm tabular-nums text-slate-900 w-16 text-right">{tab === 'canal' ? `${fmtM(c.storage_pct, 0)}%` : `${fmtM(c.depth_cm, 0)} ซม.`}</span>
+                <span className="text-sm tabular-nums text-slate-900 w-24 text-right">{tab === 'canal' ? canalGap(c) : `${fmtM(c.depth_cm, 0)} ซม.`}</span>
                 <Badge tone={lv.tone}>{lv.label}</Badge>
               </li>
             );

@@ -4,6 +4,7 @@ import { Badge, Button, ErrorState } from './dashboard/ui.jsx';
 import { PageHeader, StatTile, StatusBanner } from './dashboard/primitives.jsx';
 import { fmtDateTime } from './dashboard/format.js';
 import ForecastChart from './water/ForecastChart.jsx';
+import WaterMap from './water/WaterMap.jsx';
 import FloodAnalysisGuide from './water/FloodAnalysisGuide.jsx';
 import { RiverStations, CanalCard, NtwRainCard } from './water/WaterLists.jsx';
 
@@ -127,11 +128,13 @@ export default function WaterPage({ isActive, onToast, onNavigate, onAsk }) {
         <StatTile
           label="คลอง กทม. น้ำสูงผิดปกติ"
           value={summary ? `${summary.canal_counts.overflow + summary.canal_counts.high} / ${summary.canal_total}` : '–'}
-          sub={summary ? `ล้น ${summary.canal_counts.overflow} · ใกล้ล้น ${summary.canal_counts.high}` : ''}
+          sub={summary ? `ล้น ${summary.canal_counts.overflow} · ใกล้ล้น ${summary.canal_counts.high}${summary.canal_control ? ` · เกินระดับควบคุม ${summary.canal_control}` : ''}` : ''}
           badge={summary?.canal_counts.overflow ? <Badge tone="red" dot>ล้น</Badge> : null}
           loading={loading}
         />
       </div>
+
+      <WaterMap isActive={isActive} onPickStation={pickStation} />
 
       {stations.length > 0 && <ForecastChart stations={stations} stationId={stationId} onPickStation={setStationId} anchorRef={chartRef} />}
 

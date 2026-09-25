@@ -821,6 +821,14 @@ def water_summary():
         return JSONResponse(status_code=503, content={"error": str(e), "api_key": water_service.key_status()})
 
 @app.get("/api/water/forecast")
+@app.get("/api/water/map")
+def water_map():
+    """Every metro water / rain gauge and the upstream dams as map points."""
+    try:
+        return water_service.get_map()
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"error": str(e)})
+
 def water_forecast(station: int = Query(..., ge=1)):
     """Observed + official (HII) or local tidal-harmonic outlook for one telemetry station."""
     try:

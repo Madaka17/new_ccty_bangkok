@@ -5,6 +5,8 @@ Sources (all public, read-only):
 - ThaiWater / HII (twa.thaiwater.net): river + canal telemetry, official 7-day
   water level forecast for key Chao Phraya stations, sea tide forecast, BMA
   flood-road sensors, heavy rain warnings.
+- BMA Drainage Department (weather.bangkok.go.th/water): the canal gauges themselves, ~45 min fresher
+  than the ThaiWater relay, with banks and control levels; ThaiWater canal rows fill any gap.
 - A small local tidal-harmonic model gives a 48 h outlook for stations that have
   no official forecast (most Bangkok stations sit in the tidal reach of the
   Chao Phraya, so trend + tide explains most of the short-term movement).
@@ -16,6 +18,7 @@ from instance import DATA_DIR
 import re
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -59,6 +62,17 @@ WEATHER_ZONES = [
 STORM_CODES = {95, 96, 99}   # WMO thunderstorm codes
 
 SUMMARY_TTL = 60
+# BMA Drainage Department canal gauges (the same sensors ThaiWater relays ~45 min later, plus ~40 more).
+# The summary page embeds every station as JSON: level, both banks, bed and the department's own
+# warning / critical control levels, which are pump-operation levels, not the bank.
+BMA_WATER_URL = "https://weather.bangkok.go.th/water/summary"
+BMA_STATION_URL = "https://weather.bangkok.go.th/water/StationDetail?id={}"
+BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+              "Chrome/124.0.0.0 Safari/537.36")
+BMA_WATER_TTL = 120          # the gauges report every 5 minutes
+BMA_STALE_MINUTES = 60       # a gauge whose last reading is older than this counts as offline
+CANAL_HIGH_GAP_M = 0.2       # water within this many metres of the lower bank = near overflow
+CANAL_MATCH_KM = 0.15        # a ThaiWater canal station this close to a BMA gauge is the same gauge
 FORECAST_TTL = 600
 OBS_DAYS = 3        # history used for the local model
 EST_HOURS = 48      # local outlook horizon
@@ -335,7 +349,123 @@ def _load_river():
     return rows
 
 
+def _bma_json(html, name):
+    m = re.search(r"const " + name + r" = (\[.*?\]);\n", html)
+    if not m:
+        raise RuntimeError(f"{name} not found on {BMA_WATER_URL}")
+    return json.loads(m.group(1))
+
+
+def _bma_area(name):
+    """BMA district names: a Bangkok district ("บางเขน") or "อำเภอ<amphoe><province>" outside Bangkok."""
+    name = (name or "").strip()
+    if not name.startswith("อำเภอ"):
+        return name, "กรุงเทพมหานคร"
+    rest = name[len("อำเภอ"):]
+    for prov in ("ปทุมธานี", "นนทบุรี", "สมุทรปราการ", "สมุทรสาคร", "นครปฐม", "ฉะเชิงเทรา"):
+        if prov in rest:
+            return rest.replace(prov, "").strip(), prov
+    return rest, ""
+
+
+def _load_bma_canals():
+    """Every BMA canal gauge. Offline gauges (status 0 or an old reading) are marked, not dropped."""
+    # The site's firewall answers 403 now and then; a browser-like request and one retry get through
+    headers = {"User-Agent": BROWSER_UA, "Accept": "text/html,application/xhtml+xml", "Accept-Language": "th,en;q=0.8"}
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(BMA_WATER_URL, headers=headers), timeout=30) as r:
+                html = r.read().decode("utf-8", "replace")
+            break
+        except urllib.error.HTTPError as e:
+            if e.code != 403 or attempt == 2:
+                raise
+            time.sleep(3 * (attempt + 1))
+    districts = {d.get("district_id"): d.get("name") for d in _bma_json(html, "districtList")}
+    now = time.time()
+    rows = []
+    for b in _bma_json(html, "waterSummaryList"):
+        if not b.get("active", 1):
+            continue
+        wl = _num(b.get("wl_in"))
+        banks = [x for x in (_num(b.get("left_bank")), _num(b.get("right_bank"))) if x is not None]
+        bank, bed = (min(banks) if banks else None), _num(b.get("bed_bank"))
+        warn, crit = _num(b.get("warning")), _num(b.get("critical"))
+        ts = _ts(b.get("site_timestamp"))
+        offline = wl is None or b.get("water_status") == 0 or not ts or now - ts > BMA_STALE_MINUTES * 60
+        diff = None if wl is None or bank is None else round(bank - wl, 2)
+        fill = None
+        if wl is not None and bank is not None and bed is not None and bank > bed:
+            fill = round((wl - bed) / (bank - bed) * 100, 1)
+        if offline:
+            level = "offline"
+        elif diff is None:
+            level = "normal"
+        else:
+            level = "overflow" if diff <= 0 else "high" if diff <= CANAL_HIGH_GAP_M else "normal"
+        control = None
+        if not offline and wl is not None:
+            control = "critical" if crit is not None and wl >= crit else "warning" if warn is not None and wl >= warn else None
+        district, province = _bma_area(districts.get(b.get("district_id")))
+        rows.append({
+            "id": f"bma-{b.get('water_id')}",
+            "code": b.get("water_code"),
+            "name": b.get("water_shortname") or b.get("water_name") or "",
+            "canal": b.get("river_name") or "",
+            "district": district,
+            "province": province,
+            "lat": _num(b.get("latitude")),
+            "lng": _num(b.get("longitude")),
+            "msl": wl,
+            "bank": bank,
+            "bed": bed,
+            "diff_bank": diff,
+            "storage_pct": fill,
+            "level": level,
+            "control_warning": warn,
+            "control_critical": crit,
+            "control": control,
+            "max_today": _num(b.get("max_in_day")),
+            "max_yesterday": _num(b.get("max_in_yesterday")),
+            "ts": ts,
+            "source": "bma",
+            "url": BMA_STATION_URL.format(b.get("water_id")),
+        })
+    return rows
+
+
 def _load_canals():
+    """BMA gauges first (fresh, with banks), then ThaiWater canal stations the BMA page does not list."""
+    parts, errors = {}, {}
+
+    def run(key, fn):
+        try:
+            parts[key] = fn()
+        except Exception as e:  # noqa: BLE001 - either source alone is enough
+            errors[key] = e
+            print(f"[Water] canals {key}: {e}")
+
+    threads = [threading.Thread(target=run, args=a, daemon=True) for a in (
+        ("bma", lambda: _cache.get("bma_canals", BMA_WATER_TTL, _load_bma_canals)[0]), ("twa", _load_twa_canals))]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=45)
+    if not parts:
+        raise RuntimeError(str(errors.get("bma") or errors.get("twa") or "canal sources unreachable"))
+    rows = list(parts.get("bma", []))
+    placed = [r for r in rows if r["lat"] and r["lng"]]
+    for t in parts.get("twa", []):
+        if t["lat"] and t["lng"] and any(_km(t["lat"], t["lng"], r["lat"], r["lng"]) <= CANAL_MATCH_KM for r in placed):
+            continue
+        rows.append(t)
+    order = {"overflow": 0, "high": 1, "normal": 2, "offline": 3}
+    rows.sort(key=lambda r: (order.get(r["level"], 9), r["diff_bank"] if r.get("diff_bank") is not None else 99,
+                             -(r["storage_pct"] or -1)))
+    return rows
+
+
+def _load_twa_canals():
     rows = []
     for p in _features(_get("/v2/waterlevel/canal"), METRO_PROVINCES):
         st = p.get("station") or {}
@@ -353,8 +483,8 @@ def _load_canals():
             "storage_pct": storage,
             "level": _canal_level(storage),
             "ts": _ts(p.get("measureAt")),
+            "source": "thaiwater",
         })
-    rows.sort(key=lambda r: -(r["storage_pct"] or -1))
     return rows
 
 
@@ -498,6 +628,7 @@ def _load_ntw():
             "max_storage": _num(dam.get("max_storage")), "storage_pct": pct,
             "inflow": _num(x.get("dam_inflow")), "released": _num(x.get("dam_released")),
             "uses_pct": _num(x.get("dam_uses_water_percent")),
+            "lat": _num(dam.get("dam_lat")), "lng": _num(dam.get("dam_long")),
             "level": "high" if (pct or 0) >= 90 else ("normal" if (pct or 0) >= 50 else "low"),
         })
     dams.sort(key=lambda d: NTW_DAMS.index(d["name"]))
@@ -745,9 +876,12 @@ def _build_summary():
         "updated_at": int(time.time()),
         "river": river,
         "river_counts": {k: sum(1 for r in river if r["level"] == k) for k in ("overflow", "high", "normal", "low")},
-        "canals": canals[:40],
-        "canal_counts": {k: sum(1 for r in canals if r["level"] == k) for k in ("overflow", "high", "normal")},
-        "canal_total": len(canals),
+        "canals": [r for r in canals if r["level"] != "offline"][:40],
+        "canal_counts": {k: sum(1 for r in canals if r["level"] == k) for k in ("overflow", "high", "normal", "offline")},
+        "canal_total": sum(1 for r in canals if r["level"] != "offline"),
+        "canal_control": sum(1 for r in canals if r.get("control") == "critical"),
+        "canal_sources": {k: sum(1 for r in canals if r.get("source") == k) for k in ("bma", "thaiwater")},
+        "canals_all": canals,    # every gauge, for get_map(); dropped from the summary payload
         "flood_roads": roads,
         "tide": parts.get("tide", []),
         "rain_warnings": parts.get("rain", []),
@@ -768,7 +902,43 @@ def rain_stations():
 
 def get_summary():
     data, stale = _cache.get("summary", SUMMARY_TTL, _build_summary)
-    return {**data, "stale": stale, "api_key": key_status()}
+    return {**{k: v for k, v in data.items() if k != "canals_all"}, "stale": stale, "api_key": key_status()}
+
+
+RIVER_STALE_MINUTES = 180    # ThaiWater river gauges report hourly at best
+
+
+def get_map():
+    """Every metro gauge as one map point, for the Water Forecast station map: water level (rivers +
+    canals, offline ones included), 24 h rain and the upstream dams."""
+    data, stale = _cache.get("summary", SUMMARY_TTL, _build_summary)
+    now = time.time()
+
+    def pt(r, kind, **extra):
+        return {"id": f"{kind}-{r.get('id') or r.get('name')}", "kind": kind, "name": r.get("name") or "",
+                "district": r.get("district") or "", "province": r.get("province") or "",
+                "lat": r.get("lat"), "lng": r.get("lng"), "ts": r.get("ts"), **extra}
+
+    water = []
+    for r in data.get("river") or []:
+        old = not r.get("ts") or now - r["ts"] > RIVER_STALE_MINUTES * 60
+        water.append(pt(r, "river", status="offline" if old else r.get("level"), msl=r.get("msl"), bank=r.get("bank"),
+                        diff_bank=r.get("diff_bank"), storage_pct=r.get("storage_pct"), river=r.get("river"),
+                        trend=r.get("trend"), station_id=r.get("id")))
+    for r in data.get("canals_all") or data.get("canals") or []:
+        water.append(pt(r, "canal", status=r.get("level"), msl=r.get("msl"), bank=r.get("bank"),
+                        diff_bank=r.get("diff_bank"), storage_pct=r.get("storage_pct"), river=r.get("canal"),
+                        control=r.get("control"), control_critical=r.get("control_critical"),
+                        source=r.get("source"), url=r.get("url")))
+    rain = [pt(r, "rain", status=r.get("level"), rain_24h=r.get("rain_24h"), rain_1h=r.get("rain_1h"))
+            for r in rain_stations()]
+    dams = [pt({**d, "province": ""}, "dam", status=d.get("level"), storage_pct=d.get("storage_pct"),
+               storage=d.get("storage"), max_storage=d.get("max_storage"), inflow=d.get("inflow"),
+               released=d.get("released"), date=d.get("date"))
+            for d in (data.get("ntw") or {}).get("dams") or []]
+    keep = lambda rows: [r for r in rows if r["lat"] and r["lng"]]
+    return {"updated_at": data.get("updated_at"), "stale": stale,
+            "water": keep(water), "rain": keep(rain), "dams": keep(dams)}
 
 
 # ---------------------------------------------------------------- forecast

@@ -779,7 +779,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
       const alarm = g.level === 'overflow' || g.level === 'high';
       const el = document.createElement('button');
       el.type = 'button';
-      el.title = `${g.name} (${g.province}): ${sty.label} ${g.storage_pct}%`;
+      el.title = `${g.name} (${g.province}): ${sty.label}${g.storage_pct != null ? ` ${g.storage_pct}%` : ''}`;
       if (alarm) {
         el.style.cssText = `display:flex;align-items:center;justify-content:center;min-width:34px;height:20px;padding:0 5px;border-radius:6px;background:${sty.color};color:#fff;font:700 10px/1 var(--font-sans);border:2px solid #fff;box-shadow:0 1px 4px rgba(15,23,42,.35);cursor:pointer`;
         el.textContent = `${Math.round(g.storage_pct)}%`;
@@ -790,10 +790,10 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
         `<div style="font-size:13px;line-height:1.45">
           <b>${esc(g.name)}</b>
           <br><span style="color:#64748b">${g.kind === 'river' ? 'สถานีแม่น้ำ' : 'สถานีคลอง'}${g.district ? ` · ${esc(g.district)}` : ''}${g.province ? ` · ${esc(g.province)}` : ''}</span>
-          <br><span style="color:${sty.color};font-weight:700">${sty.label}</span> <b>${g.storage_pct}%</b> ของความจุตลิ่ง
+          <br><span style="color:${sty.color};font-weight:700">${sty.label}</span>${g.storage_pct != null ? ` <b>${g.storage_pct}%</b> ของความจุตลิ่ง` : ''}
           ${g.msl != null ? `<br><span style="color:#64748b">ระดับน้ำ ${g.msl} ม.รทก.${g.bank != null ? ` · ตลิ่ง ${g.bank} ม.` : ''}</span>` : ''}
           ${g.diff_text && g.diff_bank != null ? `<br><span style="color:#64748b">${esc(g.diff_text)} ${g.diff_bank}</span>` : ''}
-          ${g.ts ? `<br><span style="color:#94a3b8;font-size:11px">ข้อมูล ${new Date(g.ts * 1000).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น. · คลังข้อมูลน้ำแห่งชาติ</span>` : ''}
+          ${g.ts ? `<br><span style="color:#94a3b8;font-size:11px">ข้อมูล ${new Date(g.ts * 1000).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น. · ${g.source === 'bma' ? 'สำนักการระบายน้ำ กทม.' : 'คลังข้อมูลน้ำแห่งชาติ'}</span>` : ''}
         </div>`
       );
       gaugeMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([g.lng, g.lat]).setPopup(popup).addTo(map));

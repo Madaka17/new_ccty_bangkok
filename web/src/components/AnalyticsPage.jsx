@@ -86,7 +86,7 @@ function FloodSection({ d }) {
       )}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatTile label="สถานีแม่น้ำล้นตลิ่ง" value={fmtNum(sc.river?.overflow || 0)} sub={`ใกล้วิกฤต ${sc.river?.high || 0} · ปกติ ${sc.river?.normal || 0}`} tone={sc.river?.overflow ? 'red' : sc.river?.high ? 'yellow' : 'green'} />
-        <StatTile label="คลองระบายน้ำเต็ม" value={fmtNum(sc.canal?.overflow || 0)} sub={`สูง ≥ 80% อีก ${sc.canal?.high || 0} จาก ${sc.canal_total || 0} คลอง`} tone={sc.canal?.overflow ? 'red' : sc.canal?.high ? 'yellow' : 'green'} />
+        <StatTile label="คลองระบายน้ำเต็ม" value={fmtNum(sc.canal?.overflow || 0)} sub={`ห่างตลิ่ง ≤ 20 ซม. อีก ${sc.canal?.high || 0} จาก ${sc.canal_total || 0} จุดวัด`} tone={sc.canal?.overflow ? 'red' : sc.canal?.high ? 'yellow' : 'green'} />
         <StatTile label="ถนนน้ำท่วม (≥ 10 ซม.)" value={fmtNum(d.flood_roads.flooding || 0)} sub={`น้ำขังเล็กน้อย ${d.flood_roads.slight || 0} จุด`} tone={d.flood_roads.flooding ? 'red' : d.flood_roads.slight ? 'yellow' : 'green'} />
         <StatTile label="เขตเฝ้าระวังเร่งด่วน" value={fmtNum(d.urgent_districts.filter((u) => u.priority === 'เร่งด่วน').length)} sub={`เฝ้าระวังรวม ${d.urgent_districts.length} เขต`} tone={d.urgent_districts.some((u) => u.priority === 'เร่งด่วน') ? 'red' : 'green'} />
       </div>
@@ -125,7 +125,7 @@ function FloodSection({ d }) {
                   <span className="text-slate-900 truncate">{s.name}</span>
                   <span className="text-xs text-slate-500 truncate">{s.district}</span>
                   <span className="ml-auto text-xs text-slate-600 tabular-nums whitespace-nowrap">
-                    {s.kind === 'river' ? (s.diff_bank != null ? `ต่ำกว่าตลิ่ง ${s.diff_bank} ม.` : `${s.msl ?? '–'} ม.รทก.`) : `${s.storage_pct ?? '–'}%`}
+                    {s.kind === 'river' ? (s.diff_bank != null ? `ต่ำกว่าตลิ่ง ${s.diff_bank} ม.` : `${s.msl ?? '–'} ม.รทก.`) : (s.diff_bank != null ? (s.diff_bank > 0 ? `ต่ำกว่าตลิ่ง ${s.diff_bank} ม.` : `เกินตลิ่ง ${Math.abs(s.diff_bank)} ม.`) : `${s.storage_pct ?? '–'}%`)}
                     {s.trend != null && <span className={s.trend > 0 ? 'text-red-700' : 'text-emerald-700'}> {s.trend > 0 ? '▲' : '▼'}{Math.abs(s.trend)}</span>}
                   </span>
                 </li>
