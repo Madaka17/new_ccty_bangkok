@@ -226,6 +226,21 @@ export async function runRiskAnalysis() {
   return res.json();
 }
 
+// AI reading of the Traffy Fondue flood reports of the last 6 h (traffy_agent.py): report + numbers
+export async function fetchTraffyAnalysis() {
+  const res = await fetch('/api/traffy/analysis');
+  if (!res.ok) throw new Error('traffy_analysis');
+  return res.json();
+}
+
+// Re-run it now; operator only (403 from anywhere else)
+export async function runTraffyAnalysis() {
+  const res = await fetch('/api/traffy/analysis/run', { method: 'POST' });
+  if (res.status === 403) throw new Error('forbidden');
+  if (!res.ok) throw new Error('traffy_analysis_run');
+  return res.json();
+}
+
 // TMD heavy-rain / storm warnings; `active` = issued in the last two days (flood_feeds.py)
 export async function fetchWeatherWarnings() {
   const res = await fetch('/api/weather/warnings');
@@ -368,6 +383,13 @@ export async function fetchWaterSummary() {
   return res.json();
 }
 
+// Every metro water / rain gauge and the upstream dams as map points (Water Forecast station map)
+export async function fetchWaterMap() {
+  const res = await fetch('/api/water/map');
+  if (!res.ok) throw new Error('water_map');
+  return res.json();
+}
+
 export async function fetchWaterForecast(stationId) {
   const res = await fetch(`/api/water/forecast?station=${encodeURIComponent(stationId)}`);
   if (!res.ok) throw new Error('water_forecast');
@@ -383,13 +405,6 @@ export async function fetchBMAEvents({ kind, hours = 24, limit = 60 } = {}) {
 }
 
 // ---- BMA Traffic & YOLO Vehicle Counting
-// Every metro water / rain gauge and the upstream dams as map points (Water Forecast station map)
-export async function fetchWaterMap() {
-  const res = await fetch('/api/water/map');
-  if (!res.ok) throw new Error('water_map');
-  return res.json();
-}
-
 export async function fetchBmaCameras() {
   const res = await fetch('/api/bma/cameras');
   if (!res.ok) throw new Error('bma_cameras');

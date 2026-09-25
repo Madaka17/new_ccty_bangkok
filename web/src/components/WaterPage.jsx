@@ -1,14 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchWaterSummary } from '../lib/api.js';
+import { trackView } from '../lib/telemetry.js';
 import { Badge, Button, ErrorState } from './dashboard/ui.jsx';
 import { PageHeader, StatTile, StatusBanner } from './dashboard/primitives.jsx';
 import { fmtDateTime } from './dashboard/format.js';
 import ForecastChart from './water/ForecastChart.jsx';
 import WaterMap from './water/WaterMap.jsx';
+import ViewSwitch from './ViewSwitch.jsx';
+import FloodAgentCard from './dashboard/FloodAgentCard.jsx';
 import FloodAnalysisGuide from './water/FloodAnalysisGuide.jsx';
+import FloodWatchSection from './water/FloodWatchSection.jsx';
 import { RiverStations, CanalCard, NtwRainCard } from './water/WaterLists.jsx';
 
 const POLL_MS = 60000;
+const TABS = [
+  { id: 'situation', label: 'สถานการณ์น้ำ', hint: 'ระดับน้ำ · แผนที่จุดวัด · กราฟแนวโน้ม · คลองและฝน', icon: 'water' },
+  { id: 'watch', label: 'เฝ้าระวังน้ำท่วม', hint: 'สถานีเทียบตลิ่ง · เขตเร่งด่วน · คาดการณ์ 1-6 ชม. · เรื่องแจ้ง Traffy (AI)', icon: 'alerts' },
+  { id: 'agent', label: 'วิเคราะห์สถานการณ์น้ำท่วม (AI)', hint: 'ระดับภาพรวม · เขตที่ต้องจับตา · ถนนที่ควรเลี่ยง', icon: 'analytics' },
+  { id: 'analysis', label: 'วิเคราะห์และคาดการณ์น้ำท่วม (AI)', hint: 'คาดการณ์รายโซน · น้ำ 3 ทาง · มาตรการ · คู่มือประชาชน', icon: 'ai' },
+];
 const DEFAULT_STATION = '1132'; // สะพานนวลฉวี: nearest official 7-day forecast to Bangkok
 
 // Overall outlook line derived from the pieces we have (kept deliberately simple and explainable)
@@ -24,11 +34,16 @@ function outlook(s) {
   return { tone: 'green', label: 'ปกติ', text: 'ระดับน้ำแม่น้ำ-คลองหลักส่วนใหญ่ต่ำกว่าตลิ่ง ไม่มีเตือนฝนหนักในพื้นที่' };
 }
 
-export default function WaterPage({ isActive, onToast, onNavigate, onAsk }) {
+export default function WaterPage({ isActive, onToast, onNavigate, onAsk, onOpenRoad }) {
   const [summary, setSummary] = useState(null);
   const [error, setError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [stationId, setStationId] = useState(DEFAULT_STATION);
+  const [tab, setTab] = useState('situation');
+  const pickTab = (id) => {
+    setTab(id);
+    trackView(`water:${id}`);
+  };
   const chartRef = useRef(null);
   // Picking a station from a list further down the page: switch and bring the chart into view
   const pickStation = useCallback((id) => {
@@ -85,74 +100,82 @@ export default function WaterPage({ isActive, onToast, onNavigate, onAsk }) {
         }
       />
 
-      {error && !summary && <ErrorState message="เชื่อมต่อ thaiwater.net ไม่สำเร็จ" onRetry={load} retrying={refreshing} />}
-      {summary?.api_key?.rejected && (
-        <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          thaiwater.net ปฏิเสธคีย์ API ตัวเดิม ระบบกำลังค้นหาคีย์ใหม่จากเว็บ twa.thaiwater.net อัตโนมัติทุก 5 นาที
-        </p>
+      <ViewSwitch tabs={TABS} value={tab} onChange={pickTab} label="มุมมองหน้าคาดการณ์ระดับน้ำ" />
+
+      {tab === 'watch' && <FloodWatchSection isActive={isActive} />}
+
+      {tab === 'agent' && <FloodAgentCard isActive={isActive} onOpenRoad={onOpenRoad} />}
+
+      {tab === 'analysis' && <FloodAnalysisGuide isActive={isActive} onNavigate={onNavigate} onAsk={onAsk} />}
+
+      {tab === 'situation' && (
+        <>
+          {error && !summary && <ErrorState message="เชื่อมต่อ thaiwater.net ไม่สำเร็จ" onRetry={load} retrying={refreshing} />}
+          {summary?.api_key?.rejected && (
+            <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              thaiwater.net ปฏิเสธคีย์ API ตัวเดิม ระบบกำลังค้นหาคีย์ใหม่จากเว็บ twa.thaiwater.net อัตโนมัติทุก 5 นาที
+            </p>
+          )}
+          {error && summary && (
+            <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              รีเฟรชล่าสุดไม่สำเร็จ แสดงข้อมูลเมื่อ {fmtDateTime(summary.updated_at)}
+            </p>
+          )}
+
+          {o && (
+            <StatusBanner tone={o.tone} label={o.label}>
+              {o.text}
+            </StatusBanner>
+          )}
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatTile
+              label="สถานีแม่น้ำ-คลองหลักล้นตลิ่ง"
+              value={summary ? `${summary.river_counts.overflow} / ${summary.river.length}` : '–'}
+              sub={summary ? `ใกล้ล้นอีก ${summary.river_counts.high} สถานี` : ''}
+              badge={summary?.river_counts.overflow ? <Badge tone="red" dot>ล้น</Badge> : null}
+              loading={loading}
+            />
+            <StatTile
+              label="น้ำทะเลหนุนสูงสุดวันนี้"
+              value={tideMax?.max != null ? `${tideMax.max.toFixed(2)} ม.` : '–'}
+              sub={tideMax ? `${tideMax.name} เวลา ${tideMax.max_time} น.` : ''}
+              badge={tideMax?.max >= 1.2 ? <Badge tone="yellow">หนุนสูง</Badge> : null}
+              loading={loading}
+            />
+            <StatTile
+              label="ถนน กทม. มีน้ำท่วมขัง (เซ็นเซอร์)"
+              value={roads ? `${roads.flooding + roads.slight} จุด` : '–'}
+              sub={roads ? `จากเซ็นเซอร์ ${roads.flooding + roads.slight + roads.normal} จุด · ท่วมขัง ${roads.flooding}` : ''}
+              badge={roads?.flooding ? <Badge tone="red" dot>ท่วม</Badge> : null}
+              loading={loading}
+            />
+            <StatTile
+              label="คลอง กทม. น้ำสูงผิดปกติ"
+              value={summary ? `${summary.canal_counts.overflow + summary.canal_counts.high} / ${summary.canal_total}` : '–'}
+              sub={summary ? `ล้น ${summary.canal_counts.overflow} · ใกล้ล้น ${summary.canal_counts.high}${summary.canal_control ? ` · เกินระดับควบคุม ${summary.canal_control}` : ''}` : ''}
+              badge={summary?.canal_counts.overflow ? <Badge tone="red" dot>ล้น</Badge> : null}
+              loading={loading}
+            />
+          </div>
+
+          <WaterMap isActive={isActive} onPickStation={pickStation} />
+
+          {stations.length > 0 && <ForecastChart stations={stations} stationId={stationId} onPickStation={setStationId} anchorRef={chartRef} />}
+
+          <RiverStations rows={summary?.river} selectedId={stationId} onSelect={pickStation} loading={loading} />
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <CanalCard canals={summary?.canals} counts={summary?.canal_counts} total={summary?.canal_total} roads={roads} loading={loading} />
+            <NtwRainCard ntw={summary?.ntw} loading={loading} />
+          </div>
+
+          <p className="text-xs text-slate-500 leading-5 px-1">
+            แหล่งข้อมูล: คลังข้อมูลน้ำแห่งชาติ สทนช. (nationalthaiwater.onwr.go.th: เขื่อน ฝนรายสถานี คาดการณ์ฝน พายุ ประกาศเตือน), สถาบันสารสนเทศทรัพยากรน้ำ (สสน.) ผ่าน twa.thaiwater.net, สำนักการระบายน้ำ กรุงเทพมหานคร, ศูนย์ควบคุมระบบจราจร กทม. (cpudapp.bangkok.go.th) ·
+            คาดการณ์ 7 วันเป็นของ สสน. ส่วนค่า “ประเมิน” 48 ชม. คำนวณจากแนวโน้มและรอบน้ำขึ้น-น้ำลงของสถานีนั้นเอง ใช้ประกอบการตัดสินใจเบื้องต้นเท่านั้น
+          </p>
+        </>
       )}
-      {error && summary && (
-        <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          รีเฟรชล่าสุดไม่สำเร็จ แสดงข้อมูลเมื่อ {fmtDateTime(summary.updated_at)}
-        </p>
-      )}
-
-      {o && (
-        <StatusBanner tone={o.tone} label={o.label}>
-          {o.text}
-        </StatusBanner>
-      )}
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatTile
-          label="สถานีแม่น้ำ-คลองหลักล้นตลิ่ง"
-          value={summary ? `${summary.river_counts.overflow} / ${summary.river.length}` : '–'}
-          sub={summary ? `ใกล้ล้นอีก ${summary.river_counts.high} สถานี` : ''}
-          badge={summary?.river_counts.overflow ? <Badge tone="red" dot>ล้น</Badge> : null}
-          loading={loading}
-        />
-        <StatTile
-          label="น้ำทะเลหนุนสูงสุดวันนี้"
-          value={tideMax?.max != null ? `${tideMax.max.toFixed(2)} ม.` : '–'}
-          sub={tideMax ? `${tideMax.name} เวลา ${tideMax.max_time} น.` : ''}
-          badge={tideMax?.max >= 1.2 ? <Badge tone="yellow">หนุนสูง</Badge> : null}
-          loading={loading}
-        />
-        <StatTile
-          label="ถนน กทม. มีน้ำท่วมขัง (เซ็นเซอร์)"
-          value={roads ? `${roads.flooding + roads.slight} จุด` : '–'}
-          sub={roads ? `จากเซ็นเซอร์ ${roads.flooding + roads.slight + roads.normal} จุด · ท่วมขัง ${roads.flooding}` : ''}
-          badge={roads?.flooding ? <Badge tone="red" dot>ท่วม</Badge> : null}
-          loading={loading}
-        />
-        <StatTile
-          label="คลอง กทม. น้ำสูงผิดปกติ"
-          value={summary ? `${summary.canal_counts.overflow + summary.canal_counts.high} / ${summary.canal_total}` : '–'}
-          sub={summary ? `ล้น ${summary.canal_counts.overflow} · ใกล้ล้น ${summary.canal_counts.high}${summary.canal_control ? ` · เกินระดับควบคุม ${summary.canal_control}` : ''}` : ''}
-          badge={summary?.canal_counts.overflow ? <Badge tone="red" dot>ล้น</Badge> : null}
-          loading={loading}
-        />
-      </div>
-
-      <WaterMap isActive={isActive} onPickStation={pickStation} />
-
-      {stations.length > 0 && <ForecastChart stations={stations} stationId={stationId} onPickStation={setStationId} anchorRef={chartRef} />}
-
-      <FloodAnalysisGuide isActive={isActive} onNavigate={onNavigate} onAsk={onAsk} />
-
-
-
-      <RiverStations rows={summary?.river} selectedId={stationId} onSelect={pickStation} loading={loading} />
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <CanalCard canals={summary?.canals} counts={summary?.canal_counts} total={summary?.canal_total} roads={roads} loading={loading} />
-        <NtwRainCard ntw={summary?.ntw} loading={loading} />
-      </div>
-
-      <p className="text-xs text-slate-500 leading-5 px-1">
-        แหล่งข้อมูล: คลังข้อมูลน้ำแห่งชาติ สทนช. (nationalthaiwater.onwr.go.th: เขื่อน ฝนรายสถานี คาดการณ์ฝน พายุ ประกาศเตือน), สถาบันสารสนเทศทรัพยากรน้ำ (สสน.) ผ่าน twa.thaiwater.net, สำนักการระบายน้ำ กรุงเทพมหานคร, ศูนย์ควบคุมระบบจราจร กทม. (cpudapp.bangkok.go.th) ·
-        คาดการณ์ 7 วันเป็นของ สสน. ส่วนค่า “ประเมิน” 48 ชม. คำนวณจากแนวโน้มและรอบน้ำขึ้น-น้ำลงของสถานีนั้นเอง ใช้ประกอบการตัดสินใจเบื้องต้นเท่านั้น
-      </p>
     </div>
   );
 }

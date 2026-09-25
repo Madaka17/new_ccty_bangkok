@@ -144,7 +144,7 @@ export default function WrongWayPage({ isActive, onToast }) {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="ตรวจรถย้อนศรจากกล้อง กทม."
-        description="ทุกรอบสแกน (~4 นาที) โมเดลทิศทางรถที่เทรนเอง (YOLO26x) อ่านว่ารถแต่ละคันหันไปทางไหน กล้องแต่ละตัวเรียนรู้เองว่าช่องทางไหนปกติวิ่งทางใด รถที่หันสวนช่องทางจะถูกส่งให้ AI agent ยืนยัน แล้วเก็บหลักฐานลง Drive E: อัตโนมัติ"
+        description="ทุกรอบสแกน (~4 นาที) YOLO26x หารถ แล้วโมเดลจำแนกทิศที่เทรนเองอ่านว่ารถแต่ละคันหันหน้าหรือหันท้ายเข้ากล้อง กล้องแต่ละตัวเรียนรู้เองว่าช่องทางไหนปกติวิ่งทางใด รถที่หันสวนช่องทางจะถูกส่งให้ AI agent ยืนยัน แล้วเก็บหลักฐานลง Drive E: อัตโนมัติ"
         actions={
           <div className="flex items-center gap-2">
             <select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700">

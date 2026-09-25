@@ -4,14 +4,13 @@ import NavIcon from './NavIcons.jsx';
 // analytics console. Order = how often each page is opened.
 export const NAV_ITEMS = [
   { id: 'dashboard', label: 'Traffic Dashboard' },
-  { id: 'analytics', label: 'City Analytics' },
   { id: 'yolo', label: 'Camera AI & Analysis' },
   { id: 'map', label: 'Traffic Map' },
-  { id: 'helmet', label: 'Helmet Check' },
-  { id: 'wrongway', label: 'Wrong-Way Check' },
+  { id: 'safety', label: 'Accidents & Risk' },
   { id: 'water', label: 'Water Forecast' },
   { id: 'ai', label: 'Ask AI (Routes)' },
   { id: 'alerts', label: 'Alerts' },
+  { id: 'visitors', label: 'Visitors' },
 ];
 
 export const PAGE_TITLES = Object.fromEntries(NAV_ITEMS.map((i) => [i.id, i.label]));

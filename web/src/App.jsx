@@ -9,23 +9,23 @@ import MapPage from './components/MapPage.jsx';
 import DashboardPage from './components/DashboardPage.jsx';
 import BottomNav from './components/BottomNav.jsx';
 import CameraAiPage from './components/CameraAiPage.jsx';
+import SafetyPage from './components/SafetyPage.jsx';
+import VisitorsPage from './components/VisitorsPage.jsx';
 import WaterPage from './components/WaterPage.jsx';
 import AlertsPage from './components/AlertsPage.jsx';
 import AlertPopups from './components/AlertPopups.jsx';
-import AnalyticsPage from './components/AnalyticsPage.jsx';
-import HelmetPage from './components/HelmetPage.jsx';
-import WrongWayPage from './components/WrongWayPage.jsx';
 import NavIcon from './components/NavIcons.jsx';
 import { fetchCameras, fetchAIStats, fetchIncidents, fetchSurveyRanking, fetchRoadCameras } from './lib/api.js';
 import { useActiveCameras, useFavorites, useUserName } from './lib/store.js';
 import { trackView, startHeartbeat } from './lib/telemetry.js';
 
-const PAGES = ['dashboard', 'analytics', 'cameras', 'map', 'water', 'yolo', 'helmet', 'wrongway', 'ai', 'alerts'];
+const PAGES = ['dashboard', 'cameras', 'map', 'safety', 'water', 'yolo', 'ai', 'alerts', 'visitors'];
+// Old links to pages that are now tabs of the camera AI page
+const CAMERA_TAB_LINKS = { 'bma-count': 'bma', helmet: 'helmet', wrongway: 'wrongway' };
 
 function pageFromHash() {
  const h = window.location.hash.replace(/^#\/?/, '');
- // Old BMA counts link: the counts now live as a tab on the camera AI page
- if (h === 'bma-count') return 'yolo';
+ if (CAMERA_TAB_LINKS[h]) return 'yolo';
  return PAGES.includes(h) ? h : 'dashboard';
 }
 
@@ -40,7 +40,7 @@ export default function App() {
  const [query, setQuery] = useState('');
  const [userPos, setUserPos] = useState(null);
  const [aiCamid, setAiCamid] = useState('ITICM_BMAMI0188');
- const [cameraTab, setCameraTab] = useState(() => (window.location.hash.replace(/^#\/?/, '') === 'bma-count' ? 'bma' : 'live'));
+ const [cameraTab, setCameraTab] = useState(() => CAMERA_TAB_LINKS[window.location.hash.replace(/^#\/?/, '')] || 'live');
  const [pendingQuestion, setPendingQuestion] = useState('');
  const [aiActive, setAiActive] = useState(false);
  const [toast, setToast] = useState('');
@@ -69,7 +69,11 @@ export default function App() {
 
   // Hash routing
  useEffect(() => {
- const onHash = () => setPage(pageFromHash());
+ const onHash = () => {
+ const tab = CAMERA_TAB_LINKS[window.location.hash.replace(/^#\/?/, '')];
+ if (tab) setCameraTab(tab);
+ setPage(pageFromHash());
+ };
  window.addEventListener('hashchange', onHash);
  return () => window.removeEventListener('hashchange', onHash);
   }, []);
@@ -238,12 +242,6 @@ export default function App() {
             </motion.div>
           )}
 
-          {page === 'analytics' && (
-            <motion.div key="analytics" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
-              <AnalyticsPage isActive onNavigate={navigate} onOpenRoad={openRoadCameras} />
-            </motion.div>
-          )}
-
           {page === 'cameras' && (
             <motion.div
  key="cameras"
@@ -291,7 +289,7 @@ export default function App() {
 
           {page === 'water' && (
             <motion.div key="water" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
-              <WaterPage isActive onToast={showToast} onNavigate={navigate} onAsk={askAI} />
+              <WaterPage isActive onToast={showToast} onNavigate={navigate} onAsk={askAI} onOpenRoad={openRoadCameras} />
             </motion.div>
           )}
 
@@ -301,15 +299,15 @@ export default function App() {
             </motion.div>
           )}
 
-          {page === 'helmet' && (
-            <motion.div key="helmet" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
-              <HelmetPage isActive onToast={showToast} />
+          {page === 'safety' && (
+            <motion.div key="safety" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
+              <SafetyPage isActive />
             </motion.div>
           )}
 
-          {page === 'wrongway' && (
-            <motion.div key="wrongway" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
-              <WrongWayPage isActive onToast={showToast} />
+          {page === 'visitors' && (
+            <motion.div key="visitors" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
+              <VisitorsPage isActive />
             </motion.div>
           )}
 

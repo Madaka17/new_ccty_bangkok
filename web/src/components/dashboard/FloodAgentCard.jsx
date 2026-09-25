@@ -26,6 +26,67 @@ const TOOL_TH = {
   get_bma_events: 'ศูนย์จราจร กทม.',
 };
 
+// Rain watch colour of a forecast zone (water_service.py: red / orange / yellow / none)
+const WATCH_DOT = { red: 'bg-red-500', orange: 'bg-orange-400', yellow: 'bg-amber-300' };
+const mm = (v) => (v == null ? '-' : `${Number(v).toFixed(1)}`);
+
+// Forecast figures under the report: straight from the data, the model only writes weather_summary
+function Weather({ summary, weather }) {
+  const zones = weather?.zones || [];
+  if (!summary && !zones.length) return null;
+  return (
+    <div>
+      <p className="text-xs font-semibold text-slate-700 mb-1">พยากรณ์อากาศ</p>
+      {summary && <p className="text-[13px] text-slate-700">{summary}</p>}
+      {zones.length > 0 && (
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full text-[12.5px] text-slate-700">
+            <thead>
+              <tr className="text-left text-xs text-slate-500 border-b border-slate-200">
+                <th className="py-1 pr-3 font-medium">โซน</th>
+                <th className="py-1 pr-3 font-medium text-right">ฝน 6 ชม. (มม.)</th>
+                <th className="py-1 pr-3 font-medium text-right">ฝน 24 ชม. (มม.)</th>
+                <th className="py-1 pr-3 font-medium text-right">โอกาสฝน</th>
+                <th className="py-1 pr-3 font-medium">ฝนหนักสุด</th>
+                <th className="py-1 pr-3 font-medium">พายุฝนฟ้าคะนอง</th>
+                <th className="py-1 font-medium text-right">ลมกระโชก (กม./ชม.)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {zones.map((z) => (
+                <tr key={z.zone} className="border-b border-slate-100 last:border-0">
+                  <td className="py-1 pr-3 whitespace-nowrap" title={z.areas}>
+                    <span className={`inline-block w-2 h-2 rounded-full mr-1.5 ${WATCH_DOT[z.watch] || 'bg-slate-300'}`} aria-hidden="true" />
+                    {z.zone}
+                  </td>
+                  <td className="py-1 pr-3 text-right tabular-nums">{mm(z.rain_6h_mm)}</td>
+                  <td className="py-1 pr-3 text-right tabular-nums">{mm(z.rain_24h_mm)}</td>
+                  <td className="py-1 pr-3 text-right tabular-nums">{z.prob_24h == null ? '-' : `${Math.round(z.prob_24h)}%`}</td>
+                  <td className="py-1 pr-3 whitespace-nowrap">{z.peak_at ? `${z.peak_at}${z.peak_mm_h != null ? ` (${mm(z.peak_mm_h)} มม./ชม.)` : ''}` : '-'}</td>
+                  <td className="py-1 pr-3 whitespace-nowrap">{z.storm_at || '-'}</td>
+                  <td className="py-1 text-right tabular-nums">{z.gust_max_kmh == null ? '-' : Math.round(z.gust_max_kmh)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {weather?.outlook_3d?.length > 0 && (
+        <p className="text-xs text-slate-600 mt-2">
+          แนวโน้มฝน 3 วัน: {weather.outlook_3d.map((o) => `${o.province} ${o.text}`).join(' · ')}
+        </p>
+      )}
+      {weather?.warnings?.length > 0 && (
+        <ul className="mt-1 space-y-0.5 text-xs text-slate-600">
+          {weather.warnings.map((w, i) => (
+            <li key={i}>ประกาศกรมอุตุฯ: {w.title}{w.date ? ` (${w.date})` : ''}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function List({ title, items }) {
   if (!items?.length) return null;
   return (
@@ -121,10 +182,12 @@ export default function FloodAgentCard({ isActive, onOpenRoad }) {
                     <li key={d.name} className="rounded-lg border border-slate-200 p-3 flex gap-3">
                       <span className={`w-1 rounded-full shrink-0 ${dl.bar}`} aria-hidden="true" />
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-semibold text-slate-900">{d.name}</span>
                           <Badge tone={dl.tone}>{dl.label}</Badge>
+                          {d.zone && <Badge>{d.zone}</Badge>}
                         </div>
+                        {d.category_th && <p className="text-xs font-medium text-slate-600 mt-1">{d.category_th}</p>}
                         <p className="text-[13px] text-slate-700 mt-0.5">{d.reason}</p>
                         {d.outlook && <p className="text-xs text-slate-500 mt-0.5">คาดการณ์: {d.outlook}</p>}
                       </div>
@@ -163,6 +226,8 @@ export default function FloodAgentCard({ isActive, onOpenRoad }) {
               <p className="text-[13px] text-slate-700">{r.outlook}</p>
             </div>
           )}
+
+          <Weather summary={r.weather_summary} weather={r.weather} />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <List title="คำแนะนำประชาชน" items={r.actions?.public} />

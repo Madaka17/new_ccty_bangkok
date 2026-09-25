@@ -10,7 +10,6 @@ import DensityPanel from './dashboard/DensityPanel.jsx';
 import TrafficGuidanceCard from './dashboard/TrafficGuidanceCard.jsx';
 import CityStatusStrip from './dashboard/CityStatusStrip.jsx';
 import RoadRiskPanel from './dashboard/RoadRiskPanel.jsx';
-import FloodAgentCard from './dashboard/FloodAgentCard.jsx';
 import BMAEventFeed from './water/BMAEventFeed.jsx';
 
 const POLL_MS = 60000;
@@ -177,8 +176,6 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
 
 
       <CityStatusStrip summary={activeSummary} incidents={incidents} flood={flood} onNavigate={onNavigate} isActive={isActive} />
-
-      <FloodAgentCard isActive={isActive} onOpenRoad={onOpenRoad} />
 
       <Tabs
         label="หมวดข้อมูลแดชบอร์ด"

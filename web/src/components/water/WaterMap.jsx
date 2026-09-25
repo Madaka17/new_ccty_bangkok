@@ -21,6 +21,18 @@ const LAYERS = {
       ['offline', 'ขาดข้อมูล', '#94a3b8'],
     ],
   },
+  roads: {
+    label: 'น้ำท่วมถนน',
+    note: 'เซ็นเซอร์บนถนน สนน. กทม. (ซม. เหนือผิวถนน ทุก 5 นาที) และรายงานน้ำท่วมผ่าน Longdo Traffic (iTIC / FM91)',
+    status: [
+      ['flood', 'ท่วมขัง > 10 ซม.', '#dc2626'],
+      ['slight', 'ท่วมเล็กน้อย 5-10 ซม.', '#d97706'],
+      ['report', 'มีรายงานน้ำท่วม', '#7c3aed'],
+      ['report_ended', 'รายงานสิ้นสุด < 3 ชม.', '#c4b5fd'],
+      ['normal', 'แห้ง (เซ็นเซอร์)', '#059669'],
+      ['offline', 'เซ็นเซอร์ขาดข้อมูล', '#94a3b8'],
+    ],
+  },
   rain: {
     label: 'ฝน 24 ชม.',
     note: 'ฝนสะสม 24 ชม. รายสถานี (คลังข้อมูลน้ำแห่งชาติ) · เกณฑ์กรมอุตุนิยมวิทยา',
@@ -49,6 +61,8 @@ const colorOf = (layer, status) => (LAYERS[layer].status.find((s) => s[0] === st
 // Short value shown in the detail box and the station list
 function valueText(p) {
   if (p.kind === 'rain') return `${fmt(p.rain_24h, 1)} มม.`;
+  if (p.kind === 'sensor') return `${fmt(p.depth_cm, 0)} ซม.`;
+  if (p.kind === 'report') return 'รายงานจากผู้ใช้ถนน';
   if (p.kind === 'dam') return `${fmt(p.storage_pct, 0)}%`;
   if (p.diff_bank != null) {
     const cm = Math.round(Math.abs(p.diff_bank) * 100);
@@ -330,7 +344,8 @@ export default function WaterMap({ isActive, onPickStation }) {
                 </button>
               </div>
               <p className="text-xs text-slate-500">
-                {sel.kind === 'river' ? 'สถานีแม่น้ำ' : sel.kind === 'canal' ? 'สถานีคลอง' : sel.kind === 'rain' ? 'สถานีวัดฝน' : 'เขื่อน'}
+                {{ river: 'สถานีแม่น้ำ', canal: 'สถานีคลอง', rain: 'สถานีวัดฝน', dam: 'เขื่อน', sensor: 'เซ็นเซอร์น้ำบนถนน สนน.', report: 'รายงานน้ำท่วม Longdo Traffic' }[sel.kind]}
+                {sel.road ? ` · ${sel.road}` : ''}
                 {sel.river ? ` · ${sel.river}` : ''}
                 {sel.district ? ` · ${sel.district}` : ''}
                 {sel.province ? ` · ${sel.province}` : ''}
@@ -340,6 +355,7 @@ export default function WaterMap({ isActive, onPickStation }) {
                 <span className="font-medium text-slate-900">{(scale.find((s) => s[0] === sel.status) || [])[1] || sel.status}</span>
                 <span className="text-slate-700">· {valueText(sel)}</span>
               </p>
+              {sel.description && <p className="mt-1.5 text-xs text-slate-700 leading-5">{sel.description}</p>}
               <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs text-slate-600">
                 {sel.msl != null && (
                   <>
@@ -357,6 +373,20 @@ export default function WaterMap({ isActive, onPickStation }) {
                   <>
                     <dt>ระดับควบคุม</dt>
                     <dd>เกินระดับควบคุม สนน. ({fmt(sel.control_critical)} ม.)</dd>
+                  </>
+                )}
+                {sel.max_cm != null && (
+                  <>
+                    <dt>สูงสุดรอบนี้</dt>
+                    <dd className="tabular-nums">
+                      {fmt(sel.max_cm, 0)} ซม.{sel.trend ? ` · ${sel.trend}` : ''}
+                    </dd>
+                  </>
+                )}
+                {sel.credit && (
+                  <>
+                    <dt>ที่มา</dt>
+                    <dd>{sel.credit}</dd>
                   </>
                 )}
                 {sel.rain_1h != null && (
