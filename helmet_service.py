@@ -25,6 +25,7 @@ import base64
 import csv
 import json
 import os
+import re
 import queue
 import sqlite3
 import threading
@@ -78,6 +79,17 @@ AGENT_PROMPT = (
     "clearly visible (too small, blurred, dark, cut off, or the object is not a motorcycle) set no_helmet to 0 "
     "and confidence below 0.5. Never guess."
 )
+
+
+_SAFE_ID = re.compile(r"[\w.-]{1,120}")   # \w as in _safe(): letters, digits, _
+
+
+def _safe_id(s):
+    """An id from a URL, usable in a file name: never a path (no separators, no drive, no ..)."""
+    s = str(s)
+    if not _SAFE_ID.fullmatch(s) or ".." in s:
+        raise ValueError("bad id")
+    return s
 
 
 def _fingerprint(frame):
@@ -196,11 +208,11 @@ class HelmetPatrol:
     # ------------------------------------------------------------ paths
     @staticmethod
     def crop_path(hid):
-        return os.path.join(CACHE_DIR, f"{hid}.jpg")
+        return os.path.join(CACHE_DIR, f"{_safe_id(hid)}.jpg")
 
     @staticmethod
     def frame_path(hid):
-        return os.path.join(CACHE_DIR, f"{hid}_frame.jpg")
+        return os.path.join(CACHE_DIR, f"{_safe_id(hid)}_frame.jpg")
 
     def provider(self):
         if HELMET_AGENT == "qwen" and local_llm.default.enabled():

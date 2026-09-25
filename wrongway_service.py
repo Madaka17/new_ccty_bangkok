@@ -27,6 +27,7 @@ import base64
 import csv
 import json
 import os
+import re
 import queue
 import sqlite3
 import threading
@@ -93,6 +94,17 @@ AGENT_PROMPT = (
     "carriageway of a divided road, or a motorcycle on the sidewalk are NOT wrong_way. If the image is too small, "
     "blurred or dark to tell, answer wrong_way false with confidence below 0.5. Never guess."
 )
+
+
+_SAFE_ID = re.compile(r"[\w.-]{1,120}")   # \w as in _safe(): letters, digits, _
+
+
+def _safe_id(s):
+    """An id from a URL, usable in a file name: never a path (no separators, no drive, no ..)."""
+    s = str(s)
+    if not _SAFE_ID.fullmatch(s) or ".." in s:
+        raise ValueError("bad id")
+    return s
 
 
 def _safe(s):
@@ -294,11 +306,11 @@ class WrongWayPatrol:
 
     @staticmethod
     def crop_path(wid):
-        return os.path.join(CACHE_DIR, f"{wid}.jpg")
+        return os.path.join(CACHE_DIR, f"{_safe_id(wid)}.jpg")
 
     @staticmethod
     def frame_path(wid):
-        return os.path.join(CACHE_DIR, f"{wid}_frame.jpg")
+        return os.path.join(CACHE_DIR, f"{_safe_id(wid)}_frame.jpg")
 
     def provider(self):
         v = self.vision

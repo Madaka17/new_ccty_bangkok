@@ -26,6 +26,7 @@ import base64
 import json
 import math
 import os
+import re
 import sqlite3
 import threading
 import time
@@ -77,6 +78,17 @@ HELMET_PROMPT = (
     "If the image is too small, blurry or dark to see heads clearly, set no_helmet to 0 and confidence below 0.5. "
     "A cap, hood or hair is not a helmet."
 )
+
+
+_SAFE_ID = re.compile(r"[\w.-]{1,120}")   # \w as in _safe(): letters, digits, _
+
+
+def _safe_id(s):
+    """An id from a URL, usable in a file name: never a path (no separators, no drive, no ..)."""
+    s = str(s)
+    if not _SAFE_ID.fullmatch(s) or ".." in s:
+        raise ValueError("bad id")
+    return s
 
 
 def _unit(dx, dy):
@@ -280,7 +292,7 @@ class ViolationMonitor:
                 "archive_dir": ARCHIVE_DIR, "archive_ok": os.path.isdir(ARCHIVE_DIR)}
 
     def image_path(self, vid):
-        p = os.path.join(EVIDENCE_DIR, f"{vid}.jpg")
+        p = os.path.join(EVIDENCE_DIR, f"{_safe_id(vid)}.jpg")
         return p if os.path.exists(p) else None
 
     def status(self, camid=None):

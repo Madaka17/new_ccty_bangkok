@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import io
 
@@ -96,18 +97,21 @@ from alert_service import AlertService
 from flood_agent import FloodAgent
 from riskbkk_agent import RiskAgent
 from traffy_agent import TraffyAgent
+from traffy_history import TraffyHistory
+import weather_now
 from water_agent import WaterAgent
+
+# ids that end up in file names: letters, digits, _ . - only (never a path)
+SAFE_ID = re.compile(r"[A-Za-z0-9_.-]{1,80}")
 
 app = FastAPI(title="BKK StreetSmart CCTV & YOLO11x Vehicle Detection")
 
-# Enable CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS: the UI is served from this same origin (and Vite dev proxies /api), so no other website may
+# read the API from a visitor's browser. ALLOWED_ORIGINS (comma separated) adds origins if ever needed.
+_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+if _origins:
+    app.add_middleware(CORSMiddleware, allow_origins=_origins, allow_credentials=False,
+                       allow_methods=["GET", "POST"], allow_headers=["Content-Type", "X-Admin-Token"])
 # Public-exposure guard: control endpoints operator-only, /api/chat rate limited (see access_guard.py)
 app.middleware("http")(access_guard.guard)
 
@@ -330,6 +334,8 @@ async def get_bma_snapshot(camid: str, live: bool = False, annotate: bool = True
         except Exception as e:
             print(f"[Live Snapshot Error] {e}")
 
+    if not SAFE_ID.fullmatch(camid):
+        raise HTTPException(400, "bad camera id")
     cache_file = os.path.join(DATA_DIR, "cache", "bma_snapshots", f"{camid}.jpg")
     if os.path.exists(cache_file):
         return FileResponse(cache_file, media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
@@ -1027,6 +1033,22 @@ def traffy_analysis_run():
     """Re-run the analysis now (operator only through access_guard)."""
     return traffy_agent.run(force=True)
 
+# Every Traffy flood report kept in vehicle_counts.db, for day-to-day / week-to-week comparison
+traffy_history = TraffyHistory(os.path.join(DATA_DIR, "vehicle_counts.db"), traffy_reports.status)
+
+@app.get("/api/weather/now")
+def weather_now_at(lat: float = Query(None), lng: float = Query(None)):
+    """Weather this hour at the viewer's spot (MET Norway, cached ~1 km / 10 min); Bangkok centre without one."""
+    try:
+        return weather_now.get(lat, lng)
+    except Exception as e:  # noqa: BLE001 - upstream down
+        raise HTTPException(status_code=502, detail=f"weather: {str(e)[:120]}")
+
+@app.get("/api/traffy/history")
+def traffy_history_compare():
+    """Traffy flood reports today vs yesterday and this week vs last week (same time), by hour / day / district."""
+    return traffy_history.compare()
+
 # ---------------------------------------------------------------- Web Push alerts (operator team)
 # POSTs here are operator-only through access_guard, so only the team can subscribe or send a test.
 alerts = AlertService(DATA_DIR, {
@@ -1074,6 +1096,11 @@ def read_root():
     # never cache the shell so a rebuilt bundle is picked up on the next reload
     return FileResponse(INDEX_HTML, headers={"Cache-Control": "no-cache"})
 
+@app.get("/robots.txt")
+def robots_txt():
+    # no crawling, no indexing: the data is for people using the site, not for harvesting
+    return Response("User-agent: *\nDisallow: /\n", media_type="text/plain")
+
 @app.get("/cameras_bkk.json")
 def read_cameras_json():
     # the React app fetches this directly; serve the live root copy, not the stale one bundled in web/dist
@@ -1100,6 +1127,7 @@ bma_feed.start()
 flood_agent.start()
 risk_agent.start()
 traffy_agent.start()
+traffy_history.start()
 water_agent.start()
 alerts.start()
 
@@ -1132,7 +1160,7 @@ if __name__ == "__main__":
     print(f"  Running at http://localhost:{PORT}" + (f"  [TEST instance, data in {DATA_DIR}]" if IS_STAGE else ""))
     print("=" * 60)
     try:
-        uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
+        uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info", server_header=False)
     except BaseException as e:
         print(f"[Server] Exited with {type(e).__name__}: {e}")
         import traceback
