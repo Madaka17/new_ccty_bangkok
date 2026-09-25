@@ -2,12 +2,14 @@
 Wrong-way (ย้อนศร) patrol over every BMA camera, from single snapshots.
 
 The BMA site serves one frame per camera every few minutes, so direction cannot come from motion
-(that is what ViolationMonitor does on the live HLS camera). Instead the trained heading detector
-(wrongway_det.pt from local/pipeline/train_wrongway_det.py, YOLO26x with classes
-<car|moto>_<toward|away|left|right>) reads which way each vehicle faces, and each camera learns
-which heading is normal where:
+(that is what ViolationMonitor does on the live HLS camera). Instead each vehicle's heading is read
+from its look, and each camera learns which heading is normal where. The heading comes from the
+heading classifier (wrongway_cls.pt from local/pipeline/train_wrongway_cls.py: front or rear toward the
+camera, run on a crop of every box the scanner's yolo26x found); without it, from the older heading
+detector (wrongway_det.pt, YOLO26x with classes <car|moto>_<toward|away|left|right>, which misses most
+vehicles):
 
-    snapshot -> heading detector -> every confident box votes into a 12x9 grid cell (the cell under
+    snapshot -> vehicle headings -> every confident box votes into a 12x9 grid cell (the cell under
     the vehicle's road contact point) of the camera's HeadingField, persisted in cache/heading/<camid>.json
     -> a cell is "known" once it has HEADING_MIN_VOTES votes with HEADING_MIN_AGREE agreement
     -> a vehicle whose heading is the exact opposite of its known cell (toward<->away, left<->right),
@@ -42,6 +44,9 @@ ARCHIVE_DIR = os.getenv("WRONGWAY_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA
 DET_PATH = os.getenv("WRONGWAY_DET", os.path.join(BASE_DIR, "wrongway_det.pt"))
 if not os.path.isabs(DET_PATH):
     DET_PATH = os.path.join(BASE_DIR, DET_PATH)
+CLS_PATH = os.getenv("WRONGWAY_CLS", os.path.join(BASE_DIR, "wrongway_cls.pt"))
+if not os.path.isabs(CLS_PATH):
+    CLS_PATH = os.path.join(BASE_DIR, CLS_PATH)
 AGENT_MODEL = os.getenv("WRONGWAY_AGENT_MODEL", os.getenv("GEMINI_VISION_MODEL", "gemini-3.1-flash-lite"))
 FALLBACK_MODEL = os.getenv("GEMINI_VISION_FALLBACK", "gemini-3.1-flash-lite")
 AGENT_TIMEOUT_MS = 40000
@@ -56,6 +61,13 @@ FIELD_SAVE_EVERY = 120.0
 DET_IMGSZ = 640
 VOTE_CONF = 0.5                   # detections that teach the field
 CAND_CONF = float(os.getenv("WRONGWAY_MIN_CONF", "0.6"))   # detections that may be flagged
+CLS_IMGSZ = 128
+CLS_MARGIN = 0.15                 # context around the box, as in prep_wrongway_cls.py
+CLS_MIN_H = 12                    # smallest box the classifier was trained on
+# The classifier has two classes, so every answer is >= 0.5: it needs higher bars than the detector.
+CLS_VOTE_CONF = float(os.getenv("WRONGWAY_CLS_VOTE_CONF", "0.8"))
+CLS_CAND_CONF = float(os.getenv("WRONGWAY_CLS_MIN_CONF", "0.9"))
+VEHICLE_GROUP = {1: "moto", 2: "car", 3: "moto", 5: "car", 7: "car"}   # COCO ids from the scanner
 MIN_BOX_H = int(os.getenv("WRONGWAY_MIN_H", "16"))
 PER_CAM = int(os.getenv("WRONGWAY_PER_CAM", "2"))
 COOLDOWN = float(os.getenv("WRONGWAY_COOLDOWN", "120"))
@@ -207,8 +219,18 @@ class WrongWayPatrol:
         self._init_db()
         self.det = None
         self.det_names = {}
+        self.cls = None
         self._det_lock = threading.Lock()
-        if os.path.exists(DET_PATH):
+        if os.path.exists(CLS_PATH):
+            try:
+                from ultralytics import YOLO
+                self.cls = YOLO(CLS_PATH)
+                self.cls(np.zeros((CLS_IMGSZ, CLS_IMGSZ, 3), dtype=np.uint8), imgsz=CLS_IMGSZ, verbose=False)
+                print(f"[WrongWay] heading classifier loaded: {CLS_PATH} {list(self.cls.names.values())}")
+            except Exception as e:  # noqa: BLE001
+                print(f"[WrongWay] heading classifier failed to load: {e}")
+                self.cls = None
+        if self.cls is None and os.path.exists(DET_PATH):
             try:
                 from ultralytics import YOLO
                 self.det = YOLO(DET_PATH)
@@ -218,8 +240,8 @@ class WrongWayPatrol:
             except Exception as e:  # noqa: BLE001
                 print(f"[WrongWay] heading detector failed to load: {e}")
                 self.det = None
-        else:
-            print(f"[WrongWay] no heading detector at {DET_PATH}: patrol off (train it with local/pipeline/wrongway_pipeline.bat)")
+        elif self.cls is None:
+            print(f"[WrongWay] no heading classifier or detector at {CLS_PATH}: patrol off (train it with local/pipeline/wrongway_pipeline.bat)")
         for _ in range(WORKERS):
             threading.Thread(target=self._worker, daemon=True).start()
         threading.Thread(target=self._cleanup_loop, daemon=True).start()
@@ -283,9 +305,40 @@ class WrongWayPatrol:
         return getattr(v, "provider", None) if v and getattr(v, "client", None) else None
 
     def enabled(self):
-        return self.det is not None
+        return self.cls is not None or self.det is not None
+
+    def model_name(self):
+        if self.cls is not None:
+            return os.path.basename(CLS_PATH)
+        return os.path.basename(DET_PATH) if self.det is not None else None
 
     # ------------------------------------------------------------ detector
+    def _classify_headings(self, frame, boxes):
+        """[(group, heading_idx, conf, x1, y1, x2, y2)] from the heading classifier on the scanner's boxes."""
+        h, w = frame.shape[:2]
+        keep, crops = [], []
+        for c, _, x1, y1, x2, y2 in boxes:
+            group = VEHICLE_GROUP.get(int(c))
+            bw, bh = x2 - x1, y2 - y1
+            if group is None or bh < CLS_MIN_H:
+                continue
+            mx, my = bw * CLS_MARGIN, bh * CLS_MARGIN
+            crop = frame[max(0, int(y1 - my)):min(h, int(y2 + my)), max(0, int(x1 - mx)):min(w, int(x2 + mx))]
+            if crop.size == 0:
+                continue
+            keep.append((group, int(x1), int(y1), int(x2), int(y2)))
+            crops.append(crop)
+        if not crops:
+            return []
+        with self._det_lock:
+            res = self.cls(crops, imgsz=CLS_IMGSZ, verbose=False)
+        out = []
+        for (group, x1, y1, x2, y2), r in zip(keep, res):
+            head = r.names[int(r.probs.top1)]
+            if head in HEADINGS:
+                out.append((group, HEADINGS.index(head), float(r.probs.top1conf), x1, y1, x2, y2))
+        return out
+
     def _detect_headings(self, frame):
         """[(group, heading_idx, conf, x1, y1, x2, y2)] from the heading detector."""
         with self._det_lock:
@@ -308,7 +361,7 @@ class WrongWayPatrol:
     # ------------------------------------------------------------ capture (called from the scanner)
     def observe(self, cam, frame, boxes=None, force=False):
         """Learn the camera's heading field from this snapshot and queue the vehicles that go against it."""
-        if self.det is None:
+        if not self.enabled():
             return []
         camid = str(cam.get("camid"))
         now = time.time()
@@ -317,7 +370,14 @@ class WrongWayPatrol:
             return []          # frozen feed: same picture would vote twice and re-flag the same car
         self._last_frame[camid] = fp
         h, w = frame.shape[:2]
-        dets = self._detect_headings(frame)
+        if self.cls is not None:
+            if boxes is None and self.scanner:
+                boxes = self.scanner._detect(frame)
+            dets = self._classify_headings(frame, boxes or [])
+            vote_conf, cand_conf = CLS_VOTE_CONF, CLS_CAND_CONF
+        else:
+            dets = self._detect_headings(frame)
+            vote_conf, cand_conf = VOTE_CONF, CAND_CONF
         self.frames_seen += 1
         fl = self.field(camid)
         cands = []
@@ -325,10 +385,10 @@ class WrongWayPatrol:
             bh = y2 - y1
             fx, fy = (x1 + x2) / 2.0, float(y2)
             known = fl.known(fx, fy, w, h)
-            if conf >= VOTE_CONF and (known is None or known == head):
+            if conf >= vote_conf and (known is None or known == head):
                 # against-flow vehicles must not teach the field once the cell is known
                 fl.add(fx, fy, w, h, head)
-            if known is None or conf < CAND_CONF or bh < MIN_BOX_H or head != OPPOSITE[known]:
+            if known is None or conf < cand_conf or bh < MIN_BOX_H or head != OPPOSITE[known]:
                 continue
             # straddling a lane of its own heading (divided road, lane split at the cell edge): not a candidate
             if any(fl.known(px, fy, w, h) == head for px in (x1, x2)):
@@ -388,8 +448,8 @@ class WrongWayPatrol:
         """Fresh snapshot of one camera, judged regardless of cooldown."""
         if not self.scanner:
             return {"ok": False, "error": "no scanner"}
-        if self.det is None:
-            return {"ok": False, "error": "ไม่มีโมเดล wrongway_det.pt (เทรนก่อนด้วย local\\pipeline\\wrongway_pipeline.bat)"}
+        if not self.enabled():
+            return {"ok": False, "error": "ไม่มีโมเดล wrongway_cls.pt (เทรนก่อนด้วย local\\pipeline\\train_wrongway_cls.py)"}
         cam = next((c for c in self.scanner.cameras if str(c.get("camid")) == str(camid)), None)
         if not cam:
             return {"ok": False, "error": "unknown camera"}
@@ -634,8 +694,8 @@ class WrongWayPatrol:
         self._calls = [t for t in self._calls if now - t < 3600]
         learned = sum(1 for f in self.fields.values() if f.summary()["known"] > 0)
         return {
-            "updated": int(now), "enabled": self.enabled(), "detector": os.path.basename(DET_PATH) if self.det is not None else None,
-            "detector_path": DET_PATH, "agent": self.provider() or "off",
+            "updated": int(now), "enabled": self.enabled(), "detector": self.model_name(),
+            "detector_path": CLS_PATH if self.cls is not None else DET_PATH, "agent": self.provider() or "off",
             "agent_model": AGENT_MODEL if self.provider() == "gemini"
             else (os.environ.get("CLAUDE_VISION_MODEL", "claude-opus-5-5") if self.provider() else None),
             "archive_dir": ARCHIVE_DIR, "archive_ok": os.path.isdir(os.path.dirname(ARCHIVE_DIR.rstrip("/\\"))),
