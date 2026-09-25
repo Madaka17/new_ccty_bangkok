@@ -15,8 +15,8 @@ write one Thai analysis as JSON by REPORT_SCHEMA for the City Analytics page.
     crosswalk, bus_stop, motorcycle_taxi, parking, rail_crossing   road furniture per district
     js100             JS100 / FM91 incident layer (the BMA feed stopped in Sep 2024)
 
-The layers are a snapshot, so the analysis runs once at start when the files changed (or no report
-is saved) and again on demand (POST /api/riskbkk/analysis/run, operator only). Without the model the
+The analysis runs at start when the files changed (or no report is saved), then again every
+AGENT_SECONDS, and on demand (POST /api/riskbkk/analysis/run, operator only). Without the model the
 Thai rule-based report stands in.
 """
 import collections
@@ -28,6 +28,7 @@ import time
 
 import local_llm
 
+AGENT_SECONDS = int(os.getenv("RISKBKK_AGENT_SECONDS", "360"))   # re-run the analysis this often
 REPLY_TOKENS = int(os.getenv("RISKBKK_AGENT_REPLY_TOKENS", "3000"))
 LAYERS = ("accident", "accident_risk", "risk100", "risk100_solve", "friction", "construction",
           "crosswalk", "bus_stop", "motorcycle_taxi", "parking", "rail_crossing", "js100")
@@ -287,6 +288,14 @@ class RiskAgent:
         with self.lock:
             return {**(self.result or {}), "running": self.running, "error": self.error}
 
+    def _loop(self):
+        self.run()    # returns at once when the layers and report are unchanged
+        while True:
+            time.sleep(AGENT_SECONDS)
+            try:
+                self.run(force=True)
+            except Exception as e:  # noqa: BLE001 - keep the timer alive
+                print(f"[RiskAgent] run failed: {e}")
+
     def start(self):
-        """One run in the background at start; it returns at once when the layers and report are unchanged."""
-        threading.Thread(target=self.run, daemon=True, name="RiskAgent").start()
+        threading.Thread(target=self._loop, daemon=True, name="RiskAgent").start()

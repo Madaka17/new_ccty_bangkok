@@ -8,7 +8,7 @@ LOCAL_LLM_* in .env) write the card's four tabs as JSON by REPORT_SCHEMA: outloo
 waters (upstream / tide / rain), measures for the city and a guide for the public.
 
 The model runs again only when the facts changed (FloodAgent's signature) or the report is older than
-MAX_AGE, so an unchanged picture does not call it every 5 minutes. Without the model the card keeps the
+MAX_AGE, so an unchanged picture does not call it every poll. Without the model the card keeps the
 last AI report and says so.
 """
 import json
@@ -18,8 +18,8 @@ import time
 
 import local_llm
 
-POLL_SECONDS = int(os.getenv("WATER_AGENT_SECONDS", "300"))
-MAX_AGE = int(os.getenv("WATER_AGENT_MAX_AGE", "1800"))
+POLL_SECONDS = int(os.getenv("WATER_AGENT_SECONDS", "600"))
+MAX_AGE = int(os.getenv("WATER_AGENT_MAX_AGE", "600"))
 REPLY_TOKENS = int(os.getenv("WATER_AGENT_REPLY_TOKENS", "3500"))
 LEVELS = ("normal", "watch", "warning", "critical")
 

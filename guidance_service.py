@@ -29,7 +29,7 @@ except Exception:  # pragma: no cover
     genai_types = None
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
-AI_INTERVAL = int(os.environ.get("GUIDANCE_AI_SECONDS", "300"))   # seconds between AI rewrites
+AI_INTERVAL = int(os.environ.get("GUIDANCE_AI_SECONDS", "240"))   # seconds between AI rewrites
 BUILD_INTERVAL = 60.0
 
 # Corridor catalogue: which Longdo road names form the corridor, and which roads are realistic
@@ -249,13 +249,13 @@ class GuidanceService:
         return {"action": action, "signal": signal, "bypass": bypass, "ai": False}
 
     def _ai_refresh(self, items):
-        """One AI call for every corridor; only when the picture changed or AI_INTERVAL passed."""
+        """One AI call for every corridor, at most once per AI_INTERVAL even when the picture changes."""
         if not self.client and not local_llm.default.enabled():
             return
         sig = json.dumps([(i["id"], i["status"], [s["label"] for s in i["hotspots"]],
                            [a["name"] for a in i["alternatives"] if a["recommended"]]) for i in items], ensure_ascii=False)
         now = time.time()
-        if sig == self._ai_sig and now - self._ai_at < AI_INTERVAL:
+        if now - self._ai_at < AI_INTERVAL:
             return
         facts = [{"id": i["id"], "name": i["name"], "status": i["status_label"], "flow": i["flow"], "red_km": i["red_km"],
                   "hotspots": [{"where": s["label"], "red_km": s["km"],

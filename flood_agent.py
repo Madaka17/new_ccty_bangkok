@@ -30,8 +30,8 @@ import time
 
 import local_llm
 
-AGENT_SECONDS = int(os.getenv("FLOOD_AGENT_SECONDS", "900"))
-MAX_AGE = int(os.getenv("FLOOD_AGENT_MAX_AGE", "3600"))   # re-run an unchanged picture at least this often
+AGENT_SECONDS = int(os.getenv("FLOOD_AGENT_SECONDS", "300"))
+MAX_AGE = int(os.getenv("FLOOD_AGENT_MAX_AGE", "300"))   # re-run an unchanged picture at least this often
 REPLY_TOKENS = int(os.getenv("FLOOD_AGENT_REPLY_TOKENS", "2500"))
 HISTORY_KEEP = 48
 LEVELS = ("normal", "watch", "warning", "critical")
