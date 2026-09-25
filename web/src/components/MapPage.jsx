@@ -216,6 +216,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const mapRef = useRef(null);
   const markersRef = useRef({});
   const incidentMarkersRef = useRef([]);
+  const incidentByIdRef = useRef({});
   const [longdoCameras, setLongdoCameras] = useState([]);
   const [showTraffic, setShowTraffic] = useState(true);
   const [showRail, setShowRail] = useState(false);
@@ -223,6 +224,10 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const [summary, setSummary] = useState(null);
   const [waterSummary, setWaterSummary] = useState(null);
   const [showRainRadar, setShowRainRadar] = useState(false);
+  // Map legend check boxes: which pin kinds are drawn (the rain radar box is showRainRadar)
+  // cctv draws every camera; floodcam marks the flood-watch ones (and draws just those when cctv is off)
+  const [pinsOn, setPinsOn] = useState({ cctv: true, floodcam: false, accident: false, breakdown: false });
+  const togglePins = (k) => setPinsOn((p) => ({ ...p, [k]: !p[k] }));
   const [radarOpacity, setRadarOpacity] = useState(0.65);
   const [radarTileUrl, setRadarTileUrl] = useState(null);
   const [radarTime, setRadarTime] = useState(null);
@@ -895,11 +900,11 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
     markersRef.current = {};
 
     currentCameras
-      .filter((c) => c.latitude && c.longitude)
+      .filter((c) => c.latitude && c.longitude && (pinsOn.cctv || (pinsOn.floodcam && c.floodRisk)))
       .forEach((c) => {
         const on = active.includes(c.camid);
         const pinColor = PIN_COLOR[c.province] || PIN;
-        const el = pinEl(pinColor, on, c.floodRisk);
+        const el = pinEl(pinColor, on, pinsOn.floodcam ? c.floodRisk : null);
         el.setAttribute('aria-label', c.short_title || c.title);
 
         const orgTag = c.organization ? `<span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;background:#e0f2fe;color:#0369a1;margin-bottom:6px">${esc(c.organization)}</span>` : '';
@@ -1000,7 +1005,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
         const m = new maplibregl.Marker({ element: el }).setLngLat([c.longitude, c.latitude]).setPopup(popup).addTo(map);
         markersRef.current[c.camid] = m;
       });
-  }, [currentCameras, active, isActive]);
+  }, [currentCameras, active, isActive, pinsOn.cctv, pinsOn.floodcam]);
 
   // Sync incident markers (camera-confirmed + Longdo reports)
   useEffect(() => {
@@ -1008,7 +1013,9 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
     if (!map) return;
     incidentMarkersRef.current.forEach((m) => m.remove());
     incidentMarkersRef.current = [];
-    const all = [...(incidents?.camera || []), ...(incidents?.longdo || [])].filter((i) => i.latitude && i.longitude);
+    incidentByIdRef.current = {};
+    const all = [...(incidents?.camera || []), ...(incidents?.longdo || [])]
+      .filter((i) => i.latitude && i.longitude && (i.kind === 'breakdown' ? pinsOn.breakdown : pinsOn.accident));
     all.forEach((i) => {
       const when = i.source === 'camera' ? agoTh(i.ts) : i.start ? `เริ่ม ${esc(i.start).slice(11, 16)}` : '';
       const html = `<div style="width:260px">
@@ -1022,16 +1029,18 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
  const popup = new maplibregl.Popup({ offset: 18, closeButton: true, maxWidth: '300px', anchor: 'bottom' }).setHTML(html);
  const m = new maplibregl.Marker({ element: incidentEl(i.kind) }).setLngLat([i.longitude, i.latitude]).setPopup(popup).addTo(map);
  incidentMarkersRef.current.push(m);
+ incidentByIdRef.current[i.id] = m;
     });
-  }, [incidents, isActive]);
+  }, [incidents, isActive, pinsOn.accident, pinsOn.breakdown]);
 
  const flyToIncident = (i) => {
  const map = mapRef.current;
  if (!map || !i.latitude) return;
  map.flyTo({ center: [i.longitude, i.latitude], zoom: 15, duration: 800 });
- const idx = [...(incidents?.camera || []), ...(incidents?.longdo || [])].filter((x) => x.latitude && x.longitude).findIndex((x) => x.id === i.id);
- const m = incidentMarkersRef.current[idx];
- if (m) setTimeout(() => m.togglePopup(), 850);
+ // a kind switched off in the legend comes back on, so the picked incident has a pin to open
+ const kind = i.kind === 'breakdown' ? 'breakdown' : 'accident';
+ if (!pinsOn[kind]) setPinsOn((p) => ({ ...p, [kind]: true }));
+ setTimeout(() => incidentByIdRef.current[i.id]?.togglePopup(), 850);
   };
 
   // Popup button clicks (delegated)
@@ -1350,12 +1359,13 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
             <p className="text-xs font-semibold text-ink-900 flex items-center gap-1.5">
               <Icon name="legend" /> สัญลักษณ์บนแผนที่
             </p>
-            <span className="text-[11px] text-ink-600 font-medium">คำอธิบายหมุด</span>
+            <span className="text-[11px] text-ink-600 font-medium">ติ๊กเพื่อแสดง/ซ่อน</span>
           </div>
 
           <div className="flex flex-col gap-2.5 text-xs">
             {/* กล้อง CCTV ปกติ */}
-            <div className="flex items-center gap-2.5">
+            <label className={`flex items-center gap-2.5 cursor-pointer ${pinsOn.cctv ? '' : 'opacity-50'}`}>
+              <input type="checkbox" checked={pinsOn.cctv} onChange={() => togglePins('cctv')} className="accent-blue-600 w-4 h-4 shrink-0" />
               <span className="w-5 h-5 rounded-full bg-blue-600 border-2 border-white/90 shadow-xs shrink-0 flex items-center justify-center" />
               <div className="flex flex-col min-w-0">
                 <div className="flex items-center gap-1.5">
@@ -1364,10 +1374,11 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                 </div>
                 <span className="text-[11px] text-ink-600 leading-tight">คลิกที่หมุดเพื่อเปิดดูภาพสดและ AI ตรวจนับรถ</span>
               </div>
-            </div>
+            </label>
 
             {/* กล้องจุดเสี่ยงน้ำท่วม */}
-            <div className="flex items-center gap-2.5">
+            <label className={`flex items-center gap-2.5 cursor-pointer ${pinsOn.floodcam ? '' : 'opacity-50'}`}>
+              <input type="checkbox" checked={pinsOn.floodcam} onChange={() => togglePins('floodcam')} className="accent-blue-600 w-4 h-4 shrink-0" />
               <span className="relative w-5 h-5 rounded-full bg-blue-600 border-2 border-amber-400 shadow-xs shrink-0 flex items-center justify-center">
                 <span className="absolute -top-1.5 -right-1.5 text-[9px] leading-none pointer-events-none">🌊</span>
               </span>
@@ -1380,10 +1391,11 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                 </div>
                 <span className="text-[11px] text-ink-600 leading-tight">อยู่ใกล้สถานีวัดน้ำแม่น้ำ/คลองที่น้ำสูงหรือเสี่ยงล้นตลิ่ง</span>
               </div>
-            </div>
+            </label>
 
             {/* อุบัติเหตุ */}
-            <div className="flex items-center gap-2.5">
+            <label className={`flex items-center gap-2.5 cursor-pointer ${pinsOn.accident ? '' : 'opacity-50'}`}>
+              <input type="checkbox" checked={pinsOn.accident} onChange={() => togglePins('accident')} className="accent-blue-600 w-4 h-4 shrink-0" />
               <span className="w-5 h-5 rounded-full bg-red-600 border-2 border-white/90 shadow-xs text-white font-bold text-[11px] flex items-center justify-center shrink-0 leading-none">
                 !
               </span>
@@ -1391,10 +1403,11 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                 <span className="font-medium text-ink-900">อุบัติเหตุ / กีดขวางทาง</span>
                 <span className="text-[11px] text-ink-600 leading-tight">จุดเกิดอุบัติเหตุหรือชนกีดขวาง (ตรวจพบโดย AI / รายงานสด)</span>
               </div>
-            </div>
+            </label>
 
             {/* รถจอดเสีย */}
-            <div className="flex items-center gap-2.5">
+            <label className={`flex items-center gap-2.5 cursor-pointer ${pinsOn.breakdown ? '' : 'opacity-50'}`}>
+              <input type="checkbox" checked={pinsOn.breakdown} onChange={() => togglePins('breakdown')} className="accent-blue-600 w-4 h-4 shrink-0" />
               <span className="w-5 h-5 rounded-full bg-amber-500 border-2 border-white/90 shadow-xs text-white font-bold text-[11px] flex items-center justify-center shrink-0 leading-none">
                 !
               </span>
@@ -1402,16 +1415,17 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                 <span className="font-medium text-ink-900">รถจอดเสีย / สิ่งกีดขวาง</span>
                 <span className="text-[11px] text-ink-600 leading-tight">รถจอดเสียในช่องทางจราจร</span>
               </div>
-            </div>
+            </label>
 
             {/* เรดาร์ฝน */}
-            <div className="pt-2 border-t border-cream-200 flex items-center gap-2.5 text-[11px]">
+            <label className={`pt-2 border-t border-cream-200 flex items-center gap-2.5 text-[11px] cursor-pointer ${showRainRadar ? '' : 'opacity-50'}`}>
+              <input type="checkbox" checked={showRainRadar} onChange={(e) => setShowRainRadar(e.target.checked)} className="accent-blue-600 w-4 h-4 shrink-0" />
               <span className="shrink-0 w-5 text-center text-blue-500"><Icon name="rain" /></span>
               <div className="flex flex-col min-w-0">
                 <span className="font-medium text-ink-900">เรดาร์กลุ่มฝน (สด)</span>
                 <span className="text-[10px] text-ink-600 leading-tight">แถบสีฟ้า-เขียว-ส้ม แสดงความหนาแน่นของเมฆฝน</span>
               </div>
-            </div>
+            </label>
           </div>
         </div>
 

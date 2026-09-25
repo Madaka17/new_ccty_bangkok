@@ -33,7 +33,7 @@ function LogoMark() {
   );
 }
 
-export default function Sidebar({ page, onNavigate, liveCount, totalCount, aiActive, onClose }) {
+export default function Sidebar({ page, onNavigate, aiActive, onClose }) {
   return (
     <div className={`h-full flex flex-col ${NAVY} text-[#e6edf7]`}>
       <div className="px-4 pt-5 pb-4 flex items-center gap-3">
@@ -73,12 +73,6 @@ export default function Sidebar({ page, onNavigate, liveCount, totalCount, aiAct
         </ul>
       </nav>
 
-      <div className="px-4 py-4 border-t border-white/10 flex flex-col gap-3">
-        <p className="text-[11.5px] text-[#b7c6dc]">
-          <span className="live-dot inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 align-middle" aria-hidden="true" />
-          {liveCount > 0 ? `เปิดกล้องอยู่ ${liveCount} ตัว` : `กล้องพร้อมใช้ ${totalCount} ตัว`}
-        </p>
-      </div>
     </div>
   );
 }

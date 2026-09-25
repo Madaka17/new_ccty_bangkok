@@ -151,10 +151,16 @@ function canalGap(c) {
 
 export function CanalCard({ canals, counts, total, roads, loading }) {
   const [tab, setTab] = useState('canal');
+  const [query, setQuery] = useState('');
   const risky = (canals || []).filter((c) => c.level !== 'normal');
   // Canals: every raised one, then top up with the fullest normal ones so the list is never a single row
   const canalList = [...risky, ...(canals || []).filter((c) => c.level === 'normal')].slice(0, Math.max(8, risky.length));
-  const list = tab === 'canal' ? canalList : roads?.items || [];
+  // A search looks through every canal / road gauge, not only the rows shown by default
+  const q = query.trim();
+  const match = (c) => `${c.name || ''} ${c.district || ''} ${c.province || ''}`.includes(q);
+  const list = tab === 'canal'
+    ? (q ? (canals || []).filter(match) : canalList)
+    : (roads?.items || []).filter((c) => !q || match(c));
   return (
     <Card aria-labelledby="water-canal-title" className="p-5">
       <SectionHeader
@@ -174,6 +180,16 @@ export function CanalCard({ canals, counts, total, roads, loading }) {
           ท่วมขัง <b className="text-red-700">{roads?.flooding ?? 0}</b> · ท่วมเล็กน้อย <b className="text-amber-700">{roads?.slight ?? 0}</b> · แห้ง <b className="text-emerald-700">{roads?.normal ?? 0}</b> จุด
         </p>
       )}
+      <label htmlFor="canal-q" className="sr-only">ค้นหาคลองหรือถนน</label>
+      <input
+        id="canal-q"
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder={tab === 'canal' ? 'ค้นหาชื่อคลองหรือเขต เช่น คลองแสนแสบ, บางเขน' : 'ค้นหาชื่อถนนหรือเขต'}
+        className={`mt-3 h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm ${FOCUS}`}
+      />
+      {q && !loading && <p className="mt-1.5 text-xs text-slate-500">พบ {list.length} {tab === 'canal' ? 'คลอง' : 'จุด'}ที่ตรงกับ “{q}”</p>}
       <ul className="mt-3 divide-y divide-slate-100">
         {loading ? (
           [...Array(5)].map((_, i) => (
@@ -183,7 +199,7 @@ export function CanalCard({ canals, counts, total, roads, loading }) {
           ))
         ) : !list.length ? (
           <li className="py-2">
-            <EmptyState title={tab === 'canal' ? 'ไม่มีข้อมูลคลอง' : 'ไม่มีถนนที่มีน้ำท่วมขังจากเซ็นเซอร์ตอนนี้'} description={tab === 'road' && roads?.worst ? `จุดวัดล่าสุด ${roads.worst.name} (${roads.worst.district}) ${agoText(roads.worst.ts)}` : undefined} />
+            <EmptyState title={q ? 'ไม่พบที่ตรงกับคำค้น' : tab === 'canal' ? 'ไม่มีข้อมูลคลอง' : 'ไม่มีถนนที่มีน้ำท่วมขังจากเซ็นเซอร์ตอนนี้'} description={tab === 'road' && roads?.worst ? `จุดวัดล่าสุด ${roads.worst.name} (${roads.worst.district}) ${agoText(roads.worst.ts)}` : undefined} />
           </li>
         ) : (
           list.map((c) => {

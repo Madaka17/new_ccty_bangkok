@@ -8,6 +8,7 @@ import { fetchFloodReports, fetchLongdoFloods } from '../../lib/api.js';
 import { Card, Badge, Button, SectionHeader, Skeleton, EmptyState } from '../dashboard/ui.jsx';
 import { fmtNum } from '../dashboard/format.js';
 import TraffyAnalysisCard from '../dashboard/TraffyAnalysisCard.jsx';
+import TraffyHistoryCard from './TraffyHistoryCard.jsx';
 
 const POLL_MS = 60000;
 const REPORTS_SHOWN = 3;   // per district, until the district is expanded
@@ -64,6 +65,7 @@ function ReportList({ rows, loading, updatedAt }) {
   const [query, setQuery] = useState('');
   const [district, setDistrict] = useState('');
   const [state, setState] = useState('');
+  const [sort, setSort] = useState('latest');   // latest: district with the newest report first; most: most reports first
   const [open, setOpen] = useState(null);
 
   const districtNames = useMemo(() => [...new Set(rows.map((r) => r.district))].sort((a, b) => a.localeCompare(b, 'th')), [rows]);
@@ -78,9 +80,11 @@ function ReportList({ rows, loading, updatedAt }) {
       if (q && !`${r.title || ''} ${r.text || ''}`.includes(q)) continue;
       (by[r.district] ||= []).push(r);
     }
-    return Object.entries(by).map(([name, list]) => ({ name, list }))
-      .sort((a, b) => b.list.length - a.list.length || b.list[0].ts - a.list[0].ts);
-  }, [rows, query, district, state]);
+    const out = Object.entries(by).map(([name, list]) => ({ name, list }));
+    return sort === 'latest'
+      ? out.sort((a, b) => (b.list[0].ts || 0) - (a.list[0].ts || 0))
+      : out.sort((a, b) => b.list.length - a.list.length || b.list[0].ts - a.list[0].ts);
+  }, [rows, query, district, state, sort]);
   const shown = groups.reduce((n, g) => n + g.list.length, 0);
   const filtered = query || district || state;
 
@@ -103,6 +107,10 @@ function ReportList({ rows, loading, updatedAt }) {
         <select aria-label="เขต" value={district} onChange={(e) => setDistrict(e.target.value)} className={SELECT}>
           <option value="">ทุกเขต</option>
           {districtNames.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <select aria-label="เรียงลำดับ" value={sort} onChange={(e) => setSort(e.target.value)} className={SELECT}>
+          <option value="latest">ล่าสุดก่อน</option>
+          <option value="most">แจ้งมากสุดก่อน</option>
         </select>
         <select aria-label="สถานะ" value={state} onChange={(e) => setState(e.target.value)} className={SELECT}>
           <option value="">ทุกสถานะ</option>
@@ -182,6 +190,7 @@ export default function CitizenReportsSection({ isActive }) {
     <div className="flex flex-col gap-4">
       <ReportList rows={rows} loading={traffy === null || longdo === null} updatedAt={updatedAt} />
       <TraffyAnalysisCard isActive={isActive} />
+      <TraffyHistoryCard isActive={isActive} />
     </div>
   );
 }

@@ -243,3 +243,10 @@ body {
 .hf .maplibregl-ctrl-group { box-shadow: 0 0 0 2px var(--hf-line), 3px 3px 0 2px #000 !important; }
 .hf .seg-tray { background: #1a1f2b; border: 2px solid var(--hf-line); }
 .hf .seg-on { background: var(--hf-yellow); color: var(--hf-on-yellow); box-shadow: 2px 2px 0 #000; }
+
+/* Floating AI button robot (BotFace.jsx): blink every few seconds, antenna bulb glows */
+.bot-eyes { transform-box: fill-box; transform-origin: center; animation: bot-blink 4.5s infinite; }
+.bot-bulb { animation: bot-glow 2.2s ease-in-out infinite; }
+@keyframes bot-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.1); } }
+@keyframes bot-glow { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .bot-eyes, .bot-bulb { animation: none; } }

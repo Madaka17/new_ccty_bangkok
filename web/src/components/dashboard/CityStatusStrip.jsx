@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { fetchWaterSummary, fetchAirStations } from '../../lib/api.js';
-import { fmtTime } from './format.js';
 
-// One glance, four answers: traffic / rain-water / dust / incidents. Each tile is a link to its page.
+const WEATHER_POLL_MS = 600000;
+import { fetchWaterSummary, fetchAirStations, fetchFloodReports, fetchLongdoFloods, fetchWeatherNow } from '../../lib/api.js';
+
+// One glance, six answers: traffic / weather where the viewer is / rain-water / flood reports / dust / incidents. Headline only, no detail line. Each tile is a link to its page.
 // tone: green = fine, yellow = watch, red = act, neutral = no data
 
 const TONE_CONFIG = {
@@ -60,6 +61,16 @@ const ICONS = {
       <path d="M3 8h11a3 3 0 1 0-3-3M3 14h14a3 3 0 1 1-3 3M3 11h7" />
     </svg>
   ),
+  weather: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <path d="M7 18a4 4 0 1 1 .9-7.9A5 5 0 0 1 17.6 11 3.5 3.5 0 1 1 17.5 18H7z" />
+    </svg>
+  ),
+  report: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <path d="M4 5h16v11H8l-4 4V5zM12 8v4M12 14.5h.01" />
+    </svg>
+  ),
   incident: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
       <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01" />
@@ -67,7 +78,7 @@ const ICONS = {
   ),
 };
 
-function Tile({ icon, title, status, tone = 'neutral', detail, onClick }) {
+function Tile({ icon, title, status, tone = 'neutral', onClick }) {
   const cfg = TONE_CONFIG[tone] || TONE_CONFIG.neutral;
   return (
     <button
@@ -120,12 +131,6 @@ function Tile({ icon, title, status, tone = 'neutral', detail, onClick }) {
         </div>
       </div>
 
-      {/* Detail / Description bottom row */}
-      <div className="relative z-10 mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 w-full">
-        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed line-clamp-2">
-          {detail || '–'}
-        </p>
-      </div>
     </button>
   );
 }
@@ -133,6 +138,9 @@ function Tile({ icon, title, status, tone = 'neutral', detail, onClick }) {
 export default function CityStatusStrip({ summary, incidents, flood, onNavigate, isActive }) {
   const [water, setWater] = useState(null);
   const [air, setAir] = useState(null);
+  const [traffy, setTraffy] = useState(null);
+  const [weather, setWeather] = useState(null);   // { temp, code, rain, place }
+  const [longdoFloods, setLongdoFloods] = useState(null);
 
   useEffect(() => {
     if (!isActive) return;
@@ -141,20 +149,51 @@ export default function CityStatusStrip({ summary, incidents, flood, onNavigate,
       fetchWaterSummary().then((w) => alive && setWater(w)).catch(() => {});
       fetchAirStations().then((a) => alive && setAir(a)).catch(() => {});
     };
+    // flood reports move faster than the rest: every minute
+    const reports = () => {
+      fetchFloodReports().then((r) => alive && setTraffy(r)).catch(() => {});
+      fetchLongdoFloods().then((r) => alive && setLongdoFloods(r)).catch(() => {});
+    };
     tick();
+    reports();
     const id = setInterval(tick, 300000);
+    const rid = setInterval(reports, 60000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+      clearInterval(rid);
+    };
+  }, [isActive]);
+
+  // Weather now at the viewer's location (/api/weather/now, MET Norway via the server); Bangkok centre until
+  // the browser allows location, or if it never does
+  useEffect(() => {
+    if (!isActive) return;
+    let alive = true;
+    let spot = null;
+    const load = () => {
+      fetchWeatherNow(spot?.lat, spot?.lng)
+        .then((d) => alive && setWeather({ ...d, mine: !!spot }))
+        .catch(() => {});
+    };
+    load();   // Bangkok now; the viewer's own spot replaces it once the browser allows location
+    navigator.geolocation?.getCurrentPosition(
+      (p) => { spot = { lat: p.coords.latitude.toFixed(2), lng: p.coords.longitude.toFixed(2) }; load(); },
+      () => {},
+      { timeout: 8000, maximumAge: 600000 },
+    );
+    const id = setInterval(load, WEATHER_POLL_MS);
     return () => {
       alive = false;
       clearInterval(id);
     };
   }, [isActive]);
+  const weatherStatus = !weather ? 'กำลังโหลด' : `${Math.round(weather.temp)}°C ${weather.text}`;
 
   // Traffic
   const flow = summary?.flow_index;
   const trafficTone = flow == null ? 'neutral' : flow >= 75 ? 'green' : flow >= 50 ? 'yellow' : 'red';
   const trafficStatus = flow == null ? 'กำลังโหลด' : flow >= 75 ? 'คล่องตัว' : flow >= 50 ? 'ชะลอตัว' : 'ติดขัด';
-  const worst = summary?.congested?.[0];
-  const trafficDetail = flow == null ? '' : `ระบายได้ ${flow}/100 · แดง ${summary.red_pct}%${worst ? ` · ติดสุด ${worst.name}` : ''}`;
 
   // Rain + water. Flooded-road counts come from the BMA drainage sensors (flood_service.py, ~250
   // stations); ThaiWater relays only about 107 of them, so it is the fallback.
@@ -162,26 +201,24 @@ export default function CityStatusStrip({ summary, incidents, flood, onNavigate,
   const flooding = flood
     ? (flood.counts?.flood || 0) + (flood.counts?.slight || 0)
     : (roads?.flooding || 0) + (roads?.slight || 0);
-  const deepest = flood?.wet?.[0];
   const overflow = water?.river_counts?.overflow || 0;
   const heavyRain = (water?.ntw?.rain_counts?.heavy || 0) + (water?.ntw?.rain_counts?.extreme || 0);
   const worstZone = water?.weather?.[0];
   const waterTone = !water ? 'neutral' : flooding > 0 || worstZone?.watch === 'red' ? 'red' : heavyRain > 0 || overflow > 0 || worstZone?.watch === 'yellow' ? 'yellow' : 'green';
   const waterStatus = !water ? 'กำลังโหลด' : flooding > 0 ? `น้ำท่วมขัง ${flooding} จุด` : worstZone?.watch === 'red' ? `เฝ้าระวัง ${worstZone.name}` : overflow > 0 ? `ล้นตลิ่ง ${overflow} สถานี` : heavyRain > 0 ? `ฝนหนัก ${heavyRain} จุด` : 'ปกติ';
-  const waterDetail = !water
-    ? ''
-    : deepest
-      ? `ลึกสุด ${deepest.short_name} ${deepest.level_cm} ซม.${deepest.district ? ` (เขต${deepest.district})` : ''}`
-      : worstZone
-        ? `${worstZone.name}: ฝน 24 ชม.ข้างหน้า ${worstZone.rain_24h ?? 0} มม. (โอกาส ${worstZone.prob_24h ?? 0}%)${worstZone.storm_at ? ` · พายุฝน ${worstZone.storm_at} น.` : ''}`
-        : `ถนนท่วม ${flooding} · ล้นตลิ่ง ${overflow} · ฝนหนัก ${heavyRain} สถานี`;
+
+  // Flood reports: people on Traffy Fondue (last 6 h) + iTIC / FM91 flooded roads still open on Longdo
+  const citizen = traffy?.items?.length ?? null;
+  const itic = longdoFloods ? longdoFloods.active ?? 0 : null;
+  const reportTotal = (citizen || 0) + (itic || 0);
+  const repLoading = citizen == null && itic == null;
+  const repTone = repLoading ? 'neutral' : reportTotal === 0 ? 'green' : reportTotal < 20 ? 'yellow' : 'red';
+  const repStatus = repLoading ? 'กำลังโหลด' : reportTotal === 0 ? 'ไม่มีเรื่องแจ้ง' : `${reportTotal} เคส`;
 
   // Air
   const pm = air?.avg_pm25;
-  const worstPm = air?.items?.[0];
   const airTone = pm == null ? 'neutral' : pm <= 25 ? 'green' : pm <= 37.5 ? 'yellow' : 'red';
   const airStatus = pm == null ? 'กำลังโหลด' : pm <= 15 ? 'อากาศดีมาก' : pm <= 25 ? 'อากาศดี' : pm <= 37.5 ? 'ปานกลาง' : pm <= 75 ? 'เริ่มมีผลต่อสุขภาพ' : 'มีผลต่อสุขภาพ';
-  const airDetail = pm == null ? '' : `PM2.5 เฉลี่ย ${pm} µg/m³${worstPm ? ` · สูงสุด ${worstPm.area || worstPm.name} ${worstPm.pm25}` : ''}`;
 
   // Incidents
   const cam = incidents?.camera || [];
@@ -189,15 +226,15 @@ export default function CityStatusStrip({ summary, incidents, flood, onNavigate,
   const total = cam.length + longdo.length;
   const incTone = !incidents ? 'neutral' : total === 0 ? 'green' : total <= 2 ? 'yellow' : 'red';
   const incStatus = !incidents ? 'กำลังโหลด' : total === 0 ? 'ไม่มีเหตุ' : `${total} เหตุการณ์`;
-  const first = cam[0] || longdo[0];
-  const incDetail = !incidents ? '' : first ? first.title : `กล้อง AI + รายงาน Longdo · อัปเดต ${fmtTime(incidents.updated)} น.`;
 
   return (
-    <section aria-label="สถานการณ์เมืองตอนนี้" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-      <Tile icon={ICONS.traffic} title="จราจรทั้งเมือง" status={trafficStatus} tone={trafficTone} detail={trafficDetail} onClick={() => onNavigate('map')} />
-      <Tile icon={ICONS.water} title="ฝนและน้ำ" status={waterStatus} tone={waterTone} detail={waterDetail} onClick={() => onNavigate('water')} />
-      <Tile icon={ICONS.air} title="ฝุ่น PM2.5" status={airStatus} tone={airTone} detail={airDetail} onClick={() => onNavigate('map')} />
-      <Tile icon={ICONS.incident} title="เหตุการณ์บนถนน" status={incStatus} tone={incTone} detail={incDetail} onClick={() => onNavigate('dashboard')} />
+    <section aria-label="สถานการณ์เมืองตอนนี้" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-3">
+      <Tile icon={ICONS.traffic} title="จราจรทั้งเมือง" status={trafficStatus} tone={trafficTone} onClick={() => onNavigate('map')} />
+      <Tile icon={ICONS.weather} title={weather?.mine ? 'อากาศตรงนี้' : 'อากาศ กทม.'} status={weatherStatus} tone={weather?.tone || 'neutral'} onClick={() => onNavigate('water')} />
+      <Tile icon={ICONS.water} title="ฝนและน้ำ" status={waterStatus} tone={waterTone} onClick={() => onNavigate('water')} />
+      <Tile icon={ICONS.report} title="การแจ้งน้ำท่วม" status={repStatus} tone={repTone} onClick={() => onNavigate('water')} />
+      <Tile icon={ICONS.air} title="ฝุ่น PM2.5" status={airStatus} tone={airTone} onClick={() => onNavigate('map')} />
+      <Tile icon={ICONS.incident} title="เหตุการณ์บนถนน" status={incStatus} tone={incTone} onClick={() => onNavigate('dashboard')} />
     </section>
   );
 }

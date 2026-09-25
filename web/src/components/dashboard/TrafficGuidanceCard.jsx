@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Card, Badge, Button, Skeleton, ErrorState } from './ui.jsx';
+import { Card, Badge, Skeleton, ErrorState } from './ui.jsx';
 import { fetchTrafficGuidance } from '../../lib/api.js';
 
 const POLL_MS = 60000;
@@ -23,7 +23,7 @@ function FlowMeter({ flow, tone }) {
 // คำแนะนำการระบายรถ: ทุกอย่างในการ์ดนี้มาจาก /api/traffic/guidance ซึ่งสร้างใหม่ทุกนาที
 // จากเส้นสีแผนที่ Longdo + จำนวนรถจากกล้อง กทม. + เหตุการณ์ (ไม่มีข้อความคงที่)
 // ทุกการ์ดมีบล็อกเท่ากัน 5 ส่วน (หัว / ตัวเลข / จุดสะสม / ทางเลี่ยง / วิธีระบาย) ความสูงล็อกไว้ให้ตรงกันทั้งกริด
-export default function TrafficGuidanceCard({ onOpenRoad, onAsk }) {
+export default function TrafficGuidanceCard() {
   const [filter, setFilter] = useState('all');
   const [data, setData] = useState(null);
   const [error, setError] = useState(false);
@@ -182,24 +182,6 @@ export default function TrafficGuidanceCard({ onOpenRoad, onAsk }) {
                     <p className="text-[13px] text-ink-600 line-clamp-2 min-h-[2.5rem] pt-1.5 border-t border-cream-200" title={c.signal}>
                       <span className="font-semibold">สัญญาณไฟ: </span>{c.signal}
                     </p>
-                  )}
-                </div>
-
-                <div className="flex items-center justify-end gap-1.5 mt-auto">
-                  {onOpenRoad && (
-                    <Button size="sm" onClick={() => onOpenRoad(c.search_road)} title={`เปิดดูกล้อง CCTV บน ${c.search_road}`}>
-                      ดูกล้อง
-                    </Button>
-                  )}
-                  {onAsk && (
-                    <Button
-                      size="sm"
-                      variant="primary"
-                      onClick={() => onAsk(`ขอแนวทางการระบายรถและเส้นทางเลี่ยงสำหรับ ${c.name} ในช่วงนี้อย่างละเอียด`)}
-                      title="ถาม AI เจาะลึกเส้นทางนี้"
-                    >
-                      ถาม AI
-                    </Button>
                   )}
                 </div>
               </div>

@@ -191,7 +191,7 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
         <>
           <FlowOverview summary={activeSummary} error={summaryError} onRetry={load} retrying={refreshing} />
           <DensityPanel d={density} onOpenRoad={onOpenRoad} showShare={false} />
-          <TrafficGuidanceCard onOpenRoad={onOpenRoad} onAsk={onAsk} />
+          <TrafficGuidanceCard />
         </>
       )}
       {section === 'road-risk' && <RoadRiskPanel isActive={isActive && section === 'road-risk'} onOpenRoad={onOpenRoad} />}

@@ -179,6 +179,21 @@ export async function fetchLongdoFloods() {
   return res.json();
 }
 
+// Traffy flood reports today vs yesterday / this week vs last week (traffy_history.py)
+export async function fetchTraffyHistory() {
+  const res = await fetch('/api/traffy/history');
+  if (!res.ok) throw new Error('traffy_history');
+  return res.json();
+}
+
+// Weather this hour at a spot (weather_now.py, MET Norway); no lat/lng = Bangkok centre
+export async function fetchWeatherNow(lat, lng) {
+  const q = lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : '';
+  const res = await fetch(`/api/weather/now${q}`);
+  if (!res.ok) throw new Error('weather_now');
+  return res.json();
+}
+
 export async function fetchFloodReports() {
   const res = await fetch('/api/flood/reports');
   if (!res.ok) throw new Error('flood_reports');

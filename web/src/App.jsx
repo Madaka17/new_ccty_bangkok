@@ -10,11 +10,11 @@ import DashboardPage from './components/DashboardPage.jsx';
 import BottomNav from './components/BottomNav.jsx';
 import CameraAiPage from './components/CameraAiPage.jsx';
 import SafetyPage from './components/SafetyPage.jsx';
+import BotFace from './components/BotFace.jsx';
 import VisitorsPage from './components/VisitorsPage.jsx';
 import WaterPage from './components/WaterPage.jsx';
 import AlertsPage from './components/AlertsPage.jsx';
 import AlertPopups from './components/AlertPopups.jsx';
-import NavIcon from './components/NavIcons.jsx';
 import { fetchCameras, fetchAIStats, fetchIncidents, fetchSurveyRanking, fetchRoadCameras } from './lib/api.js';
 import { useActiveCameras, useFavorites, useUserName } from './lib/store.js';
 import { trackView, startHeartbeat } from './lib/telemetry.js';
@@ -213,7 +213,7 @@ export default function App() {
     <div className="min-h-full lg:grid lg:grid-cols-[220px_1fr]">
       {/* Desktop sidebar */}
       <aside className="hidden lg:block sticky top-0 h-screen">
-        <Sidebar page={page} onNavigate={navigate} userName={userName} onSaveName={saveName} liveCount={activeCams.length} totalCount={cameras.length} aiActive={aiActive} />
+        <Sidebar page={page} onNavigate={navigate} userName={userName} onSaveName={saveName} aiActive={aiActive} />
       </aside>
 
       {/* Mobile top bar + drawer */}
@@ -227,7 +227,7 @@ export default function App() {
       {menuOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex">
           <div className="w-72 max-w-[85vw] h-full">
-            <Sidebar page={page} onNavigate={navigate} userName={userName} onSaveName={saveName} liveCount={activeCams.length} totalCount={cameras.length} aiActive={aiActive} onClose={() => setMenuOpen(false)} />
+            <Sidebar page={page} onNavigate={navigate} userName={userName} onSaveName={saveName} aiActive={aiActive} onClose={() => setMenuOpen(false)} />
           </div>
           <button type="button" aria-label="ปิดเมนู" onClick={() => setMenuOpen(false)} className="flex-1 bg-slate-900/50" />
         </div>
@@ -324,7 +324,7 @@ export default function App() {
  animate={{ opacity: 1, y: 0 }}
  transition={{ duration: 0.22 }}
             >
-              <AiPage active cameras={cameras} camid={aiCamid} onPickCamera={setAiCamid} onToast={showToast} pendingQuestion={pendingQuestion} onQuestionConsumed={() => setPendingQuestion('')} />
+              <AiPage active pendingQuestion={pendingQuestion} onQuestionConsumed={() => setPendingQuestion('')} />
             </motion.div>
           )}
       </main>
@@ -338,12 +338,7 @@ export default function App() {
           title="ถาม AI ผู้ช่วยจราจร"
           aria-label="ถาม AI ผู้ช่วยจราจร"
         >
-          <span className="relative flex items-center justify-center">
-            <NavIcon name="ai" className="w-6 h-6 group-hover:scale-110 transition-transform duration-200 text-white" />
-            <span className="absolute -top-2 -right-2 bg-gradient-to-r from-amber-400 to-amber-300 text-slate-900 font-extrabold text-[9px] px-1.5 py-0.2 rounded-full shadow-xs border border-white/60">
-              AI
-            </span>
-          </span>
+          <BotFace className="w-11 h-11 group-hover:scale-110 transition-transform duration-200" />
         </button>
       )}
 
