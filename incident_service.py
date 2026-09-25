@@ -4,10 +4,13 @@ Two sources:
   1. Camera AI: a vehicle stopped for a long time while traffic around it flows (tracker.anomaly())
      is a candidate. A snapshot is sent to Claude vision to confirm before anything is shown.
   2. Longdo Traffic public event feed (type 3 = accident), for reported accidents city-wide.
+The same feed carries flooded roads (type 6, mostly relayed by iTIC / FM91 with a photo credit); those
+are kept apart in `floods()` for the flood pages and the flood agent.
 """
 import base64
 import json
 import os
+import re
 import threading
 import time
 import urllib.request
@@ -30,6 +33,9 @@ GEMINI_MODEL = os.environ.get("GEMINI_VISION_MODEL", "gemini-3.6-flash")
 LONGDO_FEED = "https://event.longdo.com/feed/json"
 LONGDO_ACCIDENT_TYPE = "3"
 LONGDO_BREAKDOWN_TYPE = "1"
+LONGDO_FLOOD_TYPE = "6"
+FLOOD_RECENT_HOURS = 3          # a flood report that ended this recently still shows, as "ended"
+_CREDIT_RE = re.compile(r"\s*(?:Cr\.?|เครดิต|ที่มา)\s*[:.]?\s*(\S.*)$", re.IGNORECASE | re.DOTALL)
 # Bangkok and vicinity
 BBOX = (13.3, 100.1, 14.3, 101.1)  # min lat, min lon, max lat, max lon
 
@@ -74,6 +80,7 @@ class IncidentManager:
         self.longdo = []
         self.longdo_updated = 0
         self.longdo_recent = []                 # Longdo events that ended within the last 24 h
+        self.longdo_floods = []                 # Longdo flooded-road reports, active or ended < FLOOD_RECENT_HOURS
         self.provider, self.client = self._client()
         print(f"[Incident] vision provider: {self.provider or 'none (set GEMINI_API_KEY or ANTHROPIC_API_KEY)'}")
         for inc in vehicle_log.active_incidents():
@@ -225,12 +232,18 @@ class IncidentManager:
         with urllib.request.urlopen(req, timeout=15) as resp:
             items = json.loads(resp.read().decode('utf-8'))
         now = time.strftime('%Y-%m-%d %H:%M:%S')
-        out, recent = [], []
+        out, recent, floods = [], [], []
         for e in items:
             etype = str(e.get('type') or '')
             title = (e.get('title') or '').strip()
             desc = (e.get('description') or '').strip()
             icon = str(e.get('icon') or '').lower()
+
+            if etype == LONGDO_FLOOD_TYPE or icon == 'flood':
+                flood = self._flood_item(e, title, desc, now)
+                if flood:
+                    floods.append(flood)
+                continue
 
             # Identify vehicle breakdown (type 1, carbreakdown icon, or keywords)
             if etype == LONGDO_BREAKDOWN_TYPE or 'carbreakdown' in icon or 'รถเสีย' in title or 'จอดเสีย' in title or 'รถเสีย' in desc or 'จอดเสีย' in desc:
@@ -264,7 +277,41 @@ class IncidentManager:
         with self.lock:
             self.longdo = out
             self.longdo_recent = recent
+            self.longdo_floods = sorted(floods, key=lambda f: -(f['ts'] or 0))
             self.longdo_updated = int(time.time())
+
+    @staticmethod
+    def _flood_item(e, title, desc, now):
+        """One Longdo flood report, or None when it is outside the area or ended too long ago."""
+        try:
+            lat, lon = float(e['latitude']), float(e['longitude'])
+        except (KeyError, TypeError, ValueError):
+            return None
+        if not (BBOX[0] <= lat <= BBOX[2] and BBOX[1] <= lon <= BBOX[3]):
+            return None
+        ts, stop = _feed_ts(e.get('start')), _feed_ts(e.get('stop'))
+        active = not e.get('stop') or e['stop'] >= now
+        if not active and (not stop or time.time() - stop > FLOOD_RECENT_HOURS * 3600):
+            return None
+        credit = ''
+        m = _CREDIT_RE.search(desc)
+        if m:
+            credit, desc = m.group(1).strip(), desc[:m.start()].strip()
+        place = title.replace('น้ำท่วม', '', 1).strip() or title
+        return {'id': f"longdo-{e.get('eid')}", 'title': title or 'น้ำท่วม', 'place': place,
+                'description': ' '.join(desc.split()), 'credit': credit, 'contributor': e.get('contributor', ''),
+                'lat': lat, 'lng': lon, 'ts': ts, 'stop_ts': stop, 'active': active}
+
+    def floods(self, hours=None):
+        """Flooded-road reports from the Longdo feed (newest first); `hours` limits them by report time."""
+        with self.lock:
+            items = list(self.longdo_floods)
+            updated = self.longdo_updated
+        if hours:
+            since = time.time() - hours * 3600
+            items = [f for f in items if (f['ts'] or 0) >= since]
+        return {'updated_at': updated, 'active': sum(1 for f in items if f['active']), 'total': len(items),
+                'items': items}
 
     def recent_longdo(self, hours=24):
         """Longdo events that ended within the last `hours`, shaped like vehicle_log.recent_incidents()."""

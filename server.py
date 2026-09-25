@@ -95,6 +95,7 @@ import access_guard
 from alert_service import AlertService
 from flood_agent import FloodAgent
 from riskbkk_agent import RiskAgent
+from traffy_agent import TraffyAgent
 from water_agent import WaterAgent
 
 app = FastAPI(title="BKK StreetSmart CCTV & YOLO11x Vehicle Detection")
@@ -820,15 +821,35 @@ def water_summary():
     except Exception as e:
         return JSONResponse(status_code=503, content={"error": str(e), "api_key": water_service.key_status()})
 
-@app.get("/api/water/forecast")
 @app.get("/api/water/map")
 def water_map():
-    """Every metro water / rain gauge and the upstream dams as map points."""
+    """Every metro water / rain gauge, the upstream dams and flooded roads (BMA road sensors + Longdo
+    flood reports) as map points."""
     try:
-        return water_service.get_map()
+        out = water_service.get_map()
     except Exception as e:
         return JSONResponse(status_code=503, content={"error": str(e)})
+    roads = []
+    for s in flood_roads.stations(limit=1000)["items"]:
+        if s.get("lat") and s.get("lng"):
+            roads.append({"id": f"sensor-{s['id']}", "kind": "sensor", "name": s.get("short_name") or s.get("name"),
+                          "road": s.get("road"), "district": s.get("district") or "", "province": "กรุงเทพมหานคร",
+                          "lat": s["lat"], "lng": s["lng"], "ts": s.get("ts"), "status": s.get("status"),
+                          "depth_cm": s.get("level_cm"), "max_cm": s.get("max_cm"), "trend": s.get("trend_th"),
+                          "sensor_kind": s.get("kind")})
+    for f in incidents.floods()["items"]:
+        roads.append({"id": f["id"], "kind": "report", "name": f["place"], "district": "", "province": "",
+                      "lat": f["lat"], "lng": f["lng"], "ts": f["ts"],
+                      "status": "report" if f["active"] else "report_ended",
+                      "description": f["description"], "credit": f["credit"]})
+    return {**out, "roads": roads}
 
+@app.get("/api/flood/longdo")
+def flood_longdo(hours: int = Query(None, ge=1, le=48)):
+    """Flooded-road reports from the Longdo Traffic event feed (type 6; iTIC / FM91 relays), newest first."""
+    return incidents.floods(hours=hours)
+
+@app.get("/api/water/forecast")
 def water_forecast(station: int = Query(..., ge=1)):
     """Observed + official (HII) or local tidal-harmonic outlook for one telemetry station."""
     try:
@@ -954,6 +975,7 @@ flood_agent = FloodAgent(DATA_DIR, {
     "traffy": traffy_reports.status, "tmd": tmd_warnings.status,
     "road_risk": lambda: road_risk.status(limit=2000),
     "bma_events": lambda: bma_feed.get(kind="flood", hours=6, limit=20),
+    "longdo_floods": lambda: incidents.floods(hours=6),
 })
 
 @app.get("/api/flood/agent")
@@ -991,6 +1013,19 @@ def riskbkk_analysis():
 def riskbkk_analysis_run():
     """Re-run the analysis now (operator only through access_guard)."""
     return risk_agent.run(force=True)
+
+# ---------------------------------------------------------------- Traffy flood-report analyst (local model)
+traffy_agent = TraffyAgent(DATA_DIR, traffy_reports.status)
+
+@app.get("/api/traffy/analysis")
+def traffy_analysis():
+    """AI analysis of the flood reports people sent through Traffy Fondue in the last 6 h, plus the numbers."""
+    return traffy_agent.status()
+
+@app.post("/api/traffy/analysis/run")
+def traffy_analysis_run():
+    """Re-run the analysis now (operator only through access_guard)."""
+    return traffy_agent.run(force=True)
 
 # ---------------------------------------------------------------- Web Push alerts (operator team)
 # POSTs here are operator-only through access_guard, so only the team can subscribe or send a test.
@@ -1064,6 +1099,7 @@ rsc_service.warm(bma_scanner.cameras)
 bma_feed.start()
 flood_agent.start()
 risk_agent.start()
+traffy_agent.start()
 water_agent.start()
 alerts.start()
 

@@ -13,6 +13,7 @@ back as JSON by REPORT_SCHEMA.
     weather warnings  TMD heavy-rain / storm warnings (flood_feeds)
     road risk         per-road class by the official thresholds (road_service)
     BMA events        flood reports from the BMA traffic centre (bma_events)
+    Longdo reports    flooded roads reported on the Longdo Traffic feed, relayed by iTIC / FM91 (longdo_floods)
 
 A small model gets every source at once, trimmed to the top rows so it fits an 8k context. It may not
 report below the level the fixed thresholds already give (_rules), and only roads with water measured on
@@ -36,8 +37,21 @@ REPLY_TOKENS = int(os.getenv("FLOOD_AGENT_REPLY_TOKENS", "2500"))
 HISTORY_KEEP = 48
 LEVELS = ("normal", "watch", "warning", "critical")
 LEVEL_TH = {"normal": "ปกติ", "watch": "เฝ้าระวัง", "warning": "เตือนภัย", "critical": "วิกฤต"}
+# Problem category per district (the model picks one), and the BMA zone group (looked up here, not by the model)
+CATEGORIES = ("road_flooding", "residential_flooding", "canal_critical", "traffic_obstruction")
+CATEGORY_TH = {"road_flooding": "น้ำท่วมขังผิวจราจร/เส้นทางสัญจร", "residential_flooding": "น้ำเอ่อล้นเข้าที่พักอาศัย/ชุมชน",
+               "canal_critical": "ระดับน้ำในคลองสายหลักวิกฤต", "traffic_obstruction": "อุบัติเหตุ/สิ่งกีดขวางทางจราจร"}
+ZONE_DISTRICTS = {
+    "กทม. กลาง": "พระนคร ป้อมปราบศัตรูพ่าย สัมพันธวงศ์ ดุสิต พญาไท ราชเทวี ดินแดง ห้วยขวาง วังทองหลาง",
+    "กทม. ใต้": "ปทุมวัน บางรัก สาทร บางคอแหลม ยานนาวา คลองเตย วัฒนา พระโขนง บางนา สวนหลวง",
+    "กทม. เหนือ": "จตุจักร บางซื่อ ลาดพร้าว หลักสี่ ดอนเมือง สายไหม บางเขน",
+    "กทม. ตะวันออก": "บางกะปิ สะพานสูง บึงกุ่ม คันนายาว ลาดกระบัง ประเวศ มีนบุรี คลองสามวา หนองจอก",
+    "กรุงธนเหนือ": "ธนบุรี คลองสาน บางกอกใหญ่ บางกอกน้อย บางพลัด ตลิ่งชัน ทวีวัฒนา",
+    "กรุงธนใต้": "ภาษีเจริญ หนองแขม บางแค บางบอน บางขุนเทียน จอมทอง ราษฎร์บูรณะ ทุ่งครุ",
+}
+DISTRICT_ZONE = {d: z for z, ds in ZONE_DISTRICTS.items() for d in ds.split()}
 SOURCES = ("get_road_sensors", "get_rivers_canals", "get_rain_outlook", "get_citizen_reports",
-           "get_weather_warnings", "get_road_risk", "get_bma_events")
+           "get_weather_warnings", "get_road_risk", "get_bma_events", "get_longdo_floods")
 
 SYSTEM_PROMPT = """คุณคือนักวิเคราะห์สถานการณ์น้ำท่วมของศูนย์ปฏิบัติการ BKK StreetSmart (กรุงเทพฯ และปริมณฑล)
 หน้าที่: อ่านข้อมูลสดทุกแหล่งที่แนบมา วิเคราะห์ แล้วส่งรายงานสถานการณ์เป็น JSON
@@ -45,7 +59,8 @@ SYSTEM_PROMPT = """คุณคือนักวิเคราะห์สถ�
 วิธีวิเคราะห์
 - แหล่งข้อมูล: get_road_sensors (น้ำบนถนน ซม.), get_rivers_canals (แม่น้ำ/คลอง % ของตลิ่ง), get_rain_outlook
   (ฝนรายโซนและคะแนนเสี่ยง 1-6 ชม.), get_citizen_reports (Traffy), get_weather_warnings (กรมอุตุฯ),
-  get_road_risk (ถนนเสี่ยง), get_bma_events (ศูนย์จราจร กทม.)
+  get_road_risk (ถนนเสี่ยง), get_bma_events (ศูนย์จราจร กทม.), get_longdo_floods (ถนนน้ำท่วมที่ iTIC/FM91 รายงาน
+  ผ่าน Longdo Traffic มีพิกัดและชื่อจุด ครอบคลุมปริมณฑลที่ไม่มีเซ็นเซอร์)
 - เชื่อมโยงหลายแหล่ง: เขตที่ฝนตกหนัก + คลองสูง + ประชาชนแจ้งหลายเรื่อง = เสี่ยงสูงกว่าสัญญาณเดียว
   แนวโน้มน้ำที่กำลังเพิ่ม (rising) และฝนที่ยังจะตกใน 1-6 ชม. ทำให้ระดับสูงขึ้น
 - ใช้ตัวเลขจากข้อมูลที่แนบมาเท่านั้น ห้ามแต่งจุด ถนน หรือค่า ถ้าแหล่งใดมี error ให้ใส่ใน data_gaps
@@ -60,7 +75,15 @@ SYSTEM_PROMPT = """คุณคือนักวิเคราะห์สถ�
 รูปแบบรายงาน (ภาษาไทย กระชับ ข้อความล้วน ไม่ใช้ Markdown)
 - headline ไม่เกิน 1 ประโยค summary 2-4 ประโยค
 - districts เรียงจากเสี่ยงมากไปน้อย สูงสุด 8 เขต ใส่เฉพาะเขตที่ระดับ watch ขึ้นไป
+  name เป็นชื่อเขตหรืออำเภอล้วน ไม่มีคำว่า "เขต" นำหน้า (เช่น ประเวศ ลาดกระบัง)
+  category เลือกปัญหาหลักของเขตนั้น 1 ประเภท:
+    road_flooding = น้ำท่วมขังผิวจราจร/เส้นทางสัญจร (เซ็นเซอร์บนถนน, รายงานน้ำขังบนถนน)
+    residential_flooding = น้ำเอ่อล้นเข้าที่พักอาศัย/ชุมชน (รายงานประชาชนว่าน้ำเข้าบ้าน ซอย หมู่บ้าน)
+    canal_critical = ระดับน้ำในคลองสายหลักวิกฤต (คลอง/แม่น้ำใกล้ล้นหรือล้นตลิ่ง)
+    traffic_obstruction = อุบัติเหตุหรือสิ่งกีดขวางทางจราจร (เหตุจากศูนย์จราจร กทม. เช่น รถเสีย ต้นไม้ล้ม)
 - roads_to_avoid สูงสุด 8 สาย เฉพาะที่มีค่าวัดน้ำบนถนนจริง
+- weather_summary 2-3 ประโยค สรุปพยากรณ์อากาศจาก get_rain_outlook และ get_weather_warnings: โซนที่ฝนหนักสุดใน 6 และ 24 ชม.
+  (ปริมาณ มม. และโอกาสฝน %) ช่วงเวลาฝนหนักสุด/พายุฝนฟ้าคะนอง ลมกระโชก ประกาศกรมอุตุฯ ที่มีผลกับ กทม. และแนวโน้มฝน 3 วัน
 - actions.public 2-4 ข้อสำหรับประชาชน actions.operators 2-4 ข้อสำหรับทีมปฏิบัติการ (เช่น เปิดกล้องจุดไหน ส่งทีมสูบน้ำเขตไหน)
 - ถ้าผู้ใช้ถามคำถามเฉพาะ ให้ตอบใน answer ถ้าไม่มีคำถามให้ answer เป็นสตริงว่าง"""
 
@@ -69,15 +92,16 @@ REPORT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "required": ["overall_level", "headline", "summary", "districts", "roads_to_avoid", "outlook",
-                 "actions", "confidence", "data_gaps", "answer"],
+                 "weather_summary", "actions", "confidence", "data_gaps", "answer"],
     "properties": {
         "overall_level": _LEVEL_ENUM,
         "headline": {"type": "string"},
         "summary": {"type": "string"},
         "districts": {"type": "array", "items": {
             "type": "object", "additionalProperties": False,
-            "required": ["name", "level", "reason", "outlook"],
+            "required": ["name", "level", "category", "reason", "outlook"],
             "properties": {"name": {"type": "string"}, "level": _LEVEL_ENUM,
+                           "category": {"type": "string", "enum": list(CATEGORIES)},
                            "reason": {"type": "string"}, "outlook": {"type": "string"}}}},
         "roads_to_avoid": {"type": "array", "items": {
             "type": "object", "additionalProperties": False,
@@ -86,6 +110,7 @@ REPORT_SCHEMA = {
                            "depth_cm": {"anyOf": [{"type": "number"}, {"type": "null"}]},
                            "advice": {"type": "string"}}}},
         "outlook": {"type": "string"},
+        "weather_summary": {"type": "string"},
         "actions": {"type": "object", "additionalProperties": False, "required": ["public", "operators"],
                     "properties": {"public": {"type": "array", "items": {"type": "string"}},
                                    "operators": {"type": "array", "items": {"type": "string"}}}},
@@ -96,13 +121,59 @@ REPORT_SCHEMA = {
 }
 
 
+def _classify_districts(districts):
+    """Clean names and add category_th and the BMA zone group (ปริมณฑล for anything outside the 50 districts)."""
+    for d in districts:
+        name = (d.get("name") or "").strip()
+        if name.startswith("เขต"):
+            name = name[3:].strip()
+        d["name"] = name
+        if d.get("category") not in CATEGORIES:
+            d["category"] = "road_flooding"
+        d["category_th"] = CATEGORY_TH[d["category"]]
+        d["zone"] = DISTRICT_ZONE.get(name, "ปริมณฑล")
+    return districts
+
+
+def _weather(facts):
+    """The forecast figures shown under the report, straight from the facts (the model only writes weather_summary)."""
+    rain = facts.get("get_rain_outlook") or {}
+    tmd = facts.get("get_weather_warnings") or {}
+    zones = [{"zone": z.get("zone"), "areas": z.get("areas"), "watch": z.get("watch"),
+              "rain_6h_mm": z.get("rain_6h_mm"), "rain_24h_mm": z.get("rain_24h_mm"), "prob_24h": z.get("prob_24h"),
+              "peak_at": z.get("peak_at"), "peak_mm_h": z.get("peak_mm_h"), "storm_at": z.get("storm_at"),
+              "gust_max_kmh": z.get("gust_max_kmh")} for z in rain.get("zones") or []]
+    zones.sort(key=lambda z: -(z.get("rain_24h_mm") or 0))
+    return {"zones": zones, "outlook_3d": rain.get("rain_outlook_3d") or [],
+            "warnings": [{"title": w.get("title"), "date": w.get("date"), "mentions_bangkok": w.get("mentions_bangkok")}
+                         for w in tmd.get("active") or []]}
+
+
+def _weather_text(weather):
+    """Thai forecast summary from the figures, for the offline report and a model that left it empty."""
+    zones = weather.get("zones") or []
+    if not zones:
+        return "ไม่มีข้อมูลพยากรณ์อากาศ"
+    top = zones[0]
+    parts = [f"โซนฝนมากสุด {top['zone']}: 6 ชม. {top.get('rain_6h_mm') or 0} มม. 24 ชม. {top.get('rain_24h_mm') or 0} มม."
+             + (f" (โอกาสฝน {top['prob_24h']:.0f}%)" if isinstance(top.get("prob_24h"), (int, float)) else "")]
+    if top.get("peak_at"):
+        parts.append(f"ฝนหนักสุดช่วง {top['peak_at']}")
+    storms = [z["zone"] for z in zones if z.get("storm_at")]
+    if storms:
+        parts.append(f"มีโอกาสพายุฝนฟ้าคะนอง: {', '.join(storms[:4])}")
+    if weather.get("warnings"):
+        parts.append(f"ประกาศกรมอุตุฯ: {weather['warnings'][0]['title']}")
+    return " · ".join(parts)
+
+
 def _round(v, n=1):
     return round(v, n) if isinstance(v, (int, float)) else v
 
 
 class FloodAgent:
     def __init__(self, data_dir, sources):
-        """sources: {name: callable} for flood, water, forecast, traffy, tmd, road_risk, bma_events (any may fail)."""
+        """sources: {name: callable} for flood, water, forecast, traffy, tmd, road_risk, bma_events, longdo_floods (any may fail)."""
         self.sources = sources
         self.path = os.path.join(data_dir, "cache", "flood_agent.json")
         self.lock = threading.Lock()
@@ -243,6 +314,15 @@ class FloodAgent:
         return {"events": [{"title": e.get("title"), "min_ago": int((time.time() - (e.get("ts") or time.time())) / 60),
                             "detail": (e.get("desc") or e.get("description") or "")[:160]} for e in (items or [])[:12]]}
 
+    def tool_longdo_floods(self):
+        fl = self._call("longdo_floods")
+        if fl is None:
+            return {"error": "รายงานน้ำท่วม Longdo โหลดไม่สำเร็จ"}
+        items = [f for f in fl.get("items") or [] if f.get("active")]
+        return {"active": len(items),
+                "reports": [{"place": f.get("place"), "detail": (f.get("description") or "")[:140],
+                             "min_ago": int((time.time() - (f.get("ts") or time.time())) / 60)} for f in items[:20]]}
+
     def _run_tool(self, name, args):
         args = args or {}
         fn = {
@@ -253,6 +333,7 @@ class FloodAgent:
             "get_weather_warnings": self.tool_weather_warnings,
             "get_road_risk": lambda: self.tool_road_risk(args.get("province") or None),
             "get_bma_events": self.tool_bma_events,
+            "get_longdo_floods": self.tool_longdo_floods,
         }.get(name)
         if fn is None:
             return {"error": f"unknown tool {name}"}, True
@@ -283,12 +364,14 @@ class FloodAgent:
         rain = facts.get("get_rain_outlook") or {}
         cit = facts.get("get_citizen_reports") or {}
         tmd = facts.get("get_weather_warnings") or {}
+        longdo = facts.get("get_longdo_floods") or {}
         key = {
             "wet": sorted((s.get("name"), int((s.get("cm") or 0) // 5)) for s in road.get("wet") or []),
             "gauges": sorted((s.get("name"), s.get("level")) for s in river.get("alert_stations") or []),
             "zones": sorted((z.get("zone"), z.get("watch"), (z.get("peak_risk") or 0) // 20) for z in rain.get("zones") or []),
             "traffy": sorted((d["district"], d["reports"] // 3) for d in cit.get("by_district") or []),
             "tmd": sorted(w.get("title") or "" for w in tmd.get("active") or []),
+            "longdo": sorted(r.get("place") or "" for r in longdo.get("reports") or []),
         }
         return hashlib.sha1(json.dumps(key, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
@@ -297,7 +380,7 @@ class FloodAgent:
     def _compact(facts):
         """Shorter facts for a small local context window: top rows only, no prose fields the model can skip."""
         cut = {"wet": 12, "districts": 8, "alert_stations": 10, "zones": 8, "by_district": 8, "latest": 4,
-               "roads": 10, "events": 5, "active": 3, "provinces": 5, "heavy_rain_observed_24h": 6}
+               "roads": 10, "events": 5, "reports": 10, "active": 3, "provinces": 5, "heavy_rain_observed_24h": 6}
         drop = {"risk_model", "tide", "dams", "errors", "thresholds_cm", "feed_time", "updated_at", "stale"}
 
         def trim(v):
@@ -345,7 +428,7 @@ class FloodAgent:
         def bump(name, lv, why):
             if not name or name == "-":
                 return
-            d = dist.setdefault(name, {"name": name, "level": "watch", "reason": [], "outlook": ""})
+            d = dist.setdefault(name, {"name": name, "level": "watch", "category": "road_flooding", "reason": [], "outlook": ""})
             if LEVELS.index(lv) > LEVELS.index(d["level"]):
                 d["level"] = lv
             d["reason"].append(why)
@@ -354,6 +437,8 @@ class FloodAgent:
             bump(s.get("district"), "warning" if (s.get("cm") or 0) > 20 else "watch", f"{s.get('name')} {s.get('cm') or 0:.0f} ซม.")
         for s in over:
             bump(s.get("district"), "warning", f"{s.get('name')} ล้นตลิ่ง")
+            if s.get("district") in dist:
+                dist[s["district"]]["category"] = "canal_critical"
         for d in busy:
             bump(d["district"], "warning", f"ประชาชนแจ้ง {d['reports']} เรื่อง")
         districts = sorted(dist.values(), key=lambda d: -LEVELS.index(d["level"]))[:8]
@@ -373,6 +458,7 @@ class FloodAgent:
                                 "depth_cm": s.get("cm"), "advice": "ห้ามขับผ่าน" if (s.get("cm") or 0) > 60 else "ควรเลี่ยง"}
                                for s in deep[:8]],
             "outlook": outlook,
+            "weather_summary": _weather_text(_weather(facts)),
             "actions": {"public": ["เลี่ยงถนนที่มีน้ำเกิน 20 ซม.", "ย้ายรถขึ้นที่สูงถ้าอยู่ในเขตเสี่ยง"],
                         "operators": [f"เปิดกล้องตรวจจุด {', '.join(s.get('name') for s in deep[:3])}" if deep
                                       else "ติดตามเซ็นเซอร์ทุก 15 นาที"]},
@@ -413,6 +499,10 @@ class FloodAgent:
                     report["overall_level"] = floor
                 # and keep only roads with water actually measured on them
                 report["roads_to_avoid"] = [r for r in report.get("roads_to_avoid") or [] if (r.get("depth_cm") or 0) > 0]
+            report["districts"] = _classify_districts(report.get("districts") or [])
+            report["weather"] = _weather(facts)
+            if not (report.get("weather_summary") or "").strip():
+                report["weather_summary"] = _weather_text(report["weather"])
             steps = [{"tool": k, "input": {}, "error": bool(isinstance(v, dict) and v.get("error"))} for k, v in facts.items()]
             report.update({"source": source, "model": local_llm.default.model if source == "local" else None,
                            "generated_at": int(time.time()), "took_s": round(time.time() - started, 1),
