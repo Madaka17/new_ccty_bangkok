@@ -87,7 +87,7 @@ export default function FloodAgentCard({ isActive, onOpenRoad }) {
     <Card className="p-5" aria-labelledby="flood-agent">
       <SectionHeader
         id="flood-agent"
-        title="AI วิเคราะห์สถานการณ์น้ำท่วม"
+        title="วิเคราะห์สถานการณ์น้ำท่วม"
         description={r
           ? `${r.source === 'local' && r.model ? r.model : SOURCE[r.source] || r.source} · ${fmtTime(r.generated_at)} น. (${agoText(r.generated_at)}) · วิเคราะห์อัตโนมัติทุก ${Math.round((data.interval_s || 900) / 60)} นาที`
           : 'ยังไม่มีรายงาน รอบแรกจะเริ่มหลังเปิดเซิร์ฟเวอร์ราว 2 นาที'}
