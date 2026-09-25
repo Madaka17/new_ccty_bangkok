@@ -105,6 +105,7 @@ class TraffyAgent:
         self.lock = threading.Lock()
         self.run_lock = threading.Lock()
         self.result, self.sig, self.running, self.error = None, None, False, None
+        self.fed = False        # the Traffy feed has answered since start
         try:
             with open(self.path, "r", encoding="utf-8") as f:
                 d = json.load(f)
@@ -114,11 +115,14 @@ class TraffyAgent:
 
     # ------------------------------------------------------------ facts
     def _items(self):
+        """(reports, ready). ready is False until the Traffy poller has answered once (right after a
+        restart), so an empty list then is not taken as a quiet 6 h."""
         try:
-            return (self.source() or {}).get("items") or []
+            st = self.source() or {}
         except Exception as e:  # noqa: BLE001 - feed down: nothing to analyse
             print(f"[TraffyAgent] source failed: {e}")
-            return []
+            return [], False
+        return st.get("items") or [], bool(st.get("updated_at"))
 
     @staticmethod
     def _signature(items):
@@ -218,7 +222,10 @@ class TraffyAgent:
         if not self.run_lock.acquire(blocking=False):
             return {**self.status(), "busy": True}
         try:
-            items = self._items()
+            items, ready = self._items()
+            if not ready:
+                return self.status()     # keep the last analysis until the feed has loaded
+            self.fed = True
             sig = self._signature(items)
             age = time.time() - ((self.result or {}).get("generated_at") or 0)
             if not force and self.result and self.result.get("source") == "local" and sig == self.sig and age < MAX_AGE:
@@ -263,7 +270,7 @@ class TraffyAgent:
                 self.run()
             except Exception as e:  # noqa: BLE001 - keep the timer alive
                 print(f"[TraffyAgent] run failed: {e}")
-            time.sleep(AGENT_SECONDS)
+            time.sleep(AGENT_SECONDS if self.fed else 30)   # feed not loaded yet: try again soon
 
     def start(self):
         threading.Thread(target=self._loop, daemon=True, name="TraffyAgent").start()
