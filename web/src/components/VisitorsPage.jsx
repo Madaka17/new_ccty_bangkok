@@ -11,13 +11,14 @@ const TOPIC_LABEL = { traffic: 'Traffic', flood: 'Flood', road_status: 'Road Sta
 const TOPIC_COLOR = { traffic: 'bg-blue-600', flood: 'bg-cyan-500', road_status: 'bg-amber-500', accidents: 'bg-red-600' };
 const VISITOR_POLL_MS = 5000;
 const PAGE_LABEL = {
-  dashboard: 'Traffic Dashboard', analytics: 'City Analytics', cameras: 'กล้อง CCTV', map: 'Traffic Map',
-  water: 'น้ำท่วม', yolo: 'Camera AI', 'bma-count': 'นับรถกล้อง กทม.', helmet: 'Helmet Check',
-  wrongway: 'Wrong-Way Check', ai: 'AI ผู้ช่วย', safety: 'Accidents & Risk', visitors: 'Visitors', alerts: 'Alerts',
+  dashboard: 'Traffic Dashboard', analytics: 'City Analytics', cameras: 'My Cameras', map: 'Traffic Map',
+  water: 'Water Forecast', yolo: 'Camera AI', 'bma-count': 'นับรถกล้อง กทม.', helmet: 'Helmet Check',
+  wrongway: 'Wrong-Way Check', ai: 'Ask AI', safety: 'Accidents & Risk', visitors: 'Visitors', alerts: 'Alerts',
 };
 const SUB_LABEL = {
   overview: 'ภาพรวม', trend: 'แนวโน้ม', flood: 'น้ำท่วม', roads: 'ถนน', incidents: 'เหตุการณ์', 'bma-reports': 'รายงาน กทม.',
   safety: 'ความปลอดภัย', traffic: 'จราจร', density: 'ความหนาแน่น', accidents: 'อุบัติเหตุ', riskbkk: 'จุดเสี่ยง กทม.', visitors: 'ผู้เข้าใช้งาน',
+  'road-risk': 'วิเคราะห์รายถนน', situation: 'สถานการณ์น้ำ', watch: 'เฝ้าระวังน้ำท่วม', reports: 'แจ้งน้ำท่วม', agent: 'AI สรุปสถานการณ์', analysis: 'AI คาดการณ์',
 };
 const hh = (h) => `${String(h).padStart(2, '0')}:00`;
 function pageLabel(view) {
@@ -109,28 +110,27 @@ function VisitorSection({ isActive }) {
         <StatTile label="ช่วงคนใช้มากสุด" value={d.peak_hours[0] ? hh(d.peak_hours[0].hour) : '–'} sub={d.peak_hours.length ? `สถิติ ${d.peak_window_days} วันล่าสุด` : 'ยังไม่มีข้อมูล'} tone="yellow" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="flex flex-col gap-4">
-          <Card className="p-5">
-            <SectionHeader id="online-now" title="ตอนนี้กำลังดูหน้าไหน" description="ผู้ใช้ที่ออนไลน์อยู่ แยกตามหน้าที่เปิด" />
-            <RankList rows={onlineRows} unit="คน" empty="ยังไม่มีผู้ใช้ออนไลน์" />
-          </Card>
-          <Card className="p-5">
-            <SectionHeader id="topic-share" title="หน้ายอดนิยมวันนี้" description="นับทุกครั้งที่เปิดหน้าหรือเปลี่ยนแท็บ" />
-            {d.views_today ? (
-              <div className="mt-3">
-                <ShareBar parts={d.by_topic.filter((t) => t.views).map((t) => ({ label: TOPIC_LABEL[t.topic], value: t.views, color: TOPIC_COLOR[t.topic] }))} />
-              </div>
-            ) : null}
-            <RankList rows={viewRows} unit="ครั้ง" empty="ยังไม่มีการเปิดดูวันนี้" />
-          </Card>
-        </div>
-        <HourlyViewsCard
-          hours={d.hours_today || d.hours}
-          currentHour={d.current_hour}
-          peakHours={d.peak_hours}
-          dauSeries={d.dau_series}
-        />
+      <HourlyViewsCard
+        hours={d.hours_today || d.hours}
+        currentHour={d.current_hour}
+        peakHours={d.peak_hours}
+        dauSeries={d.dau_series}
+      />
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        <Card className="p-5">
+          <SectionHeader id="online-now" title="ตอนนี้กำลังดูหน้าไหน" description="ผู้ใช้ที่ออนไลน์อยู่ แยกตามหน้าที่เปิด" />
+          <RankList rows={onlineRows} unit="คน" empty="ยังไม่มีผู้ใช้ออนไลน์" />
+        </Card>
+        <Card className="p-5">
+          <SectionHeader id="topic-share" title="หน้ายอดนิยมวันนี้" description="นับทุกครั้งที่เปิดหน้าหรือเปลี่ยนแท็บ" />
+          {d.views_today ? (
+            <div className="mt-3">
+              <ShareBar parts={d.by_topic.filter((t) => t.views).map((t) => ({ label: TOPIC_LABEL[t.topic], value: t.views, color: TOPIC_COLOR[t.topic] }))} />
+            </div>
+          ) : null}
+          <RankList rows={viewRows} unit="ครั้ง" empty="ยังไม่มีการเปิดดูวันนี้" />
+        </Card>
       </div>
     </div>
   );

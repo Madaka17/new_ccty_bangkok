@@ -187,7 +187,7 @@ export default function ForecastChart({ stations, stationId, onPickStation, anch
               </g>
             ))}
             {/* future shading */}
-            <rect x={chart.x(chart.now)} y={PAD.t} width={Math.max(0, W - PAD.r - chart.x(chart.now))} height={H - PAD.t - PAD.b} fill="#f8fafc" />
+            <rect x={chart.x(chart.now)} y={PAD.t} width={Math.max(0, W - PAD.r - chart.x(chart.now))} height={H - PAD.t - PAD.b} className="fill-slate-50" />
             {chart.levels.bank != null && (
               <g>
                 <line x1={PAD.l} x2={W - PAD.r} y1={chart.y(chart.levels.bank)} y2={chart.y(chart.levels.bank)} stroke={BANK} strokeWidth="1.5" strokeDasharray="6 4" />

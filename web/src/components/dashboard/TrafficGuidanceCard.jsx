@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Card, Badge, Skeleton, ErrorState } from './ui.jsx';
+import { Card, Badge, Button, Skeleton, ErrorState } from './ui.jsx';
 import { fetchTrafficGuidance } from '../../lib/api.js';
 
 const POLL_MS = 60000;
 const MAX_HOTSPOTS = 3;
 const MAX_ALTS = 3;
+const FIRST_CARDS = 6; // cards shown before "ดูทั้งหมด"; the rest open on demand so the overview stays short
 
 const FLOW_BAR = { red: 'bg-red-500', yellow: 'bg-amber-500', green: 'bg-emerald-500', neutral: 'bg-slate-300' };
 
@@ -25,6 +26,7 @@ function FlowMeter({ flow, tone }) {
 // ทุกการ์ดมีบล็อกเท่ากัน 5 ส่วน (หัว / ตัวเลข / จุดสะสม / ทางเลี่ยง / วิธีระบาย) ความสูงล็อกไว้ให้ตรงกันทั้งกริด
 export default function TrafficGuidanceCard() {
   const [filter, setFilter] = useState('all');
+  const [showAll, setShowAll] = useState(false);
   const [data, setData] = useState(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -58,6 +60,7 @@ export default function TrafficGuidanceCard() {
     if (filter === 'incidents') return c.status === 'incident';
     return true;
   });
+  const visible = showAll ? filtered : filtered.slice(0, FIRST_CARDS);
 
   const chip = (key, label, activeCls) => (
     <button
@@ -75,8 +78,8 @@ export default function TrafficGuidanceCard() {
     <Card className="p-4 sm:p-5 flex flex-col gap-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-ink-900 leading-7">คำแนะนำการระบายรถ</h2>
-          <p className="text-xs text-ink-500">จากเส้นจราจรสด + กล้อง กทม. อัปเดตทุก 1 นาที</p>
+          <h2 className="text-[15px] font-semibold text-ink-900 leading-6">คำแนะนำการระบายรถ</h2>
+          <p className="text-[13px] text-slate-600 mt-0.5 leading-5">จากเส้นจราจรสด + กล้อง กทม. อัปเดตทุก 1 นาที</p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 self-start sm:self-auto">
           {chip('all', `ทั้งหมด ${items.length}`, 'bg-ink-900 text-white dark:bg-slate-100 dark:text-slate-900')}
@@ -96,7 +99,7 @@ export default function TrafficGuidanceCard() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 auto-rows-fr">
-          {filtered.map((c) => {
+          {visible.map((c) => {
             const hotspots = c.hotspots.slice(0, MAX_HOTSPOTS);
             const alts = (c.alternatives || []).slice(0, MAX_ALTS);
             const incident = c.incidents?.[0];
@@ -187,6 +190,13 @@ export default function TrafficGuidanceCard() {
               </div>
             );
           })}
+        </div>
+      )}
+      {data && filtered.length > FIRST_CARDS && (
+        <div className="flex justify-center">
+          <Button size="sm" onClick={() => setShowAll((v) => !v)} aria-expanded={showAll}>
+            {showAll ? 'ย่อรายการ' : `ดูทั้งหมด ${filtered.length} เส้นทาง`}
+          </Button>
         </div>
       )}
     </Card>

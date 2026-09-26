@@ -8,6 +8,7 @@ import AiPage from './components/AiPage.jsx';
 import MapPage from './components/MapPage.jsx';
 import DashboardPage from './components/DashboardPage.jsx';
 import BottomNav from './components/BottomNav.jsx';
+import NavIcon from './components/NavIcons.jsx';
 import CameraAiPage from './components/CameraAiPage.jsx';
 import SafetyPage from './components/SafetyPage.jsx';
 import BotFace from './components/BotFace.jsx';
@@ -16,7 +17,7 @@ import WaterPage from './components/WaterPage.jsx';
 import AlertsPage from './components/AlertsPage.jsx';
 import AlertPopups from './components/AlertPopups.jsx';
 import { fetchCameras, fetchAIStats, fetchIncidents, fetchSurveyRanking, fetchRoadCameras } from './lib/api.js';
-import { useActiveCameras, useFavorites, useUserName } from './lib/store.js';
+import { useActiveCameras, useFavorites } from './lib/store.js';
 import { trackView, startHeartbeat } from './lib/telemetry.js';
 
 const PAGES = ['dashboard', 'cameras', 'map', 'safety', 'water', 'yolo', 'ai', 'alerts', 'visitors'];
@@ -33,7 +34,6 @@ export default function App() {
  const [cameras, setCameras] = useState([]);
  const [favorites, toggleFav] = useFavorites();
  const { active, toggle, remove, clear, addMany } = useActiveCameras();
- const [userName, saveName] = useUserName();
  const [menuOpen, setMenuOpen] = useState(false);
  const [page, setPage] = useState(pageFromHash);
  const [filter, setFilter] = useState('all');
@@ -209,154 +209,134 @@ export default function App() {
 
  const activeCams = useMemo(() => active.map((id) => cameras.find((c) => c.camid === id)).filter(Boolean), [active, cameras]);
 
- return (
+  const sidebarProps = { page, onNavigate: navigate, aiActive, liveCount: activeCams.length };
+
+  return (
     <div className="min-h-full lg:grid lg:grid-cols-[220px_1fr]">
       {/* Desktop sidebar */}
       <aside className="hidden lg:block sticky top-0 h-screen">
-        <Sidebar page={page} onNavigate={navigate} userName={userName} onSaveName={saveName} aiActive={aiActive} />
+        <Sidebar {...sidebarProps} />
       </aside>
 
       {/* Mobile top bar + drawer */}
-      <div className="lg:hidden sticky top-0 z-40 bg-white border-b border-slate-200 px-4 h-14 flex items-center justify-between">
-        <div className="min-w-0">
+      <div className="lg:hidden sticky top-0 z-40 bg-white border-b border-slate-200 pl-2 pr-4 h-14 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setMenuOpen(true)}
+          aria-label="เปิดเมนู"
+          aria-haspopup="dialog"
+          className="cursor-pointer shrink-0 w-10 h-10 rounded-lg grid place-items-center text-slate-700 hover:bg-slate-100"
+        >
+          <NavIcon name="menu" className="w-6 h-6" />
+        </button>
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-slate-900 truncate">{PAGE_TITLES[page]}</p>
           <p className="text-[11px] text-slate-500">BKK StreetSmart</p>
         </div>
-        <span className="text-xs text-slate-500">{activeCams.length ? `ดูสด ${activeCams.length} กล้อง` : ''}</span>
+        {activeCams.length > 0 && (
+          <button type="button" onClick={() => navigate('cameras')} className="cursor-pointer shrink-0 text-xs text-slate-600 hover:text-slate-900">
+            ดูสด {activeCams.length} กล้อง
+          </button>
+        )}
       </div>
       {menuOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 flex">
+        <div className="lg:hidden fixed inset-0 z-50 flex" role="dialog" aria-modal="true" aria-label="เมนู">
           <div className="w-72 max-w-[85vw] h-full">
-            <Sidebar page={page} onNavigate={navigate} userName={userName} onSaveName={saveName} aiActive={aiActive} onClose={() => setMenuOpen(false)} />
+            <Sidebar {...sidebarProps} onClose={() => setMenuOpen(false)} />
           </div>
           <button type="button" aria-label="ปิดเมนู" onClick={() => setMenuOpen(false)} className="flex-1 bg-slate-900/50" />
         </div>
       )}
       <BottomNav page={page} onNavigate={navigate} onMenu={() => setMenuOpen(true)} />
 
-      <div className="min-h-full flex flex-col gap-4 pb-20 lg:pb-6 pt-4 min-w-0">
-      <main className="flex-1 px-4 sm:px-6 min-h-0 min-w-0">
-          {page === 'dashboard' && (
-            <motion.div key="dashboard" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
-              <DashboardPage isActive liveCount={activeCams.length} cameras={cameras} incidents={incidents} onAsk={askAI} onOpenRoad={openRoadCameras} onNavigate={navigate} onOpenAI={openAI} onToast={showToast} />
-            </motion.div>
-          )}
-
-          {page === 'cameras' && (
-            <motion.div
- key="cameras"
- initial={{ opacity: 0, y: 10 }}
- animate={{ opacity: 1, y: 0 }}
- transition={{ duration: 0.22 }}
- className="flex flex-col gap-4"
-            >
-              <PageHeader title="กล้องของฉัน" description="เลือกกล้องจากรายการ ภาพสดจะแสดงทางขวา เปิดพร้อมกันได้ 9 กล้อง" />
-              <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-4">
-              <div className="h-[46vh] lg:h-[calc(100vh-11rem)] lg:sticky lg:top-4">
-                <SidePanel
- cameras={cameras}
- camStatus={camStatus}
- favorites={favorites}
- active={active}
- filter={filter}
- onFilter={handleFilter}
- query={query}
- onQuery={setQuery}
- userPos={userPos}
- onToggleActive={toggle}
- onToggleFav={toggleFav}
- onOpenAI={openAI}
- onClearAll={clear}
-                />
-              </div>
-              <section aria-label="หน้าต่างเมือง" className="min-h-[360px]">
-                <CityWindow cameras={activeCams} camStatus={camStatus} incidents={incidents} onClose={remove} onOpenAI={openAI} />
-              </section>
-              </div>
-            </motion.div>
-          )}
-
-          {page === 'map' && (
-            <motion.div
- key="map"
- initial={{ opacity: 0, y: 10 }}
- animate={{ opacity: 1, y: 0 }}
- transition={{ duration: 0.22 }}
-            >
-              <MapPage isActive cameras={cameras} active={active} incidents={incidents} onToggle={toggle} onOpenAI={openAI} onToast={showToast} />
-            </motion.div>
-          )}
-
-          {page === 'water' && (
-            <motion.div key="water" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
-              <WaterPage isActive onToast={showToast} onNavigate={navigate} onAsk={askAI} onOpenRoad={openRoadCameras} />
-            </motion.div>
-          )}
-
-          {page === 'yolo' && (
-            <motion.div key="yolo" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
-              <CameraAiPage tab={cameraTab} onTab={setCameraTab} cameras={cameras} favorites={favorites} camid={aiCamid} incidents={incidents} onPickCamera={setAiCamid} onToast={showToast} onAsk={askAI} />
-            </motion.div>
-          )}
-
-          {page === 'safety' && (
-            <motion.div key="safety" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
-              <SafetyPage isActive />
-            </motion.div>
-          )}
-
-          {page === 'visitors' && (
-            <motion.div key="visitors" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
-              <VisitorsPage isActive />
-            </motion.div>
-          )}
-
-          {page === 'alerts' && (
-            <motion.div key="alerts" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
-              <AlertsPage isActive onToast={showToast} />
-            </motion.div>
-          )}
-
-          {page === 'ai' && (
-            <motion.div
- key="ai"
- initial={{ opacity: 0, y: 10 }}
- animate={{ opacity: 1, y: 0 }}
- transition={{ duration: 0.22 }}
-            >
-              <AiPage active pendingQuestion={pendingQuestion} onQuestionConsumed={() => setPendingQuestion('')} />
-            </motion.div>
-          )}
-      </main>
-
-      {/* ปุ่มกลมไอคอน AI ลอยด้านล่างขวาทุกหน้า (ยกเว้นหน้าคุยกับ AI อยู่แล้ว) */}
-      {page !== 'ai' && (
-        <button
-          type="button"
-          onClick={() => askAI('')}
-          className="fixed bottom-20 lg:bottom-8 right-5 lg:right-8 z-30 w-14 h-14 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-xl shadow-blue-500/35 hover:shadow-blue-500/55 hover:scale-108 active:scale-95 transition-all duration-200 flex items-center justify-center cursor-pointer group"
-          title="ถาม AI ผู้ช่วยจราจร"
-          aria-label="ถาม AI ผู้ช่วยจราจร"
-        >
-          <BotFace className="w-11 h-11 group-hover:scale-110 transition-transform duration-200" />
-        </button>
-      )}
-
-      <AlertPopups onNavigate={navigate} />
-
-      <AnimatePresence>
-        {toast && (
+      <div className="min-h-full flex flex-col pt-4 pb-24 min-w-0">
+        <main className="flex-1 px-4 sm:px-6 min-w-0">
+          {/* One width and one spacing rule for every page */}
           <motion.div
- role="status"
- initial={{ opacity: 0, y: 16 }}
- animate={{ opacity: 1, y: 0 }}
- exit={{ opacity: 0, y: 16 }}
- className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] rounded-lg bg-slate-900 text-white px-4 py-2.5 text-sm"
+            key={page}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.22 }}
+            className="mx-auto w-full max-w-[1400px] flex flex-col gap-4"
           >
-            {toast}
+            {page === 'dashboard' && (
+              <DashboardPage isActive liveCount={activeCams.length} cameras={cameras} incidents={incidents} onAsk={askAI} onOpenRoad={openRoadCameras} onNavigate={navigate} onOpenAI={openAI} onToast={showToast} />
+            )}
+
+            {page === 'cameras' && (
+              <>
+                <PageHeader title={PAGE_TITLES.cameras} description="เลือกกล้องจากรายการด้านซ้าย ภาพสดจะแสดงทางขวา เปิดพร้อมกันได้ 9 กล้อง" />
+                <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-4">
+                  <div className="h-[46vh] lg:h-[calc(100vh-13rem)] lg:sticky lg:top-4">
+                    <SidePanel
+                      cameras={cameras}
+                      camStatus={camStatus}
+                      favorites={favorites}
+                      active={active}
+                      filter={filter}
+                      onFilter={handleFilter}
+                      query={query}
+                      onQuery={setQuery}
+                      userPos={userPos}
+                      onToggleActive={toggle}
+                      onToggleFav={toggleFav}
+                      onOpenAI={openAI}
+                      onClearAll={clear}
+                    />
+                  </div>
+                  <section aria-label="ภาพสดจากกล้องที่เลือก" className="min-h-[360px]">
+                    <CityWindow cameras={activeCams} camStatus={camStatus} incidents={incidents} onClose={remove} onOpenAI={openAI} />
+                  </section>
+                </div>
+              </>
+            )}
+
+            {page === 'map' && <MapPage isActive cameras={cameras} active={active} incidents={incidents} onToggle={toggle} onOpenAI={openAI} onToast={showToast} />}
+
+            {page === 'water' && <WaterPage isActive onToast={showToast} onNavigate={navigate} onAsk={askAI} onOpenRoad={openRoadCameras} />}
+
+            {page === 'yolo' && (
+              <CameraAiPage tab={cameraTab} onTab={setCameraTab} cameras={cameras} favorites={favorites} camid={aiCamid} incidents={incidents} onPickCamera={setAiCamid} onToast={showToast} onAsk={askAI} />
+            )}
+
+            {page === 'safety' && <SafetyPage isActive />}
+
+            {page === 'visitors' && <VisitorsPage isActive />}
+
+            {page === 'alerts' && <AlertsPage isActive onToast={showToast} />}
+
+            {page === 'ai' && <AiPage active pendingQuestion={pendingQuestion} onQuestionConsumed={() => setPendingQuestion('')} />}
           </motion.div>
+        </main>
+
+        {/* ปุ่มกลมไอคอน AI ลอยด้านล่างขวาทุกหน้า (ยกเว้นหน้าคุยกับ AI อยู่แล้ว) */}
+        {page !== 'ai' && (
+          <button
+            type="button"
+            onClick={() => askAI('')}
+            className="fixed bottom-20 lg:bottom-8 right-5 lg:right-8 z-30 w-14 h-14 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-xl shadow-blue-500/35 hover:shadow-blue-500/55 hover:scale-108 active:scale-95 transition-all duration-200 flex items-center justify-center cursor-pointer group"
+            title="ถาม AI ผู้ช่วยจราจร"
+            aria-label="ถาม AI ผู้ช่วยจราจร"
+          >
+            <BotFace className="w-11 h-11 group-hover:scale-110 transition-transform duration-200" />
+          </button>
         )}
-      </AnimatePresence>
+
+        <AlertPopups onNavigate={navigate} />
+
+        <AnimatePresence>
+          {toast && (
+            <motion.div
+              role="status"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 16 }}
+              className="fixed bottom-20 lg:bottom-6 left-1/2 -translate-x-1/2 z-[60] rounded-lg bg-slate-900 text-white px-4 py-2.5 text-sm max-w-[calc(100vw-2rem)]"
+            >
+              {toast}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

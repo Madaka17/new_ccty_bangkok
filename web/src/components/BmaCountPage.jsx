@@ -92,7 +92,7 @@ export default function BmaCountPage({ isActive, onToast }) {
   const online = analytics?.summary?.online_cameras ?? cameras.filter((c) => c.status === 'online').length;
 
   return (
-    <div className="flex flex-col gap-4 max-w-6xl mx-auto w-full">
+    <div className="flex flex-col gap-4">
       <PageHeader
         title="นับรถจากกล้อง กทม."
         description={
