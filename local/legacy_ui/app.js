@@ -1329,7 +1329,7 @@ async function switchAICamera(camid) {
             <line x1="12" y1="16" x2="12.01" y2="16"></line>
           </svg>
           <span>ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ AI YOLO11x ได้</span>
-          <small style="opacity:0.8;">กรุณารันไฟล์ run_server.bat หรือ server.py</small>
+          <small style="opacity:0.8;">กรุณารันไฟล์ launch/localhost_8000/start.bat หรือ server.py</small>
         `;
       }
     };

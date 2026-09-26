@@ -4,8 +4,8 @@ from types import SimpleNamespace
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import access_guard
-from access_guard import _is_trusted_ip, _Window, client_ip
+from backend.core import access_guard
+from backend.core.access_guard import _is_trusted_ip, _Window, client_ip
 
 
 def _req(peer, **headers):

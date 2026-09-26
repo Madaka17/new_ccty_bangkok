@@ -32,14 +32,14 @@ import cv2
 
 LOCAL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # local/ (dataset, runs, logs)
 BASE_DIR = os.path.dirname(LOCAL_DIR)  # project root (server, models, cameras, .env)
-sys.path.insert(0, BASE_DIR)  # import root modules
+sys.path.insert(0, BASE_DIR)  # import the backend package
 try:
     from dotenv import load_dotenv
     load_dotenv(os.path.join(BASE_DIR, '.env'))
 except ImportError:
     pass
 
-from violation_service import HELMET_PROMPT, CROP_MARGIN
+from backend.vision.violation_service import HELMET_PROMPT, CROP_MARGIN
 
 OUT_DIR = os.path.join(LOCAL_DIR, 'dataset_helmet')
 SRC_DIR = os.path.join(LOCAL_DIR, 'dataset', 'images')

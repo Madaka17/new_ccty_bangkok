@@ -1,5 +1,5 @@
 """Parsing of the Traffy Fondue, TMD, HDMS and JS100 feeds."""
-from flood_feeds import parse_hdms, parse_js100, parse_tmd, parse_traffy
+from backend.water.flood_feeds import parse_hdms, parse_js100, parse_tmd, parse_traffy
 
 NOW = 1_790_000_000  # 2026-09-21 14:13 UTC
 
