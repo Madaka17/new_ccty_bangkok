@@ -1,7 +1,7 @@
 """Road flood classes must follow the published thresholds exactly (road_service.py docstring)."""
 import pytest
 
-from road_service import GAUGE_BANDS, RAIN_BANDS, ROAD_WATER_BANDS, _classify, _norm
+from backend.traffic.road_service import GAUGE_BANDS, RAIN_BANDS, ROAD_WATER_BANDS, _classify, _norm
 
 
 @pytest.mark.parametrize("cm, cls", [

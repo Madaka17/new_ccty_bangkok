@@ -176,7 +176,7 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
               ) : (
                 <>
                   <p className="font-medium text-ink-900">AI ยังไม่ทำงาน</p>
-                  <p className="text-xs">เปิด run_server.bat แล้วลองใหม่อีกครั้งนะ</p>
+                  <p className="text-xs">เปิด launch/localhost_8000/start.bat แล้วลองใหม่อีกครั้งนะ</p>
                 </>
               )}
             </div>

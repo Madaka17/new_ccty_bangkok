@@ -91,7 +91,7 @@ def render(st):
                 lines.append(f'  val: precision {float(mp[-1][0]):.3f}  recall {float(mp[-1][1]):.3f}  mAP50 {float(mp[-1][2]):.3f}  mAP50-95 {float(mp[-1][3]):.3f}')
     elif step == 'done':
         lines.append(f'  เสร็จ -> {st.get("out")}' + (f'  (mAP50 {st["map50"]:.3f})' if st.get('map50') is not None else ''))
-        lines.append('  รีสตาร์ต server (restart_public.bat) เพื่อให้ตรวจย้อนศรใช้โมเดลใหม่')
+        lines.append('  รีสตาร์ต server (launch\\main_web\\restart.bat) เพื่อให้ตรวจย้อนศรใช้โมเดลใหม่')
     else:
         lines.append('  ยังไม่เริ่ม: รัน wrongway_pipeline.bat')
     lines.append('')

@@ -35,7 +35,7 @@ import cv2
 LOCAL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # local/ (dataset, runs, logs)
 BASE_DIR = os.path.dirname(LOCAL_DIR)  # project root (server, models, cameras, .env)
 DATASET_DIR = os.path.join(LOCAL_DIR, 'dataset')
-CAMERAS_FILE = os.path.join(BASE_DIR, 'cameras_bkk.json')
+CAMERAS_FILE = os.path.join(BASE_DIR, 'config', 'cameras_bkk.json')
 
 # Dataset classes (index = YOLO class id). Ids are kept identical to COCO so a fine-tuned model
 # drops into the live detector (TARGET_CLASSES / CLASS_CONFIG in yolo_detector.py) unchanged;

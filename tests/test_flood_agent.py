@@ -2,9 +2,9 @@
 import json
 import time
 
-import local_llm
-from alert_service import AlertService
-from flood_agent import REPORT_SCHEMA, FloodAgent
+from backend.core import local_llm
+from backend.core.alert_service import AlertService
+from backend.agents.flood_agent import REPORT_SCHEMA, FloodAgent
 
 
 def _sources(cm=30, traffy=0):

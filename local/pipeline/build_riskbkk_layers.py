@@ -93,7 +93,7 @@ def build_accidents():
     from concurrent.futures import ThreadPoolExecutor
     from datetime import date
     sys.path.insert(0, ROOT)
-    import rsc_service
+    from backend.traffic import rsc_service
 
     jobs = [(y - 543, d) for y in ACCIDENT_YEARS_BE for d in range(1001, 1051)]
     with ThreadPoolExecutor(8) as ex:

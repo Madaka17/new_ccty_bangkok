@@ -1,5 +1,5 @@
 """Chat context builders: never crash on missing data, and put the place the user asked about first."""
-import chat_service as cs
+from backend.agents import chat_service as cs
 
 
 def test_asked_matches_with_or_without_prefix():
