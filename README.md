@@ -28,7 +28,7 @@
 
 ## 🌸 หน้าเว็บใหม่ (React + Tailwind + framer-motion)
 
-โค้ดหน้าเว็บโฉมใหม่อยู่ในโฟลเดอร์ `web/` เมื่อ build แล้ว `server.py` จะเสิร์ฟหน้าใหม่จาก `web/dist` โดยอัตโนมัติ (ถ้ายังไม่ได้ build จะใช้หน้าเดิมจาก `local/legacy_ui/`)
+โค้ดหน้าเว็บโฉมใหม่อยู่ในโฟลเดอร์ `web/` เมื่อ build แล้ว `server.py` จะเสิร์ฟหน้าใหม่จาก `web/dist` โดยอัตโนมัติ (ถ้ายังไม่ได้ build เซิร์ฟเวอร์จะรันแค่ API และหน้า `/` จะตอบ 503 บอกให้รัน `launch\build_web.bat`)
 
 ```bash
 cd web
@@ -174,7 +174,6 @@ GENERAL_RATE_PER_MIN=600
     ├── pipeline/   สคริปต์เก็บภาพ/label/เทรน + .bat/.sh ทั้งหมด (pipeline.bat, collect.bat, status.bat, watch_training.bat ...)
     ├── stage/      ข้อมูลของเซิร์ฟเวอร์ทดสอบ :8001 (gitignore)
     ├── dataset/, dataset_helmet/, runs/, logs/         ข้อมูลเทรนและผลลัพธ์ (gitignore)
-    ├── legacy_ui/  หน้าเว็บเก่า (index.html, app.js, style.css, cameras_data.js) ใช้เป็น fallback เมื่อไม่มี web/dist
     ├── scratch/    ไฟล์ทดลอง
     └── archive/    ของเก่า/สำรอง
 ```

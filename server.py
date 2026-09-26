@@ -123,15 +123,12 @@ if not os.path.exists(MODEL_PATH):
     print(f"[AI] {MODEL_PATH} not found, falling back to yolo26x.pt")
     MODEL_PATH = os.path.join(BASE_DIR, "yolo26x.pt")
 CAMERAS_FILE = os.path.join(BASE_DIR, "config", "cameras_bkk.json")
-# Legacy vanilla UI (local/legacy_ui) is only the fallback when web/dist has not been built
-LEGACY_UI = os.path.join(BASE_DIR, "local", "legacy_ui")
-STATIC_DIR = LEGACY_UI
-INDEX_HTML = os.path.join(LEGACY_UI, "index.html")
-# New React UI (web/dist) takes precedence when built
+# React UI (web/dist, built by launch\build_web.bat). Without a build the API still runs and "/" says how to build it.
 WEB_DIST = os.path.join(BASE_DIR, "web", "dist")
-if os.path.exists(os.path.join(WEB_DIST, "index.html")):
-    STATIC_DIR = WEB_DIST
-    INDEX_HTML = os.path.join(WEB_DIST, "index.html")
+INDEX_HTML = os.path.join(WEB_DIST, "index.html")
+WEB_BUILT = os.path.exists(INDEX_HTML)
+if not WEB_BUILT:
+    print(f"[Warning] {INDEX_HTML} not found: run launch\\build_web.bat (needs Node.js), then restart. Serving the API only.")
 
 # Load cameras (strictly verified live streams)
 cameras_data = []
@@ -1110,6 +1107,9 @@ def alerts_test(payload: dict = Body(None)):
 # Static files for web frontend
 @app.get("/")
 def read_root():
+    if not WEB_BUILT:
+        return Response("Web UI not built: run launch\\build_web.bat (needs Node.js), then restart the server.\n",
+                        status_code=503, media_type="text/plain")
     # never cache the shell so a rebuilt bundle is picked up on the next reload
     return FileResponse(INDEX_HTML, headers={"Cache-Control": "no-cache"})
 
@@ -1120,13 +1120,13 @@ def robots_txt():
 
 @app.get("/cameras_bkk.json")
 def read_cameras_json():
-    # the React app fetches this directly; serve the live root copy, not the stale one bundled in web/dist
+    # the React app fetches this directly (vite dev proxies it here too); config/cameras_bkk.json is the only copy
     return FileResponse(CAMERAS_FILE, media_type="application/json", headers={"Cache-Control": "no-cache"})
 
-if os.path.isdir(WEB_DIST):
+if WEB_BUILT:
     app.mount("/assets", StaticFiles(directory=os.path.join(WEB_DIST, "assets")), name="assets")
-# Only the UI folder is exposed (never the project root: .env, *.db, *.py, cameras_bma.json ...)
-app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+    # Only the UI folder is exposed (never the project root: .env, *.db, *.py, cameras_bma.json ...)
+    app.mount("/", StaticFiles(directory=WEB_DIST, html=True), name="static")
 
 traffic.start()
 guidance.start()
