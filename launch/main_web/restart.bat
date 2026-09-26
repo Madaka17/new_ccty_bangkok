@@ -8,16 +8,8 @@ echo   BKK StreetSmart - Restart server (Tailscale Funnel on port 8000)
 echo ======================================================================
 echo.
 
-rem Kill whatever is listening on port 8000 (the previous server.py), then start fresh.
-set "KILLED="
-for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:":8000 .*LISTENING"') do (
-    if not "%%p"=="0" if not defined KILLED (
-        echo [*] Stopping old server ^(PID %%p^) ...
-        taskkill /F /PID %%p >nul 2>&1
-        set "KILLED=%%p"
-    )
-)
-if not defined KILLED echo [*] No server running on port 8000.
+rem Close the previous server and its window, then start fresh in this one.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0kill_server.ps1" -Port 8000
 
 rem Give the OS a moment to release the port
 ping -n 3 127.0.0.1 >nul

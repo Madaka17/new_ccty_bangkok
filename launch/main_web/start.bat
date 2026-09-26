@@ -9,6 +9,15 @@ echo   BKK StreetSmart CCTV + YOLO26x AI Server  (Public via Tailscale)
 echo ======================================================================
 echo.
 
+rem Already running: say so instead of starting a second copy (restart.bat replaces it)
+netstat -ano | findstr /r /c:":8000 .*LISTENING" >nul
+if %ERRORLEVEL% EQU 0 (
+    echo [!] Server is already running on port 8000. Use restart.bat to restart it.
+    echo.
+    pause
+    exit /b 0
+)
+
 where tailscale >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] tailscale.exe not found in PATH. Install Tailscale first.
