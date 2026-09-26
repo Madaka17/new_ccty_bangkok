@@ -17,9 +17,9 @@ const POLL_MS = 60000;
 const TABS = [
   { id: 'situation', label: 'สถานการณ์น้ำ', hint: 'ระดับน้ำ · แผนที่จุดวัด · กราฟแนวโน้ม · คลองและฝน', icon: 'water' },
   { id: 'watch', label: 'เฝ้าระวังน้ำท่วม', hint: 'สถานีเทียบตลิ่ง · เขตเร่งด่วน · คาดการณ์ 1-6 ชม.', icon: 'alerts' },
-  { id: 'reports', label: 'การแจ้งน้ำท่วม', hint: 'iTIC / FM91 · ประชาชนแจ้ง (Traffy) · AI สรุปเรื่องเร่งด่วน', icon: 'visitors' },
-  { id: 'agent', label: 'วิเคราะห์สถานการณ์น้ำท่วม (AI)', hint: 'ระดับภาพรวม · เขตที่ต้องจับตา · ถนนที่ควรเลี่ยง', icon: 'analytics' },
-  { id: 'analysis', label: 'วิเคราะห์และคาดการณ์น้ำท่วม (AI)', hint: 'คาดการณ์รายโซน · น้ำ 3 ทาง · มาตรการ · คู่มือประชาชน', icon: 'ai' },
+  { id: 'reports', label: 'แจ้งน้ำท่วม', hint: 'iTIC / FM91 · ประชาชนแจ้ง (Traffy) · AI สรุปเรื่องเร่งด่วน', icon: 'visitors' },
+  { id: 'agent', label: 'AI สรุปสถานการณ์', hint: 'ระดับภาพรวม · เขตที่ต้องจับตา · ถนนที่ควรเลี่ยง', icon: 'analytics' },
+  { id: 'analysis', label: 'AI คาดการณ์รายโซน', hint: 'คาดการณ์รายโซน · น้ำ 3 ทาง · มาตรการ · คู่มือประชาชน', icon: 'ai' },
 ];
 const DEFAULT_STATION = '1132'; // สะพานนวลฉวี: nearest official 7-day forecast to Bangkok
 
@@ -88,10 +88,10 @@ export default function WaterPage({ isActive, onToast, onNavigate, onAsk, onOpen
   const roads = summary?.flood_roads;
 
   return (
-    <div className="flex flex-col gap-4 max-w-6xl mx-auto w-full">
+    <div className="flex flex-col gap-4">
       <PageHeader
-        title="คาดการณ์ระดับน้ำ กรุงเทพฯ และปริมณฑล"
-        description={summary ? `คลังข้อมูลน้ำแห่งชาติ (nationalthaiwater.onwr.go.th), สสน. และสำนักการระบายน้ำ กทม. · อัปเดต ${fmtDateTime(summary.updated_at)} · รีเฟรชเองทุก 2 นาที` : 'กำลังโหลดข้อมูลจากคลังข้อมูลน้ำแห่งชาติ'}
+        title="Water Forecast"
+        description={`คาดการณ์ระดับน้ำ กรุงเทพฯ และปริมณฑล · ${summary ? `อัปเดต ${fmtDateTime(summary.updated_at)} · รีเฟรชเองทุก ${POLL_MS / 60000} นาที` : 'กำลังโหลดข้อมูลจากคลังข้อมูลน้ำแห่งชาติ'}`}
         actions={
           <>
             {summary?.stale && <Badge tone="yellow">ข้อมูลเก่า</Badge>}

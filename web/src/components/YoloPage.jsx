@@ -139,7 +139,7 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
       <section className="glass rounded-xl p-5 sm:p-6" aria-label="AI ตรวจจับรถ YOLO11x">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold text-slate-900 leading-7">AI ตรวจจับรถสด</h1>
+          <h2 className="text-[17px] font-semibold text-slate-900 leading-6">AI ตรวจจับรถสด</h2>
           <p className="text-[13px] text-slate-600 mt-0.5">YOLO11x นับรถยนต์ มอเตอร์ไซค์ รถบรรทุก จากภาพกล้องที่เลือก ประมาณ 5 ภาพต่อวินาที</p>
         </div>
 

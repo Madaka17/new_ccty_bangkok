@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { fetchTrafficSummary, sendChat } from '../lib/api.js';
+import { PageHeader } from './dashboard/primitives.jsx';
 
+const SUGGESTIONS = ['ถนนไหนติดที่สุดตอนนี้', 'ตอนนี้มีน้ำท่วมขังที่ไหนบ้าง', 'วันนี้ฝนจะตกไหม', 'มีอุบัติเหตุตรงไหนบ้าง'];
 const WELCOME = 'สวัสดี! ถามได้ทุกเรื่อง ทั้งข้อมูลสดของเมือง (จราจรทุกสาย กล้องนับรถ กทม. 500+ ตัว น้ำท่วม-ฝน-พายุ 24 ชม.รายพื้นที่ อุบัติเหตุและเหตุการณ์ สถิติรายเขต) และคำถามทั่วไปอะไรก็ได้ เช่น แปลภาษา สรุปข้อความ คำนวณ สุขภาพ ท่องเที่ยว หรือให้ช่วยเขียนอะไรก็ได้เลย';
 
 function Bubble({ role, text, mode, model }) {
@@ -71,54 +73,68 @@ export default function AiPage({ active, pendingQuestion, onQuestionConsumed }) 
     }
   };
 
- return (
-    <div className="flex flex-col lg:h-[calc(100vh-11rem)] min-h-[560px]">
-      {/* Chat */}
-      <section className="glass rounded-xl flex-1 flex flex-col overflow-hidden" aria-label="แชทกับผู้ช่วยการจราจร">
-        <div className="px-5 pt-5 pb-3 flex items-start gap-3">
-          <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-semibold text-slate-900 leading-7">ถาม AI ได้ทุกเรื่อง</h1>
-            <p className="text-[13px] text-slate-600 mt-0.5">ข้อมูลสด: จราจร · กล้องนับรถ · น้ำท่วม-ฝน-พายุ · อุบัติเหตุ · สถิติ — และคำถามทั่วไปทุกหัวข้อ</p>
-          </div>
-          {summary?.ready && (
-            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-sage-50 border border-sage-100 px-3 py-1.5 text-xs text-sage-700">
+  const fresh = messages.length === 1;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <PageHeader
+        title="Ask AI"
+        description="ถามข้อมูลสดของเมือง (จราจร กล้องนับรถ น้ำท่วม-ฝน อุบัติเหตุ สถิติรายเขต) หรือคำถามทั่วไปก็ได้"
+        actions={
+          summary?.ready && (
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-sage-50 border border-sage-100 px-3 py-1.5 text-xs text-sage-700">
               <span className="live-dot w-2 h-2 rounded-full bg-sage-400" />
               ดูอยู่ {summary.road_count} สาย
             </span>
-          )}
-        </div>
+          )
+        }
+      />
 
-        <div ref={listRef} className="flex-1 overflow-y-auto scroll-soft px-5 py-2 space-y-3 min-h-[280px]">
+      <section className="glass rounded-xl flex flex-col overflow-hidden lg:h-[calc(100vh-13rem)] min-h-[480px]" aria-label="แชทกับผู้ช่วยการจราจร">
+        <div ref={listRef} className="flex-1 overflow-y-auto scroll-soft px-5 pt-5 pb-2 space-y-3 min-h-[280px]">
           {messages.map((m, i) => (
             <Bubble key={i} role={m.role} text={m.content} mode={m.mode} model={m.model} />
           ))}
+          {fresh && (
+            <div className="flex flex-wrap gap-2 pt-1" aria-label="ตัวอย่างคำถาม">
+              {SUGGESTIONS.map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => ask(q)}
+                  className="cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-[13px] text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors duration-150"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          )}
           {busy && (
             <div className="flex items-center gap-2 text-sm text-ink-600 pl-10">
               <span className="w-2 h-2 rounded-full bg-slate-400 animate-bounce" />
               <span className="w-2 h-2 rounded-full bg-slate-400 animate-bounce [animation-delay:120ms]" />
               <span className="w-2 h-2 rounded-full bg-slate-400 animate-bounce [animation-delay:240ms]" />
-              กำลังดูเส้นจราจรให้...
+              กำลังหาคำตอบให้...
             </div>
           )}
         </div>
 
         <div className="px-5 pb-5 pt-2">
           <form
- onSubmit={(e) => {
- e.preventDefault();
- ask();
+            onSubmit={(e) => {
+              e.preventDefault();
+              ask();
             }}
- className="flex items-center gap-2 rounded-lg bg-white border border-cream-200 pl-5 pr-1.5 py-1.5 focus-within:border-lavender-400 transition-colors duration-200"
+            className="flex items-center gap-2 rounded-lg bg-white border border-cream-200 pl-5 pr-1.5 py-1.5 focus-within:border-lavender-400 transition-colors duration-200"
           >
             <label htmlFor="chat-input" className="sr-only">ถามผู้ช่วยการจราจร</label>
-            <input id="chat-input" value={input} onChange={(e) => setInput(e.target.value)} placeholder="ถามอะไรก็ได้ เช่น รัชดาตอนนี้ติดไหม, พรุ่งนี้ฝนตกไหม, ช่วยแปลประโยคนี้..." className="flex-1 bg-transparent outline-none text-base text-ink-900 placeholder:text-ink-400" disabled={busy} />
+            <input id="chat-input" value={input} onChange={(e) => setInput(e.target.value)} placeholder="ถามอะไรก็ได้ เช่น รัชดาตอนนี้ติดไหม, พรุ่งนี้ฝนตกไหม, ช่วยแปลประโยคนี้..." className="flex-1 min-w-0 bg-transparent outline-none text-base text-ink-900 placeholder:text-ink-400" disabled={busy} />
             <motion.button type="submit" whileTap={{ scale: 0.95 }} disabled={busy || !input.trim()} className="cursor-pointer rounded-lg bg-blue-600 text-white px-5 py-2.5 text-sm font-semibold hover:bg-blue-700 transition-colors duration-200 disabled:opacity-50">
               ถาม
             </motion.button>
           </form>
         </div>
       </section>
-
     </div>
   );
 }

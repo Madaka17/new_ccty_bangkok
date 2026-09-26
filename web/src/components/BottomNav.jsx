@@ -5,9 +5,9 @@ import { FOCUS } from './dashboard/ui.jsx';
 
 const ITEMS = [
   { id: 'dashboard', label: 'แดชบอร์ด' },
-  { id: 'cameras', label: 'กล้อง' },
-  { id: 'yolo', label: 'AI สด' },
   { id: 'map', label: 'แผนที่' },
+  { id: 'yolo', label: 'กล้อง AI' },
+  { id: 'cameras', label: 'กล้องสด' },
 ];
 
 export default function BottomNav({ page, onNavigate, onMenu }) {
