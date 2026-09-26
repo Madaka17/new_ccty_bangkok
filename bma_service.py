@@ -612,9 +612,9 @@ class BmaScanner:
         mod_cams = [c for c in online_cams if c.get('level') == 'moderate']
         heavy_cams = [c for c in online_cams if c.get('level') == 'heavy']
 
-        online_count = len([c for c in latest_cams if c.get('status') == 'online'])
-        if online_count == 0 and len(online_cams) > 0:
-            online_count = len(online_cams)
+        # Same set the counts come from: status 'online' OR counted in the last 30 min. Counting only
+        # status == 'online' gave 1 camera against 300+ counted ones, so free_pct came out as 22400%.
+        online_count = len(online_cams)
         free_pct = round((len(free_cams) / max(1, online_count)) * 100, 1)
         mod_pct = round((len(mod_cams) / max(1, online_count)) * 100, 1)
         heavy_pct = round((len(heavy_cams) / max(1, online_count)) * 100, 1)

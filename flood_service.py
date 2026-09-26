@@ -442,7 +442,8 @@ class FloodRoads:
                 by_road[name] = {"road": name, "district": it["district"], "level_cm": it["level_cm"],
                                  "status": it["status"], "status_th": it["status_th"], "at": it["short_name"],
                                  "lat": it["lat"], "lng": it["lng"], "ts": it["ts"], "ts_th": it["ts_th"],
-                                 "started": it["started"], "max_cm": it["max_cm"], "points": 0}
+                                 "started": it["started"], "max_cm": it["max_cm"], "trend": it.get("trend"),
+                                 "trend_th": it.get("trend_th"), "delta_cm": it.get("delta_cm"), "points": 0}
             by_road[name]["points"] += 1
         out = sorted(by_road.values(), key=lambda r: -(r["level_cm"] or 0))
         return {"updated_at": self.updated_at, "feed_time": self.feed_time, "total": len(out), "items": out[:limit]}

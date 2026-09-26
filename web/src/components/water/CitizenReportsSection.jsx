@@ -68,6 +68,7 @@ function mergeReports(traffy, longdo, hdms, js100) {
       district: !h.amphoe ? NO_DISTRICT : h.province === 'กรุงเทพมหานคร' ? `เขต${h.amphoe}` : `อ.${h.amphoe}`,
       depth: h.depth_cm ? ` ${h.depth_cm} ซม.` : null, state: h.active ? 'ยังมีน้ำท่วม' : 'สิ้นสุดแล้ว',
       url: h.lat && h.lng ? `https://www.google.com/maps?q=${h.lat},${h.lng}` : null, urlLabel: 'ดูแผนที่',
+      photo: h.photos?.[0]?.thumb, photoUrl: h.photos?.[0]?.url, photoCount: h.photos?.length || 0,
     });
   }
   for (const j of js100?.items || []) {
@@ -152,7 +153,12 @@ function ReportList({ rows, loading, updatedAt }) {
               <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
                 {(open === g.name ? g.list : g.list.slice(0, REPORTS_SHOWN)).map((r) => (
                   <li key={r.id} className="p-2.5 flex gap-3">
-                    {r.photo && <img src={r.photo} alt="" loading="lazy" className="w-16 h-16 rounded-md object-cover shrink-0" />}
+                    {r.photo && (r.photoUrl ? (
+                      <a href={r.photoUrl} target="_blank" rel="noopener noreferrer" className="relative shrink-0" aria-label={`ดูรูปเต็ม${r.photoCount > 1 ? ` (${r.photoCount} รูป)` : ''}`}>
+                        <img src={r.photo} alt="" loading="lazy" referrerPolicy="no-referrer" className="w-16 h-16 rounded-md object-cover" />
+                        {r.photoCount > 1 && <span className="absolute bottom-0.5 right-0.5 rounded bg-black/60 px-1 text-[10px] font-medium text-white">{r.photoCount}</span>}
+                      </a>
+                    ) : <img src={r.photo} alt="" loading="lazy" className="w-16 h-16 rounded-md object-cover shrink-0" />)}
                     <div className="min-w-0 flex-1">
                       {r.title && <p className="text-sm font-medium text-slate-900 leading-5">{r.title}</p>}
                       {r.text && <p className={`leading-5 line-clamp-2 ${r.title ? 'text-xs text-slate-600' : 'text-sm text-slate-900'}`}>{r.text}</p>}

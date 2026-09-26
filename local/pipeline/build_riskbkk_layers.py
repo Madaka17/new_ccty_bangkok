@@ -213,3 +213,26 @@ build('construction', load('แผนท_จ_ดเส_ยงแผ_นด_น�
 
 build('js100', load('Risk_Transport_Public__จ_ดเก_ดเหต_จราจรว_นน_จากจส100_และ_FM91.geojson'),
       lambda p: p['TITLE'], lambda p: [('รายละเอียด', p['DESCRIPTION'])], 'LATITUDE', 'LONGITUDE')
+
+
+# BMA temporary shelters (สถานที่พักพิงชั่วคราว) for the "จุดพักพิงใกล้ฉัน" tab of the Water Forecast page.
+# Not a map layer: the tab sorts them by distance from the user in the browser, so the capacity, phone
+# numbers and facility flags stay as their own fields next to the usual title / info.
+SHELTER_FACILITIES = (('ELECTRICITY', 'ไฟฟ้า'), ('PLUMBING', 'ประปา'), ('TOILET', 'ห้องน้ำ'), ('COMMUNICATION', 'สื่อสาร'),
+                      ('TRANSPORTATION', 'การเดินทาง'), ('WASTE', 'จัดการขยะ'), ('GROUPS_FACILITIES', 'สิ่งอำนวยความสะดวกกลุ่มเปราะบาง'))
+
+
+def shelter_address(p):
+    vill = clean(p['VILL_NO'])
+    parts = [clean(p['ADD_NO']), f"หมู่ {vill}" if vill.isdigit() else vill,
+             f"ถ.{clean(p['ROAD'])}" if clean(p['ROAD']) else '', f"แขวง{clean(p['SUBDISTRICT'])}" if clean(p['SUBDISTRICT']) else '',
+             f"เขต{clean(p['DISTRICT'])}" if clean(p['DISTRICT']) else '']
+    return ' '.join(x for x in parts if x)
+
+
+build('shelter', load('risk_all__Risk_All_-_RISK_ADMIN_shelter.geojson'),
+      lambda p: p['NAME'], lambda p: [('พื้นที่', p['RISK_ADMIN.shelter.AREA']), ('ผู้ติดต่อ', p['CONTRACT_PERSON']), ('ตำแหน่ง', p['POSITION'])],
+      'LAT', 'LNG',
+      extra=lambda p: {'address': shelter_address(p), 'capacity': p['CAPACITY'] or None,
+                       'tel': [t for t in (clean(x) for x in str(p['TEL'] or '').split(',')) if t],
+                       'facilities': [label for key, label in SHELTER_FACILITIES if p.get(key) == 1]})

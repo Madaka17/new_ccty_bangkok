@@ -1,5 +1,5 @@
 """Parsing of the Traffy Fondue, TMD, HDMS and JS100 feeds."""
-from flood_feeds import parse_hdms, parse_js100, parse_tmd, parse_traffy
+from flood_feeds import parse_hdms, parse_hdms_photos, parse_js100, parse_tmd, parse_traffy
 
 NOW = 1_790_000_000  # 2026-09-21 14:13 UTC
 
@@ -62,6 +62,21 @@ def test_hdms_keeps_bangkok_vicinity_floods_open_or_just_closed():
     assert items[0]["active"] is True and items[1]["active"] is False
     assert items[0]["place"] == "ทล.31 ดินแดง - งามวงศ์วาน กม.9+200" and items[0]["depth_cm"] == "50"
     assert "tel" not in items[0] and "reporter_name" not in items[0]
+    assert items[0]["photos"] == []
+
+
+def test_hdms_photos_keep_images_with_https_links_only():
+    photos = parse_hdms_photos([
+        {"file_type": "image", "file_path": "https://hdms.doh.go.th/attachment/s3/a.jpg",
+         "file_thumbnail": "https://hdms.doh.go.th/attachment/s3/a-thumbnail.jpg"},
+        {"file_type": "image", "file_path": "https://hdms.doh.go.th/attachment/s3/b.jpg", "file_thumbnail": ""},
+        {"file_type": "video", "file_path": "https://hdms.doh.go.th/attachment/s3/c.mp4"},
+        {"file_type": "image", "file_path": "javascript:alert(1)"},
+    ])
+    assert photos == [
+        {"url": "https://hdms.doh.go.th/attachment/s3/a.jpg", "thumb": "https://hdms.doh.go.th/attachment/s3/a-thumbnail.jpg"},
+        {"url": "https://hdms.doh.go.th/attachment/s3/b.jpg", "thumb": "https://hdms.doh.go.th/attachment/s3/b.jpg"},
+    ]
 
 
 JS100_PAGE = """

@@ -77,7 +77,7 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
         updated_at: bma.scan_status?.last_scan_time
           ? Math.floor(new Date(bma.scan_status.last_scan_time.replace(' ', 'T')).getTime() / 1000)
           : Math.floor(Date.now() / 1000),
-        flow_index: Math.max(1, Math.round((cg?.free_pct || 0) + 0.5 * (cg?.moderate_pct || 0))),
+        flow_index: Math.min(100, Math.max(1, Math.round((cg?.free_pct || 0) + 0.5 * (cg?.moderate_pct || 0)))),
         green_pct: Math.round(cg?.free_pct || 0),
         yellow_pct: Math.round(cg?.moderate_pct || 0),
         red_pct: Math.round(cg?.heavy_pct || 0),

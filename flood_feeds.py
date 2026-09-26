@@ -44,6 +44,10 @@ TMD_KEEP_DAYS = 2
 # Department of Highways disaster centre (hdms.doh.go.th/dashboard): the public dashboard's JSON, open
 # and closed tickets on highways. Only floods (incident_type_id 1) in Bangkok and vicinity are kept.
 HDMS_URL = "https://hdms.doh.go.th/internal-api/public/dashboard?start={start}&end={end}"
+# The dashboard sends every imageList empty; the photos come with the ticket's own public detail
+HDMS_DETAIL_URL = "https://hdms.doh.go.th/internal-api/public/detail/{case_id}"
+HDMS_PHOTO_RECHECK = 1800    # an open ticket without photos is asked again after this long
+HDMS_MAX_PHOTOS = 4
 HDMS_REFRESH = 600
 HDMS_DAYS = 7                # a flood stays open for days; 7 days of tickets is ~1.3 MB
 HDMS_FLOOD_TYPE = 1
@@ -143,6 +147,17 @@ def parse_tmd(page):
     return out
 
 
+def parse_hdms_photos(image_list):
+    """HDMS imageList -> [{url, thumb}], images only, at most HDMS_MAX_PHOTOS."""
+    out = []
+    for f in image_list or []:
+        url = (f.get("file_path") or "").strip()
+        if f.get("file_type", "image") == "image" and url.startswith("https://"):
+            thumb = (f.get("file_thumbnail") or "").strip()
+            out.append({"url": url, "thumb": thumb if thumb.startswith("https://") else url})
+    return out[:HDMS_MAX_PHOTOS]
+
+
 def parse_hdms(tickets, now=None):
     """HDMS dashboard tickets -> floods in Bangkok and vicinity, open or closed in the last
     ENDED_KEEP_HOURS, newest first. The reporter's name and phone are not passed on."""
@@ -165,7 +180,8 @@ def parse_hdms(tickets, now=None):
         road = f"ทล.{int(t['road_code'])}" if (t.get("road_code") or "").isdigit() else ""
         km = f"กม.{t['km_start']}" if t.get("km_start") else ""
         level = (t.get("flood_level") or "").strip()
-        out.append({"id": f"hdms-{t.get('gid')}", "ts": int(ts), "end_ts": int(end) if end else None,
+        out.append({"id": f"hdms-{t.get('gid')}", "case_id": t.get("case_id") or None,
+                    "photos": parse_hdms_photos(t.get("imageList")), "ts": int(ts), "end_ts": int(end) if end else None,
                     "active": end is None, "title": (t.get("case_name") or "น้ำท่วม").strip(),
                     "place": " ".join(x for x in (road, t.get("section_name") or "", km) if x),
                     "province": t.get("province"), "amphoe": t.get("amphoe") or None,
@@ -266,7 +282,41 @@ class HdmsFloods(_Poller):
     def fetch(self):
         today = datetime.now(BKK_TZ).date()
         url = HDMS_URL.format(start=today - timedelta(days=HDMS_DAYS), end=today)
-        return parse_hdms(json.loads(_get(url, timeout=60)))
+        items = parse_hdms(json.loads(_get(url, timeout=60)))
+        self._add_photos(items)
+        return items
+
+    def _add_photos(self, items):
+        """Photos from each ticket's public detail, kept per case_id: a closed ticket is asked once,
+        an open one without photos again after HDMS_PHOTO_RECHECK (photos are often added later)."""
+        from concurrent.futures import ThreadPoolExecutor
+        cache = self.__dict__.setdefault("_photos", {})   # case_id -> (asked_at, photos)
+        now = time.time()
+
+        def stale(i):
+            got = cache.get(i["case_id"])
+            return not got or (i["active"] and not got[1] and now - got[0] > HDMS_PHOTO_RECHECK)
+
+        def ask(case_id):
+            try:
+                detail = json.loads(_get(HDMS_DETAIL_URL.format(case_id=urllib.parse.quote(case_id)), timeout=20))
+                return case_id, parse_hdms_photos(detail.get("imageList"))
+            except Exception as e:  # noqa: BLE001 - no photos this round, asked again next refresh
+                print(f"[{self.name}] detail {case_id}: {e}")
+                return case_id, None
+
+        todo = [i["case_id"] for i in items if i["case_id"] and not i["photos"] and stale(i)]
+        if todo:
+            with ThreadPoolExecutor(4) as ex:
+                for case_id, photos in ex.map(ask, todo):
+                    if photos is not None:
+                        cache[case_id] = (now, photos)
+        for i in items:
+            if not i["photos"] and i["case_id"] in cache:
+                i["photos"] = cache[i["case_id"]][1]
+        keep = {i["case_id"] for i in items}
+        for case_id in [c for c in cache if c not in keep]:
+            del cache[case_id]
 
 
 class Js100Floods(_Poller):
