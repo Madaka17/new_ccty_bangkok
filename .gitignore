@@ -51,7 +51,7 @@ local/archive/
 local/dataset*/
 local/runs/
 local/logs/
-# Test server instance (run_test.bat): own cache, DB, data
+# Test server instance (launch/localhost_8001): own cache, DB, data
 local/stage/
 weights/
 
@@ -61,7 +61,7 @@ weights/
 *.db-wal
 *.db-shm
 
-# React build output: produced by build_web.bat / npm run build, not committed
+# React build output: produced by launch/build_web.bat / npm run build, not committed
 web/dist/
 
 # AI analyst report caches written next to the data (riskbkk_agent, water_agent)

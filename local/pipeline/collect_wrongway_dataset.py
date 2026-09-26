@@ -364,12 +364,12 @@ def hls_burst(url, n, interval):
 
 def load_cameras(ids, with_hls):
     cams = []
-    with open(os.path.join(BASE_DIR, 'cameras_bma.json'), encoding='utf-8') as f:
+    with open(os.path.join(BASE_DIR, 'config', 'cameras_bma.json'), encoding='utf-8') as f:
         for c in json.load(f)['items']:
             if not ids or str(c['camid']) in ids:
                 cams.append({'camid': str(c['camid']), 'title': c.get('title', ''), 'source': 'bma'})
     if with_hls:
-        with open(os.path.join(BASE_DIR, 'cameras_bkk.json'), encoding='utf-8') as f:
+        with open(os.path.join(BASE_DIR, 'config', 'cameras_bkk.json'), encoding='utf-8') as f:
             for c in json.load(f)['items']:
                 url = c.get('hls_url') or c.get('vdourl')
                 if url and (not ids or str(c['camid']) in ids):
@@ -463,7 +463,7 @@ def main():
         return
 
     from ultralytics import YOLO
-    from bma_service import BmaSession
+    from backend.bma.bma_service import BmaSession
     model = YOLO(args.model)
     model.predict(np.zeros((288, 352, 3), dtype=np.uint8), imgsz=args.imgsz, verbose=False)   # warm up
     session = BmaSession()

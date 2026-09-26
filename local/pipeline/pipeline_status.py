@@ -21,7 +21,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 LOCAL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # local/ (dataset, runs, logs)
 BASE_DIR = os.path.dirname(LOCAL_DIR)  # project root (server, models, cameras, .env)
 LOG_FILE = os.path.join(LOCAL_DIR, 'pipeline.log')
-CAMERAS_FILE = os.path.join(BASE_DIR, 'cameras_bkk.json')
+CAMERAS_FILE = os.path.join(BASE_DIR, 'config', 'cameras_bkk.json')
 TASK_NAME = 'BKK_Dataset_Train'
 
 # Load camera names once

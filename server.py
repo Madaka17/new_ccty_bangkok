@@ -15,7 +15,7 @@ if sys.platform == 'win32':
 
 # 1. Auto-detect and switch to .venv if running under global Python
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-from instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
+from backend.core.instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
 venv_python = os.path.join(BASE_DIR, ".venv", "Scripts", "python.exe")
 if os.path.exists(venv_python) and sys.prefix == sys.base_prefix and os.path.normcase(sys.executable) != os.path.normcase(venv_python):
     import subprocess
@@ -65,41 +65,41 @@ def free_port_if_needed(port=8000):
     except Exception as e:
         print(f"[Server] Note during port check: {e}")
 
-from instance import PORT, DATA_DIR, IS_STAGE
+from backend.core.instance import PORT, DATA_DIR, IS_STAGE
 free_port_if_needed(PORT)
 from fastapi import FastAPI, Request, Query, Body, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from yolo_detector import VehicleDetectorYOLO11x
-from vehicle_log import VehicleLog
-from count_workers import CountManager
-from survey import SurveyManager
-from incident_service import IncidentManager
-from violation_service import ViolationMonitor
-from traffic_service import traffic, get_traffic_tile, get_osm_tile
-from guidance_service import GuidanceService
-from helmet_service import HelmetPatrol
-from wrongway_service import WrongWayPatrol
-from air_service import air
-from flood_service import flood_roads
-from flood_feeds import traffy_reports, tmd_warnings, hdms_floods, js100_floods
-from road_service import road_risk
-import chat_service
-import water_service
-import rsc_service
-from bma_events import bma_feed
-from bma_service import BmaScanner
-import analytics_service
-from telemetry_service import telemetry
-import access_guard
-from alert_service import AlertService
-from flood_agent import FloodAgent
-from riskbkk_agent import RiskAgent
-from traffy_agent import TraffyAgent
-from traffy_history import TraffyHistory
-import weather_now
-from water_agent import WaterAgent
+from backend.vision.yolo_detector import VehicleDetectorYOLO11x
+from backend.vision.vehicle_log import VehicleLog
+from backend.vision.count_workers import CountManager
+from backend.vision.survey import SurveyManager
+from backend.vision.incident_service import IncidentManager
+from backend.vision.violation_service import ViolationMonitor
+from backend.traffic.traffic_service import traffic, get_traffic_tile, get_osm_tile
+from backend.traffic.guidance_service import GuidanceService
+from backend.vision.helmet_service import HelmetPatrol
+from backend.vision.wrongway_service import WrongWayPatrol
+from backend.water.air_service import air
+from backend.water.flood_service import flood_roads
+from backend.water.flood_feeds import traffy_reports, tmd_warnings, hdms_floods, js100_floods
+from backend.traffic.road_service import road_risk
+from backend.agents import chat_service
+from backend.water import water_service
+from backend.traffic import rsc_service
+from backend.bma.bma_events import bma_feed
+from backend.bma.bma_service import BmaScanner
+from backend.traffic import analytics_service
+from backend.core.telemetry_service import telemetry
+from backend.core import access_guard
+from backend.core.alert_service import AlertService
+from backend.agents.flood_agent import FloodAgent
+from backend.agents.riskbkk_agent import RiskAgent
+from backend.agents.traffy_agent import TraffyAgent
+from backend.agents.traffy_history import TraffyHistory
+from backend.water import weather_now
+from backend.agents.water_agent import WaterAgent
 
 # ids that end up in file names: letters, digits, _ . - only (never a path)
 SAFE_ID = re.compile(r"[A-Za-z0-9_.-]{1,80}")
@@ -122,7 +122,7 @@ MODEL_PATH = os.path.join(BASE_DIR, os.getenv("AI_MODEL", "yolo26x.pt"))
 if not os.path.exists(MODEL_PATH):
     print(f"[AI] {MODEL_PATH} not found, falling back to yolo26x.pt")
     MODEL_PATH = os.path.join(BASE_DIR, "yolo26x.pt")
-CAMERAS_FILE = os.path.join(BASE_DIR, "cameras_bkk.json")
+CAMERAS_FILE = os.path.join(BASE_DIR, "config", "cameras_bkk.json")
 # Legacy vanilla UI (local/legacy_ui) is only the fallback when web/dist has not been built
 LEGACY_UI = os.path.join(BASE_DIR, "local", "legacy_ui")
 STATIC_DIR = LEGACY_UI

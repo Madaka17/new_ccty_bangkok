@@ -64,7 +64,7 @@ export default function AiPage({ active, pendingQuestion, onQuestionConsumed }) 
    ? 'ถามบ่อยเกินไป รอสักครู่แล้วลองใหม่นะ'
    : e?.message === 'too_long'
      ? 'ข้อความยาวเกินไป ลองย่อคำถามให้สั้นลง'
-     : 'ผู้ช่วยยังไม่ตื่น ลองเปิด run_server.bat แล้วถามใหม่นะ';
+     : 'ผู้ช่วยยังไม่ตื่น ลองเปิด launch/localhost_8000/start.bat แล้วถามใหม่นะ';
  setMessages([...next, { role: 'assistant', content: msg, mode: 'offline' }]);
     } finally {
  setBusy(false);

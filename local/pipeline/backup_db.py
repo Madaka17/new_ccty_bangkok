@@ -67,10 +67,10 @@ def backup(keep_backups):
         p = os.path.join(DATA_DIR, name)
         if os.path.exists(p):
             shutil.copy2(p, os.path.join(out_dir, os.path.basename(p)))
-    for cfg in ('.env', 'cameras_bma.json', 'cameras_bkk.json'):
+    for cfg in ('.env', 'config/cameras_bma.json', 'config/cameras_bkk.json'):
         p = os.path.join(BASE_DIR, cfg)
         if os.path.exists(p):
-            shutil.copy2(p, os.path.join(out_dir, cfg))
+            shutil.copy2(p, os.path.join(out_dir, os.path.basename(cfg)))
     print(f'[backup] written {out_dir}')
     old = sorted(glob.glob(os.path.join(BACKUP_DIR, '20*')))[:-keep_backups]
     for d in old:

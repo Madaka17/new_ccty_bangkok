@@ -1,6 +1,6 @@
 """Alert rules: thresholds, alert once per condition, re-alert on escalation or after it cleared."""
-import alert_service
-from alert_service import CLEAR_SECONDS, AlertService
+from backend.core import alert_service
+from backend.core.alert_service import CLEAR_SECONDS, AlertService
 
 
 def _svc(tmp_path, monkeypatch, **sources):
