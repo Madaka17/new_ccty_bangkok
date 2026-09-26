@@ -3,7 +3,7 @@ import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { motion } from 'framer-motion';
 import Hls from 'hls.js';
-import { fetchTrafficSummary, fetchLongdoCameras, fetchWaterSummary, fetchAirStations, fetchWindGrid, fetchFloodStatus, fetchFloodStations, fetchFloodReports } from '../lib/api.js';
+import { fetchTrafficSummary, fetchLongdoCameras, fetchWaterSummary, fetchAirStations, fetchWindGrid, fetchFloodStatus, fetchFloodStations, fetchFloodReports, fetchHdmsFloods } from '../lib/api.js';
 import { enrichCamerasWithFloodRisk } from '../lib/floodRisk.js';
 import { fmtTime } from './dashboard/format.js';
 import { Icon } from './dashboard/icons.jsx';
@@ -143,6 +143,8 @@ const GAUGE_STYLE = {
 // Citizen flood reports (Traffy Fondue): a speech-bubble pin, hotter the fresher the report
 const REPORT_COLOR = '#7c3aed';
 const REPORT_FRESH_S = 3600;
+// Flooded highways from the Department of Highways (HDMS): a road-sign pin, faded once the ticket is closed
+const HDMS_COLOR = '#be185d';
 
 const POI_MAX = 70;
 const POI_MIN_ZOOM = 15;
@@ -242,6 +244,9 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const [showReports, setShowReports] = useState(false);
   const [reports, setReports] = useState(null);
   const reportMarkersRef = useRef([]);
+  const [showHdms, setShowHdms] = useState(false);
+  const [hdms, setHdms] = useState(null);
+  const hdmsMarkersRef = useRef([]);
   const gaugeMarkersRef = useRef([]);
   // Building details: flat footprints in 2D, POI name labels (DOM markers) and click-for-info on any building
   const [showPlaces, setShowPlaces] = useState(false);
@@ -670,6 +675,32 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
     };
   }, [isActive]);
 
+  // Department of Highways flood tickets; the server refreshes them every 10 min
+  useEffect(() => {
+    if (!isActive) return;
+    let alive = true;
+    const tick = () => fetchHdmsFloods().then((d) => alive && setHdms(d)).catch(() => {});
+    tick();
+    const id = setInterval(tick, 600000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [isActive]);
+
+  const hdmsPoints = useMemo(() => (hdms?.items || []).filter((h) => h.lat && h.lng), [hdms]);
+  const hdmsActive = useMemo(() => hdmsPoints.filter((h) => h.active).length, [hdmsPoints]);
+  // Districts with the most open tickets, busiest first
+  const hdmsAreas = useMemo(() => {
+    const by = {};
+    for (const h of hdmsPoints) {
+      if (!h.active) continue;
+      const name = !h.amphoe ? h.province : h.province === 'กรุงเทพมหานคร' ? `เขต${h.amphoe}` : `อ.${h.amphoe} จ.${h.province}`;
+      (by[name] ||= []).push(h);
+    }
+    return Object.entries(by).map(([name, items]) => ({ name, items })).sort((a, b) => b.items.length - a.items.length).slice(0, 5);
+  }, [hdmsPoints]);
+
   const reportPoints = useMemo(() => (reports?.items || []).filter((r) => r.lat && r.lng), [reports]);
   const reportFresh = useMemo(() => reportPoints.filter((r) => Date.now() / 1000 - r.ts <= REPORT_FRESH_S).length, [reportPoints]);
   // Districts with the most reports, busiest first: that is where the sois are under water
@@ -771,6 +802,35 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
       reportMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([r.lng, r.lat]).setPopup(popup).addTo(map));
     }
   }, [reportPoints, showReports]);
+
+  // One pin per highway flood ticket: solid while open, faded once closed
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    for (const m of hdmsMarkersRef.current) m.remove();
+    hdmsMarkersRef.current = [];
+    if (!showHdms) return;
+    for (const h of hdmsPoints) {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.title = `กรมทางหลวง: ${h.place || h.title}${h.depth_cm ? ` · ${h.depth_cm} ซม.` : ''}`;
+      el.style.cssText = `width:24px;height:24px;border-radius:6px;background:${HDMS_COLOR};border:2px solid #fff;box-shadow:0 1px 4px rgba(15,23,42,.35);color:#fff;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;opacity:${h.active ? 1 : 0.5}`;
+      el.textContent = '🛣';
+      const popup = new maplibregl.Popup({ offset: 14, closeButton: true, maxWidth: '300px' }).setHTML(
+        `<div style="font-size:13px;line-height:1.45">
+          <b style="color:${HDMS_COLOR}">ทางหลวงน้ำท่วม (กรมทางหลวง)</b> <span style="color:#64748b">· ${agoTh(h.ts)}</span>
+          <br><b>${esc(h.place || h.title)}</b>
+          <br><span>${esc(h.title)}</span>
+          ${h.depth_cm ? `<br>ระดับน้ำ: <b>${esc(h.depth_cm)} ซม.</b>` : ''}
+          ${h.closure || h.lane_closure ? `<br>${esc(h.closure || 'ปิดช่องจราจร')}` : ''}
+          ${h.relief ? `<br><span style="color:#475569">${esc(h.relief)}</span>` : ''}
+          <br><span style="color:#64748b">${h.amphoe ? `${esc(h.amphoe)} · ` : ''}${esc(h.province)}${h.depot ? ` · ${esc(h.depot)}` : ''}</span>
+          <br><span style="color:#64748b">สถานะ: ${h.active ? 'ยังมีน้ำท่วม' : 'คลี่คลายแล้ว'}</span>
+        </div>`
+      );
+      hdmsMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([h.lng, h.lat]).setPopup(popup).addTo(map));
+    }
+  }, [hdmsPoints, showHdms]);
 
   // River / canal gauges: a dot whose colour is the bank level, with the % of capacity inside
   useEffect(() => {
@@ -1268,6 +1328,46 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
             <p className="text-[11px] text-slate-500">กำลังโหลดเรื่องแจ้งจาก Traffy Fondue ...</p>
           )}
           <p className="text-[11px] text-slate-400 mt-1">จาก Traffy Fondue คัดด้วยคำว่า น้ำท่วม/น้ำขัง ยังไม่ผ่านการตรวจสอบจากเขต</p>
+        </div>
+
+        {/* ทางหลวงน้ำท่วม (กรมทางหลวง HDMS) */}
+        <div className="pt-2.5 border-t border-slate-100">
+          <div className="flex items-center justify-between mb-1">
+            <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
+              <input type="checkbox" checked={showHdms} onChange={(e) => setShowHdms(e.target.checked)} className="accent-blue-600 w-4 h-4" />
+              <span aria-hidden="true">🛣</span> ทางหลวงน้ำท่วม
+            </label>
+            {hdms?.updated_at && <span className="text-[11px] text-slate-500">{fmtTime(hdms.updated_at)} น.</span>}
+          </div>
+          {hdms ? (
+            <>
+              <p className="text-[11px] text-slate-500 mb-1.5">
+                {hdmsPoints.length > 0
+                  ? `ยังท่วม ${hdmsActive} จุด · คลี่คลายใน 3 ชม. ${hdmsPoints.length - hdmsActive} จุด`
+                  : 'ไม่มีทางหลวงน้ำท่วมในกรุงเทพฯ และปริมณฑล'}
+                {hdms.error ? ' · ดึงข้อมูลล่าสุดไม่สำเร็จ' : ''}
+              </p>
+              {hdmsAreas.length > 0 && (
+                <ul className="flex flex-col gap-1">
+                  {hdmsAreas.map((d) => (
+                    <li key={d.name}>
+                      <button
+                        type="button"
+                        onClick={() => { setShowHdms(true); mapRef.current?.easeTo({ center: [d.items[0].lng, d.items[0].lat], zoom: 14.5, duration: 800 }); }}
+                        className="cursor-pointer w-full flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-2 py-1 text-left hover:border-slate-400 transition-colors"
+                      >
+                        <span className="min-w-0 truncate text-[12px] text-ink-900">{d.name}</span>
+                        <span className="shrink-0 text-[11px] font-semibold tabular-nums" style={{ color: HDMS_COLOR }}>{d.items.length} จุด</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          ) : (
+            <p className="text-[11px] text-slate-500">กำลังโหลดข้อมูลกรมทางหลวง ...</p>
+          )}
+          <p className="text-[11px] text-slate-400 mt-1">จากศูนย์บริหารงานอุบัติภัย กรมทางหลวง (HDMS) เฉพาะกรุงเทพฯ และปริมณฑล</p>
         </div>
 
         {/* ระดับน้ำแม่น้ำ / คลอง ทั่วเขตปริมณฑล (คลังข้อมูลน้ำแห่งชาติ) */}

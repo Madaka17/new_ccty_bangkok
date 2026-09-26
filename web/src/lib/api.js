@@ -179,6 +179,20 @@ export async function fetchLongdoFloods() {
   return res.json();
 }
 
+// Flooded highways in Bangkok and vicinity from the Department of Highways HDMS dashboard (flood_feeds.py)
+export async function fetchHdmsFloods() {
+  const res = await fetch('/api/flood/hdms');
+  if (!res.ok) throw new Error('hdms_floods');
+  return res.json();
+}
+
+// Flooded-road items from the JS100 radio traffic news, last 48 h, text only (flood_feeds.py)
+export async function fetchJs100Floods() {
+  const res = await fetch('/api/flood/js100');
+  if (!res.ok) throw new Error('js100_floods');
+  return res.json();
+}
+
 // Traffy flood reports today vs yesterday / this week vs last week (traffy_history.py)
 export async function fetchTraffyHistory() {
   const res = await fetch('/api/traffy/history');

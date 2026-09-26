@@ -23,12 +23,14 @@ const LAYERS = {
   },
   roads: {
     label: 'น้ำท่วมถนน',
-    note: 'เซ็นเซอร์บนถนน สนน. กทม. (ซม. เหนือผิวถนน ทุก 5 นาที) และรายงานน้ำท่วมผ่าน Longdo Traffic (iTIC / FM91)',
+    note: 'เซ็นเซอร์บนถนน สนน. กทม. (ซม. เหนือผิวถนน ทุก 5 นาที), รายงานน้ำท่วมผ่าน Longdo Traffic (iTIC / FM91) และทางหลวงน้ำท่วมจากกรมทางหลวง (HDMS)',
     status: [
       ['flood', 'ท่วมขัง > 10 ซม.', '#dc2626'],
       ['slight', 'ท่วมเล็กน้อย 5-10 ซม.', '#d97706'],
+      ['hdms', 'ทางหลวงน้ำท่วม (กรมทางหลวง)', '#be185d'],
       ['report', 'มีรายงานน้ำท่วม', '#7c3aed'],
       ['report_ended', 'รายงานสิ้นสุด < 3 ชม.', '#c4b5fd'],
+      ['hdms_ended', 'ทางหลวงคลี่คลาย < 3 ชม.', '#f9a8d4'],
       ['normal', 'แห้ง (เซ็นเซอร์)', '#059669'],
       ['offline', 'เซ็นเซอร์ขาดข้อมูล', '#94a3b8'],
     ],
@@ -63,6 +65,7 @@ function valueText(p) {
   if (p.kind === 'rain') return `${fmt(p.rain_24h, 1)} มม.`;
   if (p.kind === 'sensor') return `${fmt(p.depth_cm, 0)} ซม.`;
   if (p.kind === 'report') return 'รายงานจากผู้ใช้ถนน';
+  if (p.kind === 'hdms') return p.depth_cm ? `${p.depth_cm} ซม.` : 'รายงานกรมทางหลวง';
   if (p.kind === 'dam') return `${fmt(p.storage_pct, 0)}%`;
   if (p.diff_bank != null) {
     const cm = Math.round(Math.abs(p.diff_bank) * 100);
@@ -344,7 +347,7 @@ export default function WaterMap({ isActive, onPickStation }) {
                 </button>
               </div>
               <p className="text-xs text-slate-500">
-                {{ river: 'สถานีแม่น้ำ', canal: 'สถานีคลอง', rain: 'สถานีวัดฝน', dam: 'เขื่อน', sensor: 'เซ็นเซอร์น้ำบนถนน สนน.', report: 'รายงานน้ำท่วม Longdo Traffic' }[sel.kind]}
+                {{ river: 'สถานีแม่น้ำ', canal: 'สถานีคลอง', rain: 'สถานีวัดฝน', dam: 'เขื่อน', sensor: 'เซ็นเซอร์น้ำบนถนน สนน.', report: 'รายงานน้ำท่วม Longdo Traffic', hdms: 'ทางหลวงน้ำท่วม กรมทางหลวง (HDMS)' }[sel.kind]}
                 {sel.road ? ` · ${sel.road}` : ''}
                 {sel.river ? ` · ${sel.river}` : ''}
                 {sel.district ? ` · ${sel.district}` : ''}

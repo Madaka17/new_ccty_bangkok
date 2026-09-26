@@ -1,5 +1,5 @@
 """
-Two early flood signals that the road sensors and ThaiWater gauges do not give:
+Flood signals that the road sensors and ThaiWater gauges do not give:
 
 - Traffy Fondue (publicapi.traffy.in.th): complaints Bangkok residents file with a location. The newest
   complaints have no category yet, so flood reports are picked out by wording ("น้ำท่วม", "น้ำขัง" ...).
@@ -8,8 +8,12 @@ Two early flood signals that the road sensors and ThaiWater gauges do not give:
   WeatherWarningNews API only serves a 2022 announcement with the public key, so the warning list on the
   website is read instead. Each item carries a title, a one-paragraph summary of the regions hit and a date.
 
-Both poll in a background thread and keep the last good answer when a fetch fails. Served by
-/api/flood/reports and /api/weather/warnings, and read by alert_service.
+- Department of Highways HDMS (hdms.doh.go.th) and JS100 radio (js100.com): flooded highways and roads
+  in Bangkok and vicinity, for the flood report list. See parse_hdms / parse_js100.
+
+All poll in a background thread and keep the last good answer when a fetch fails. Served by
+/api/flood/reports, /api/flood/hdms, /api/flood/js100 and /api/weather/warnings; Traffy and TMD are
+also read by alert_service.
 """
 import html
 import json
@@ -18,6 +22,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
+import zlib
 from datetime import datetime, timedelta, timezone
 
 BKK_TZ = timezone(timedelta(hours=7))
@@ -35,6 +40,31 @@ TMD_BASE = "https://www.tmd.go.th"
 TMD_LIST = TMD_BASE + "/warning-and-events/warning-storm"
 TMD_REFRESH = 900
 TMD_KEEP_DAYS = 2
+
+# Department of Highways disaster centre (hdms.doh.go.th/dashboard): the public dashboard's JSON, open
+# and closed tickets on highways. Only floods (incident_type_id 1) in Bangkok and vicinity are kept.
+HDMS_URL = "https://hdms.doh.go.th/internal-api/public/dashboard?start={start}&end={end}"
+HDMS_REFRESH = 600
+HDMS_DAYS = 7                # a flood stays open for days; 7 days of tickets is ~1.3 MB
+HDMS_FLOOD_TYPE = 1
+ENDED_KEEP_HOURS = 3         # a closed ticket still shows this long, as "ended" (as the Longdo reports)
+BKK_VICINITY = ("กรุงเทพมหานคร", "นนทบุรี", "ปทุมธานี", "สมุทรปราการ", "สมุทรสาคร", "นครปฐม")
+
+# JS100 radio traffic news (js100.com/en/site/traffic): the newest 50 items as HTML, text and time only,
+# no location. The list runs a day or more behind the station's social feeds, so 48 h are kept.
+JS100_URL = "https://www.js100.com/en/site/traffic"
+JS100_REFRESH = 600
+JS100_KEEP_HOURS = 48
+# JS100 is a Bangkok station; items elsewhere name the province (or Pattaya), items here name a road.
+# ตาก and เลย need the จ. prefix: "สะพานตากสิน", "ช่วงเลย..." are Bangkok text.
+OTHER_PROVINCES = re.compile(
+    r"(?:จ\.|จังหวัด)\s?(?:ตาก|เลย)|"
+    "พัทยา|กระบี่|กาญจนบุรี|กาฬสินธุ์|กำแพงเพชร|ขอนแก่น|จันทบุรี|ฉะเชิงเทรา|ชลบุรี|ชัยนาท|ชัยภูมิ|ชุมพร|เชียงราย|"
+    "เชียงใหม่|ตรัง|ตราด|นครนายก|นครพนม|นครราชสีมา|นครศรีธรรมราช|นครสวรรค์|นราธิวาส|น่าน|บึงกาฬ|บุรีรัมย์|"
+    "ประจวบคีรีขันธ์|ปราจีนบุรี|ปัตตานี|อยุธยา|พะเยา|พังงา|พัทลุง|พิจิตร|พิษณุโลก|เพชรบุรี|เพชรบูรณ์|แพร่|ภูเก็ต|"
+    "มหาสารคาม|มุกดาหาร|แม่ฮ่องสอน|ยโสธร|ยะลา|ร้อยเอ็ด|ระนอง|ระยอง|ราชบุรี|ลพบุรี|ลำปาง|ลำพูน|ศรีสะเกษ|"
+    "สกลนคร|สงขลา|สตูล|สมุทรสงคราม|สระแก้ว|สระบุรี|สิงห์บุรี|สุโขทัย|สุพรรณบุรี|สุราษฎร์ธานี|สุรินทร์|หนองคาย|"
+    "หนองบัวลำภู|อ่างทอง|อำนาจเจริญ|อุดรธานี|อุตรดิตถ์|อุทัยธานี|อุบลราชธานี")
 THAI_MONTHS = {m: i + 1 for i, m in enumerate(
     ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
      "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"])}
@@ -113,6 +143,61 @@ def parse_tmd(page):
     return out
 
 
+def parse_hdms(tickets, now=None):
+    """HDMS dashboard tickets -> floods in Bangkok and vicinity, open or closed in the last
+    ENDED_KEEP_HOURS, newest first. The reporter's name and phone are not passed on."""
+    now = now or time.time()
+    out = []
+    for t in tickets or []:
+        if t.get("incident_type_id") != HDMS_FLOOD_TYPE or t.get("province") not in BKK_VICINITY:
+            continue
+        try:
+            ts = datetime.fromisoformat(t["start_date"]).timestamp()
+            end = datetime.fromisoformat(t["end_date"]).timestamp() if t.get("end_date") else None
+        except (KeyError, TypeError, ValueError):
+            continue
+        if end and now - end > ENDED_KEEP_HOURS * 3600:
+            continue
+        try:
+            lat, lng = float(t["latitude"]), float(t["longitude"])
+        except (KeyError, TypeError, ValueError):
+            lat = lng = None
+        road = f"ทล.{int(t['road_code'])}" if (t.get("road_code") or "").isdigit() else ""
+        km = f"กม.{t['km_start']}" if t.get("km_start") else ""
+        level = (t.get("flood_level") or "").strip()
+        out.append({"id": f"hdms-{t.get('gid')}", "ts": int(ts), "end_ts": int(end) if end else None,
+                    "active": end is None, "title": (t.get("case_name") or "น้ำท่วม").strip(),
+                    "place": " ".join(x for x in (road, t.get("section_name") or "", km) if x),
+                    "province": t.get("province"), "amphoe": t.get("amphoe") or None,
+                    "depth_cm": level or None, "lane_closure": bool(t.get("lane_closure")),
+                    "closure": t.get("road_closure_text") or None,
+                    "cause": (t.get("cause_of_accident") or "").strip() or None,
+                    "relief": (t.get("initial_relief") or "").strip() or None,
+                    "depot": t.get("depot_name") or None, "lat": lat, "lng": lng})
+    out.sort(key=lambda i: -i["ts"])
+    return out
+
+
+def parse_js100(page, now=None):
+    """JS100 traffic news page -> flood items of the last JS100_KEEP_HOURS outside other provinces, newest first."""
+    now = now or time.time()
+    out = []
+    for when, body in re.findall(r"<li>\s*<h4>(.*?)</h4>(.*?)</li>", page, re.S):
+        text = _text(body)
+        if not FLOOD_WORDS.search(text) or OTHER_PROVINCES.search(text):
+            continue
+        day = _thai_date(when)
+        hm = re.search(r"(\d{1,2}):(\d{2})", when)
+        if not day or not hm:
+            continue
+        ts = datetime(day.year, day.month, day.day, int(hm.group(1)), int(hm.group(2)), tzinfo=BKK_TZ).timestamp()
+        if now - ts > JS100_KEEP_HOURS * 3600:
+            continue
+        out.append({"id": f"js100-{zlib.crc32(text.encode())}", "ts": int(ts), "text": text[:400]})
+    out.sort(key=lambda i: -i["ts"])
+    return out
+
+
 class _Poller:
     name = "?"
     refresh_seconds = 600
@@ -174,5 +259,25 @@ class TmdWarnings(_Poller):
         return st
 
 
+class HdmsFloods(_Poller):
+    name = "HDMS"
+    refresh_seconds = HDMS_REFRESH
+
+    def fetch(self):
+        today = datetime.now(BKK_TZ).date()
+        url = HDMS_URL.format(start=today - timedelta(days=HDMS_DAYS), end=today)
+        return parse_hdms(json.loads(_get(url, timeout=60)))
+
+
+class Js100Floods(_Poller):
+    name = "JS100"
+    refresh_seconds = JS100_REFRESH
+
+    def fetch(self):
+        return parse_js100(_get(JS100_URL))
+
+
 traffy_reports = TraffyFloodReports()
 tmd_warnings = TmdWarnings()
+hdms_floods = HdmsFloods()
+js100_floods = Js100Floods()

@@ -1,10 +1,11 @@
 // การแจ้งน้ำท่วม: every flood report in one list, the same reports the Water Forecast map shows as
 // "มีรายงานน้ำท่วม" (Longdo Traffic, relayed from iTIC / FM91: /api/flood/longdo) plus what people sent
-// through Traffy Fondue in the last 6 h (/api/flood/reports), with the Qwen reading of the Traffy
-// reports (TraffyAnalysisCard) below. Both feeds in one list grouped by district, with search and
-// district / state filters. Tab of the Water Forecast page.
+// through Traffy Fondue in the last 6 h (/api/flood/reports), flooded highways from the Department of
+// Highways HDMS (/api/flood/hdms) and JS100 radio traffic news (/api/flood/js100), with the Qwen reading
+// of the Traffy reports (TraffyAnalysisCard) below. All feeds in one list grouped by district, with
+// search and district / state filters. Tab of the Water Forecast page.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { fetchFloodReports, fetchLongdoFloods } from '../../lib/api.js';
+import { fetchFloodReports, fetchLongdoFloods, fetchHdmsFloods, fetchJs100Floods } from '../../lib/api.js';
 import { Card, Badge, Button, SectionHeader, Skeleton, EmptyState } from '../dashboard/ui.jsx';
 import { fmtNum } from '../dashboard/format.js';
 import TraffyAnalysisCard from '../dashboard/TraffyAnalysisCard.jsx';
@@ -16,6 +17,8 @@ const NO_DISTRICT = 'ไม่ระบุเขต';
 const SOURCES = {
   longdo: { label: 'iTIC / FM91', tone: 'blue', hint: 'รายงานบน Longdo Traffic' },
   traffy: { label: 'ประชาชน (Traffy)', tone: 'neutral', hint: 'Traffy Fondue' },
+  hdms: { label: 'กรมทางหลวง', tone: 'yellow', hint: 'HDMS กรมทางหลวง' },
+  js100: { label: 'JS100', tone: 'blue', hint: 'ข่าวจราจร JS100' },
 };
 const STATE_TONE = { รอรับเรื่อง: 'red', กำลังดำเนินการ: 'yellow', 'ส่งต่อ(ใหม่)': 'yellow', เสร็จสิ้น: 'green', ยังมีน้ำท่วม: 'red', สิ้นสุดแล้ว: 'green' };
 const SELECT = 'h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700';
@@ -41,8 +44,8 @@ function districtOf(text) {
   return BKK_DISTRICTS.includes(m[1]) ? `เขต${m[1]}` : `อ.${m[1]}`;   // Longdo also writes "อ.บางนา จ.กรุงเทพมหานคร"
 }
 
-// Both feeds in one shape, newest first
-function mergeReports(traffy, longdo) {
+// All feeds in one shape, newest first
+function mergeReports(traffy, longdo, hdms, js100) {
   const rows = [];
   for (const f of longdo?.items || []) {
     rows.push({
@@ -57,6 +60,18 @@ function mergeReports(traffy, longdo) {
       district: r.district ? (BKK_DISTRICTS.includes(r.district) ? `เขต${r.district}` : `อ.${r.district}`) : NO_DISTRICT,
       depth: r.depth, state: r.state, photo: r.photo,
     });
+  }
+  for (const h of hdms?.items || []) {
+    rows.push({
+      id: h.id, source: 'hdms', ts: h.ts, title: h.place || h.title,
+      text: [h.title, h.closure, h.lane_closure ? 'ปิดช่องจราจร' : null, h.relief].filter(Boolean).join(' · '),
+      district: !h.amphoe ? NO_DISTRICT : h.province === 'กรุงเทพมหานคร' ? `เขต${h.amphoe}` : `อ.${h.amphoe}`,
+      depth: h.depth_cm ? ` ${h.depth_cm} ซม.` : null, state: h.active ? 'ยังมีน้ำท่วม' : 'สิ้นสุดแล้ว',
+      url: h.lat && h.lng ? `https://www.google.com/maps?q=${h.lat},${h.lng}` : null, urlLabel: 'ดูแผนที่',
+    });
+  }
+  for (const j of js100?.items || []) {
+    rows.push({ id: j.id, source: 'js100', ts: j.ts, title: null, text: j.text, district: districtOf(j.text) });
   }
   return rows.sort((a, b) => (b.ts || 0) - (a.ts || 0));
 }
@@ -93,7 +108,7 @@ function ReportList({ rows, loading, updatedAt }) {
       <SectionHeader
         id="flood-reports"
         title="การแจ้งน้ำท่วม"
-        description="จุดที่มีรายงานน้ำท่วมบนแผนที่ (iTIC / FM91 ผ่าน Longdo Traffic) และเรื่องที่ประชาชนแจ้งผ่าน Traffy Fondue 6 ชม.ล่าสุด · ยังไม่ผ่านการตรวจสอบจากเขต"
+        description="จุดที่มีรายงานน้ำท่วมบนแผนที่ (iTIC / FM91 ผ่าน Longdo Traffic), ทางหลวงน้ำท่วมจากกรมทางหลวง (HDMS), ข่าวจราจร JS100 48 ชม.ล่าสุด และเรื่องที่ประชาชนแจ้งผ่าน Traffy Fondue 6 ชม.ล่าสุด · กรุงเทพฯ และปริมณฑล · ยังไม่ผ่านการตรวจสอบจากเขต"
       />
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <label htmlFor="report-q" className="sr-only">ค้นหาข้อความ</label>
@@ -169,11 +184,15 @@ function ReportList({ rows, loading, updatedAt }) {
 export default function CitizenReportsSection({ isActive }) {
   const [traffy, setTraffy] = useState(null);
   const [longdo, setLongdo] = useState(null);
+  const [hdms, setHdms] = useState(null);
+  const [js100, setJs100] = useState(null);
 
   const load = useCallback(() => {
     // one feed failing must not hide the other: a failure counts as an empty list
     fetchFloodReports().then(setTraffy).catch(() => setTraffy((x) => x || { items: [] }));
     fetchLongdoFloods().then(setLongdo).catch(() => setLongdo((x) => x || { items: [] }));
+    fetchHdmsFloods().then(setHdms).catch(() => setHdms((x) => x || { items: [] }));
+    fetchJs100Floods().then(setJs100).catch(() => setJs100((x) => x || { items: [] }));
   }, []);
 
   useEffect(() => {
@@ -183,12 +202,12 @@ export default function CitizenReportsSection({ isActive }) {
     return () => clearInterval(id);
   }, [isActive, load]);
 
-  const rows = useMemo(() => mergeReports(traffy, longdo), [traffy, longdo]);
-  const updatedAt = Math.max(traffy?.updated_at || 0, longdo?.updated_at || 0) || null;
+  const rows = useMemo(() => mergeReports(traffy, longdo, hdms, js100), [traffy, longdo, hdms, js100]);
+  const updatedAt = Math.max(traffy?.updated_at || 0, longdo?.updated_at || 0, hdms?.updated_at || 0, js100?.updated_at || 0) || null;
 
   return (
     <div className="flex flex-col gap-4">
-      <ReportList rows={rows} loading={traffy === null || longdo === null} updatedAt={updatedAt} />
+      <ReportList rows={rows} loading={traffy === null || longdo === null || hdms === null || js100 === null} updatedAt={updatedAt} />
       <TraffyAnalysisCard isActive={isActive} />
       <TraffyHistoryCard isActive={isActive} />
     </div>

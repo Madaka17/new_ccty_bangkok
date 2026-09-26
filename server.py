@@ -83,7 +83,7 @@ from helmet_service import HelmetPatrol
 from wrongway_service import WrongWayPatrol
 from air_service import air
 from flood_service import flood_roads
-from flood_feeds import traffy_reports, tmd_warnings
+from flood_feeds import traffy_reports, tmd_warnings, hdms_floods, js100_floods
 from road_service import road_risk
 import chat_service
 import water_service
@@ -829,8 +829,8 @@ def water_summary():
 
 @app.get("/api/water/map")
 def water_map():
-    """Every metro water / rain gauge, the upstream dams and flooded roads (BMA road sensors + Longdo
-    flood reports) as map points."""
+    """Every metro water / rain gauge, the upstream dams and flooded roads (BMA road sensors, Longdo
+    flood reports and Department of Highways HDMS tickets) as map points."""
     try:
         out = water_service.get_map()
     except Exception as e:
@@ -848,6 +848,13 @@ def water_map():
                       "lat": f["lat"], "lng": f["lng"], "ts": f["ts"],
                       "status": "report" if f["active"] else "report_ended",
                       "description": f["description"], "credit": f["credit"]})
+    for h in hdms_floods.status()["items"]:
+        if h["lat"] and h["lng"]:
+            roads.append({"id": h["id"], "kind": "hdms", "name": h["place"] or h["title"], "district": h["amphoe"] or "",
+                          "province": h["province"], "lat": h["lat"], "lng": h["lng"], "ts": h["ts"],
+                          "status": "hdms" if h["active"] else "hdms_ended", "depth_cm": h["depth_cm"],
+                          "description": " · ".join(x for x in (h["title"], h["closure"], h["relief"]) if x),
+                          "credit": h["depot"]})
     return {**out, "roads": roads}
 
 @app.get("/api/flood/longdo")
@@ -1064,6 +1071,16 @@ def flood_reports():
     """Flood complaints from Traffy Fondue in the last few hours, newest first."""
     return traffy_reports.status()
 
+@app.get("/api/flood/hdms")
+def flood_hdms():
+    """Flooded highways in Bangkok and vicinity from the Department of Highways HDMS dashboard, newest first."""
+    return hdms_floods.status()
+
+@app.get("/api/flood/js100")
+def flood_js100():
+    """Flooded-road items from the JS100 radio traffic news in the last 48 h, newest first (text only)."""
+    return js100_floods.status()
+
 @app.get("/api/weather/warnings")
 def weather_warnings():
     """TMD heavy-rain / storm warnings; `active` holds the ones issued in the last two days."""
@@ -1117,6 +1134,8 @@ air.start()
 flood_roads.start()
 traffy_reports.start()
 tmd_warnings.start()
+hdms_floods.start()
+js100_floods.start()
 # Heartbeats stamped by a wrong clock would otherwise sit in the online count forever
 telemetry.purge_future()
 road_risk.traffic, road_risk.flood, road_risk.water = traffic, flood_roads, water_service
