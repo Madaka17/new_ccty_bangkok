@@ -18,7 +18,8 @@ const levelTone = (level) => LEVEL_TONE[level] || LEVEL_TONE.free;
 export default function YoloPage({ active, cameras, favorites, camid, incidents, onPickCamera, onToast, onAsk }) {
  const [stats, setStats] = useState(EMPTY);
  const [streamSrc, setStreamSrc] = useState('');
- const [feedState, setFeedState] = useState('loading'); // loading | live | error
+ const [feedState, setFeedState] = useState('loading'); // loading | live | offline | error
+ const [model, setModel] = useState('AI');
  const [showOptions, setShowOptions] = useState(false);
  const [fps, setFps] = useState(10);
  const [conf, setConf] = useState(20);
@@ -57,9 +58,13 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
     const id = setInterval(async () => {
       try {
         const s = await fetchAIStats();
-        setStats(s);
+        if (s.model) setModel(s.model);
         if (typeof s.night_mode === 'boolean') setNightMode(s.night_mode);
-        if (s.active && s.camid === camid) setFeedState('live');
+        // Until the server reports this camera, the numbers still belong to the previous one
+        if (s.camid !== camid) return;
+        setStats(s);
+        if (s.active) setFeedState('live');
+        else if (s.stream_error) setFeedState('offline');
       } catch {
         setFeedState('error');
       }
@@ -125,7 +130,7 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
  ctx.fillText(`รถยนต์ ${stats.cars || 0}  ·  มอเตอร์ไซค์ ${stats.motorcycles || 0}  ·  รถบรรทุก ${stats.trucks || 0}  ·  ${level.text}  ·  ${new Date().toLocaleString('th-TH')}`, pad, y + 60);
  const a = document.createElement('a');
  a.href = canvas.toDataURL('image/jpeg', 0.92);
- a.download = `yolo11x-${cam?.camid || 'view'}-${Date.now()}.jpg`;
+ a.download = `${model.toLowerCase()}-${cam?.camid || 'view'}-${Date.now()}.jpg`;
  a.click();
  onToast('บันทึกภาพวิวของคุณเรียบร้อย');
   };
@@ -137,10 +142,10 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
 
  return (
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
-      <section className="glass rounded-xl p-5 sm:p-6" aria-label="AI ตรวจจับรถ YOLO11x">
+      <section className="glass rounded-xl p-5 sm:p-6" aria-label={`AI ตรวจจับรถ ${model}`}>
         <div className="min-w-0">
           <h2 className="text-[17px] font-semibold text-slate-900 leading-6">AI ตรวจจับรถสด</h2>
-          <p className="text-[13px] text-slate-600 mt-0.5">YOLO11x นับรถยนต์ มอเตอร์ไซค์ รถบรรทุก จากภาพกล้องที่เลือก ประมาณ 5 ภาพต่อวินาที</p>
+          <p className="text-[13px] text-slate-600 mt-0.5">{model} นับรถยนต์ มอเตอร์ไซค์ รถบรรทุก จากภาพกล้องที่เลือก ประมาณ {stats.target_fps || fps} ภาพต่อวินาที</p>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -171,7 +176,12 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
               {feedState === 'loading' ? (
                 <>
                   <span className="w-9 h-9 rounded-full border-4 border-slate-200 border-t-blue-600 animate-spin" />
-                  YOLO11x กำลังมองดูถนนให้คุณ...
+                  {model} กำลังมองดูถนนให้คุณ...
+                </>
+              ) : feedState === 'offline' ? (
+                <>
+                  <p className="font-medium text-ink-900">กล้องนี้ไม่มีสัญญาณตอนนี้</p>
+                  <p className="text-xs text-center px-6">ต้นทางภาพของกล้องไม่ตอบ ระบบจะลองต่อใหม่เอง หรือเลือกกล้องอื่นก่อนนะ</p>
                 </>
               ) : (
                 <>
@@ -264,7 +274,7 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
         </div>
         <div className={`rounded-xl px-5 py-4 ${level.cls}`}>
           <p className="text-xs opacity-80">หน้ากล้องตอนนี้</p>
-          <p className="text-lg font-semibold">{incident ? (incident.kind === 'breakdown' ? 'มีรถเสียกีดขวาง' : 'เกิดอุบัติเหตุ') : feedState === 'live' ? level.text : 'กำลังดูถนนให้อยู่...'}</p>
+          <p className="text-lg font-semibold">{incident ? (incident.kind === 'breakdown' ? 'มีรถเสียกีดขวาง' : 'เกิดอุบัติเหตุ') : feedState === 'live' ? level.text : feedState === 'offline' ? 'กล้องไม่มีสัญญาณ' : 'กำลังดูถนนให้อยู่...'}</p>
           {feedState === 'live' && <p className="text-sm mt-0.5">{level.hint}</p>}
         </div>
         {favList.length > 0 && (

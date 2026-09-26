@@ -104,7 +104,7 @@ from backend.agents.water_agent import WaterAgent
 # ids that end up in file names: letters, digits, _ . - only (never a path)
 SAFE_ID = re.compile(r"[A-Za-z0-9_.-]{1,80}")
 
-app = FastAPI(title="BKK StreetSmart CCTV & YOLO11x Vehicle Detection")
+app = FastAPI(title="BKK StreetSmart CCTV & YOLO Vehicle Detection")
 
 # CORS: the UI is served from this same origin (and Vite dev proxies /api), so no other website may
 # read the API from a visitor's browser. ALLOWED_ORIGINS (comma separated) adds origins if ever needed.
@@ -141,7 +141,7 @@ if os.path.exists(CAMERAS_FILE):
     except Exception as e:
         print(f"[Warning] Failed to load cameras_bkk.json: {e}")
 
-# Initialize YOLO11x Vehicle Detector (Target: 10 FPS for smoother playback)
+# Initialize the YOLO vehicle detector (model from AI_MODEL, target 10 FPS for smoother playback)
 vehicle_log = VehicleLog(os.path.join(DATA_DIR, "vehicle_counts.db"))
 detector = VehicleDetectorYOLO11x(model_path=MODEL_PATH, target_fps=10.0, conf_threshold=0.15, vehicle_log=vehicle_log)
 # Background counting on user-selected cameras (lower fps to prioritize live camera)
@@ -1173,8 +1173,8 @@ if __name__ == "__main__":
     if os.getenv("OPEN_BROWSER") == "1":
         start_browser_when_ready(f"http://localhost:{PORT}")
     print("=" * 60)
-    print("  BKK StreetSmart CCTV & YOLO11x Vehicle Detection Server")
-    print("  Model: YOLO11x | Processing Rate: 5 FPS")
+    print("  BKK StreetSmart CCTV & YOLO Vehicle Detection Server")
+    print(f"  Model: {detector.model_name} | Processing Rate: {detector.target_fps:g} FPS")
     print("  Detected Classes: รถยนต์ (Cars), มอไซ (Motorcycles), รถบรรทุก (Trucks)")
     print(f"  Running at http://localhost:{PORT}" + (f"  [TEST instance, data in {DATA_DIR}]" if IS_STAGE else ""))
     print("=" * 60)
