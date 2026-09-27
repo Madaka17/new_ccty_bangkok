@@ -10,6 +10,7 @@ import { Card, Button, FOCUS } from './dashboard/ui.jsx';
 import { PageHeader } from './dashboard/primitives.jsx';
 import { baseStyle } from './water/WaterMap.jsx';
 import ReportFloodForm from './water/ReportFloodForm.jsx';
+import { roughWarning, showAccuracy, frameFix } from '../lib/geo.js';
 
 const PIN_COLOR = '#0891b2';
 const GEO_ERROR = {
@@ -22,6 +23,7 @@ export default function ReportFloodPage({ isActive, onNavigate }) {
   const [pin, setPin] = useState(null);
   const [locating, setLocating] = useState(false);
   const [geoError, setGeoError] = useState('');
+  const [rough, setRough] = useState('');       // the GPS-less fix may be km off: ask for the pin to be moved
   const [sent, setSent] = useState(null);      // the server's answer (+ the photo) once a report went through
   const [formKey, setFormKey] = useState(0);   // a fresh form for "แจ้งอีกจุด"
   const mapEl = useRef(null);
@@ -50,9 +52,16 @@ export default function ReportFloodPage({ isActive, onNavigate }) {
     setGeoError('');
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const p = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        setPin(p);
-        mapRef.current?.easeTo({ center: [p.lng, p.lat], zoom: 16, duration: 800 });
+        const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+        setPin({ lat, lng });
+        const map = mapRef.current;
+        if (map) {
+          if (map.isStyleLoaded()) showAccuracy(map, lng, lat, accuracy, PIN_COLOR);
+          else map.once('load', () => showAccuracy(map, lng, lat, accuracy, PIN_COLOR));
+          frameFix(map, lng, lat, accuracy, 16);
+        }
+        const warn = roughWarning(accuracy);
+        setRough(warn ? `${warn} · แตะแผนที่หรือลากหมุดไปจุดที่น้ำท่วมจริง` : '');
         setLocating(false);
       },
       (err) => {
@@ -77,7 +86,10 @@ export default function ReportFloodPage({ isActive, onNavigate }) {
       });
       loadReports();
     });
-    map.on('click', (e) => setPin({ lat: e.lngLat.lat, lng: e.lngLat.lng }));
+    map.on('click', (e) => {
+      setPin({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+      setRough('');   // placed by hand: the person chose the spot
+    });
     mapRef.current = map;
     return () => {
       map.remove();
@@ -104,6 +116,7 @@ export default function ReportFloodPage({ isActive, onNavigate }) {
       m.on('dragend', () => {
         const ll = m.getLngLat();
         setPin({ lat: ll.lat, lng: ll.lng });
+        setRough('');
       });
       markerRef.current = m;
     }
@@ -150,7 +163,7 @@ export default function ReportFloodPage({ isActive, onNavigate }) {
               {locating ? 'กำลังหาตำแหน่ง…' : 'ตำแหน่งของฉัน'}
             </button>
           </div>
-          {geoError && <p role="status" className="px-4 py-2 text-xs text-amber-800 bg-amber-50 border-t border-amber-200">{geoError}</p>}
+          {(geoError || rough) && <p role="status" className="px-4 py-2 text-xs text-amber-800 bg-amber-50 border-t border-amber-200">{geoError || rough}</p>}
         </Card>
 
         <div ref={sideRef} className="flex flex-col gap-3 scroll-mt-20">

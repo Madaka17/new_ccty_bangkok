@@ -5,6 +5,7 @@ import Hls from 'hls.js';
 import { fetchTrafficSummary, fetchLongdoCameras, fetchWaterSummary, fetchAirStations, fetchWindGrid, fetchFloodStatus, fetchFloodStations, fetchFloodReports, fetchHdmsFloods, fetchFloodCameras, fetchUserReports } from '../lib/api.js';
 import { enrichCamerasWithFloodRisk } from '../lib/floodRisk.js';
 import { fmtTime } from './dashboard/format.js';
+import { accuracyText, roughWarning, showAccuracy, frameFix } from '../lib/geo.js';
 import { Icon } from './dashboard/icons.jsx';
 import { Button } from './dashboard/ui.jsx';
 import { PageHeader } from './dashboard/primitives.jsx';
@@ -295,6 +296,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const [showUserReports, setShowUserReports] = useState(true);
   const [userReports, setUserReports] = useState(null);
   const userReportMarkersRef = useRef([]);
+  const meMarkerRef = useRef(null);   // "ไปที่ตำแหน่งของฉัน": one dot, moved on every click
   const [showHdms, setShowHdms] = useState(false);
   const [hdms, setHdms] = useState(null);
   const hdmsMarkersRef = useRef([]);
@@ -1260,20 +1262,26 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
  return () => el.removeEventListener('click', onClick);
   }, [onToggle, onOpenAI]);
 
+ // The accuracy circle shows how far off the fix may be: a computer on a LAN cable is placed by its IP address
  const locateMe = () => {
  if (!navigator.geolocation) return onToast('เบราว์เซอร์นี้ไม่รองรับตำแหน่ง');
  navigator.geolocation.getCurrentPosition(
       (p) => {
  const map = mapRef.current;
  if (!map) return;
- const here = [p.coords.longitude, p.coords.latitude];
- map.flyTo({ center: here, zoom: 13, duration: 1000 });
+ const { longitude: lng, latitude: lat, accuracy } = p.coords;
+ if (!meMarkerRef.current) {
  const dot = document.createElement('span');
  dot.style.cssText = 'display:block;width:18px;height:18px;border-radius:999px;background:#8a72c4;border:3px solid #fff;box-shadow:0 0 0 6px rgba(138,114,196,.25)';
- new maplibregl.Marker({ element: dot }).setLngLat(here).addTo(map);
+ meMarkerRef.current = new maplibregl.Marker({ element: dot });
+        }
+ meMarkerRef.current.setLngLat([lng, lat]).addTo(map);
+ showAccuracy(map, lng, lat, accuracy);
+ frameFix(map, lng, lat, accuracy, 15);
+ onToast(roughWarning(accuracy) || `ตำแหน่งของคุณ แม่นยำ ${accuracyText(accuracy)}`);
       },
       () => onToast('ขอตำแหน่งไม่สำเร็จ'),
-      { timeout: 8000 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   };
 
