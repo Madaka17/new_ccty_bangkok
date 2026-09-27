@@ -6,6 +6,9 @@
 - ``/api/chat`` (uses paid Gemini/Claude keys) is rate limited per client IP and
   the request body is size-capped, so a stranger with the link cannot drain the
   key. Set ``CHAT_RATE_PER_MIN`` / ``CHAT_RATE_PER_DAY`` in .env to tune.
+- ``POST /api/flood/user-reports`` (a flood report with a photo from the public) is the one other public
+  write: that exact path and method only (deleting a report stays operator-only), body capped at
+  ``USER_REPORT_MAX_BODY`` and ``USER_REPORT_RATE_PER_HOUR`` / ``USER_REPORT_RATE_PER_DAY`` per IP.
 - Any other request is soft rate limited to stop scripted floods (per minute and per day).
 - Paths with a backslash, ``..`` or ``:`` are refused before routing: ids in the URL end up in file
   paths (``/api/helmet/{hid}/crop``), and on Windows those let a request read any .jpg on the disk.
@@ -37,6 +40,10 @@ CHAT_RATE_PER_DAY = int(os.getenv("CHAT_RATE_PER_DAY", "60"))
 CHAT_MAX_BODY = int(os.getenv("CHAT_MAX_BODY", "8000"))       # bytes
 GENERAL_RATE_PER_MIN = int(os.getenv("GENERAL_RATE_PER_MIN", "600"))
 GENERAL_RATE_PER_DAY = int(os.getenv("GENERAL_RATE_PER_DAY", "40000"))
+USER_REPORT_PATH = "/api/flood/user-reports"
+USER_REPORT_MAX_BODY = int(os.getenv("USER_REPORT_MAX_BODY", str(6 * 2**20)))   # bytes: one photo as a data: URL
+USER_REPORT_RATE_PER_HOUR = int(os.getenv("USER_REPORT_RATE_PER_HOUR", "5"))
+USER_REPORT_RATE_PER_DAY = int(os.getenv("USER_REPORT_RATE_PER_DAY", "20"))
 API_BROWSER_ONLY = os.getenv("API_BROWSER_ONLY", "1").strip() != "0"
 DOC_PATHS = ("/docs", "/redoc", "/openapi.json")
 BAD_PATH = re.compile(r"\\|\.\.|:")
@@ -110,6 +117,8 @@ chat_min = _Window(CHAT_RATE_PER_MIN, 60)
 chat_day = _Window(CHAT_RATE_PER_DAY, 86400)
 general_min = _Window(GENERAL_RATE_PER_MIN, 60)
 general_day = _Window(GENERAL_RATE_PER_DAY, 86400)
+report_hour = _Window(USER_REPORT_RATE_PER_HOUR, 3600)
+report_day = _Window(USER_REPORT_RATE_PER_DAY, 86400)
 
 
 def _is_trusted_ip(ip):
@@ -173,9 +182,20 @@ async def guard(request: Request, call_next):
 
     ip = client_ip(request)
 
-    if request.method in ("POST", "PUT", "DELETE") and not path.startswith(PUBLIC_WRITE_PREFIXES):
+    user_report = path == USER_REPORT_PATH and request.method == "POST"
+    if request.method in ("POST", "PUT", "DELETE") and not path.startswith(PUBLIC_WRITE_PREFIXES) and not user_report:
         if not trusted:
             return _deny(403, "control endpoints are limited to the operator")
+
+    if user_report and not trusted:
+        try:
+            length = int(request.headers.get("content-length") or 0)
+        except ValueError:
+            length = 0
+        if length > USER_REPORT_MAX_BODY:
+            return _deny(413, "photo too large")
+        if not report_hour.allow(ip) or not report_day.allow(ip):
+            return _deny(429, "too many reports, try again later")
 
     if path == "/api/chat" and request.method == "POST" and not trusted:
         try:

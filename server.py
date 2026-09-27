@@ -86,6 +86,7 @@ from backend.vision.itic_frames import IticFrames
 from backend.vision.wrongway_service import WrongWayPatrol
 from backend.water.air_service import air
 from backend.water.flood_service import flood_roads
+from backend.water.user_reports import UserReports
 from backend.water.flood_feeds import traffy_reports, tmd_warnings, hdms_floods, js100_floods
 from backend.traffic.road_service import road_risk
 from backend.agents import chat_service
@@ -182,6 +183,8 @@ flood_cams = FloodCamWatch(bma_scanner.cameras)
 bma_scanner.flood = flood_cams
 # ...and over the iTIC cameras around Bangkok (the Longdo list on the map), one frame from each HLS stream every 5 min
 itic_frames = IticFrames(flood_cams, lambda: (get_longdo_cameras() or {}).get("items", []))
+# Flood reports from the public (pin, depth, photo), checked by the same vision model before they reach the maps
+user_reports = UserReports()
 # Corridor dispersal guidance rebuilt every minute from the live Longdo lines + camera counts
 guidance = GuidanceService(traffic, incidents=incidents, bma=bma_scanner, cameras=lambda: cameras_data)
 
@@ -763,6 +766,44 @@ def flood_cameras_check():
     """Check every camera now instead of waiting for its turn (operator only through access_guard)."""
     return flood_cams.check_all()
 
+@app.get("/api/flood/user-reports")
+def user_reports_recent(hours: float = Query(None, gt=0, le=48)):
+    """Published flood reports from the public in the last hours (default USER_REPORT_HOURS)."""
+    return user_reports.recent(hours)
+
+@app.post("/api/flood/user-reports")
+async def user_reports_create(request: Request):
+    """A flood report from the public: {lat, lng, depth, note?, photo? (data: URL)}. Size and rate limited in access_guard."""
+    body = bytearray()
+    async for chunk in request.stream():   # counted here too: a chunked upload has no content-length to check
+        body += chunk
+        if len(body) > access_guard.USER_REPORT_MAX_BODY:
+            raise HTTPException(413, "รูปใหญ่เกินไป")
+    try:
+        data = json.loads(body)
+    except ValueError:
+        raise HTTPException(400, "ข้อมูลไม่ถูกต้อง") from None
+    if not isinstance(data, dict):
+        raise HTTPException(400, "ข้อมูลไม่ถูกต้อง")
+    try:
+        return await asyncio.get_running_loop().run_in_executor(None, user_reports.create, data)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+
+@app.get("/api/flood/user-reports/{rid}/photo")
+def user_report_photo(rid: str):
+    p = user_reports.published_photo(rid)
+    if not p:
+        raise HTTPException(404, "no photo")
+    return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=3600"})
+
+@app.delete("/api/flood/user-reports/{rid}")
+def user_report_delete(rid: str):
+    """Take a report off the maps (operator only through access_guard)."""
+    if not user_reports.delete(rid):
+        raise HTTPException(400, "bad id")
+    return {"deleted": rid}
+
 @app.get("/api/flood/analysis")
 def flood_analysis():
     """AI read of the current flooding: severity, what is happening, spots to watch, what to do."""
@@ -1169,6 +1210,7 @@ air.start()
 flood_roads.start()
 flood_cams.start()
 itic_frames.start()
+user_reports.start()
 traffy_reports.start()
 tmd_warnings.start()
 hdms_floods.start()

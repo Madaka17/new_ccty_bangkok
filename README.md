@@ -77,6 +77,11 @@ FLOOD_CAM_MAX_PER_HOUR=900
 # กล้อง iTIC ที่ให้ AI ดูน้ำท่วมด้วย: จังหวัด (คั่นด้วย , หรือ all = ทุกตัว ~210 ตัว โหลด ~150 MB/รอบ) และรอบดึงภาพ (วินาที)
 FLOOD_CAM_ITIC_PROVINCES=กรุงเทพมหานคร,นนทบุรี,ปทุมธานี,สมุทรปราการ,สมุทรสาคร,นครปฐม
 FLOOD_CAM_ITIC_SECONDS=300
+# ประชาชนแจ้งน้ำท่วมพร้อมรูป: แสดงบนแผนที่กี่ชั่วโมง, จำกัดต่อ IP ต่อชั่วโมง/วัน, ขนาดคำขอสูงสุด (ไบต์)
+USER_REPORT_HOURS=6
+USER_REPORT_RATE_PER_HOUR=5
+USER_REPORT_RATE_PER_DAY=20
+USER_REPORT_MAX_BODY=6291456
 # ป้องกันสาธารณะ: ตั้งแล้วส่ง header X-Admin-Token เพื่อกดปุ่มควบคุมจากนอก LAN
 ADMIN_TOKEN=
 # โฟลเดอร์เก็บ CSV รอบนับกล้อง กทม. + ภาพหลักฐานฝ่าฝืน (ค่าเริ่มต้น D:\Data)
@@ -225,6 +230,7 @@ GENERAL_RATE_PER_MIN=600
 | `backend/water/air_service.py` | PM2.5 / AQI รายสถานีจาก Air4Thai ทุก 10 นาที (`/api/air/stations`) |
 | `backend/vision/flood_cam_service.py` | AI ดูน้ำท่วมจากภาพกล้อง กทม. ทุกตัว: รับภาพดิบจากรอบสแกน (และกล้อง iTIC จาก `itic_frames.py`) → รวม 9 กล้องเป็นภาพตาราง 3×3 ถาม Qwen vision (`LOCAL_LLM_*`) ครั้งเดียว (~5 วิ) → ช่องที่ดูเหมือนมีน้ำถามซ้ำทีละภาพเพื่อยืนยันก่อนขึ้นแผนที่ ระดับ: ไม่ท่วม / น้ำขังเล็กน้อย / น้ำท่วมผิวจราจร / น้ำท่วมหนัก / มองไม่ชัด กล้องแห้งตรวจซ้ำทุก 10 นาที กล้องที่มีน้ำทุก 5 นาที ภาพค้าง (feed ไม่ขยับ) ไม่ถามซ้ำ ผลเก็บที่ `cache/flood_cams.json` + ภาพที่ใช้ตัดสินใน `cache/flood_cams/` (`/api/flood/cameras*`, ชั้น "กล้องเห็นน้ำท่วม (AI)" ในหน้า Traffic Map) |
 | `backend/vision/itic_frames.py` + `ts_decode.py` | ภาพจากกล้อง iTIC (หมุด CCTV บนแผนที่ จากรายการ Longdo) ให้ AI ดูน้ำท่วม: ลิงก์ JPEG ของ iTIC (`camera1.iticfoundation.org`) ใช้ไม่ได้ จึงดึง segment ล่าสุดของ HLS ทุก 5 นาที แล้วถอดเฟรมแรกใน process แยก (`ts_decode.py`) ไม่ถอดใน server เพราะ FFmpeg เคยทำ server ล่มกับ stream ที่เสีย ค่าเริ่มต้นเฉพาะกรุงเทพฯ-ปริมณฑล ~35 ตัว (`FLOOD_CAM_ITIC_PROVINCES`) |
+| `backend/water/user_reports.py` | ประชาชนแจ้งน้ำท่วม (หมุด ระดับน้ำ รูป 1 รูป ข้อความสั้น) จากหน้า "แจ้งน้ำท่วม" (`#/report`, ปุ่มกลางแถบเมนูล่างบนมือถือ และปุ่มบนสุดของเมนูซ้าย): รูปถูกย่อและบันทึกใหม่เป็น JPEG ไม่มี EXIF/GPS → Qwen vision ตรวจว่าเป็นรูปน้ำท่วมจริงและเหมาะสม → ขึ้นแผนที่ 6 ชม. ในชื่อ "ประชาชนแจ้ง ยังไม่ยืนยัน" (ไม่ผ่านถูกปฏิเสธและลบรูป, AI ไม่ตอบรอคิวลองใหม่ทุก 60 วิ) `POST /api/flood/user-reports` เป็นช่องเขียนสาธารณะช่องเดียว จำกัดขนาดและจำนวนต่อ IP ใน `access_guard.py` ส่วนการลบ (`DELETE`) เฉพาะ operator |
 | `backend/vision/helmet_service.py` | ตรวจหมวกกันน็อกทุกกล้อง กทม.: crop มอไซจากรอบสแกน → โมเดลในเครื่อง (`HELMET_DET`, ค่าปัจจุบัน `helmet_det_blur.pt`) คัดกรอง → AI agent (Gemini/Claude) ยืนยัน → ผู้ไม่สวมหมวกเก็บภาพ+CSV ที่ `BMA_DATA_DIR\helmet\` (`/api/helmet/*`) |
 | `backend/vision/wrongway_service.py` | ตรวจรถย้อนศรทุกกล้อง กทม. จากภาพนิ่ง: กรอบรถจาก yolo26x ตัวเดียวกับที่นับรถ → โมเดลจำแนกทิศ `wrongway_cls.pt` (YOLO26s-cls, `toward` เห็นหน้ารถ / `away` เห็นท้ายรถ) อ่านรถทีละคัน (ไม่มีไฟล์นี้จะใช้ `wrongway_det.pt` ตัวเก่าที่หารถไม่ค่อยเจอ) → กล้องแต่ละตัวเรียนรู้ทิศปกติต่อช่องกริด 12×9 (`cache/heading/`) → รถที่หันสวนช่องที่รู้ทิศแล้วส่ง AI agent ยืนยัน → หลักฐาน+CSV ที่ `BMA_DATA_DIR\wrongway\` (`/api/wrongway/*`) |
 | `local/pipeline/collect_wrongway_dataset.py`, `train_wrongway_det.py`, `wrongway_pipeline.bat`, `wrongway_status.bat` | dataset ทิศทางรถแบบไม่ต้อง label มือ: เก็บ burst จากทุกกล้อง (BMA ~1 เฟรม/วิ + HLS) ติดตามรถ ทิศจากการเคลื่อนที่ (รถจอดใช้แผนที่ทิศของกล้อง) → fine-tune `yolo26x.pt` เป็น `wrongway_det.pt`; `wrongway_pipeline.bat [รอบ] [นาทีห่าง] [epochs] [batch]` ทำครบทั้งสองขั้น + หน้าต่างสถานะ |
