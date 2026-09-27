@@ -125,7 +125,8 @@ if not os.path.exists(MODEL_PATH):
     MODEL_PATH = os.path.join(BASE_DIR, "yolo26x.pt")
 CAMERAS_FILE = os.path.join(BASE_DIR, "config", "cameras_bkk.json")
 # React UI (web/dist, built by launch\build_web.bat). Without a build the API still runs and "/" says how to build it.
-WEB_DIST = os.path.join(BASE_DIR, "web", "dist")
+# WEB_DIST: another build folder (the test server on :8001 serves its own, so building it leaves the live UI alone)
+WEB_DIST = os.getenv("WEB_DIST") or os.path.join(BASE_DIR, "web", "dist")
 INDEX_HTML = os.path.join(WEB_DIST, "index.html")
 WEB_BUILT = os.path.exists(INDEX_HTML)
 if not WEB_BUILT:

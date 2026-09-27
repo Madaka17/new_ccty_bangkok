@@ -11,6 +11,8 @@ rem Delete local\stage\ to start it clean again.
 set "PORT=8001"
 set "INSTANCE_DIR=%CD%\local\stage"
 set "BMA_DATA_DIR=%CD%\local\stage\data"
+rem Its own web UI build too: building it never changes what the public server shows
+set "WEB_DIST=%CD%\local\stage\dist"
 
 echo ======================================================================
 echo   BKK StreetSmart - TEST server  http://localhost:8001

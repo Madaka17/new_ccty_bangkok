@@ -135,6 +135,7 @@ GENERAL_RATE_PER_MIN=600
 
 - Main web กับ localhost:8000 ใช้พอร์ต 8000 เดียวกัน จึงเปิดได้ทีละตัว ส่วน localhost:8001 เปิดพร้อมกับตัวใดตัวหนึ่งได้
 - localhost:8001 ครั้งแรกจะคัดลอก cache เล็ก ๆ และ DB มาไว้ใน `local\stage\`; ลบโฟลเดอร์นี้เพื่อเริ่มใหม่สะอาด ๆ (ตัวแปร: `PORT`, `INSTANCE_DIR`, `BMA_DATA_DIR` ดู `backend/core/instance.py`)
+- localhost:8001 เสิร์ฟหน้าเว็บจาก build ของตัวเองที่ `local\stage\dist` (ตัวแปร `WEB_DIST`) การ build ให้ :8001 จึงไม่เปลี่ยนหน้าเว็บของเซิร์ฟเวอร์จริง หลังแก้หน้าเว็บให้ลบ `local\stage\dist` แล้วเปิด `localhost_8001\start.bat` ใหม่ (หรือ `npm run build -- --outDir ..\local\stage\dist` ในโฟลเดอร์ `web`)
 - `launch\build_web.bat force` build หน้าเว็บใหม่หลังแก้โค้ดใน `web/`
 - พัฒนาหน้าเว็บแบบ hot-reload: `npm run dev` (proxy `/api` ไป :8000) หรือ `npm run dev:8001` (proxy ไปเซิร์ฟเวอร์ทดสอบ :8001)
 
