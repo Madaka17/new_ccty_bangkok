@@ -29,6 +29,7 @@ export const NAV_GROUPS = [
     label: 'Tools',
     items: [
       { id: 'ai', label: 'Ask AI', hint: 'ถาม AI เรื่องจราจร น้ำท่วม หรือเรื่องทั่วไป' },
+      { id: 'report', label: 'Report Flood', hint: 'แจ้งจุดน้ำท่วมพร้อมรูป ปักหมุดบนแผนที่' },
       { id: 'visitors', label: 'Visitors', hint: 'สถิติผู้เข้าใช้งานเว็บ' },
     ],
   },

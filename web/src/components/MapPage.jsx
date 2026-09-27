@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import Hls from 'hls.js';
-import { fetchTrafficSummary, fetchLongdoCameras, fetchWaterSummary, fetchAirStations, fetchWindGrid, fetchFloodStatus, fetchFloodStations, fetchFloodReports, fetchHdmsFloods, fetchFloodCameras } from '../lib/api.js';
+import { fetchTrafficSummary, fetchLongdoCameras, fetchWaterSummary, fetchAirStations, fetchWindGrid, fetchFloodStatus, fetchFloodStations, fetchFloodReports, fetchHdmsFloods, fetchFloodCameras, fetchUserReports } from '../lib/api.js';
 import { enrichCamerasWithFloodRisk } from '../lib/floodRisk.js';
 import { fmtTime } from './dashboard/format.js';
 import { Icon } from './dashboard/icons.jsx';
@@ -150,6 +150,8 @@ const CAM_FLOOD_STYLE = {
   unclear: { color: '#94a3b8', label: 'มองไม่ชัด' },
 };
 const CAM_WET = ['severe', 'flooded', 'puddle'];
+// Flood reports sent by the public from the Water Forecast map (user_reports.py)
+const USER_REPORT_COLOR = '#0891b2';
 
 // Citizen flood reports (Traffy Fondue): a speech-bubble pin, hotter the fresher the report
 const REPORT_COLOR = '#7c3aed';
@@ -290,6 +292,9 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const [camFloodDry, setCamFloodDry] = useState(false);
   const [camFlood, setCamFlood] = useState(null);
   const camFloodMarkersRef = useRef([]);
+  const [showUserReports, setShowUserReports] = useState(true);
+  const [userReports, setUserReports] = useState(null);
+  const userReportMarkersRef = useRef([]);
   const [showHdms, setShowHdms] = useState(false);
   const [hdms, setHdms] = useState(null);
   const hdmsMarkersRef = useRef([]);
@@ -721,6 +726,19 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
     };
   }, [isActive, showCamFlood, camFloodDry]);
 
+  // Flood reports from the public (published after the AI check), shown for 6 h
+  useEffect(() => {
+    if (!isActive || !showUserReports) return;
+    let alive = true;
+    const tick = () => fetchUserReports().then((d) => alive && setUserReports(d)).catch(() => {});
+    tick();
+    const id = setInterval(tick, 60000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [isActive, showUserReports]);
+
   // Traffy Fondue flood complaints; the server refreshes them every 5 min
   useEffect(() => {
     if (!isActive) return;
@@ -871,6 +889,32 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
       camFloodMarkersRef.current.push(new maplibregl.Marker({ element: el, ...place }).setLngLat([c.lng, c.lat]).setPopup(popup).addTo(map));
     }
   }, [camFlood, showCamFlood]);
+
+  // One pin per report from the public, with its photo in the popup
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    for (const m of userReportMarkersRef.current) m.remove();
+    userReportMarkersRef.current = [];
+    if (!showUserReports || !userReports) return;
+    for (const u of userReports.items || []) {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.title = `ประชาชนแจ้งน้ำท่วม ${agoTh(u.ts)} · น้ำสูง${u.depth_th}`;
+      el.style.cssText = `width:26px;height:26px;border-radius:999px 999px 999px 3px;background:${USER_REPORT_COLOR};border:2px solid #fff;box-shadow:0 0 0 4px ${USER_REPORT_COLOR}44,0 1px 4px rgba(15,23,42,.35);color:#fff;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0`;
+      el.textContent = u.photo ? '📷' : '💧';
+      const popup = new maplibregl.Popup({ offset: 14, closeButton: true, maxWidth: '300px' }).setHTML(
+        `<div style="font-size:13px;line-height:1.45">
+          <b style="color:${USER_REPORT_COLOR}">ประชาชนแจ้ง ยังไม่ยืนยัน</b> <span style="color:#64748b">· ${agoTh(u.ts)}</span>
+          <br>น้ำสูง<b>${esc(u.depth_th)}</b> <span style="color:#64748b">(~${u.depth_cm} ซม.)</span>
+          ${u.note ? `<br><span>${esc(u.note)}</span>` : ''}
+          ${u.photo ? `<img src="${esc(u.photo)}" alt="รูปจากผู้แจ้ง" loading="lazy" style="display:block;margin-top:6px;width:100%;max-height:200px;object-fit:cover;border-radius:6px;background:#e2e8f0">` : ''}
+          ${u.photo && u.ai_level_th ? `<span style="color:#64748b;font-size:11px">AI ดูรูปแล้ว: ${esc(u.ai_level_th)}${u.ai_note ? ` · ${esc(u.ai_note)}` : ''}</span>` : ''}
+        </div>`
+      );
+      userReportMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([u.lng, u.lat]).setPopup(popup).addTo(map));
+    }
+  }, [userReports, showUserReports]);
 
   // One pin per citizen report: solid and ringed in the last hour, faded when older
   useEffect(() => {
@@ -1247,7 +1291,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const trafficOn = (showTraffic ? 1 : 0) + (showRail ? 1 : 0) + Object.values(pinsOn).filter(Boolean).length;
   const incidentList = [...(incidents?.camera || []), ...(incidents?.longdo || [])];
   const riskOnCount = Object.values(riskOn).filter(Boolean).length;
-  const waterOn = [showRainRadar, showCamFlood, showFlood, showReports, showHdms, showGauges].filter(Boolean).length;
+  const waterOn = [showRainRadar, showCamFlood, showUserReports, showFlood, showReports, showHdms, showGauges].filter(Boolean).length;
   const camCounts = camFlood?.counts || {};
   const camWet = CAM_WET.reduce((n, k) => n + (camCounts[k] || 0), 0);
   const camWetList = (camFlood?.items || []).filter((c) => CAM_WET.includes(c.level));
@@ -1464,6 +1508,21 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
               <p className="text-[11px] text-slate-500">{showCamFlood ? 'กำลังโหลดผลตรวจจากกล้อง ...' : 'เปิดเพื่อดูจุดที่ AI เห็นน้ำท่วมในภาพกล้อง'}</p>
             )}
             <p className="text-[11px] text-slate-400 mt-1">AI ดูภาพกล้อง กทม. ทุกตัว และกล้อง iTIC รอบกรุงเทพฯ-ปริมณฑล ราว 10 นาที/รอบ อาจผิดพลาดได้ กดหมุดเพื่อดูภาพที่ AI ใช้ตัดสิน</p>
+          </div>
+
+          {/* ประชาชนแจ้งน้ำท่วมผ่านเว็บนี้ (พร้อมรูป ผ่าน AI ตรวจ) */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
+                <input type="checkbox" checked={showUserReports} onChange={(e) => setShowUserReports(e.target.checked)} className="accent-blue-600 w-4 h-4" />
+                <span aria-hidden="true">📷</span> ประชาชนแจ้งผ่านเว็บ
+              </label>
+              {userReports && <span className="text-[11px] text-slate-500">{userReports.total} เรื่อง</span>}
+            </div>
+            <p className="text-[11px] text-slate-500">
+              {userReports ? (userReports.total ? `${userReports.total} เรื่องใน ${userReports.hours} ชม. · AI ตรวจรูปก่อนขึ้นแผนที่` : `ยังไม่มีใครแจ้งใน ${userReports.hours} ชม.`) : 'เปิดเพื่อดูจุดที่ประชาชนแจ้งพร้อมรูป'}
+            </p>
+            <a href="#/report" className="text-[11px] text-blue-700 hover:underline">เห็นน้ำท่วม? แจ้งพร้อมรูปได้ที่หน้าแจ้งน้ำท่วม</a>
           </div>
 
           {/* น้ำท่วมขังถนน (เซ็นเซอร์ กทม.) + ระดับน้ำแม่น้ำ/คลอง (ปริมณฑล) */}

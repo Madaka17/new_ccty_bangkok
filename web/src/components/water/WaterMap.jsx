@@ -74,7 +74,8 @@ function valueText(p) {
   return p.msl != null ? `${fmt(p.msl)} ม.รทก.` : '–';
 }
 
-function baseStyle() {
+// Also used by FloodPointsMap
+export function baseStyle() {
   return {
     version: 8,
     sources: {
@@ -84,7 +85,7 @@ function baseStyle() {
   };
 }
 
-function bounds(points) {
+export function bounds(points) {
   if (!points.length) return null;
   let [w, s, e, n] = [180, 90, -180, -90];
   for (const p of points) {

@@ -221,6 +221,24 @@ export async function fetchFloodReports() {
   return res.json();
 }
 
+// Flood reports from the public (user_reports.py): the published ones of the last hours
+export async function fetchUserReports() {
+  const res = await fetch('/api/flood/user-reports');
+  if (!res.ok) throw new Error('user_reports');
+  return res.json();
+}
+
+// Send one: { lat, lng, depth, note?, photo? (data: URL) } -> { id, status: published | pending | rejected, message }
+export async function postUserReport(body) {
+  const res = await fetch('/api/flood/user-reports', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const byStatus = { 413: 'รูปใหญ่เกินไป', 429: 'แจ้งถี่เกินไป ลองใหม่ภายหลัง' };
+    throw new Error(byStatus[res.status] || data.detail || 'ส่งไม่สำเร็จ ลองใหม่อีกครั้ง');
+  }
+  return data;
+}
+
 // AI flood watch on every BMA camera (flood_cam_service.py): counts + the cameras with water (all: every checked one)
 export async function fetchFloodCameras({ all = false } = {}) {
   const res = await fetch(`/api/flood/cameras${all ? '?all=1' : ''}`);

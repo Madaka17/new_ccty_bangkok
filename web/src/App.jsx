@@ -14,19 +14,21 @@ import SafetyPage from './components/SafetyPage.jsx';
 import BotFace from './components/BotFace.jsx';
 import VisitorsPage from './components/VisitorsPage.jsx';
 import WaterPage from './components/WaterPage.jsx';
+import ReportFloodPage from './components/ReportFloodPage.jsx';
 import AlertsPage from './components/AlertsPage.jsx';
 import AlertPopups from './components/AlertPopups.jsx';
 import { fetchCameras, fetchAIStats, fetchIncidents, fetchSurveyRanking, fetchRoadCameras } from './lib/api.js';
 import { useActiveCameras, useFavorites } from './lib/store.js';
 import { trackView, startHeartbeat } from './lib/telemetry.js';
 
-const PAGES = ['dashboard', 'cameras', 'map', 'safety', 'water', 'yolo', 'ai', 'alerts', 'visitors'];
+const PAGES = ['dashboard', 'cameras', 'map', 'safety', 'water', 'report', 'yolo', 'ai', 'alerts', 'visitors'];
 // Old links to pages that are now tabs of the camera AI page
 const CAMERA_TAB_LINKS = { 'camera-search': 'search', 'bma-count': 'bma', helmet: 'helmet', wrongway: 'wrongway' };
 
 function pageFromHash() {
  const h = window.location.hash.replace(/^#\/?/, '');
  if (CAMERA_TAB_LINKS[h]) return 'yolo';
+ if (h === 'report-flood') return 'report';   // the first link handed out for the report page
  return PAGES.includes(h) ? h : 'dashboard';
 }
 
@@ -209,7 +211,9 @@ export default function App() {
 
  const activeCams = useMemo(() => active.map((id) => cameras.find((c) => c.camid === id)).filter(Boolean), [active, cameras]);
 
-  const sidebarProps = { page, onNavigate: navigate, aiActive, liveCount: activeCams.length };
+ const openFloodReport = useCallback(() => navigate('report'), [navigate]);
+
+ const sidebarProps = { page, onNavigate: navigate, aiActive, liveCount: activeCams.length };
 
   return (
     <div className="min-h-full lg:grid lg:grid-cols-[220px_1fr]">
@@ -247,7 +251,7 @@ export default function App() {
           <button type="button" aria-label="ปิดเมนู" onClick={() => setMenuOpen(false)} className="flex-1 bg-slate-900/50" />
         </div>
       )}
-      <BottomNav page={page} onNavigate={navigate} onMenu={() => setMenuOpen(true)} />
+      <BottomNav page={page} onNavigate={navigate} onMenu={() => setMenuOpen(true)} onReport={openFloodReport} />
 
       <div className="min-h-full flex flex-col pt-4 pb-24 min-w-0">
         <main className="flex-1 px-4 sm:px-6 min-w-0">
@@ -294,6 +298,8 @@ export default function App() {
             {page === 'map' && <MapPage isActive cameras={cameras} active={active} incidents={incidents} onToggle={toggle} onOpenAI={openAI} onToast={showToast} />}
 
             {page === 'water' && <WaterPage isActive onToast={showToast} onNavigate={navigate} onAsk={askAI} onOpenRoad={openRoadCameras} />}
+
+            {page === 'report' && <ReportFloodPage isActive onNavigate={navigate} />}
 
             {page === 'yolo' && (
               <CameraAiPage tab={cameraTab} onTab={setCameraTab} cameras={cameras} favorites={favorites} camid={aiCamid} incidents={incidents} onPickCamera={setAiCamid} onToast={showToast} onAsk={askAI} />

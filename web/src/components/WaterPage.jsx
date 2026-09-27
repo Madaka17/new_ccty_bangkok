@@ -13,12 +13,13 @@ import FloodWatchSection from './water/FloodWatchSection.jsx';
 import CitizenReportsSection from './water/CitizenReportsSection.jsx';
 import ShelterSection from './water/ShelterSection.jsx';
 import FloodRoadsCard from './water/FloodRoadsCard.jsx';
+import FloodPointsMap from './water/FloodPointsMap.jsx';
 import { RiverStations, CanalCard, NtwRainCard } from './water/WaterLists.jsx';
 
 const POLL_MS = 60000;
 const TABS = [
   { id: 'situation', label: 'สถานการณ์น้ำ', hint: 'ระดับน้ำ · แผนที่จุดวัด · กราฟแนวโน้ม · คลองและฝน', icon: 'water' },
-  { id: 'roads', label: 'ถนนน้ำท่วม', hint: 'เซ็นเซอร์ กทม. · กรมทางหลวง · รีเฟรชทุก 30 วินาที', icon: 'map' },
+  { id: 'roads', label: 'ถนนน้ำท่วม', hint: 'แผนที่จุดน้ำท่วม · AI กล้อง · เซ็นเซอร์ กทม. · กรมทางหลวง', icon: 'map' },
   { id: 'watch', label: 'เฝ้าระวังน้ำท่วม', hint: 'สถานีเทียบตลิ่ง · เขตเร่งด่วน · คาดการณ์ 1-6 ชม.', icon: 'alerts' },
   { id: 'shelter', label: 'จุดพักพิงใกล้ฉัน', hint: 'จุดพักพิงชั่วคราว กทม. · ระยะทาง · โทร · นำทาง', icon: 'map' },
   { id: 'reports', label: 'แจ้งน้ำท่วม', hint: 'iTIC / FM91 · ประชาชนแจ้ง (Traffy) · AI สรุปเรื่องเร่งด่วน', icon: 'visitors' },
@@ -108,7 +109,12 @@ export default function WaterPage({ isActive, onToast, onNavigate, onAsk, onOpen
 
       <ViewSwitch tabs={TABS} value={tab} onChange={pickTab} label="มุมมองหน้าคาดการณ์ระดับน้ำ" />
 
-      {tab === 'roads' && <FloodRoadsCard isActive={isActive} onOpenRoad={onOpenRoad} />}
+      {tab === 'roads' && (
+        <>
+          <FloodPointsMap isActive={isActive} onReport={() => onNavigate('report')} />
+          <FloodRoadsCard isActive={isActive} onOpenRoad={onOpenRoad} />
+        </>
+      )}
 
       {tab === 'watch' && <FloodWatchSection isActive={isActive} />}
 
