@@ -11,6 +11,13 @@ export async function fetchCameras() {
   return data.items || [];
 }
 
+// { checked_at, items: { camid: 'online' | 'offline' } } for the live-AI cameras
+export async function fetchCameraHealth() {
+  const res = await fetch('/api/cameras/health');
+  if (!res.ok) throw new Error('camera_health');
+  return res.json();
+}
+
 export async function fetchLongdoCameras() {
   try {
     const res = await fetch('/api/cameras/longdo');

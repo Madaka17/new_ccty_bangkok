@@ -77,6 +77,7 @@ from backend.vision.count_workers import CountManager
 from backend.vision.survey import SurveyManager
 from backend.vision.incident_service import IncidentManager
 from backend.vision.violation_service import ViolationMonitor
+from backend.vision.camera_health import CameraHealth
 from backend.traffic.traffic_service import traffic, get_traffic_tile, get_osm_tile
 from backend.traffic.guidance_service import GuidanceService
 from backend.vision.helmet_service import HelmetPatrol
@@ -161,6 +162,9 @@ analytics_service.configure(incidents=incidents)
 violations = ViolationMonitor(os.path.join(DATA_DIR, "vehicle_counts.db"), vision=incidents,
                               cameras_by_id=lambda: {c["camid"]: c for c in cameras_data})
 detector.violations = violations
+# Which live-AI cameras answer right now (the camera search marks the ones without signal)
+camera_health = CameraHealth(lambda: cameras_data)
+camera_health.start()
 
 # BMA Traffic Scanner & YOLO Vehicle Counter for all cameras
 bma_scanner = BmaScanner(detector=detector)
@@ -226,6 +230,11 @@ def health():
 @app.get("/api/cameras")
 def get_cameras():
     return {"total": len(cameras_data), "items": cameras_data}
+
+@app.get("/api/cameras/health")
+def get_cameras_health():
+    """camid -> "online" / "offline" for the live-AI cameras, checked at most every 5 min."""
+    return camera_health.get()
 
 _longdo_cams_cache = {"time": 0, "data": None}
 

@@ -22,7 +22,7 @@ import { trackView, startHeartbeat } from './lib/telemetry.js';
 
 const PAGES = ['dashboard', 'cameras', 'map', 'safety', 'water', 'yolo', 'ai', 'alerts', 'visitors'];
 // Old links to pages that are now tabs of the camera AI page
-const CAMERA_TAB_LINKS = { 'bma-count': 'bma', helmet: 'helmet', wrongway: 'wrongway' };
+const CAMERA_TAB_LINKS = { 'camera-search': 'search', 'bma-count': 'bma', helmet: 'helmet', wrongway: 'wrongway' };
 
 function pageFromHash() {
  const h = window.location.hash.replace(/^#\/?/, '');
