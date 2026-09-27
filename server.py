@@ -82,6 +82,7 @@ from backend.traffic.traffic_service import traffic, get_traffic_tile, get_osm_t
 from backend.traffic.guidance_service import GuidanceService
 from backend.vision.helmet_service import HelmetPatrol
 from backend.vision.flood_cam_service import FloodCamWatch
+from backend.vision.itic_frames import IticFrames
 from backend.vision.wrongway_service import WrongWayPatrol
 from backend.water.air_service import air
 from backend.water.flood_service import flood_roads
@@ -179,6 +180,8 @@ bma_scanner.wrongway = wrongway
 # Flood watch over every BMA camera: frames tiled 3x3 -> Qwen vision -> water on the road? -> map layer
 flood_cams = FloodCamWatch(bma_scanner.cameras)
 bma_scanner.flood = flood_cams
+# ...and over the iTIC cameras around Bangkok (the Longdo list on the map), one frame from each HLS stream every 5 min
+itic_frames = IticFrames(flood_cams, lambda: (get_longdo_cameras() or {}).get("items", []))
 # Corridor dispersal guidance rebuilt every minute from the live Longdo lines + camera counts
 guidance = GuidanceService(traffic, incidents=incidents, bma=bma_scanner, cameras=lambda: cameras_data)
 
@@ -1165,6 +1168,7 @@ guidance.start()
 air.start()
 flood_roads.start()
 flood_cams.start()
+itic_frames.start()
 traffy_reports.start()
 tmd_warnings.start()
 hdms_floods.start()

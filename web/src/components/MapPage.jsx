@@ -856,17 +856,19 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
       const popup = new maplibregl.Popup({ offset: 12, closeButton: true, maxWidth: '320px' }).setHTML(
         `<div style="font-size:13px;line-height:1.45">
           <b>${esc(c.title)}</b>
-          ${c.road || c.district ? `<br><span style="color:#64748b">${esc(c.road)}${c.district ? ` · เขต${esc(c.district)}` : ''}</span>` : ''}
+          <br><span style="color:#64748b">${[c.road, c.district ? `เขต${c.district}` : c.province].filter(Boolean).map(esc).join(' · ')}${c.road || c.district || c.province ? ' · ' : ''}${c.kind === 'itic' ? `กล้อง iTIC${c.organization ? ` (${esc(c.organization)})` : ''}` : 'กล้อง กทม.'}</span>
           <br><span style="color:${sty.color};font-weight:700">${sty.label}</span>
           <span style="color:#64748b">· AI มั่นใจ ${Math.round((c.confidence || 0) * 100)}%</span>
           ${c.note_th ? `<br><span>${esc(c.note_th)}</span>` : ''}
           <img src="/api/flood/cameras/${encodeURIComponent(c.camid)}/image?t=${c.checked_at}" alt="ภาพที่ AI ใช้ตัดสิน กล้อง ${esc(c.title)}" loading="lazy" style="display:block;margin-top:6px;width:100%;aspect-ratio:352/288;object-fit:cover;border-radius:6px;background:#e2e8f0">
           ${wet && c.wet_since ? `<span style="color:#64748b">เห็นน้ำตั้งแต่ ${fmtTime(c.wet_since)} น.</span><br>` : ''}
-          <span style="color:${c.stale ? '#b45309' : '#94a3b8'};font-size:11px">ภาพเมื่อ ${fmtTime(c.frame_ts)} น. (${agoTh(c.frame_ts)})${c.stale ? ' · ภาพเก่า เว็บกล้อง กทม. ยังไม่ส่งภาพใหม่' : ''}</span>
+          <span style="color:${c.stale ? '#b45309' : '#94a3b8'};font-size:11px">ภาพเมื่อ ${fmtTime(c.frame_ts)} น. (${agoTh(c.frame_ts)})${c.stale ? ' · ภาพเก่า กล้องยังไม่ส่งภาพใหม่' : ''}</span>
           <br><span style="color:#94a3b8;font-size:11px">AI ${esc(camFlood.model)} ดูจากภาพกล้อง อาจผิดพลาดได้</span>
         </div>`
       );
-      camFloodMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([c.lng, c.lat]).setPopup(popup).addTo(map));
+      // a wet pill stands just above its point, so it does not cover the CCTV pin of the same (iTIC) camera
+      const place = wet ? { anchor: 'bottom', offset: [0, -10] } : {};
+      camFloodMarkersRef.current.push(new maplibregl.Marker({ element: el, ...place }).setLngLat([c.lng, c.lat]).setPopup(popup).addTo(map));
     }
   }, [camFlood, showCamFlood]);
 
@@ -1461,7 +1463,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
             ) : (
               <p className="text-[11px] text-slate-500">{showCamFlood ? 'กำลังโหลดผลตรวจจากกล้อง ...' : 'เปิดเพื่อดูจุดที่ AI เห็นน้ำท่วมในภาพกล้อง'}</p>
             )}
-            <p className="text-[11px] text-slate-400 mt-1">AI ดูภาพกล้อง กทม. ทุกตัว ราว 10 นาที/รอบ อาจผิดพลาดได้ กดหมุดเพื่อดูภาพที่ AI ใช้ตัดสิน</p>
+            <p className="text-[11px] text-slate-400 mt-1">AI ดูภาพกล้อง กทม. ทุกตัว และกล้อง iTIC รอบกรุงเทพฯ-ปริมณฑล ราว 10 นาที/รอบ อาจผิดพลาดได้ กดหมุดเพื่อดูภาพที่ AI ใช้ตัดสิน</p>
           </div>
 
           {/* น้ำท่วมขังถนน (เซ็นเซอร์ กทม.) + ระดับน้ำแม่น้ำ/คลอง (ปริมณฑล) */}

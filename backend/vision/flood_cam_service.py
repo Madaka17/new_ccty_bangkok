@@ -1,8 +1,9 @@
 """
-Flood watch over every BMA camera: is there water on the road in front of the camera right now?
+Flood watch over every BMA camera and the iTIC cameras: is there water on the road in front of the camera now?
 
 Flow:
-    BmaScanner hands every raw snapshot to observe() (each camera about every 4 min)
+    BmaScanner hands every raw snapshot to observe() (each camera about every 4 min); itic_frames.py adds
+    the iTIC cameras around Bangkok with add_cameras() and hands in a frame of each every 5 min
     -> the worker takes the cameras due for a check: never checked, or checked more than INTERVAL
        ago (WET_INTERVAL for the ones that had water) and holding a newer frame than that check
     -> screen: TILES frames per call, tiled in a grid with a big number on each tile, one vision
@@ -45,6 +46,7 @@ MAX_PER_HOUR = int(os.getenv("FLOOD_CAM_MAX_PER_HOUR", "900"))   # a full round 
 GRID = 3
 TILES = GRID * GRID
 TILE_W, TILE_H = 352, 288      # the BMA frame size
+CONFIRM_W = 704
 STALE_MINUTES = 60
 SEED_MAX_AGE = 12 * 3600
 AGENT_TIMEOUT = 120
@@ -117,17 +119,18 @@ def _mosaic(jpegs):
 
 
 def _enlarge(jpeg):
-    """The single frame at twice its size: the model sees the kerb and the water line, not a few pixels."""
+    """The single frame CONFIRM_W wide (a BMA frame at twice its size): the model sees the kerb and the water line."""
     img = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
     if img is None:
         return jpeg
-    img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+    scale = CONFIRM_W / img.shape[1]
+    img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC if scale > 1 else cv2.INTER_AREA)
     return cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 90])[1].tobytes()
 
 
 class FloodCamWatch:
     def __init__(self, cameras):
-        self._cams = {str(c["camid"]): c for c in cameras}
+        self._cams = {str(c["camid"]): c for c in cameras}   # replaced whole, never changed in place
         self._frames = {}      # camid -> (jpeg, frame ts, fingerprint), newest from the scanner
         self._state = {}       # camid -> verdict dict (see _record)
         self._judged = {}      # camid -> fingerprint of the frame behind the current verdict
@@ -144,7 +147,8 @@ class FloodCamWatch:
     def _load(self):
         try:
             with open(STATE_FILE, encoding="utf-8") as f:
-                self._state = {k: v for k, v in json.load(f).items() if k in self._cams}
+                # kept whole: the iTIC cameras are added a little after start
+                self._state = json.load(f)
         except (OSError, ValueError):
             self._state = {}
 
@@ -157,8 +161,12 @@ class FloodCamWatch:
         os.replace(tmp, STATE_FILE)
 
     # ------------------------------------------------------------ frames in
+    def add_cameras(self, cameras):
+        """More cameras to watch (the iTIC ones); their frames come in through observe()."""
+        self._cams = {**self._cams, **{str(c["camid"]): c for c in cameras}}
+
     def observe(self, cam, frame):
-        """Keep the newest raw frame of this camera (called by BmaScanner for every snapshot)."""
+        """Keep the newest raw frame of this camera (BmaScanner: every snapshot; IticFrames: one per round)."""
         camid = str(cam.get("camid"))
         if camid not in self._cams:
             return
@@ -170,7 +178,7 @@ class FloodCamWatch:
     def _seed(self):
         """The scanner's saved snapshots, so a restart while the BMA site is down still has frames to check."""
         now = time.time()
-        for camid in self._cams:
+        for camid in list(self._cams):
             path = os.path.join(SNAPSHOT_DIR, f"{camid}.jpg")
             try:
                 ts = os.path.getmtime(path)
@@ -298,23 +306,26 @@ class FloodCamWatch:
         counts = {level: 0 for level in LEVELS}
         stale_wet = 0
         items = []
+        cams = self._cams
         with self._lock:
-            state = dict(self._state)
+            state = {k: v for k, v in self._state.items() if k in cams}
             waiting = len(self._frames)
         for camid, st in state.items():
-            cam = self._cams[camid]
+            cam = cams[camid]
             stale = now - st["frame_ts"] > STALE_MINUTES * 60
             counts[st["level"]] += 1
             if stale and st["level"] in WET:
                 stale_wet += 1
             if st["level"] in WET or include_dry:
-                items.append({"camid": camid, "title": cam.get("title") or cam.get("short_title") or camid,
+                items.append({"camid": camid, "title": cam.get("short_title") or cam.get("title") or camid,
+                              "kind": cam.get("kind", "bma"), "organization": cam.get("organization") or "",
                               "road": cam.get("road") or "", "district": cam.get("district") or "",
+                              "province": cam.get("province") or "",
                               "lat": cam.get("latitude"), "lng": cam.get("longitude"),
                               "level_th": LEVEL_TH[st["level"]], "stale": stale, **st})
         items.sort(key=lambda i: (i["stale"], RANK[i["level"]], -i["confidence"]))
         self._budget_ok()
-        return {"enabled": self.enabled(), "model": local_llm.default.model, "total": len(self._cams),
+        return {"enabled": self.enabled(), "model": local_llm.default.model, "total": len(cams),
                 "checked": len(state), "with_frame": waiting, "counts": counts, "stale_wet": stale_wet,
                 "last_check": max((st["checked_at"] for st in state.values()), default=None),
                 "calls_last_hour": len(self._calls), "max_per_hour": MAX_PER_HOUR, "stale_minutes": STALE_MINUTES,
