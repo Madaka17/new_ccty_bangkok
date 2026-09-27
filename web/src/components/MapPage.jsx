@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import Hls from 'hls.js';
-import { fetchTrafficSummary, fetchLongdoCameras, fetchWaterSummary, fetchAirStations, fetchWindGrid, fetchFloodStatus, fetchFloodStations, fetchFloodReports, fetchHdmsFloods } from '../lib/api.js';
+import { fetchTrafficSummary, fetchLongdoCameras, fetchWaterSummary, fetchAirStations, fetchWindGrid, fetchFloodStatus, fetchFloodStations, fetchFloodReports, fetchHdmsFloods, fetchFloodCameras } from '../lib/api.js';
 import { enrichCamerasWithFloodRisk } from '../lib/floodRisk.js';
 import { fmtTime } from './dashboard/format.js';
 import { Icon } from './dashboard/icons.jsx';
@@ -141,6 +141,16 @@ const GAUGE_STYLE = {
   low: { color: '#94a3b8', label: 'น้ำน้อย' },
 };
 
+// AI flood watch on the BMA cameras (flood_cam_service.py): a camera pill, the colour is what the AI saw
+const CAM_FLOOD_STYLE = {
+  severe: { color: '#7f1d1d', label: 'น้ำท่วมหนัก' },
+  flooded: { color: '#dc2626', label: 'น้ำท่วมผิวจราจร' },
+  puddle: { color: '#f59e0b', label: 'น้ำขังเล็กน้อย' },
+  none: { color: '#16a34a', label: 'ไม่มีน้ำท่วม' },
+  unclear: { color: '#94a3b8', label: 'มองไม่ชัด' },
+};
+const CAM_WET = ['severe', 'flooded', 'puddle'];
+
 // Citizen flood reports (Traffy Fondue): a speech-bubble pin, hotter the fresher the report
 const REPORT_COLOR = '#7c3aed';
 const REPORT_FRESH_S = 3600;
@@ -275,6 +285,11 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const [showReports, setShowReports] = useState(false);
   const [reports, setReports] = useState(null);
   const reportMarkersRef = useRef([]);
+  // AI flood watch on every BMA camera: on by default, the map shows only the cameras with water
+  const [showCamFlood, setShowCamFlood] = useState(true);
+  const [camFloodDry, setCamFloodDry] = useState(false);
+  const [camFlood, setCamFlood] = useState(null);
+  const camFloodMarkersRef = useRef([]);
   const [showHdms, setShowHdms] = useState(false);
   const [hdms, setHdms] = useState(null);
   const hdmsMarkersRef = useRef([]);
@@ -693,6 +708,19 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
     };
   }, [isActive, floodDry]);
 
+  // AI flood watch on the BMA cameras; a camera is re-checked every ~10 min (5 while it has water)
+  useEffect(() => {
+    if (!isActive || !showCamFlood) return;
+    let alive = true;
+    const tick = () => fetchFloodCameras({ all: camFloodDry }).then((d) => alive && setCamFlood(d)).catch(() => {});
+    tick();
+    const id = setInterval(tick, 60000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [isActive, showCamFlood, camFloodDry]);
+
   // Traffy Fondue flood complaints; the server refreshes them every 5 min
   useEffect(() => {
     if (!isActive) return;
@@ -804,6 +832,43 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
       floodMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([st.lng, st.lat]).setPopup(popup).addTo(map));
     }
   }, [floodPoints, showFlood]);
+
+  // One pill per camera the AI saw water on (plus a dot per dry / unclear camera when asked); faded when the frame is old
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    for (const m of camFloodMarkersRef.current) m.remove();
+    camFloodMarkersRef.current = [];
+    if (!showCamFlood || !camFlood) return;
+    for (const c of camFlood.items || []) {
+      if (c.lat == null || c.lng == null) continue;
+      const sty = CAM_FLOOD_STYLE[c.level] || CAM_FLOOD_STYLE.unclear;
+      const wet = CAM_WET.includes(c.level);
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.title = `กล้อง ${c.title}: ${sty.label}${c.stale ? ' (ภาพเก่า)' : ''}`;
+      if (wet) {
+        el.style.cssText = `display:flex;align-items:center;gap:3px;padding:2px 7px 2px 5px;border-radius:6px;background:${sty.color};color:#fff;font:700 11px/1 var(--font-sans);border:2px ${c.stale ? 'dashed' : 'solid'} #fff;box-shadow:0 0 0 ${c.stale ? 2 : 5}px ${sty.color}44,0 1px 4px rgba(15,23,42,.35);cursor:pointer;opacity:${c.stale ? 0.6 : 1}`;
+        el.innerHTML = `<span style="font-size:11px">📷</span><span>${esc(sty.label)}</span>`;
+      } else {
+        el.style.cssText = `width:10px;height:10px;border-radius:3px;background:${sty.color};border:2px solid #fff;box-shadow:0 1px 3px rgba(15,23,42,.3);cursor:pointer;padding:0;opacity:${c.stale ? 0.45 : 0.85}`;
+      }
+      const popup = new maplibregl.Popup({ offset: 12, closeButton: true, maxWidth: '320px' }).setHTML(
+        `<div style="font-size:13px;line-height:1.45">
+          <b>${esc(c.title)}</b>
+          ${c.road || c.district ? `<br><span style="color:#64748b">${esc(c.road)}${c.district ? ` · เขต${esc(c.district)}` : ''}</span>` : ''}
+          <br><span style="color:${sty.color};font-weight:700">${sty.label}</span>
+          <span style="color:#64748b">· AI มั่นใจ ${Math.round((c.confidence || 0) * 100)}%</span>
+          ${c.note_th ? `<br><span>${esc(c.note_th)}</span>` : ''}
+          <img src="/api/flood/cameras/${encodeURIComponent(c.camid)}/image?t=${c.checked_at}" alt="ภาพที่ AI ใช้ตัดสิน กล้อง ${esc(c.title)}" loading="lazy" style="display:block;margin-top:6px;width:100%;aspect-ratio:352/288;object-fit:cover;border-radius:6px;background:#e2e8f0">
+          ${wet && c.wet_since ? `<span style="color:#64748b">เห็นน้ำตั้งแต่ ${fmtTime(c.wet_since)} น.</span><br>` : ''}
+          <span style="color:${c.stale ? '#b45309' : '#94a3b8'};font-size:11px">ภาพเมื่อ ${fmtTime(c.frame_ts)} น. (${agoTh(c.frame_ts)})${c.stale ? ' · ภาพเก่า เว็บกล้อง กทม. ยังไม่ส่งภาพใหม่' : ''}</span>
+          <br><span style="color:#94a3b8;font-size:11px">AI ${esc(camFlood.model)} ดูจากภาพกล้อง อาจผิดพลาดได้</span>
+        </div>`
+      );
+      camFloodMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([c.lng, c.lat]).setPopup(popup).addTo(map));
+    }
+  }, [camFlood, showCamFlood]);
 
   // One pin per citizen report: solid and ringed in the last hour, faded when older
   useEffect(() => {
@@ -1180,9 +1245,12 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const trafficOn = (showTraffic ? 1 : 0) + (showRail ? 1 : 0) + Object.values(pinsOn).filter(Boolean).length;
   const incidentList = [...(incidents?.camera || []), ...(incidents?.longdo || [])];
   const riskOnCount = Object.values(riskOn).filter(Boolean).length;
-  const waterOn = [showRainRadar, showFlood, showReports, showHdms, showGauges].filter(Boolean).length;
+  const waterOn = [showRainRadar, showCamFlood, showFlood, showReports, showHdms, showGauges].filter(Boolean).length;
+  const camCounts = camFlood?.counts || {};
+  const camWet = CAM_WET.reduce((n, k) => n + (camCounts[k] || 0), 0);
+  const camWetList = (camFlood?.items || []).filter((c) => CAM_WET.includes(c.level));
   const waterHint = flood
-    ? `ถนนท่วม ${floodCounts.flood + floodCounts.slight} จุด · ประชาชนแจ้ง ${reportPoints.length} เรื่อง (6 ชม.)`
+    ? `${camFlood ? `กล้องเห็นน้ำ ${camWet} จุด · ` : ''}ถนนท่วม ${floodCounts.flood + floodCounts.slight} จุด · ประชาชนแจ้ง ${reportPoints.length} เรื่อง (6 ชม.)`
     : 'เรดาร์ฝน น้ำท่วมถนน ประชาชนแจ้ง ทางหลวง และระดับน้ำ';
 
   return (
@@ -1343,6 +1411,57 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                 <span className="text-[10px] text-slate-600 font-mono shrink-0">{Math.round(radarOpacity * 100)}%</span>
               </div>
             )}
+          </div>
+
+          {/* AI ดูน้ำท่วมจากภาพกล้อง กทม. ทุกตัว */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
+                <input type="checkbox" checked={showCamFlood} onChange={(e) => setShowCamFlood(e.target.checked)} className="accent-blue-600 w-4 h-4" />
+                <span aria-hidden="true">📷</span> กล้องเห็นน้ำท่วม (AI)
+              </label>
+              {camFlood?.last_check && <span className="text-[11px] text-slate-500">{fmtTime(camFlood.last_check)} น.</span>}
+            </div>
+            {camFlood ? (
+              <>
+                <p className="text-[11px] text-slate-500 mb-1.5">
+                  {camWet > 0
+                    ? `ท่วมหนัก ${camCounts.severe} · ท่วม ${camCounts.flooded} · น้ำขัง ${camCounts.puddle} จุด`
+                    : 'ไม่พบน้ำท่วมบนถนนในภาพกล้อง'}
+                  {` · ตรวจแล้ว ${camFlood.checked}/${camFlood.total} กล้อง`}
+                  {camFlood.stale_wet > 0 ? ` · ${camFlood.stale_wet} จุดเป็นภาพเก่ากว่า ${camFlood.stale_minutes} นาที` : ''}
+                  {!camFlood.enabled ? ' · ยังไม่ได้ตั้งโมเดล AI (LOCAL_LLM_MODEL)' : camFlood.error ? ' · เรียก AI ไม่สำเร็จ กำลังลองใหม่' : ''}
+                </p>
+                <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-slate-600 mb-1.5">
+                  {CAM_WET.map((k) => (
+                    <span key={k} className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: CAM_FLOOD_STYLE[k].color }} />{CAM_FLOOD_STYLE[k].label}</span>
+                  ))}
+                </div>
+                <label className="inline-flex items-center gap-2 text-[11px] text-slate-600 cursor-pointer">
+                  <input type="checkbox" checked={camFloodDry} onChange={(e) => setCamFloodDry(e.target.checked)} className="accent-blue-600" disabled={!showCamFlood} />
+                  แสดงกล้องที่ไม่ท่วม / มองไม่ชัดด้วย
+                </label>
+                {camWetList.length > 0 && (
+                  <ul className="mt-2 flex flex-col gap-1">
+                    {camWetList.slice(0, 8).map((c) => (
+                      <li key={c.camid}>
+                        <button
+                          type="button"
+                          onClick={() => mapRef.current?.easeTo({ center: [c.lng, c.lat], zoom: 15.5, duration: 800 })}
+                          className={`cursor-pointer w-full flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-2 py-1 text-left hover:border-slate-400 transition-colors ${c.stale ? 'opacity-60' : ''}`}
+                        >
+                          <span className="min-w-0 truncate text-[12px] text-ink-900">{c.title}</span>
+                          <span className="shrink-0 text-[11px] font-semibold" style={{ color: CAM_FLOOD_STYLE[c.level].color }}>{CAM_FLOOD_STYLE[c.level].label}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            ) : (
+              <p className="text-[11px] text-slate-500">{showCamFlood ? 'กำลังโหลดผลตรวจจากกล้อง ...' : 'เปิดเพื่อดูจุดที่ AI เห็นน้ำท่วมในภาพกล้อง'}</p>
+            )}
+            <p className="text-[11px] text-slate-400 mt-1">AI ดูภาพกล้อง กทม. ทุกตัว ราว 10 นาที/รอบ อาจผิดพลาดได้ กดหมุดเพื่อดูภาพที่ AI ใช้ตัดสิน</p>
           </div>
 
           {/* น้ำท่วมขังถนน (เซ็นเซอร์ กทม.) + ระดับน้ำแม่น้ำ/คลอง (ปริมณฑล) */}

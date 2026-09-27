@@ -70,6 +70,10 @@ HELMET_AGENT_MODEL=gemini-3.1-flash-lite
 WRONGWAY_DET=wrongway_det.pt
 WRONGWAY_MAX_PER_HOUR=120
 WRONGWAY_MIN_VOTES=40
+# AI ดูน้ำท่วมจากกล้อง กทม. (ใช้โมเดล Qwen vision ตัวเดียวกับ LOCAL_LLM_*): ตรวจกล้องแห้งทุกกี่วินาที, กล้องที่มีน้ำทุกกี่วินาที, งบเรียกต่อชั่วโมง
+FLOOD_CAM_INTERVAL=600
+FLOOD_CAM_WET_INTERVAL=300
+FLOOD_CAM_MAX_PER_HOUR=900
 # ป้องกันสาธารณะ: ตั้งแล้วส่ง header X-Admin-Token เพื่อกดปุ่มควบคุมจากนอก LAN
 ADMIN_TOKEN=
 # โฟลเดอร์เก็บ CSV รอบนับกล้อง กทม. + ภาพหลักฐานฝ่าฝืน (ค่าเริ่มต้น D:\Data)
@@ -216,6 +220,7 @@ GENERAL_RATE_PER_MIN=600
 | `backend/water/flood_service.py` | จุดน้ำท่วมขังถนน กทม. ~250 จุด จากเซ็นเซอร์สำนักการระบายน้ำ (`weather.bangkok.go.th/flood`) ดึงทุก 5 นาที: ระดับน้ำเหนือผิวถนนหน่วย ซม. ต่อจุด + ถนน/เขต/พิกัด/เวลาเริ่มท่วม/สูงสุด เกณฑ์ตามเว็บต้นทาง (≤5 ปกติ, 5-10 เล็กน้อย, >10 ท่วม) เก็บประวัติในหน่วยความจำเพื่อบอกแนวโน้มขึ้น/ลงเทียบ 25 นาทีก่อน และให้ Gemini เขียนบทวิเคราะห์ (ระดับความรุนแรง จุดที่ต้องจับตา คำแนะนำ แนวโน้ม) ทุก 5 นาทีเมื่อสถานการณ์เปลี่ยน มี template ภาษาไทยสำรองเมื่อไม่มี key (`/api/flood/status|stations|roads|analysis`) — เฉพาะ กทม. 50 เขต ปริมณฑลไม่มีเซ็นเซอร์สาธารณะ |
 | `backend/traffic/road_service.py` | ประเมินความเสี่ยงน้ำท่วมขัง **รายถนน** ทั้ง กทม. และปริมณฑล ทุก 2 นาที: รวมถนนทุกสายจาก `traffic_service` (ชื่อ+จุดกึ่งกลาง+% รถติด) เข้ากับเซ็นเซอร์น้ำบนถนน (`flood_service`, เฉพาะ กทม.), สถานีวัดฝน 24 ชม. ~180 จุด และสถานีระดับน้ำคลอง/แม่น้ำ ~70 จุด (`water_service`) ด้วยระยะทางจริง แล้วจัดระดับตาม **เกณฑ์ทางการ** (น้ำบนถนน: สนน. กทม. 5/10 ซม. + ปภ. 20/60/80 ซม. · ฝน 24 ชม.: กรมอุตุนิยมวิทยา 10/35/90 มม. · ระดับตลิ่ง: คลังข้อมูลน้ำแห่งชาติ 80%/100%) + Gemini เขียนบทวิเคราะห์สายที่เสี่ยงสุด · สายที่ไม่มีเซ็นเซอร์บนถนนจะทำเครื่องหมาย `measured: false` (`/api/roads/risk`) |
 | `backend/water/air_service.py` | PM2.5 / AQI รายสถานีจาก Air4Thai ทุก 10 นาที (`/api/air/stations`) |
+| `backend/vision/flood_cam_service.py` | AI ดูน้ำท่วมจากภาพกล้อง กทม. ทุกตัว: รับภาพดิบจากรอบสแกน → รวม 9 กล้องเป็นภาพตาราง 3×3 ถาม Qwen vision (`LOCAL_LLM_*`) ครั้งเดียว (~5 วิ) → ช่องที่ดูเหมือนมีน้ำถามซ้ำทีละภาพเพื่อยืนยันก่อนขึ้นแผนที่ ระดับ: ไม่ท่วม / น้ำขังเล็กน้อย / น้ำท่วมผิวจราจร / น้ำท่วมหนัก / มองไม่ชัด กล้องแห้งตรวจซ้ำทุก 10 นาที กล้องที่มีน้ำทุก 5 นาที ภาพค้าง (feed ไม่ขยับ) ไม่ถามซ้ำ ผลเก็บที่ `cache/flood_cams.json` + ภาพที่ใช้ตัดสินใน `cache/flood_cams/` (`/api/flood/cameras*`, ชั้น "กล้องเห็นน้ำท่วม (AI)" ในหน้า Traffic Map) |
 | `backend/vision/helmet_service.py` | ตรวจหมวกกันน็อกทุกกล้อง กทม.: crop มอไซจากรอบสแกน → โมเดลในเครื่อง (`HELMET_DET`, ค่าปัจจุบัน `helmet_det_blur.pt`) คัดกรอง → AI agent (Gemini/Claude) ยืนยัน → ผู้ไม่สวมหมวกเก็บภาพ+CSV ที่ `BMA_DATA_DIR\helmet\` (`/api/helmet/*`) |
 | `backend/vision/wrongway_service.py` | ตรวจรถย้อนศรทุกกล้อง กทม. จากภาพนิ่ง: กรอบรถจาก yolo26x ตัวเดียวกับที่นับรถ → โมเดลจำแนกทิศ `wrongway_cls.pt` (YOLO26s-cls, `toward` เห็นหน้ารถ / `away` เห็นท้ายรถ) อ่านรถทีละคัน (ไม่มีไฟล์นี้จะใช้ `wrongway_det.pt` ตัวเก่าที่หารถไม่ค่อยเจอ) → กล้องแต่ละตัวเรียนรู้ทิศปกติต่อช่องกริด 12×9 (`cache/heading/`) → รถที่หันสวนช่องที่รู้ทิศแล้วส่ง AI agent ยืนยัน → หลักฐาน+CSV ที่ `BMA_DATA_DIR\wrongway\` (`/api/wrongway/*`) |
 | `local/pipeline/collect_wrongway_dataset.py`, `train_wrongway_det.py`, `wrongway_pipeline.bat`, `wrongway_status.bat` | dataset ทิศทางรถแบบไม่ต้อง label มือ: เก็บ burst จากทุกกล้อง (BMA ~1 เฟรม/วิ + HLS) ติดตามรถ ทิศจากการเคลื่อนที่ (รถจอดใช้แผนที่ทิศของกล้อง) → fine-tune `yolo26x.pt` เป็น `wrongway_det.pt`; `wrongway_pipeline.bat [รอบ] [นาทีห่าง] [epochs] [batch]` ทำครบทั้งสองขั้น + หน้าต่างสถานะ |

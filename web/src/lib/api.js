@@ -221,6 +221,13 @@ export async function fetchFloodReports() {
   return res.json();
 }
 
+// AI flood watch on every BMA camera (flood_cam_service.py): counts + the cameras with water (all: every checked one)
+export async function fetchFloodCameras({ all = false } = {}) {
+  const res = await fetch(`/api/flood/cameras${all ? '?all=1' : ''}`);
+  if (!res.ok) throw new Error('flood_cameras');
+  return res.json();
+}
+
 // Flood analyst agent (flood_agent.py): latest situation report, level history, whether a run is going
 export async function fetchFloodAgent() {
   const res = await fetch('/api/flood/agent');

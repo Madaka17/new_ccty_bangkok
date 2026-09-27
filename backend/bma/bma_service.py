@@ -331,6 +331,8 @@ class BmaScanner:
         # both get every snapshot (+ its boxes)
         self.helmet = None
         self.wrongway = None
+        # FloodCamWatch (flood_cam_service.py) set by the server: gets every raw snapshot
+        self.flood = None
 
         # Auto background scan every 3 minutes
         self.auto_scan_thread = threading.Thread(target=self._auto_scan_loop, daemon=True)
@@ -434,6 +436,11 @@ class BmaScanner:
                         level='free', status='offline', latency_ms=0.0, detections=[]
                     )
                     return
+                if self.flood is not None:
+                    try:
+                        self.flood.observe(cam, img)
+                    except Exception as e:  # noqa: BLE001 - flood watch is best effort
+                        print(f"[BMA Scanner] flood watch failed on {camid}: {e}")
 
                 # YOLO Inference (serialize via detector.model_lock if present)
                 t_infer = time.time()

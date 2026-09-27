@@ -81,6 +81,7 @@ from backend.vision.camera_health import CameraHealth
 from backend.traffic.traffic_service import traffic, get_traffic_tile, get_osm_tile
 from backend.traffic.guidance_service import GuidanceService
 from backend.vision.helmet_service import HelmetPatrol
+from backend.vision.flood_cam_service import FloodCamWatch
 from backend.vision.wrongway_service import WrongWayPatrol
 from backend.water.air_service import air
 from backend.water.flood_service import flood_roads
@@ -175,6 +176,9 @@ bma_scanner.helmet = helmet
 # Wrong-way patrol over every BMA camera: heading detector + per-camera learned lane directions -> agent -> evidence
 wrongway = WrongWayPatrol(os.path.join(DATA_DIR, "vehicle_counts.db"), vision=incidents, scanner=bma_scanner)
 bma_scanner.wrongway = wrongway
+# Flood watch over every BMA camera: frames tiled 3x3 -> Qwen vision -> water on the road? -> map layer
+flood_cams = FloodCamWatch(bma_scanner.cameras)
+bma_scanner.flood = flood_cams
 # Corridor dispersal guidance rebuilt every minute from the live Longdo lines + camera counts
 guidance = GuidanceService(traffic, incidents=incidents, bma=bma_scanner, cameras=lambda: cameras_data)
 
@@ -738,6 +742,24 @@ def flood_stations(status: str = Query(None, pattern="^(flood|slight|normal|offl
                    limit: int = Query(400, ge=1, le=1000)):
     return flood_roads.stations(status=status, district=district, kind=kind, limit=limit)
 
+@app.get("/api/flood/cameras")
+def flood_cameras(all: bool = Query(False)):
+    """AI flood watch on every BMA camera: counts and the cameras with water on the road (all=1: every checked camera)."""
+    return flood_cams.status(include_dry=all)
+
+@app.get("/api/flood/cameras/{camid}/image")
+def flood_camera_image(camid: str):
+    """The frame the AI judged for this camera."""
+    p = flood_cams.frame_path(camid)
+    if not p:
+        raise HTTPException(404, "no image")
+    return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
+
+@app.post("/api/flood/cameras/check")
+def flood_cameras_check():
+    """Check every camera now instead of waiting for its turn (operator only through access_guard)."""
+    return flood_cams.check_all()
+
 @app.get("/api/flood/analysis")
 def flood_analysis():
     """AI read of the current flooding: severity, what is happening, spots to watch, what to do."""
@@ -1142,6 +1164,7 @@ traffic.start()
 guidance.start()
 air.start()
 flood_roads.start()
+flood_cams.start()
 traffy_reports.start()
 tmd_warnings.start()
 hdms_floods.start()
