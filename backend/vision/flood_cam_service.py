@@ -4,30 +4,37 @@ Flood watch over every BMA camera and the iTIC cameras: is there water on the ro
 Flow:
     BmaScanner hands every raw snapshot to observe() (each camera about every 4 min); itic_frames.py adds
     the iTIC cameras around Bangkok with add_cameras() and hands in a frame of each every 5 min
-    -> the worker takes the cameras due for a check: never checked, or checked more than INTERVAL
-       ago (WET_INTERVAL for the ones that had water) and holding a newer frame than that check
+    -> WORKERS workers each take the cameras due for a check: never checked, or checked more than
+       INTERVAL ago (WET_INTERVAL for the ones that had water) and holding a newer frame than that check
     -> screen: TILES frames per call, tiled in a grid with a big number on each tile, one vision
-       call to the Qwen model behind LOCAL_LLM_* (9 tiles take about 5 s)
+       call to the Qwen model behind LOCAL_LLM_*; it answers only a level per tile, no note, so the
+       reply is short (with a Thai note per tile a grid took about 24 s)
     -> confirm: every tile the screen calls puddle / flooded / severe is asked again on its own, so
        one misread tile in a grid does not put a false flood on the map; this verdict is final
+    -> the confirm call also copies the date and time printed on the frame: a frame printed more than
+       STAMP_MAX_LAG before it was fetched is an old copy the BMA site still serves (seen after an
+       outage: pictures two days old), so it is judged unclear, not wet
     -> state per camera in cache/flood_cams.json, the frame it judged in cache/flood_cams/<camid>.jpg
 
 Levels: none, puddle (water pooling at the kerb, lanes clear), flooded (water over part or all of a
 lane), severe (road under deep water), unclear (dark, blurred, rain on the lens, no signal).
 
-A frame that has not changed since the last check (a frozen feed) is not asked again. At start the
-watch takes the scanner's last saved snapshots younger than SEED_MAX_AGE, so the map has something
-while the BMA site is down. Every verdict keeps the time of its frame, and the map fades the ones
-whose frame is older than STALE_MINUTES.
+A frame that has not changed since the last check (a frozen feed) is not asked again. SEED_DELAY
+after start the watch takes the scanner's last saved snapshots younger than SEED_MAX_AGE for the
+cameras that sent no frame since, so the map has something while the BMA site is down; not before,
+because the text bar on a saved snapshot hides the printed time the stale check reads. Every verdict
+keeps the time of its frame, and the map fades the ones whose frame is older than STALE_MINUTES.
 
 At most MAX_PER_HOUR vision calls. Served by /api/flood/cameras*.
 """
 import base64
 import json
 import os
+import re
 import threading
 import time
 from collections import deque
+from datetime import datetime, timedelta, timezone
 
 import cv2
 import numpy as np
@@ -40,17 +47,24 @@ from backend.vision.helmet_service import _fingerprint, _same_scene
 STATE_FILE = os.path.join(DATA_DIR, "cache", "flood_cams.json")
 FRAME_DIR = os.path.join(DATA_DIR, "cache", "flood_cams")
 
-INTERVAL = int(os.getenv("FLOOD_CAM_INTERVAL", "600"))           # seconds between checks of a dry camera
+INTERVAL = int(os.getenv("FLOOD_CAM_INTERVAL", "300"))           # seconds between checks of a dry camera
 WET_INTERVAL = int(os.getenv("FLOOD_CAM_WET_INTERVAL", "300"))   # ... of a camera that had water, to see it drain
-MAX_PER_HOUR = int(os.getenv("FLOOD_CAM_MAX_PER_HOUR", "900"))   # a full round is ~64 screen calls + confirms
+WORKERS = int(os.getenv("FLOOD_CAM_WORKERS", "4"))               # grids asked at once, so a full round fits in INTERVAL
+MAX_PER_HOUR = int(os.getenv("FLOOD_CAM_MAX_PER_HOUR", "1500"))  # a full round is ~70 screen calls + confirms, 12 an hour
 GRID = 3
 TILES = GRID * GRID
 TILE_W, TILE_H = 352, 288      # the BMA frame size
 CONFIRM_W = 704
 STALE_MINUTES = 60
 SEED_MAX_AGE = 12 * 3600
+SEED_DELAY = 300               # about one scanner cycle: live frames first
 AGENT_TIMEOUT = 120
 ERROR_BACKOFF = 60
+STAMP_MAX_LAG = int(os.getenv("FLOOD_CAM_STAMP_MAX_LAG", "3600"))   # printed time this much older than the fetch: stale copy
+STAMP_MAX_AGE = 30 * 86400     # printed time older than this: a camera clock never set, not a stale copy
+BKK = timezone(timedelta(hours=7))
+MONTHS = {m: i for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun",
+                                      "jul", "aug", "sep", "oct", "nov", "dec"), 1)}
 
 LEVELS = ("none", "puddle", "flooded", "severe", "unclear")
 WET = ("puddle", "flooded", "severe")
@@ -77,14 +91,15 @@ SCREEN_PROMPT = (
     "This is a first pass: every tile you mark puddle, flooded or severe gets a closer look on its own, so mark a "
     "tile at least puddle whenever it may have standing water, and none only when the road is clearly free of it. "
     'Answer ONLY with JSON: {"tiles": [{"tile": <number>, "level": "none|puddle|flooded|severe|unclear", '
-    '"confidence": <0..1>, "note_th": "<one short Thai sentence about the water you see>"}]} with one entry per tile.'
+    '"confidence": <0..1>}]} with one entry per tile.'
 )
 CONFIRM_PROMPT = (
     "You are the flood-watch agent of the Bangkok traffic control room. The image is one low-resolution street "
     "CCTV snapshot. Decide whether flood water stands or flows on the road surface. " + _LEVEL_RULES + " "
     "Never guess: when unsure between two levels, pick the lower one. "
     'Answer ONLY with JSON: {"level": "none|puddle|flooded|severe|unclear", "confidence": <0..1>, '
-    '"note_th": "<one short Thai sentence: where the water is and how deep it looks>"}.'
+    '"note_th": "<one short Thai sentence: where the water is and how deep it looks>", '
+    '"stamp": "<the date and time printed on the picture, copied exactly; empty when there is none>"}.'
 )
 
 
@@ -101,6 +116,43 @@ def _verdict(v):
         conf = 0.0
     return {"level": level if level in LEVELS else "unclear", "confidence": round(conf, 2),
             "note_th": str(v.get("note_th") or "")[:200]}
+
+
+def _stamp_time(text):
+    """Epoch of a date and time printed on a frame ("28-09-2026 19:53:57", "2026/09/28 18:35:06",
+    "28 Sep 2026 20:01:54", "28.09.2026 19:55:58"; Bangkok time), or None when it does not read as one."""
+    text = str(text or "").strip().lower()
+    t = re.search(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", text)
+    if not t:
+        return None
+    if m := re.search(r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})", text):
+        y, mo, d = int(m[1]), int(m[2]), int(m[3])
+    elif m := re.search(r"(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})", text):
+        d, mo, y = int(m[1]), int(m[2]), int(m[3])
+        if mo > 12:
+            d, mo = mo, d   # month first
+    elif m := re.search(r"(\d{1,2})\s*([a-z]{3})[a-z]*\.?,?\s*(\d{4})", text):
+        d, mo, y = int(m[1]), MONTHS.get(m[2]), int(m[3])
+    elif m := re.search(r"([a-z]{3})[a-z]*\.?\s*(\d{1,2}),?\s*(\d{4})", text):
+        mo, d, y = MONTHS.get(m[1]), int(m[2]), int(m[3])
+    else:
+        return None
+    if y > 2400:
+        y -= 543   # Buddhist era
+    try:
+        return datetime(y, mo, d, int(t[1]), int(t[2]), int(t[3] or 0), tzinfo=BKK).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
+def _stale_copy(v, stamp, frame_ts):
+    """The confirm verdict, or unclear when the time printed on the frame shows an old copy served as new."""
+    at = _stamp_time(stamp)
+    lag = frame_ts - at if at is not None else 0
+    if not STAMP_MAX_LAG < lag < STAMP_MAX_AGE:
+        return v
+    return {**v, "level": "unclear",
+            "note_th": f"ภาพค้าง: เวลาบนภาพ {str(stamp)[:40]} เก่ากว่าเวลาดึงภาพ {lag / 3600:.0f} ชม."}
 
 
 def _tile(jpeg, n):
@@ -135,7 +187,10 @@ class FloodCamWatch:
         self._state = {}       # camid -> verdict dict (see _record)
         self._judged = {}      # camid -> fingerprint of the frame behind the current verdict
         self._force = set()    # camids to check now whatever their turn (check_all)
+        self._inflight = set() # camids a worker is checking now, so no other worker takes them too
         self._calls = deque()
+        self._calls_lock = threading.Lock()
+        self._save_lock = threading.Lock()
         self._lock = threading.Lock()
         self.last_error = None
         os.makedirs(FRAME_DIR, exist_ok=True)
@@ -153,12 +208,13 @@ class FloodCamWatch:
             self._state = {}
 
     def _save(self):
-        with self._lock:
-            data = json.dumps(self._state, ensure_ascii=False)
-        tmp = STATE_FILE + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            f.write(data)
-        os.replace(tmp, STATE_FILE)
+        with self._save_lock:   # the workers save in turn: one .tmp file, and never an older state over a newer one
+            with self._lock:
+                data = json.dumps(self._state, ensure_ascii=False)
+            tmp = STATE_FILE + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(data)
+            os.replace(tmp, STATE_FILE)
 
     # ------------------------------------------------------------ frames in
     def add_cameras(self, cameras):
@@ -196,20 +252,27 @@ class FloodCamWatch:
 
     # ------------------------------------------------------------ worker
     def start(self):
-        threading.Thread(target=self._loop, daemon=True, name="flood-cam-watch").start()
+        threading.Thread(target=self._run, daemon=True, name="flood-cam-watch").start()
+
+    def _run(self):
+        time.sleep(20)   # let the server finish starting
+        for n in range(WORKERS):
+            threading.Thread(target=self._loop, daemon=True, name=f"flood-cam-watch-{n}").start()
+        time.sleep(SEED_DELAY)
+        self._seed()
 
     def _loop(self):
-        time.sleep(20)   # let the server finish starting
-        self._seed()
         while True:
             try:
-                batch = self._due()[:TILES] if self.enabled() else []
-                if not batch or not self._budget_ok():
+                batch = self._take() if self.enabled() and self._budget_ok() else []
+                if not batch:
                     time.sleep(20)
                     continue
                 try:
                     self._screen(batch)
                 finally:
+                    with self._lock:
+                        self._inflight.difference_update(batch)
                     self._save()
                 self.last_error = None
             except Exception as e:  # noqa: BLE001 - the model endpoint may be down; try again later
@@ -217,30 +280,41 @@ class FloodCamWatch:
                 print(f"[FloodCam] check failed: {self.last_error}")
                 time.sleep(ERROR_BACKOFF)
 
+    def _take(self):
+        """The next grid of due cameras, marked in flight for this worker."""
+        with self._lock:
+            batch = self._due()[:TILES]
+            self._inflight.update(batch)
+        return batch
+
     def _due(self):
-        """Cameras holding a frame worth a look, wet ones first, then never checked, then the oldest check."""
+        """Cameras holding a frame worth a look, wet ones first, then never checked, then the oldest check.
+        The caller holds the lock."""
         now = time.time()
         out = []
-        with self._lock:
-            for camid, (jpeg, ts, fp) in self._frames.items():
-                st = self._state.get(camid)
-                if st and camid not in self._force:
-                    wait = WET_INTERVAL if st["level"] in WET else INTERVAL
-                    if ts <= st["frame_ts"] or now - st["checked_at"] < wait:
-                        continue
-                    if _same_scene(fp, self._judged.get(camid)):
-                        continue   # frozen feed: same picture as the one already judged
-                out.append((0 if st and st["level"] in WET else 1 if not st else 2, st["checked_at"] if st else 0, camid))
+        for camid, (jpeg, ts, fp) in self._frames.items():
+            if camid in self._inflight:
+                continue
+            st = self._state.get(camid)
+            if st and camid not in self._force:
+                wait = WET_INTERVAL if st["level"] in WET else INTERVAL
+                if ts <= st["frame_ts"] or now - st["checked_at"] < wait:
+                    continue
+                if _same_scene(fp, self._judged.get(camid)):
+                    continue   # frozen feed: same picture as the one already judged
+            out.append((0 if st and st["level"] in WET else 1 if not st else 2, st["checked_at"] if st else 0, camid))
         return [camid for _, _, camid in sorted(out)]
 
     def _budget_ok(self):
         now = time.time()
-        while self._calls and now - self._calls[0] > 3600:
-            self._calls.popleft()
-        return len(self._calls) < MAX_PER_HOUR
+        with self._calls_lock:
+            while self._calls and now - self._calls[0] > 3600:
+                self._calls.popleft()
+            return len(self._calls) < MAX_PER_HOUR
 
     def _ask(self, jpeg, prompt, text, max_tokens):
-        self._calls.append(time.time())
+        with self._calls_lock:
+            self._calls.append(time.time())
         image = "data:image/jpeg;base64," + base64.standard_b64encode(jpeg).decode("ascii")
         return local_llm.default.chat(
             [{"role": "system", "content": prompt},
@@ -267,7 +341,8 @@ class FloodCamWatch:
                 if not self._budget_ok():
                     continue
                 try:
-                    v, source = _verdict(_parse(self._ask(_enlarge(jpeg), CONFIRM_PROMPT, "One camera.", 300))), "confirm"
+                    answer = _parse(self._ask(_enlarge(jpeg), CONFIRM_PROMPT, "One camera.", 300))
+                    v, source = _stale_copy(_verdict(answer), answer.get("stamp"), ts), "confirm"
                 except Exception as e:  # noqa: BLE001 - the loop backs off after this grid
                     failed = failed or e
                     continue

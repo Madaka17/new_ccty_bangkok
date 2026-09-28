@@ -325,7 +325,9 @@ class BmaScanner:
         self.last_scan_time = None
         self.last_scan_duration = 0.0
         self.cycle_count = 0
-        self.download_workers = 3
+        # BMA answers slowly (seconds per picture): 3 at a time took ~11 min a cycle, too slow for the
+        # 5 min flood watch (flood_cam_service.py); 8 should bring a cycle near 4 min if BMA keeps up
+        self.download_workers = int(os.getenv("BMA_SCAN_WORKERS", "8"))
         self.infer_lock = threading.Lock()
         # HelmetPatrol (helmet_service.py) / WrongWayPatrol (wrongway_service.py) set by the server:
         # both get every snapshot (+ its boxes)
@@ -393,16 +395,18 @@ class BmaScanner:
             }
 
     def _auto_scan_loop(self):
-        """Periodically run scans in background."""
+        """Start a scan cycle every 4 minutes, or as soon as the last one ends when it ran longer
+        (a plain 4 min sleep skipped a whole turn after a 5 min cycle: 8 min between frames)."""
         time.sleep(3.0) # wait for server start
+        last_start = 0.0
         while True:
             try:
-                if not self.is_scanning:
+                if not self.is_scanning and time.time() - last_start >= 240:
+                    last_start = time.time()
                     self.start_scan()
-                # Wait 4 minutes between scan cycles
-                time.sleep(240)
-            except Exception as e:
-                time.sleep(30)
+            except Exception:
+                pass
+            time.sleep(5)
 
     def _run_scan_cycle(self):
         t0 = time.time()
