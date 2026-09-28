@@ -253,7 +253,8 @@ export default function App() {
       )}
       <BottomNav page={page} onNavigate={navigate} onMenu={() => setMenuOpen(true)} onReport={openFloodReport} />
 
-      <div className="min-h-full flex flex-col pt-4 pb-24 min-w-0">
+      {/* Earthquake scrolls inside its frame, so on desktop the page itself must fit the screen */}
+      <div className={`min-h-full flex flex-col pt-4 pb-24 min-w-0 ${page === 'enviro' ? 'lg:pb-4' : ''}`}>
         <main className="flex-1 px-4 sm:px-6 min-w-0">
           {/* One width and one spacing rule for every page */}
           <motion.div
@@ -313,13 +314,30 @@ export default function App() {
 
             {page === 'ai' && <AiPage active pendingQuestion={pendingQuestion} onQuestionConsumed={() => setPendingQuestion('')} />}
 
-            {/* ENVIRO is its own app (launch\enviro), mounted at /enviro on the same address */}
+            {/* ENVIRO is its own app (launch\enviro), mounted at /enviro on the same address. Framed, it
+                switches to this site's look itself (the `embed` class in ENVIRO/frontend/index.html). */}
             {page === 'enviro' && (
-              <iframe
-                src="/enviro/"
-                title="ENVIRO Seismic Command"
-                className="w-full h-[calc(100dvh-10rem)] lg:h-[calc(100vh-3rem)] rounded-xl border border-slate-200 bg-white"
-              />
+              <>
+                <PageHeader
+                  title={PAGE_TITLES.enviro}
+                  description="เฝ้าระวังและเตือนภัยแผ่นดินไหวแบบเรียลไทม์ · สถานีตรวจวัด USGS EMSC GEOFON และ TMD · ENVIRO Seismic Command"
+                  actions={
+                    <a
+                      href="/enviro/"
+                      target="_blank"
+                      rel="noopener"
+                      className="inline-flex items-center justify-center h-10 px-4 text-sm rounded-lg border font-medium bg-white text-slate-800 border-slate-300 hover:bg-slate-50 transition-colors duration-150"
+                    >
+                      เปิดเต็มจอ
+                    </a>
+                  }
+                />
+                <iframe
+                  src="/enviro/"
+                  title="ENVIRO Seismic Command"
+                  className="w-full h-[calc(100dvh-17rem)] lg:h-[calc(100vh-7rem)] border-0 bg-transparent"
+                />
+              </>
             )}
           </motion.div>
         </main>
