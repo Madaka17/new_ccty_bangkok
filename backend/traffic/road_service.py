@@ -30,8 +30,8 @@ the road. A road without one cannot be said to be flooded at all, so it is only 
 "watch": its rain and canal classes are halved and capped there, and the row is marked
 `measured: false`. Every class and the exact number behind it stay on the row.
 
-Gemini writes the short Thai read of the top roads, at most once every AI_INTERVAL and only when
-the picture changed; without a key a deterministic template says the same things from the numbers.
+The Qwen model behind LOCAL_LLM_* (else Gemini) writes the short Thai read of the top roads every
+AI_INTERVAL; with neither, a deterministic template says the same things from the numbers.
 Served by /api/roads/*.
 """
 import json
@@ -47,8 +47,23 @@ except Exception:  # pragma: no cover - the template covers the no-key case
     genai = None
     genai_types = None
 
+from backend.core import local_llm
+
 AI_MODEL = os.getenv("ROAD_AI_MODEL", os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"))
-AI_INTERVAL = int(os.getenv("ROAD_AI_SECONDS", "600"))
+AI_INTERVAL = int(os.getenv("ROAD_AI_SECONDS", "360"))
+# The read's shape, for the local model's structured output (same fields the prompt asks for)
+AI_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "required": ["headline", "detail", "roads"],
+    "properties": {
+        "headline": {"type": "string"},
+        "detail": {"type": "string"},
+        "roads": {"type": "array", "items": {"type": "object", "additionalProperties": False,
+                                              "required": ["road", "why", "advice"],
+                                              "properties": {"road": {"type": "string"}, "why": {"type": "string"},
+                                                             "advice": {"type": "string"}}}},
+    },
+}
 BUILD_INTERVAL = 120.0
 MIN_ROAD_KM = 0.8            # shorter named pieces are junctions and service roads, not routes
 NEAR_FLOOD_KM = 0.8          # a road sensor this close counts as being on the road
@@ -132,9 +147,11 @@ class RoadRisk:
         self.analysis = None
         self._ai_sig, self._ai_at, self._ai_client = None, 0.0, None
         self.thread = threading.Thread(target=self._loop, daemon=True, name="road-risk")
+        self.ai_thread = threading.Thread(target=self._ai_loop, daemon=True, name="road-risk-ai")
 
     def start(self):
         self.thread.start()
+        self.ai_thread.start()
 
     # ------------------------------------------------------------ inputs
     def _rain(self):
@@ -324,7 +341,22 @@ class RoadRisk:
             "source": "template",
         }
 
-    def _analyse(self, items, force=False):
+    def _ask(self, prompt):
+        """(reply, source): the Qwen model behind LOCAL_LLM_* when it is set, else Gemini; ({}, None) with neither."""
+        if local_llm.default.enabled():
+            text = local_llm.default.chat([{"role": "user", "content": prompt}], max_tokens=1500, temperature=0.2,
+                                          json_schema=AI_SCHEMA)
+            return json.loads(text[text.find("{"):text.rfind("}") + 1]), local_llm.default.model
+        client = self._client()
+        if client is None:
+            return {}, None
+        resp = client.models.generate_content(
+            model=AI_MODEL, contents=prompt,
+            config=genai_types.GenerateContentConfig(temperature=0.2, max_output_tokens=1500,
+                                                     response_mime_type="application/json"))
+        return json.loads(resp.text or "{}"), AI_MODEL
+
+    def _analyse(self, items, force=False, ai=True):
         counts = {"total": len(items)}
         for k in LEVEL_ORDER:
             counts[k] = sum(1 for i in items if i["level"] == k)
@@ -334,8 +366,7 @@ class RoadRisk:
         base = self._template(top, counts)
         if not force and sig == self._ai_sig and self.analysis and now - self._ai_at < AI_INTERVAL:
             return self.analysis
-        client = self._client()
-        if client is None or not top:
+        if not top or not ai:
             with self.lock:
                 self.analysis = {**base, "counts": counts, "updated_at": int(now)}
             self._ai_sig, self._ai_at = sig, now
@@ -369,11 +400,7 @@ class RoadRisk:
         )
         out = dict(base)
         try:
-            resp = client.models.generate_content(
-                model=AI_MODEL, contents=prompt,
-                config=genai_types.GenerateContentConfig(temperature=0.2, max_output_tokens=1500,
-                                                         response_mime_type="application/json"))
-            d = json.loads(resp.text or "{}")
+            d, source = self._ask(prompt)
             if isinstance(d, dict) and d.get("headline"):
                 out = {
                     "headline": str(d["headline"]).strip(),
@@ -381,10 +408,10 @@ class RoadRisk:
                     "roads": [{"road": str(x.get("road") or "").strip(), "why": str(x.get("why") or "").strip(),
                                "advice": str(x.get("advice") or "").strip()}
                               for x in (d.get("roads") or []) if isinstance(x, dict) and x.get("road")][:6],
-                    "source": AI_MODEL,
+                    "source": source,
                 }
         except Exception as e:  # noqa: BLE001
-            print(f"[Roads] Gemini failed, using template: {str(e)[:140]}")
+            print(f"[Roads] AI failed, using template: {str(e)[:140]}")
         with self.lock:
             self.analysis = {**out, "counts": counts, "updated_at": int(now)}
         self._ai_sig, self._ai_at = sig, now
@@ -397,7 +424,8 @@ class RoadRisk:
             self.items = items
             self.updated_at = int(time.time())
             self.error = None
-        self._analyse(items)
+        if self.analysis is None:
+            self._analyse(items, ai=False)    # the template right away; _ai_loop writes the model's read
         return len(items)
 
     def _loop(self):
@@ -410,6 +438,17 @@ class RoadRisk:
                     self.error = str(e)[:200]
                 print(f"[Roads] build failed: {e}")
             time.sleep(BUILD_INTERVAL)
+
+    def _ai_loop(self):
+        """The model's read of the current roads every AI_INTERVAL (start to start)."""
+        while True:
+            t0 = time.time()
+            if self.items:
+                try:
+                    self._analyse(self.items, force=True)
+                except Exception as e:  # noqa: BLE001 - the read must never kill the thread
+                    print(f"[Roads] analysis failed: {e}")
+            time.sleep(max(5.0, AI_INTERVAL - (time.time() - t0)) if self.items else 10.0)
 
     # ------------------------------------------------------------ api
     def status(self, level=None, province=None, q=None, measured=None, limit=200):
