@@ -1,25 +1,58 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import Sidebar, { PAGE_TITLES } from './components/Sidebar.jsx';
 import { PageHeader } from './components/dashboard/primitives.jsx';
-import SidePanel from './components/SidePanel.jsx';
-import CityWindow from './components/CityWindow.jsx';
-import AiPage from './components/AiPage.jsx';
-import MapPage from './components/MapPage.jsx';
 import DashboardPage from './components/DashboardPage.jsx';
 import BottomNav from './components/BottomNav.jsx';
 import NavIcon from './components/NavIcons.jsx';
-import CameraAiPage from './components/CameraAiPage.jsx';
-import SafetyPage from './components/SafetyPage.jsx';
 import BotFace from './components/BotFace.jsx';
-import VisitorsPage from './components/VisitorsPage.jsx';
-import WaterPage from './components/WaterPage.jsx';
-import FloodPinPage from './components/FloodPinPage.jsx';
-import AlertsPage from './components/AlertsPage.jsx';
 import AlertPopups from './components/AlertPopups.jsx';
 import { fetchCameras, fetchAIStats, fetchIncidents, fetchSurveyRanking, fetchRoadCameras } from './lib/api.js';
 import { useActiveCameras, useFavorites } from './lib/store.js';
 import { trackView, startHeartbeat } from './lib/telemetry.js';
+
+// Every page but the dashboard (the first page) loads when it is first opened: the maps (maplibre-gl),
+// the live video (hls.js) and the camera AI pages stay out of the first download
+const RELOADED = 'page-file-reload';
+function lazyPage(load) {
+  return lazy(() =>
+    load().then(
+      (mod) => {
+        try { sessionStorage.removeItem(RELOADED); } catch {}
+        return mod;
+      },
+      (err) => {
+        // A tab left open over a new build asks for page files that build deleted: load the new site, once
+        try {
+          if (!sessionStorage.getItem(RELOADED)) {
+            sessionStorage.setItem(RELOADED, '1');
+            window.location.reload();
+            return new Promise(() => {});
+          }
+        } catch {}
+        throw err;
+      }
+    )
+  );
+}
+const SidePanel = lazyPage(() => import('./components/SidePanel.jsx'));
+const CityWindow = lazyPage(() => import('./components/CityWindow.jsx'));
+const AiPage = lazyPage(() => import('./components/AiPage.jsx'));
+const MapPage = lazyPage(() => import('./components/MapPage.jsx'));
+const CameraAiPage = lazyPage(() => import('./components/CameraAiPage.jsx'));
+const SafetyPage = lazyPage(() => import('./components/SafetyPage.jsx'));
+const VisitorsPage = lazyPage(() => import('./components/VisitorsPage.jsx'));
+const WaterPage = lazyPage(() => import('./components/WaterPage.jsx'));
+const FloodPinPage = lazyPage(() => import('./components/FloodPinPage.jsx'));
+const AlertsPage = lazyPage(() => import('./components/AlertsPage.jsx'));
+
+function PageLoading() {
+  return (
+    <div role="status" className="py-16 grid place-items-center text-sm text-slate-500">
+      กำลังโหลดหน้า...
+    </div>
+  );
+}
 
 const PAGES = ['dashboard', 'cameras', 'map', 'safety', 'water', 'report', 'yolo', 'ai', 'alerts', 'visitors', 'enviro'];
 // Old links to pages that are now tabs of the camera AI page
@@ -264,6 +297,7 @@ export default function App() {
             transition={{ duration: 0.22 }}
             className="mx-auto w-full max-w-[1400px] flex flex-col gap-4"
           >
+            <Suspense fallback={<PageLoading />}>
             {page === 'dashboard' && (
               <DashboardPage isActive liveCount={activeCams.length} cameras={cameras} incidents={incidents} onAsk={askAI} onOpenRoad={openRoadCameras} onNavigate={navigate} onOpenAI={openAI} onToast={showToast} />
             )}
@@ -339,6 +373,7 @@ export default function App() {
                 />
               </>
             )}
+            </Suspense>
           </motion.div>
         </main>
 
