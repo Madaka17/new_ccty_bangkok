@@ -1,0 +1,6 @@
+data/*.db
+backups/*.db
+data/gem_faults_raw/
+data/gem_faults.json
+__pycache__/
+*.pyc
