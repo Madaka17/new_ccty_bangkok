@@ -2,7 +2,7 @@
 Flood watch over every BMA camera and the iTIC cameras: is there water on the road in front of the camera now?
 
 Flow:
-    BmaScanner hands every raw snapshot to observe() (each camera about every 4 min); itic_frames.py adds
+    BmaScanner hands every raw snapshot to observe() (each camera about every 3 min); itic_frames.py adds
     the iTIC cameras around Bangkok with add_cameras() and hands in a frame of each every 5 min
     -> WORKERS workers each take the cameras due for a check: never checked, or checked more than
        INTERVAL ago (WET_INTERVAL for the ones that had water) and holding a newer frame than that check
@@ -55,7 +55,9 @@ GRID = 3
 TILES = GRID * GRID
 TILE_W, TILE_H = 352, 288      # the BMA frame size
 CONFIRM_W = 704
-STALE_MINUTES = 60
+# A verdict whose frame is older than this is faded and marked "ภาพเก่า": the camera sent no new frame for
+# about 5 BMA scan cycles (3 min) or 3 iTIC rounds (5 min), so it no longer shows the road as it is now
+STALE_MINUTES = int(os.getenv("FLOOD_CAM_STALE_MINUTES", "15"))
 SEED_MAX_AGE = 12 * 3600
 SEED_DELAY = 300               # about one scanner cycle: live frames first
 AGENT_TIMEOUT = 120

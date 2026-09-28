@@ -224,7 +224,7 @@ export default function FloodPointsMap({ isActive, onReport }) {
             {Object.values(SENSOR_LEVEL).map((l) => (
               <span key={l.label} className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: l.color }} />เซ็นเซอร์: {l.label}</span>
             ))}
-            {staleCams > 0 && <span className="text-amber-700">จุดจางคือกล้องที่ภาพเก่ากว่า 60 นาที ({staleCams} จุด)</span>}
+            {staleCams > 0 && <span className="text-amber-700">จุดจางคือกล้องที่ภาพเก่ากว่า {cams?.stale_minutes ?? 15} นาที ({staleCams} จุด)</span>}
           </div>
 
           {sel ? (
