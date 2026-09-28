@@ -81,7 +81,7 @@ from backend.vision.camera_health import CameraHealth
 from backend.traffic.traffic_service import traffic, get_traffic_tile, get_osm_tile
 from backend.traffic.guidance_service import GuidanceService
 from backend.vision.helmet_service import HelmetPatrol
-from backend.vision.flood_cam_service import FloodCamWatch
+from backend.vision.flood_cam_service import FloodCamWatch, STALE_MINUTES as FLOOD_CAM_STALE_MINUTES
 from backend.vision.itic_frames import IticFrames
 from backend.vision.wrongway_service import WrongWayPatrol
 from backend.water.air_service import air
@@ -94,6 +94,7 @@ from backend.water import water_service
 from backend.traffic import rsc_service
 from backend.bma.bma_events import bma_feed
 from backend.bma.bma_service import BmaScanner
+from backend.core import stale_stamp
 from backend.traffic import analytics_service
 from backend.core.telemetry_service import telemetry
 from backend.core import access_guard
@@ -355,7 +356,9 @@ async def get_bma_snapshot(camid: str, live: bool = False, annotate: bool = True
         raise HTTPException(400, "bad camera id")
     cache_file = os.path.join(DATA_DIR, "cache", "bma_snapshots", f"{camid}.jpg")
     if os.path.exists(cache_file):
-        return FileResponse(cache_file, media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
+        # the scanner's last frame; while the BMA site is down it can be hours old, so it says so on the picture
+        return Response(content=stale_stamp.stamp_file(cache_file), media_type="image/jpeg",
+                        headers={"Cache-Control": "no-cache"})
 
     try:
         raw = await loop.run_in_executor(None, lambda: bma_scanner.session.fetch_snapshot(str(camid), timeout=4.0))
@@ -378,8 +381,7 @@ async def stream_bma_camera(camid: str, fps: float = 2.0):
         last_frame = None
         if os.path.exists(cache_file):
             try:
-                with open(cache_file, "rb") as f:
-                    last_frame = f.read()
+                last_frame = stale_stamp.stamp_file(cache_file)
                 if last_frame:
                     yield (b'--frame\r\n'
                            b'Content-Type: image/jpeg\r\n\r\n' + last_frame + b'\r\n')
@@ -759,7 +761,9 @@ def flood_camera_image(camid: str):
     p = flood_cams.frame_path(camid)
     if not p:
         raise HTTPException(404, "no image")
-    return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
+    # stamped "ภาพเก่า" once the frame is older than the map's own fade (the BMA site down, a dead feed)
+    jpeg = stale_stamp.stamp_file(p, stale_minutes=FLOOD_CAM_STALE_MINUTES, frame_ts=flood_cams.frame_ts(camid))
+    return Response(content=jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
 
 @app.post("/api/flood/cameras/check")
 def flood_cameras_check():

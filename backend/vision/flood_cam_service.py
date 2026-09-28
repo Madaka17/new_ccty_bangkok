@@ -301,6 +301,10 @@ class FloodCamWatch:
         path = os.path.join(FRAME_DIR, f"{camid}.jpg")
         return path if os.path.exists(path) else None
 
+    def frame_ts(self, camid):
+        """When the frame behind this camera's verdict was taken (not when it was judged), or None."""
+        return (self._state.get(str(camid)) or {}).get("frame_ts")
+
     def status(self, include_dry=False):
         now = time.time()
         counts = {level: 0 for level in LEVELS}
