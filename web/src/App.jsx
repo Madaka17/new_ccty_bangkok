@@ -14,7 +14,7 @@ import SafetyPage from './components/SafetyPage.jsx';
 import BotFace from './components/BotFace.jsx';
 import VisitorsPage from './components/VisitorsPage.jsx';
 import WaterPage from './components/WaterPage.jsx';
-import ReportFloodPage from './components/ReportFloodPage.jsx';
+import FloodPinPage from './components/FloodPinPage.jsx';
 import AlertsPage from './components/AlertsPage.jsx';
 import AlertPopups from './components/AlertPopups.jsx';
 import { fetchCameras, fetchAIStats, fetchIncidents, fetchSurveyRanking, fetchRoadCameras } from './lib/api.js';
@@ -299,7 +299,7 @@ export default function App() {
 
             {page === 'water' && <WaterPage isActive onToast={showToast} onNavigate={navigate} onAsk={askAI} onOpenRoad={openRoadCameras} />}
 
-            {page === 'report' && <ReportFloodPage isActive onNavigate={navigate} />}
+            {page === 'report' && <FloodPinPage isActive />}
 
             {page === 'yolo' && (
               <CameraAiPage tab={cameraTab} onTab={setCameraTab} cameras={cameras} favorites={favorites} camid={aiCamid} incidents={incidents} onPickCamera={setAiCamid} onToast={showToast} onAsk={askAI} />
