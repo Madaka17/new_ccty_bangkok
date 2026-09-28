@@ -21,6 +21,7 @@ import os
 import re
 import threading
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
@@ -208,6 +209,20 @@ def _load_faults():
 
 
 # ------------------------------------------------------------ facts
+# Who feels shaking of this MMI (USGS), so the text does not claim "people felt it" at MMI II
+FELT_TH = (
+    (6.0, "ทุกคนรู้สึก เดินลำบาก เฟอร์นิเจอร์เคลื่อน อาคารที่ไม่แข็งแรงอาจเสียหาย"),
+    (5.0, "เกือบทุกคนรู้สึก ของชิ้นเล็กตกหล่น ภาชนะอาจแตก"),
+    (4.0, "คนในอาคารส่วนใหญ่รู้สึก จาน หน้าต่าง และประตูสั่น"),
+    (3.0, "คนในอาคารรู้สึกได้ โดยเฉพาะชั้นบน แต่หลายคนอาจไม่รู้ว่าเป็นแผ่นดินไหว"),
+    (FELT_MMI_THRESHOLD, "รู้สึกได้เฉพาะบางคนที่อยู่นิ่ง โดยเฉพาะชั้นบนของอาคารสูง คนส่วนใหญ่ไม่รู้สึก"),
+)
+
+
+def _felt_th(mmi):
+    return next((text for floor, text in FELT_TH if mmi >= floor), "คนไม่รู้สึก มีเพียงเครื่องมือที่ตรวจวัดได้")
+
+
 def _level(mmi):
     """The db.LEVELS row for this intensity: (lv, name, mmi_min, mmi_max, roman, damage text, ..., advisory, ...)."""
     for row in reversed(dbmod.LEVELS):
@@ -286,7 +301,8 @@ def build_facts(now_ms=None):
                                    "dist_km": round(dist), "soft_clay": name in SOFT_CLAY}
     for p in provinces.values():
         row = _level(p["mmi"])
-        p.update(roman=mmi_roman(p["mmi"]), level=row[0], level_name=row[1], felt=p["mmi"] >= FELT_MMI_THRESHOLD)
+        p.update(roman=mmi_roman(p["mmi"]), level=row[0], level_name=row[1], felt=p["mmi"] >= FELT_MMI_THRESHOLD,
+                 felt_th=_felt_th(p["mmi"]))
     ranking = sorted((p for p in provinces.values() if p["mmi"] >= FELT_MMI_THRESHOLD), key=lambda p: -p["mmi"])
     top_mmi = ranking[0]["mmi"] if ranking else 1.0
     lv = _level(top_mmi)
@@ -347,7 +363,7 @@ def _template(f):
 
     parts = []
     if ranking:
-        parts.append("จังหวัดที่คาดว่ารู้สึกแรงสั่นมากที่สุด: " +
+        parts.append("จังหวัดที่คาดว่าได้รับแรงสั่นมากที่สุด: " +
                      ", ".join(f"{p['province']} (MMI {p['roman']})" for p in ranking[:5]))
     if f["standing_hazard"]:
         parts.append("พื้นที่เสี่ยงสูงจากรอยเลื่อนมีพลังในประเทศ: " +
@@ -400,8 +416,16 @@ def _ask(prompt):
         headers["Authorization"] = "Bearer " + _env("LOCAL_LLM_API_KEY")
     url = _env("LOCAL_LLM_URL", "http://localhost:1234/v1").rstrip("/") + "/chat/completions"
     req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), headers=headers)
-    with urllib.request.urlopen(req, timeout=AI_TIMEOUT) as resp:
-        text = json.load(resp)["choices"][0]["message"].get("content") or ""
+    # The gateway allows 3 requests in flight per key and BKK StreetSmart shares the key: a 429 is retried
+    for wait in (5, 15, None):
+        try:
+            with urllib.request.urlopen(req, timeout=AI_TIMEOUT) as resp:
+                text = json.load(resp)["choices"][0]["message"].get("content") or ""
+            break
+        except urllib.error.HTTPError as e:
+            if e.code != 429 or wait is None:
+                raise
+            time.sleep(wait)
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
     return json.loads(text[text.find("{"):text.rfind("}") + 1]), model
 
@@ -417,11 +441,17 @@ def write_brief(f):
         "provinces = จังหวัดที่คาดว่ารู้สึกแรงสั่น เรียงจากมากไปน้อย (soft_clay = อยู่บนชั้นดินเหนียวอ่อน บวกเพิ่มแล้ว amplify_mmi), "
         "level = ระดับผลกระทบสูงสุดต่อไทยและผลต่ออาคาร, far_field = เหตุการณ์ใหญ่ที่อาจทำให้อาคารสูงใน กทม. โยกไหว, "
         "standing_hazard = คะแนนความเสี่ยงประจำพื้นที่จากรอยเลื่อนมีพลังในประเทศ (เต็ม 100), thai_faults = รอยเลื่อนมีพลังในไทย\n"
-        "กติกา: ห้ามแต่งตัวเลข ชื่อสถานที่ ชื่อรอยเลื่อน หรือแนวรอยต่อที่ไม่มีในข้อมูล ใช้ชื่อสถานที่ตาม place เท่านั้น "
-        "ห้ามเดาเพิ่มว่าอยู่ใกล้ชายแดนหรือประเทศใด ถ้า plate หรือ fault เป็น null ให้บอกว่าไม่อยู่ใกล้แนวที่ทราบ "
+        "กติกา: ห้ามแต่งตัวเลข ชื่อสถานที่ ชื่อรอยเลื่อน หรือแนวรอยต่อที่ไม่มีในข้อมูล "
+        "place และ event เป็นภาษาอังกฤษจากฟีด ให้แปลเป็นภาษาไทยทุกครั้งที่ใช้ในข้อความ ห้ามคัดลอกภาษาอังกฤษมาตรง ๆ "
+        "เช่น '45 km SW of Bengkulu, Indonesia' เขียนว่า 'ห่างเมืองเบงกูลู อินโดนีเซีย ไปทางตะวันตกเฉียงใต้ 45 กม.' "
+        "และ 'OFF W COAST OF NORTHERN SUMATRA' เขียนว่า 'นอกชายฝั่งตะวันตกของเกาะสุมาตราตอนเหนือ' "
+        "แปลเฉพาะสิ่งที่มีใน place ห้ามเดาเพิ่มว่าอยู่ใกล้ชายแดนหรือประเทศใด "
+        "ถ้า plate หรือ fault เป็น null ให้บอกว่าไม่อยู่ใกล้แนวที่ทราบ "
         "ยกเว้น tectonics_ready เป็น false ให้ไม่กล่าวถึงแนวรอยต่อและรอยเลื่อนเลย "
         "ค่า MMI เป็นค่าประมาณจากแบบจำลองตามระยะทาง ไม่ใช่ค่าที่วัดได้จริง "
         "felt = คนรู้สึกแรงสั่นหรือไม่ ถ้า felt เป็น false ต้องเขียนว่าคนไม่รู้สึกแรงสั่น ห้ามเขียนว่ารู้สึก "
+        "felt_th = ใครรู้สึกได้ที่ระดับนั้น ให้เขียนตาม felt_th ห้ามเขียนให้แรงกว่า "
+        "เช่น ที่ MMI II ห้ามเขียนว่าประชาชนในพื้นที่รู้สึก ให้เขียนว่ารู้สึกได้เฉพาะบางคนที่อยู่นิ่ง "
         "ห้ามพยากรณ์ว่าจะเกิดแผ่นดินไหวเมื่อใด "
         "ห้ามใช้ Markdown\n"
         "ตอบเป็น JSON object เท่านั้น:\n"
