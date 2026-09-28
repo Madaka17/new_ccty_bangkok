@@ -26,8 +26,8 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo [*] Enabling Tailscale Funnel on port 8000 ...
-rem Only this site's port 443: "funnel reset" would also close ENVIRO on 8443 (launch\enviro)
-tailscale funnel --https=443 off >nul 2>&1
+rem Only this site's "/": "funnel reset" or "--https=443 off" would also close ENVIRO at /enviro (launch\enviro)
+tailscale funnel --https=443 --set-path=/ off >nul 2>&1
 tailscale funnel --bg 8000
 if %ERRORLEVEL% NEQ 0 (
     echo.

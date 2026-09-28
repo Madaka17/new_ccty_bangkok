@@ -413,15 +413,16 @@
   .critical-ack-bar .btn{background:#fff;color:var(--status-extreme);border-color:#fff;flex:none;}
 </style>
 
-<div class="login-mask" id="loginMask">
+<div class="login-mask" id="loginMask" hidden>
   <form class="login-card" id="loginForm">
     <div>
       <h1>ENVIRO Seismic Command</h1>
-      <div class="sub">เข้าสู่ระบบเพื่อใช้งานแดชบอร์ดตรวจจับและเตือนภัยแผ่นดินไหว</div>
+      <div class="sub">เข้าสู่ระบบสำหรับเจ้าหน้าที่ เพื่อส่งแจ้งเตือนและตั้งค่าระบบ</div>
     </div>
     <input class="field" id="loginUser" placeholder="ชื่อผู้ใช้" autocomplete="username">
     <input class="field" id="loginPass" type="password" placeholder="รหัสผ่าน" autocomplete="current-password">
     <button class="btn primary" type="submit">เข้าสู่ระบบ</button>
+    <button class="btn" type="button" id="loginCancel">กลับไปดูแดชบอร์ด</button>
     <div class="login-error" id="loginError"></div>
   </form>
 </div>
@@ -506,7 +507,13 @@ const ICONS = {
 function icon(name, cls=''){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="${cls}">${ICONS[name]}</svg>`;}
 
 /* ============================= AUTH + API ============================= */
+// Path this page is served under: '' at http://localhost:5050/, '/enviro' on the public site, where
+// Tailscale Funnel mounts ENVIRO at /enviro next to BKK StreetSmart. Every API and WebSocket URL starts with it.
+const BASE = location.pathname.replace(/\/(index\.html)?$/, '');
 let AUTH = JSON.parse(localStorage.getItem('enviro_auth') || 'null');
+// Without a login the dashboard opens read-only as this guest (the server treats a request with no
+// token the same way); "เข้าสู่ระบบ" in the rail opens the login form for staff.
+const GUEST = {username:'guest', role:'guest', display_name:'ผู้เยี่ยมชม'};
 
 function saveAuth(a){ AUTH = a; localStorage.setItem('enviro_auth', JSON.stringify(a)); }
 function clearAuth(){ AUTH = null; localStorage.removeItem('enviro_auth'); }
@@ -514,8 +521,8 @@ function clearAuth(){ AUTH = null; localStorage.removeItem('enviro_auth'); }
 async function api(path, opts={}){
   const headers = Object.assign({'Content-Type':'application/json'}, opts.headers||{});
   if(AUTH && AUTH.token) headers['Authorization'] = 'Bearer ' + AUTH.token;
-  const res = await fetch(path, Object.assign({}, opts, {headers}));
-  if(res.status === 401){ clearAuth(); showLogin(); throw new Error('unauthorized'); }
+  const res = await fetch(BASE + path, Object.assign({}, opts, {headers}));
+  if(res.status === 401){ clearAuth(); location.reload(); throw new Error('unauthorized'); }   // stale token: start over as guest
   if(!res.ok){ const body = await res.json().catch(()=>({})); throw new Error(body.message || body.error || res.statusText); }
   return res.status === 204 ? null : res.json();
 }
@@ -528,8 +535,14 @@ function showApp(){
   document.getElementById('loginMask').hidden = true;
   document.getElementById('app').hidden = false;
   document.getElementById('railUser').innerHTML = `<b>${AUTH.display_name}</b>${AUTH.role}`;
+  document.getElementById('logoutBtn').textContent = AUTH.token ? 'ออกจากระบบ' : 'เข้าสู่ระบบ';
   applyRolePermissions();
 }
+
+document.getElementById('loginCancel').addEventListener('click', ()=>{
+  document.getElementById('loginMask').hidden = true;
+  document.getElementById('app').hidden = false;
+});
 
 document.getElementById('loginForm').addEventListener('submit', async (e)=>{
   e.preventDefault();
@@ -538,16 +551,16 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
   const errEl = document.getElementById('loginError');
   errEl.textContent = '';
   try{
-    const res = await fetch('/api/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username,password})});
+    const res = await fetch(BASE + '/api/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username,password})});
     const body = await res.json();
     if(!res.ok){ errEl.textContent = body.message || 'เข้าสู่ระบบไม่สำเร็จ'; return; }
     saveAuth(body);
-    showApp();
-    boot();
+    location.reload();   // the guest dashboard is already running: reload it with the staff account
   }catch(err){ errEl.textContent = 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'; }
 });
 
 document.getElementById('logoutBtn').addEventListener('click', async ()=>{
+  if(!AUTH.token){ showLogin(); return; }
   try{ await api('/api/auth/logout', {method:'POST'}); }catch(e){}
   clearAuth();
   location.reload();
@@ -3545,7 +3558,7 @@ let ws = null, wsRetryMs = 1000;
 
 function connectWs(){
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws = new WebSocket(`${proto}://${location.host}${BASE}/ws`);
   ws.onopen = ()=>{
     wsRetryMs = 1000;
     document.getElementById('netDot').className = 'dot good';
@@ -4066,6 +4079,8 @@ function boot(){
   setInterval(tickClock, 1000);
 }
 
-if(AUTH && AUTH.token){ showApp(); boot(); } else { showLogin(); }
+if(!(AUTH && AUTH.token)) AUTH = GUEST;
+showApp();
+boot();
 </script>
 

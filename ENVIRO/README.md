@@ -26,9 +26,14 @@ Macs). Override with `PORT=8080 python3 main.py`.
 
 On the public server, start it with `launch\enviro\start.bat` (or
 `restart.bat` / `stop.bat`) instead. It serves ENVIRO at
-https://cctv-bangkok.tail95e28b.ts.net:8443 through Tailscale Funnel. Before
+https://cctv-bangkok.tail95e28b.ts.net/enviro/ through Tailscale Funnel, next to
+BKK StreetSmart on the same address (its "Earthquake" page shows it in a frame). Before
 each start it replaces the demo passwords above and the PROTO-01 node key with
 random ones, and writes them to `data/accounts.txt` (not in git).
+
+Visitors who have not logged in see the dashboard read-only as a guest
+(`server/auth.py: GUEST`). Sending alerts, simulating quakes and changing
+settings still need an admin or operator login ("เข้าสู่ระบบ" in the rail).
 
 Delete `data/enviro.db` to reset all state (events, audit log, users) back to
 the seeded starting point.

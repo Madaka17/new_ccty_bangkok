@@ -156,7 +156,7 @@ def quake_history_filters():
 
 
 @bp.post("/history/backfill")
-@auth.require_auth
+@auth.require_role("admin", "operator", "auditor", "partner")  # not the guest: every call fetches from 3 outside APIs
 def quake_history_backfill():
     """On-demand real backfill for the ปี/เดือน/สถานที่ history browser --
     per explicit request, fetches real data from USGS/EMSC/GEOFON's live
