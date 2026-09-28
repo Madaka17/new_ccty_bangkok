@@ -1,7 +1,11 @@
 <title>ENVIRO Seismic Command</title>
+<script>
+  // Framed by BKK StreetSmart's Earthquake page: take on that site's look (the .embed rules at the end of the styles)
+  if(window.self !== window.top) document.documentElement.classList.add('embed');
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Prompt:wght@400;500;600&family=Mitr:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -282,6 +286,8 @@
   .spec-row .v{color:var(--ink-primary);}
 
   .footnote{font-size:14px;color:var(--ink-faint);text-align:center;padding:6px 0 2px;}
+  .brief-text{font-size:17px;line-height:1.65;color:var(--ink-primary);}
+  .brief-list{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px;font-size:17px;line-height:1.55;color:var(--ink-primary);}
   code.kbd{font-family:var(--font-mono);background:var(--surface-3);border:1px solid var(--border-strong);border-radius:5px;padding:1px 6px;font-size:14px;color:var(--ink-primary);}
 
   /* ---------- leaflet map theming ---------- */
@@ -350,9 +356,6 @@
   .active-event-card .aec-row svg{width:13px;height:13px;flex:none;margin-top:1px;color:var(--ink-faint);}
   .active-event-card .aec-row b{color:var(--ink-primary);font-weight:600;}
 
-  .video-embed{position:relative;width:100%;padding-top:56.25%;border-radius:var(--radius-m);overflow:hidden;background:#000;border:1px solid var(--border-strong);}
-  .video-embed iframe{position:absolute;inset:0;width:100%;height:100%;border:0;}
-
   .impact-ring{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:32px;font-weight:700;flex:none;border:4px solid var(--ring-fg);color:var(--ring-fg);background:var(--ring-bg);}
 
   /* ---- Location-aware guidance + evacuation-vs-shelter assessment ----
@@ -411,6 +414,100 @@
   .critical-ack-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;background:var(--status-extreme);color:#fff;font-size:17px;font-weight:600;padding:10px 20px;animation:quakeMarkerBlink 1.4s ease-in-out infinite;}
   .critical-ack-bar[hidden]{display:none;}
   .critical-ack-bar .btn{background:#fff;color:var(--status-extreme);border-color:#fff;flex:none;}
+
+  /* ---------- embedded in BKK StreetSmart (html.embed, set in <head> when framed) ----------
+     Same look as that site's "hf" theme (web/src/index.css): near-black page, cards with a 2px cream
+     outline and a hard offset shadow, yellow pill for the active tab and primary button, Prompt text
+     and Mitr headings. The side rail becomes a row of tabs above the page; the site's own header
+     already names the page, so ENVIRO's title and logo are hidden. */
+  .embed{
+    --bg:#0a0c11; --plane:#0a0c11;
+    --surface-1:#121620; --surface-2:#1a1f2b; --surface-3:#222836;
+    --border:#2e3544; --border-strong:#3d4556;
+    --chart-surface:#121620; --grid:#2e3544; --axis:#3d4556;
+    --ink-primary:#f3f1ea; --ink-secondary:#cbd5e1; --ink-muted:#94a3b8; --ink-faint:#64748b;
+    --font-display:'Mitr','Prompt',system-ui,sans-serif;
+    --font-body:'Prompt',system-ui,sans-serif;
+    --radius-s:8px; --radius-m:10px; --radius-l:16px;
+    --hf-line:#e8e3d6; --hf-yellow:#ffd21e; --hf-on-yellow:#1a1a1a;
+  }
+  .embed body{background:transparent;font-size:16px;}
+  .embed h1,.embed h2,.embed h3,.embed h4{letter-spacing:-.01em;}
+  .embed :focus-visible{outline:2px solid var(--hf-yellow);outline-offset:2px;}
+
+  .embed .app{display:flex;flex-direction:column;gap:14px;height:100vh;padding:2px 8px 0 2px;}
+  .embed .app[hidden]{display:none;}
+  .embed .main{display:contents;}
+  .embed .rail{order:1;flex:none;flex-direction:row;align-items:center;padding:8px;background:var(--surface-1);border:2px solid var(--hf-line);border-radius:16px;box-shadow:4px 4px 0 #000;overflow:visible;}
+  .embed .conn-banner,.embed .critical-ack-bar{order:2;border-radius:12px;}
+  .embed .topbar{order:3;flex:none;background:transparent;border:none;padding:0;gap:10px;}
+  .embed .content{order:4;flex:1;min-height:0;padding:4px 8px 40px 2px;}
+  .embed .view{max-width:none;}
+  .embed .brand,.embed .topbar-title{display:none;}
+
+  .embed .nav{flex-direction:row;flex-wrap:wrap;gap:6px;min-width:0;}
+  .embed .grid > *{min-width:0;}
+  .embed .nav-item{width:auto;justify-content:flex-start;gap:10px;padding:6px 16px 6px 6px;border-radius:999px;border:2px solid transparent;}
+  .embed .nav-item svg{width:32px;height:32px;padding:7px;border-radius:9px;background:var(--surface-3);color:var(--ink-muted);}
+  .embed .nav-item .nav-label{display:block;font-size:15px;}
+  .embed .nav-item .nav-idx{display:none;}
+  .embed .nav-item:hover{background:var(--surface-2);}
+  .embed .nav-item.active{background:var(--hf-yellow);border-color:#000;color:var(--hf-on-yellow);box-shadow:2px 2px 0 #000;}
+  .embed .nav-item.active svg{background:transparent;border:2px solid #000;padding:5px;color:var(--hf-on-yellow);}
+  @media (max-width:900px){
+    .embed .nav{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;}
+    .embed .nav-item{flex:none;}
+  }
+
+  /* rail-foot is moved into the topbar by script when embedded */
+  .embed .topbar-chip{background:var(--surface-1);border:1px solid var(--border-strong);font-size:14px;padding:6px 12px;}
+  .embed .level-pill{font-size:14px;padding:6px 12px;}
+  .embed .rail-foot{flex-direction:row;align-items:center;gap:14px;border:none;padding:0;margin-left:auto;}
+  .embed .rail-user{display:block;padding:0;font-size:13px;}
+  .embed .rail-user b{display:inline;font-size:14px;margin-right:6px;}
+  .embed .rail-logout{font-size:14px;text-decoration:none;color:var(--ink-primary);border:1px solid var(--border-strong);border-radius:8px;padding:5px 12px;}
+  .embed .rail-logout:hover{background:var(--surface-2);}
+  .embed .rail-status{padding:0;}
+  .embed .rail-status-text{display:block;font-size:13px;}
+
+  .embed .panel,.embed .stat-tile,.embed .login-card{background:var(--surface-1);border:2px solid var(--hf-line);border-radius:16px;box-shadow:4px 4px 0 #000;}
+  .embed .panel .panel,.embed .panel .stat-tile{border:1px solid var(--border-strong);box-shadow:none;}
+  .embed .view-head h2{font-size:22px;}
+  .embed .view-head .desc{font-size:15px;}
+  .embed .panel-head h3{font-size:17px;}
+  .embed .panel-head .hint,.embed .panel-sub{font-size:14px;}
+  .embed .stat-tile .label{font-size:13px;}
+  .embed .stat-tile .value{font-size:28px;}
+  .embed .callout{font-size:17px;}
+
+  .embed .btn{font-size:15px;padding:8px 14px;border-radius:8px;border-color:var(--border-strong);background:var(--surface-1);}
+  .embed .btn:hover{background:var(--surface-2);}
+  .embed .btn.primary{background:var(--hf-yellow);border:2px solid #000;color:var(--hf-on-yellow);box-shadow:2px 2px 0 #000;}
+  .embed .btn.primary:hover{background:#f5c400;}
+  .embed select.field,.embed input.field,.embed .login-card input{background:var(--surface-1);border:1px solid var(--border-strong);border-radius:8px;font-size:15px;max-width:100%;}
+
+  .embed .leaflet-popup-content-wrapper,.embed .leaflet-popup-tip,.embed .tip{background:var(--surface-1);border:2px solid var(--hf-line);}
+  .embed .leaflet-popup-content-wrapper{border-radius:12px;box-shadow:3px 3px 0 #000;}
+  .embed .toast{background:var(--surface-1);border:2px solid var(--hf-line);border-radius:12px;box-shadow:4px 4px 0 #000;}
+  .embed .login-mask{background:var(--bg);}
+
+  /* Situation page for the public: what to do comes before the map, the site's header already
+     names the page, and the map stays shorter than the frame so a finger can still scroll past it.
+     The long map legend folds behind a button. */
+  .embed #view-situation .view-head{display:none;}
+  .embed #locationGuidancePanel{order:-1;}
+  .embed #mapEl{height:min(680px,65vh);}
+  .legend-toggle{display:none;}
+  .embed .legend-toggle{display:block;position:absolute;left:10px;bottom:10px;z-index:600;font:inherit;font-size:14px;color:var(--ink-primary);background:var(--surface-1);border:2px solid var(--hf-line);border-radius:999px;padding:5px 14px;box-shadow:2px 2px 0 #000;cursor:pointer;}
+  .embed .map-wrap:not(.legend-open) .map-legend-bar{display:none;}
+  .embed .map-legend-bar{padding-bottom:52px;}
+  @media (max-width:600px){.embed .topbar-chip:has(#clock){display:none;}}
+
+  /* Visitors (not logged in, html.guest): no quake simulator, which needs a staff login anyway,
+     no sensor-station tab, and no login button (staff log in on the full page at /enviro) */
+  .embed.guest #topSimulateScenario,.embed.guest #topSimulateSpeed,.embed.guest #topSimulateBtn{display:none;}
+  .embed.guest .nav-item[data-view="stations"]{display:none;}
+  .embed.guest .rail-user,.embed.guest .rail-logout{display:none;}
 </style>
 
 <div class="login-mask" id="loginMask" hidden>
@@ -469,6 +566,7 @@
     </header>
     <div class="content">
       <section class="view" id="view-situation"></section>
+      <section class="view" id="view-brief" hidden></section>
       <section class="view" id="view-warning" hidden></section>
       <section class="view" id="view-stations" hidden></section>
       <section class="view" id="view-analysis" hidden></section>
@@ -503,6 +601,7 @@ const ICONS = {
   target:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.4"/><path d="M12 2.5v3"/><path d="M12 18.5v3"/><path d="M2.5 12h3"/><path d="M18.5 12h3"/>',
   flame:'<path d="M12 2s5 5 5 10a5 5 0 0 1-10 0c0-2 1-3 1-3s.5 2 2 2c1 0 1-1.5 0-3-1.5-2-1-4 2-6Z"/>',
   elevator:'<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M10 8l2-2 2 2"/><path d="M10 14l2 2 2-2"/>',
+  globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3Z"/>',
 };
 function icon(name, cls=''){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="${cls}">${ICONS[name]}</svg>`;}
 
@@ -658,6 +757,11 @@ document.addEventListener('click', e=>{
   if(!btn) return;
   const body = btn.parentElement.querySelector('.mmi-explain-body');
   if(body) body.hidden = !body.hidden;
+});
+// Map legend show/hide -- the button only shows when embedded (.embed .legend-toggle)
+document.addEventListener('click', e=>{
+  const btn = e.target.closest('#mapLegendToggle');
+  if(btn) btn.parentElement.classList.toggle('legend-open');
 });
 // Location guidance / evacuation-assessment interactions -- also delegated,
 // since #locationGuidancePanel's innerHTML is fully rebuilt on every render
@@ -1990,6 +2094,7 @@ function situationShell(){
           <div id="mapEl"></div>
           <div id="activeEventCard" class="active-event-card" hidden></div>
           <div id="realQuakeTicker" class="quake-ticker" hidden></div>
+          <button type="button" class="legend-toggle" id="mapLegendToggle">คำอธิบายสัญลักษณ์</button>
           <div class="map-legend-bar" id="mapLegend">
             <div class="legend-item"><span class="legend-swatch" style="background:var(--status-critical);border-radius:50%;"></span>ศูนย์กลางแผ่นดินไหว (จำลอง)</div>
             <div class="legend-item"><span class="legend-swatch ring dashed" style="border-color:#63a4ee;"></span>คลื่น P (เดินทางมาถึงอันดับแรก)</div>
@@ -2019,13 +2124,6 @@ function situationShell(){
         </div>
       </div>
       <div class="grid grid-4 col-12" id="systemStatusRow"></div>
-      <div class="panel col-12">
-        <div class="panel-head"><h3>Live Earthquake Monitoring — GlobalQuake</h3><span class="badge neutral">แหล่งข้อมูลภายนอก</span></div>
-        <p class="panel-sub">สตรีมเฝ้าระวังแผ่นดินไหวทั่วโลกแบบเรียลไทม์จากโปรเจกต์โอเพนซอร์ส <a href="https://github.com/xspanger3770/GlobalQuake" target="_blank" rel="noopener" style="color:var(--accent-strong);">GlobalQuake</a> — เป็นแหล่งอ้างอิงภายนอกอิสระ ไม่เกี่ยวข้องกับเครือข่าย ENVIRO โดยตรง ใช้เปรียบเทียบสถานการณ์แผ่นดินไหวในภาพรวมของโลก</p>
-        <div class="video-embed">
-          <iframe src="https://www.youtube.com/embed/rvtygG4n6ew?autoplay=1&mute=1&rel=0" title="Live Earthquake Monitoring | GlobalQuake" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
-        </div>
-      </div>
     </div>`;
 }
 
@@ -2103,8 +2201,7 @@ async function paintSituation(){
 
   // Build the shell once. Rebuilding it on every 15s refresh would tear down
   // and recreate the Leaflet map (losing the ~2MB world-faults layer + user's
-  // pan/zoom) and restart the YouTube iframe -- so only the pieces that
-  // actually change get patched below.
+  // pan/zoom) -- so only the pieces that actually change get patched below.
   if(!document.getElementById('mapEl')){
     document.getElementById('view-situation').innerHTML = situationShell();
     document.getElementById('worldQuakeRange').addEventListener('change', refreshWorldQuakes);
@@ -3906,9 +4003,125 @@ async function refreshStationCount(){
   }catch(e){}
 }
 
+/* ============================= AI EARTHQUAKE BRIEF ============================= */
+// Written server-side (server/quake_brief.py) from the live catalogs. The AI's text and the feeds' place
+// names are escaped before they go into the page.
+function escHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function briefCoords(e){
+  return `${Math.abs(e.lat).toFixed(2)}°${e.lat>=0?'N':'S'} ${Math.abs(e.lng).toFixed(2)}°${e.lng>=0?'E':'W'}`;
+}
+function briefTectonics(e, ready){
+  if(!ready) return '<span style="color:var(--ink-muted);">กำลังโหลดข้อมูลแนวรอยต่อ</span>';
+  const parts = [];
+  if(e.plate) parts.push(`${e.plate.subduction?'เขตมุดตัว ':'แนวรอยต่อ '}${escHtml(e.plate.name)} (ห่าง ${e.plate.dist_km} กม.)`);
+  if(e.fault) parts.push(`รอยเลื่อน ${escHtml(e.fault.name)}${e.fault.slip_type?' · '+escHtml(e.fault.slip_type):''} (ห่าง ${e.fault.dist_km} กม.)`);
+  return parts.join('<br>') || '<span style="color:var(--ink-muted);">ไม่อยู่ใกล้แนวรอยต่อหรือรอยเลื่อนที่ทราบ</span>';
+}
+function briefEventRow(e, withImpact, ready){
+  const src = e.url ? `<a href="${escHtml(e.url)}" target="_blank" rel="noopener" style="color:var(--accent-strong);">${escHtml(e.source)}</a>` : escHtml(e.source);
+  return `<tr>
+    <td class="tabular">${escHtml(e.time)}</td>
+    <td class="tabular strong">M${e.magnitude.toFixed(1)}</td>
+    <td class="tabular">${e.depth_km!=null ? e.depth_km+' กม.' : '—'}</td>
+    <td style="white-space:normal;min-width:200px;">${escHtml(e.place)}<div class="tabular" style="font-size:14px;color:var(--ink-muted);">${briefCoords(e)}</div></td>
+    <td style="white-space:normal;min-width:220px;font-size:15px;">${briefTectonics(e, ready)}</td>
+    ${withImpact ? `<td class="tabular">${e.dist_bkk_km.toLocaleString()} กม.</td>
+    <td>${e.max_mmi_th>=2 ? `MMI ${mmiRomanJs(e.max_mmi_th)} · ${escHtml(e.max_mmi_th_where)}` : '<span style="color:var(--ink-muted);">ไม่รู้สึก</span>'}</td>` : ''}
+    <td>${src}</td>
+  </tr>`;
+}
+
+async function renderBrief(){
+  const b = await api('/api/world/brief');
+  const el = document.getElementById('view-brief');
+  const title = '<h2>AI วิเคราะห์แผ่นดินไหวล่าสุด</h2>';
+  if(!b.ready){
+    el.innerHTML = `<div class="view-head">${title}<p class="desc">กำลังรวบรวมข้อมูลจาก USGS · EMSC · GEOFON · TMD และเขียนบทวิเคราะห์ เปิดแท็บนี้อีกครั้งในอีกสักครู่</p></div>`;
+    return;
+  }
+  const f = b.facts, lv = f.level, bkk = f.bangkok;
+  const [bg, fg] = levelPillStyle(lv.lv);
+  const writer = b.source === 'template' ? 'สรุปอัตโนมัติจากข้อมูล (ไม่ได้ใช้ AI)' : `เขียนโดย AI (${escHtml(b.source)})`;
+  const updated = new Date(b.updated_at * 1000).toLocaleString('th-TH', {dateStyle:'medium', timeStyle:'short'});
+  const none = cols => `<tr><td colspan="${cols}" style="color:var(--ink-muted);">ไม่มีรายงาน</td></tr>`;
+  const provinceRows = f.provinces.map((p, i) => {
+    const [pbg, pfg] = levelPillStyle(p.level);
+    return `<tr>
+      <td class="tabular">${i+1}</td>
+      <td class="strong">${escHtml(p.province)}${p.soft_clay ? ' <span class="badge neutral">ดินอ่อน</span>' : ''}</td>
+      <td>${escHtml(p.region)}</td>
+      <td><span class="badge" style="background:${pbg};color:${pfg};">MMI ${p.roman} · ระดับ ${p.level}</span></td>
+      <td style="white-space:normal;min-width:200px;font-size:15px;">${escHtml(p.event)} (ห่าง ${p.dist_km.toLocaleString()} กม.)</td>
+    </tr>`;
+  }).join('');
+  const maxRisk = Math.max(1, ...f.standing_hazard.map(r => r.score));
+  const riskBars = f.standing_hazard.slice(0, 8).map(r => `
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="width:120px;font-size:15.5px;color:var(--ink-secondary);">${escHtml(r.region)}</span>
+      <div style="flex:1;background:var(--surface-2);border-radius:6px;height:12px;"><div style="width:${r.score/maxRisk*100}%;height:100%;background:var(--status-warn);border-radius:6px;"></div></div>
+      <span class="tabular" style="width:32px;text-align:right;font-size:15px;">${r.score}</span>
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div class="view-head">${title}
+      <p class="desc">สรุปจากฟีดจริง USGS · EMSC · GEOFON · TMD ย้อนหลัง ${f.window_days} วัน: แผ่นดินไหวขนาด 4.5 ขึ้นไปทั่วโลก และเหตุการณ์ใกล้ไทย · ${writer} · อัปเดต ${updated}</p>
+    </div>
+    <div class="callout" style="border-color:${fg};background:${bg};flex-direction:column;gap:4px;">
+      <div style="font-size:15px;font-weight:600;color:${fg};">ผลกระทบสูงสุดต่อไทย: ระดับ ${lv.lv} · ${escHtml(lv.name)} (MMI ${lv.roman})</div>
+      <div style="color:var(--ink-primary);font-weight:600;">${escHtml(b.headline)}</div>
+    </div>
+    <div class="grid grid-4">
+      <div class="stat-tile"><span class="label">M4.5+ ทั่วโลก (${f.window_days} วัน)</span><span class="value tabular">${f.world.count}<small>ครั้ง</small></span></div>
+      <div class="stat-tile"><span class="label">M6+ ทั่วโลก</span><span class="value tabular">${f.world.count_m6}<small>ครั้ง</small></span></div>
+      <div class="stat-tile"><span class="label">ใกล้ประเทศไทย</span><span class="value tabular">${f.near_count}<small>ครั้ง</small></span></div>
+      <div class="stat-tile"><span class="label">กรุงเทพฯ (คาดการณ์)</span><span class="value" style="font-size:25px;">${bkk && bkk.mmi >= 2 ? 'MMI '+bkk.roman : 'ไม่รู้สึก'}</span></div>
+    </div>
+    <div class="grid grid-12">
+      <div class="panel col-7">
+        <div class="panel-head"><h3>ภาพรวมทั่วโลกและภูมิภาค</h3><span class="hint">ขนาดใหญ่ที่สุด ${f.world.top.length} เหตุการณ์</span></div>
+        <p class="brief-text">${escHtml(b.world)}</p>
+        <div class="scroll-x"><table class="data-table">
+          <thead><tr><th>เวลา (ไทย)</th><th>ขนาด</th><th>ลึก</th><th>ศูนย์กลาง</th><th>แนวรอยต่อ / รอยเลื่อน</th><th>แหล่ง</th></tr></thead>
+          <tbody>${f.world.top.map(e => briefEventRow(e, false, f.tectonics_ready)).join('') || none(6)}</tbody>
+        </table></div>
+      </div>
+      <div class="panel col-5">
+        <div class="panel-head"><h3>ความเสี่ยงต่ออาคาร</h3><span class="badge" style="background:${bg};color:${fg};">ระดับ ${lv.lv} · ${escHtml(lv.name)}</span></div>
+        <p class="brief-text">${escHtml(b.buildings)}</p>
+        <h3 style="font-size:17px;">ควรทำอย่างไร</h3>
+        <ul class="brief-list">${b.advice.map(a => `<li>${escHtml(a)}</li>`).join('')}</ul>
+      </div>
+      <div class="panel col-12">
+        <div class="panel-head"><h3>แผ่นดินไหวใกล้ประเทศไทย</h3><span class="hint">เรียงตามแรงสั่นที่คาดว่าถึงไทย · แสดง ${f.near.length} จาก ${f.near_count} เหตุการณ์</span></div>
+        <div class="scroll-x"><table class="data-table">
+          <thead><tr><th>เวลา (ไทย)</th><th>ขนาด</th><th>ลึก</th><th>ศูนย์กลาง</th><th>แนวรอยต่อ / รอยเลื่อน</th><th>ห่าง กทม.</th><th>แรงสั่นสูงสุดในไทย</th><th>แหล่ง</th></tr></thead>
+          <tbody>${f.near.map(e => briefEventRow(e, true, f.tectonics_ready)).join('') || none(8)}</tbody>
+        </table></div>
+      </div>
+      <div class="panel col-7">
+        <div class="panel-head"><h3>จังหวัดที่ได้รับผลกระทบมากที่สุด</h3><span class="hint">MMI คาดการณ์ตามระยะทาง · ดินอ่อน +${f.amplify_mmi}</span></div>
+        <p class="brief-text">${escHtml(b.thailand)}</p>
+        ${provinceRows ? `<div class="scroll-x"><table class="data-table">
+          <thead><tr><th>#</th><th>จังหวัด</th><th>ภาค</th><th>แรงสั่นที่คาด</th><th>จากเหตุการณ์</th></tr></thead>
+          <tbody>${provinceRows}</tbody>
+        </table></div>` : `<p class="panel-sub" style="margin-top:0;">ไม่มีจังหวัดใดคาดว่ารู้สึกแรงสั่น (MMI ต่ำกว่า II)${bkk ? ` · กรุงเทพฯ คาด MMI ${bkk.mmi.toFixed(1)}` : ''}</p>`}
+      </div>
+      <div class="panel col-5">
+        <div class="panel-head"><h3>ความเสี่ยงประจำพื้นที่</h3><span class="hint">จากรอยเลื่อนมีพลังในประเทศ · เต็ม 100</span></div>
+        <div style="display:flex;flex-direction:column;gap:8px;">${riskBars}</div>
+        <p class="panel-sub" style="margin-top:0;">รอยเลื่อนมีพลัง: ${f.thai_faults.map(x => `${escHtml(x.name)} (${escHtml(x.province)})`).join(' · ')}</p>
+        <p class="panel-sub" style="margin-top:0;">ผลระยะไกล: ${f.soft_clay.map(escHtml).join(' ')} อยู่บนชั้นดินเหนียวอ่อน ซึ่งขยายแรงสั่นจากแผ่นดินไหวใหญ่ที่อยู่ไกล (คิดเพิ่ม +${f.amplify_mmi} MMI)</p>
+      </div>
+    </div>
+    <p class="footnote">บทวิเคราะห์นี้เขียนอัตโนมัติจากข้อมูลแผ่นดินไหวสาธารณะ ค่า MMI เป็นค่าประมาณจากแบบจำลองตามระยะทาง ไม่ใช่ค่าที่วัดได้จริง และไม่ใช่ประกาศเตือนภัยทางการ ให้ยึดประกาศจากกรมอุตุนิยมวิทยาและ ปภ. เป็นหลัก · แนวรอยต่อแผ่นเปลือกโลก: Bird (2003) PB2002 · รอยเลื่อน: GEM Global Active Faults</p>`;
+}
+
 /* ============================= NAV / BOOT ============================= */
 const VIEWS = [
   {id:'situation', label:'หน้าสถานการณ์', icon:'map', render:renderSituation},
+  {id:'brief',     label:'AI วิเคราะห์แผ่นดินไหว', icon:'globe', render:renderBrief},
   {id:'warning',   label:'เตือนล่วงหน้า',   icon:'bell', render:renderWarning},
   {id:'stations',  label:'สถานีตรวจวัด',   icon:'sensor', render:renderStations},
   {id:'analysis',  label:'วิเคราะห์ข้อมูล', icon:'wave', render:renderAnalysis},
@@ -4079,7 +4292,11 @@ function boot(){
   setInterval(tickClock, 1000);
 }
 
+// Embedded, the rail is a row of tabs: its login and connection status go to the end of the topbar
+if(document.documentElement.classList.contains('embed')) document.querySelector('.topbar').append(document.querySelector('.rail-foot'));
 if(!(AUTH && AUTH.token)) AUTH = GUEST;
+// Embedded, visitors get a lighter page without the staff-only tab and controls (the .embed.guest rules)
+if(!AUTH.token) document.documentElement.classList.add('guest');
 showApp();
 boot();
 </script>

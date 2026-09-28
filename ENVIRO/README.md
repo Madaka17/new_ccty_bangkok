@@ -35,6 +35,15 @@ Visitors who have not logged in see the dashboard read-only as a guest
 (`server/auth.py: GUEST`). Sending alerts, simulating quakes and changing
 settings still need an admin or operator login ("เข้าสู่ระบบ" in the rail).
 
+The "AI วิเคราะห์แผ่นดินไหว" tab (`server/quake_brief.py`, `/api/world/brief`) is rewritten when the
+events change, and at least every 15 minutes. It uses the last 7 days of real quakes: M4.5+ worldwide and
+the events near Thailand. The server computes the facts: nearest plate boundary (PB2002, downloaded once to
+`data/pb2002_boundaries.json`), nearest GEM active fault, and predicted MMI for every provincial capital,
+with +1 MMI on Bangkok's soft clay. An AI model then writes the Thai text from those facts only. The model
+is the OpenAI-compatible `LOCAL_LLM_URL` / `LOCAL_LLM_MODEL` / `LOCAL_LLM_API_KEY` / `LOCAL_LLM_EXTRA`, read
+from the environment or from BKK StreetSmart's `.env` one folder up. With no model set, a Thai template
+writes the text.
+
 Delete `data/enviro.db` to reset all state (events, audit log, users) back to
 the seeded starting point.
 
@@ -243,6 +252,7 @@ server/
   sources_emsc.py        live EMSC public feed poller
   geo.py                 haversine distance
   ws.py                  WebSocket broadcast + /ws endpoint
+  quake_brief.py         "AI วิเคราะห์แผ่นดินไหว": facts from the live feeds + the AI's Thai text
   routes/                one blueprint per menu (situation/warning/stations/…)
 frontend/index.html      single-page dashboard (fetch + WebSocket client)
 backups/                 real SQLite backups land here

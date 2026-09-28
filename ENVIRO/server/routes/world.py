@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify, request
 from .. import db as dbmod
 from .. import world_quakes
 from .. import world_faults
+from .. import quake_brief
 
 bp = Blueprint("world", __name__, url_prefix="/api/world")
 
@@ -98,6 +99,15 @@ def earthquakes_history_stats():
         "note": "สะสมถาวรใน SQLite ตั้งแต่ระบบเริ่มทำงาน ไม่ถูกล้างทุก 5 นาทีเหมือนแคชสด — "
                 "ใช้เป็นข้อมูลตั้งต้นสำหรับการวิเคราะห์แนวโน้ม/พยากรณ์ด้วย Edge AI ในอนาคต",
     })
+
+
+@bp.get("/brief")
+def brief():
+    """The AI earthquake brief (see quake_brief.py); 202 until the first one is written."""
+    b = quake_brief.get()
+    if b is None:
+        return jsonify({"ready": False}), 202
+    return jsonify({"ready": True, **b})
 
 
 @bp.get("/faults")

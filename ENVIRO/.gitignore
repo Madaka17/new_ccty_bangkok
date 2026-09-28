@@ -2,6 +2,7 @@ data/*.db
 backups/*.db
 data/gem_faults_raw/
 data/gem_faults.json
+data/pb2002_boundaries.json
 __pycache__/
 *.pyc
 data/accounts.txt

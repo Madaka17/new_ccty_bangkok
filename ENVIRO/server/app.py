@@ -9,6 +9,7 @@ from . import sources_emsc
 from . import sources_geofon
 from . import world_quakes
 from . import world_faults
+from . import quake_brief
 from . import node_simulator
 from .simulator import Simulator, run_forever
 from .ws import register_ws, broadcast
@@ -60,6 +61,9 @@ def create_app():
 
     world_quakes_thread = threading.Thread(target=world_quakes.run_forever, args=(_stop_event,), daemon=True)
     world_quakes_thread.start()
+
+    # AI earthquake brief ("AI วิเคราะห์แผ่นดินไหว" tab), rewritten from world_quakes' data
+    threading.Thread(target=quake_brief.run_forever, args=(_stop_event,), daemon=True).start()
 
     # The 7 simulated real-shaped nodes on the "สถานีตรวจวัด" page (see
     # node_simulator.py + db.SIMULATED_REAL_NODES) -- apply_fn is passed in
