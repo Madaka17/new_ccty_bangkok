@@ -4,3 +4,4 @@ data/gem_faults_raw/
 data/gem_faults.json
 __pycache__/
 *.pyc
+data/accounts.txt

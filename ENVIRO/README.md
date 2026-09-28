@@ -24,6 +24,12 @@ Open **http://localhost:5050**. Demo accounts (password `enviro2026` for all):
 The port defaults to 5050 (5000 collides with macOS AirPlay Receiver on most
 Macs). Override with `PORT=8080 python3 main.py`.
 
+On the public server, start it with `launch\enviro\start.bat` (or
+`restart.bat` / `stop.bat`) instead. It serves ENVIRO at
+https://cctv-bangkok.tail95e28b.ts.net:8443 through Tailscale Funnel. Before
+each start it replaces the demo passwords above and the PROTO-01 node key with
+random ones, and writes them to `data/accounts.txt` (not in git).
+
 Delete `data/enviro.db` to reset all state (events, audit log, users) back to
 the seeded starting point.
 
