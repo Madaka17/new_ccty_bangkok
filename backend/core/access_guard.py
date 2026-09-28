@@ -60,7 +60,7 @@ SECURITY_HEADERS = {
         "media-src 'self' https: http: blob:",
         "connect-src 'self' https: http: blob: data:",
         "worker-src 'self' blob:",
-        "frame-src https://embed.windy.com",
+        "frame-src 'self' https://embed.windy.com",   # 'self': the Earthquake page frames ENVIRO at /enviro/
         "frame-ancestors 'none'",
         "object-src 'none'",
         "base-uri 'self'",

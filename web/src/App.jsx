@@ -21,7 +21,7 @@ import { fetchCameras, fetchAIStats, fetchIncidents, fetchSurveyRanking, fetchRo
 import { useActiveCameras, useFavorites } from './lib/store.js';
 import { trackView, startHeartbeat } from './lib/telemetry.js';
 
-const PAGES = ['dashboard', 'cameras', 'map', 'safety', 'water', 'report', 'yolo', 'ai', 'alerts', 'visitors'];
+const PAGES = ['dashboard', 'cameras', 'map', 'safety', 'water', 'report', 'yolo', 'ai', 'alerts', 'visitors', 'enviro'];
 // Old links to pages that are now tabs of the camera AI page
 const CAMERA_TAB_LINKS = { 'camera-search': 'search', 'bma-count': 'bma', helmet: 'helmet', wrongway: 'wrongway' };
 
@@ -312,11 +312,20 @@ export default function App() {
             {page === 'alerts' && <AlertsPage isActive onToast={showToast} />}
 
             {page === 'ai' && <AiPage active pendingQuestion={pendingQuestion} onQuestionConsumed={() => setPendingQuestion('')} />}
+
+            {/* ENVIRO is its own app (launch\enviro), mounted at /enviro on the same address */}
+            {page === 'enviro' && (
+              <iframe
+                src="/enviro/"
+                title="ENVIRO Seismic Command"
+                className="w-full h-[calc(100dvh-10rem)] lg:h-[calc(100vh-3rem)] rounded-xl border border-slate-200 bg-white"
+              />
+            )}
           </motion.div>
         </main>
 
         {/* ปุ่มกลมไอคอน AI ลอยด้านล่างขวาทุกหน้า (ยกเว้นหน้าคุยกับ AI อยู่แล้ว) */}
-        {page !== 'ai' && (
+        {page !== 'ai' && page !== 'enviro' && (
           <button
             type="button"
             onClick={() => askAI('')}

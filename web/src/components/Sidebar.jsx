@@ -23,6 +23,7 @@ export const NAV_GROUPS = [
       { id: 'water', label: 'Water Forecast', hint: 'ระดับน้ำ เฝ้าระวังน้ำท่วม การแจ้งน้ำท่วม และ AI คาดการณ์' },
       { id: 'safety', label: 'Accidents & Risk', hint: 'อุบัติเหตุ มาตรการรายจุด และจุดเสี่ยง กทม.' },
       { id: 'alerts', label: 'Alerts', hint: 'ตั้งค่าการแจ้งเตือนและประกาศเตือนภัย' },
+      { id: 'enviro', label: 'Earthquake', hint: 'ENVIRO Seismic Command: เฝ้าระวังและเตือนภัยแผ่นดินไหว' },
     ],
   },
   {
