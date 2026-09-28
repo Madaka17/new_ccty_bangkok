@@ -2,15 +2,15 @@
 Helmet patrol over every BMA camera: capture each motorcycle, ask a vision agent whether the rider
 wears a helmet, keep the evidence of every rider without one on the data drive.
 
-Flow (per camera, once per BMA scan cycle ~4 min, or on demand via check_now):
+Flow (per camera, once per BMA scan cycle, every 3 min by BMA_SCAN_INTERVAL, or on demand via check_now):
     snapshot -> YOLO boxes (shared with BmaScanner) -> motorcycle boxes tall enough to see a head
     -> crop (+margin, upscaled) saved to cache/helmet/<id>.jpg ("captures")
     -> optional local YOLO26x helmet detector (helmet_det.pt from train_helmet_det.py):
          helmet only  -> verdict "helmet" with no API call
          no_helmet    -> the agent confirms it
          nothing seen -> the agent decides
-    -> helmet agent (Gemini vision by default, else Claude; HELMET_AGENT=qwen for the Qwen vision model
-       behind LOCAL_LLM_*): JSON {riders, no_helmet, confidence, note_th}
+    -> helmet agent (the Qwen vision model behind LOCAL_LLM_* by default; HELMET_AGENT=cloud for Gemini
+       vision, else Claude): JSON {riders, no_helmet, confidence, note_th}
        (no provider at all: the crop is kept as 'unclear')
     -> verdict no_helmet (confidence >= HELMET_MIN_CONF): full frame with a red box + the crop are
        written to <HELMET_ARCHIVE_DIR>/<YYYY-MM-DD>/<camid>_<HHMMSS>.jpg (+ _crop.jpg) and one row
@@ -47,8 +47,9 @@ if not os.path.isabs(LOCAL_DET_PATH):
 # Fast non-thinking model on purpose: a 300-px crop needs no reasoning, and the thinking models
 # (gemini-3.6-flash) take 15-40 s per call and hit 504 under load. Falls back to GEMINI_VISION_MODEL.
 HELMET_MODEL = os.getenv("HELMET_AGENT_MODEL", os.getenv("GEMINI_VISION_MODEL", "gemini-3.1-flash-lite"))
-# qwen = the OpenAI-compatible vision model behind LOCAL_LLM_* (Qwen 3.8 27B reads images); cloud = Gemini / Claude
-HELMET_AGENT = os.getenv("HELMET_AGENT", "cloud").strip().lower()
+# qwen = the OpenAI-compatible vision model behind LOCAL_LLM_* (Qwen 3.8 27B reads images); cloud = Gemini / Claude.
+# Qwen by default: Gemini's free tier hit its per-minute limit and left most captures "unclear"
+HELMET_AGENT = os.getenv("HELMET_AGENT", "qwen").strip().lower()
 AGENT_TIMEOUT_MS = 40000
 
 MOTO_CLASS = 3                    # COCO motorcycle

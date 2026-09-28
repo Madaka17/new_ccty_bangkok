@@ -117,7 +117,7 @@ export default function HelmetPage({ isActive, onToast }) {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="ตรวจหมวกกันน็อกจากกล้อง กทม."
-        description="ทุกรอบสแกน (~4 นาที) ระบบตัดภาพมอไซทุกคันที่เห็นหัวชัดพอ ให้โมเดลตรวจหมวกที่เทรนเอง (YOLO26x) คัดกรองก่อน แล้ว AI agent ยืนยัน ถ้าไม่สวมจะบันทึกภาพเต็ม + ภาพขยายลง Drive E: อัตโนมัติ"
+        description="ทุกรอบสแกน (~3 นาที) ระบบตัดภาพมอไซทุกคันที่เห็นหัวชัดพอ ให้โมเดลตรวจหมวกที่เทรนเอง (YOLO26x) คัดกรองก่อน แล้ว AI agent ยืนยัน ถ้าไม่สวมจะบันทึกภาพเต็ม + ภาพขยายลง Drive E: อัตโนมัติ"
         actions={
           <div className="flex items-center gap-2">
             <select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700">

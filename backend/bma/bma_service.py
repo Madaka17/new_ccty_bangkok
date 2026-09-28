@@ -39,11 +39,22 @@ CLASS_THAI = {
 }
 
 
+BMA_URL = 'https://cpudapp.bangkok.go.th/bmatraffic/'
+
+
 class BmaSession:
-    """Manages HTTP sessions with BMA Traffic website using thread-local cookies and connection pooling."""
+    """HTTP access to the BMA Traffic site: one requests.Session per thread (connection pooling), and one
+    ASP.NET session (cookie jar) per camera.
+
+    show.aspx serves the camera the ASP.NET session last opened in PlayVideo.aspx and ignores its image=
+    (asked for camera 420 while bound to 310, it sends 310's picture). A session per camera stays bound,
+    so a frame costs one request (show.aspx, ~1.3 s) instead of PlayVideo + show; a camera's first frame,
+    or one after its session expired, costs index.aspx + PlayVideo + show. Tested 2026-09-28: a jar
+    bound once kept serving that camera's live frame on later calls."""
 
     def __init__(self):
         self._local = threading.local()
+        self._jars = {}   # camid -> RequestsCookieJar of the ASP.NET session bound to that camera
 
     def _get_session(self) -> requests.Session:
         s = getattr(self._local, 'session', None)
@@ -54,67 +65,50 @@ class BmaSession:
                 'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
                 'Accept-Language': 'th,en-US;q=0.9,en;q=0.8',
             })
-            try:
-                s.get('https://cpudapp.bangkok.go.th/bmatraffic/index.aspx', timeout=6.0)
-            except Exception:
-                pass
             self._local.session = s
-            self._local.current_camid = None
         return s
+
+    @staticmethod
+    def _show(s, camid_str, timeout):
+        """The camera's JPEG from show.aspx, or None for a placeholder (< 2500 bytes), an error or a timeout."""
+        try:
+            res = s.get(
+                f'{BMA_URL}show.aspx?image={camid_str}&time={int(time.time() * 1000)}',
+                headers={'Referer': f'{BMA_URL}PlayVideo.aspx?ID={camid_str}'},
+                timeout=timeout
+            )
+            if res.status_code == 200 and len(res.content) > 2500:
+                return res.content
+        except Exception:
+            pass
+        return None
 
     def fetch_snapshot(self, camid: str, timeout: float = 4.0) -> bytes:
         """Fetch raw snapshot JPEG for a camera ID from BMA traffic."""
         s = self._get_session()
         camid_str = str(camid)
 
-        # BMA requires calling PlayVideo.aspx with ID to bind ASP.NET session to this camera
-        if getattr(self._local, 'current_camid', None) != camid_str:
-            try:
-                s.get(
-                    f'https://cpudapp.bangkok.go.th/bmatraffic/PlayVideo.aspx?ID={camid_str}',
-                    headers={'Referer': 'https://cpudapp.bangkok.go.th/bmatraffic/index.aspx'},
-                    timeout=timeout
-                )
-                self._local.current_camid = camid_str
-            except Exception:
-                self._local.current_camid = None
+        jar = self._jars.get(camid_str)
+        if jar is not None:
+            s.cookies = jar
+            raw = self._show(s, camid_str, timeout)
+            if raw:
+                return raw
 
-        ts_ms = int(time.time() * 1000)
-        url = f'https://cpudapp.bangkok.go.th/bmatraffic/show.aspx?image={camid_str}&time={ts_ms}'
+        # No session for this camera yet, it expired, or the camera is offline: start a new ASP.NET
+        # session (index.aspx; PlayVideo.aspx alone gets a placeholder) and bind it to this camera
+        # index.aspx is a big page (~2.5 s, longer while other workers ask too): more time than one frame
+        s.cookies = requests.cookies.RequestsCookieJar()
+        bind_timeout = max(timeout, 8.0)
         try:
-            res = s.get(
-                url,
-                headers={'Referer': f'https://cpudapp.bangkok.go.th/bmatraffic/PlayVideo.aspx?ID={camid_str}'},
-                timeout=timeout
-            )
-            if res.status_code == 200 and len(res.content) > 2500:
-                return res.content
+            s.get(f'{BMA_URL}index.aspx', timeout=bind_timeout)
+            s.get(f'{BMA_URL}PlayVideo.aspx?ID={camid_str}', headers={'Referer': f'{BMA_URL}index.aspx'}, timeout=bind_timeout)
         except Exception:
-            pass
-
-        # If placeholder (< 2500 bytes) or failed, session may have expired/reset.
-        # Re-initialize session via index.aspx and retry once.
-        try:
-            s.get('https://cpudapp.bangkok.go.th/bmatraffic/index.aspx', timeout=timeout)
-            s.get(
-                f'https://cpudapp.bangkok.go.th/bmatraffic/PlayVideo.aspx?ID={camid_str}',
-                headers={'Referer': 'https://cpudapp.bangkok.go.th/bmatraffic/index.aspx'},
-                timeout=timeout
-            )
-            self._local.current_camid = camid_str
-            ts_ms = int(time.time() * 1000)
-            url = f'https://cpudapp.bangkok.go.th/bmatraffic/show.aspx?image={camid_str}&time={ts_ms}'
-            res = s.get(
-                url,
-                headers={'Referer': f'https://cpudapp.bangkok.go.th/bmatraffic/PlayVideo.aspx?ID={camid_str}'},
-                timeout=timeout
-            )
-            if res.status_code == 200 and len(res.content) > 2500:
-                return res.content
-        except Exception:
-            pass
-
-        return None
+            return None
+        raw = self._show(s, camid_str, timeout)
+        if raw:
+            self._jars[camid_str] = s.cookies
+        return raw
 
 
 class BmaDatabase:
@@ -325,9 +319,11 @@ class BmaScanner:
         self.last_scan_time = None
         self.last_scan_duration = 0.0
         self.cycle_count = 0
-        # BMA answers slowly (seconds per picture): 3 at a time took ~11 min a cycle, too slow for the
-        # 5 min flood watch (flood_cam_service.py); 8 should bring a cycle near 4 min if BMA keeps up
+        # BMA answers slowly (~1.3 s a picture): 5 at a time with one session per camera (BmaSession)
+        # scan the 574 cameras in ~2.5 min; the first cycle after a start binds every session (~10 min)
         self.download_workers = int(os.getenv("BMA_SCAN_WORKERS", "8"))
+        # seconds from one cycle's start to the next: the helmet patrol checks each camera this often
+        self.scan_interval = int(os.getenv("BMA_SCAN_INTERVAL", "180"))
         self.infer_lock = threading.Lock()
         # HelmetPatrol (helmet_service.py) / WrongWayPatrol (wrongway_service.py) set by the server:
         # both get every snapshot (+ its boxes)
@@ -336,7 +332,7 @@ class BmaScanner:
         # FloodCamWatch (flood_cam_service.py) set by the server: gets every raw snapshot
         self.flood = None
 
-        # Auto background scan every 3 minutes
+        # Auto background scan every scan_interval
         self.auto_scan_thread = threading.Thread(target=self._auto_scan_loop, daemon=True)
         self.auto_scan_thread.start()
 
@@ -395,13 +391,13 @@ class BmaScanner:
             }
 
     def _auto_scan_loop(self):
-        """Start a scan cycle every 4 minutes, or as soon as the last one ends when it ran longer
-        (a plain 4 min sleep skipped a whole turn after a 5 min cycle: 8 min between frames)."""
+        """Start a scan cycle every scan_interval, or as soon as the last one ends when it ran longer
+        (a plain sleep between cycles skipped a whole turn after a long cycle: twice the time between frames)."""
         time.sleep(3.0) # wait for server start
         last_start = 0.0
         while True:
             try:
-                if not self.is_scanning and time.time() - last_start >= 240:
+                if not self.is_scanning and time.time() - last_start >= self.scan_interval:
                     last_start = time.time()
                     self.start_scan()
             except Exception:

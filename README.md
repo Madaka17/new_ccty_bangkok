@@ -63,17 +63,21 @@ GEMINI_MODEL=gemini-3.5-flash-lite
 ANTHROPIC_API_KEY=
 # โมเดล vision สำหรับตรวจภาพ (อุบัติเหตุ/หมวก) ใช้รุ่น lite ที่ไม่ใช่ thinking จะเร็วกว่ามาก (2-6 วิ/ภาพ)
 GEMINI_VISION_MODEL=gemini-3.5-flash-lite
-# ตรวจหมวก: จำกัดการเรียก API ต่อชั่วโมง, โมเดลแยก
-HELMET_PATROL_MAX_PER_HOUR=240
+# ตรวจหมวก: ใช้ AI ตัวไหน (qwen = โมเดล Qwen vision ตัวเดียวกับ LOCAL_LLM_* ค่าเริ่มต้น, cloud = Gemini/Claude), จำกัดการเรียกต่อชั่วโมง, โมเดล Gemini เมื่อใช้ cloud
+HELMET_AGENT=qwen
+HELMET_PATROL_MAX_PER_HOUR=600
 HELMET_AGENT_MODEL=gemini-3.1-flash-lite
+# สแกนกล้อง กทม.: ดึงภาพพร้อมกันกี่ตัว, เริ่มรอบใหม่ทุกกี่วินาที (ตรวจหมวกทุกกล้องตามรอบนี้)
+BMA_SCAN_WORKERS=5
+BMA_SCAN_INTERVAL=180
 # ตรวจย้อนศร: โมเดลทิศทางรถ (เทรนด้วย local\pipeline\wrongway_pipeline.bat), งบ AI ต่อชั่วโมง, จำนวนรถขั้นต่ำต่อช่องก่อนตัดสิน
 WRONGWAY_DET=wrongway_det.pt
 WRONGWAY_MAX_PER_HOUR=120
 WRONGWAY_MIN_VOTES=40
 # AI ดูน้ำท่วมจากกล้อง กทม. (ใช้โมเดล Qwen vision ตัวเดียวกับ LOCAL_LLM_*): ตรวจกล้องแห้งทุกกี่วินาที, กล้องที่มีน้ำทุกกี่วินาที, งบเรียกต่อชั่วโมง
-FLOOD_CAM_INTERVAL=600
+FLOOD_CAM_INTERVAL=300
 FLOOD_CAM_WET_INTERVAL=300
-FLOOD_CAM_MAX_PER_HOUR=900
+FLOOD_CAM_MAX_PER_HOUR=1500
 # กล้อง iTIC ที่ให้ AI ดูน้ำท่วมด้วย: จังหวัด (คั่นด้วย , หรือ all = ทุกตัว ~210 ตัว โหลด ~150 MB/รอบ) และรอบดึงภาพ (วินาที)
 FLOOD_CAM_ITIC_PROVINCES=กรุงเทพมหานคร,นนทบุรี,ปทุมธานี,สมุทรปราการ,สมุทรสาคร,นครปฐม
 FLOOD_CAM_ITIC_SECONDS=300

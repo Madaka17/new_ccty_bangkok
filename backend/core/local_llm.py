@@ -13,6 +13,11 @@ fact already, and with thinking on the model spends its whole token budget reaso
     LOCAL_LLM_TIMEOUT     seconds per request                   240
     LOCAL_LLM_EXTRA       extra request fields as JSON; vLLM Qwen ignores reasoning_effort and turns
                           thinking off with {"chat_template_kwargs": {"enable_thinking": false}}
+    LOCAL_LLM_MAX_PARALLEL  requests in flight at once per endpoint + key   3
+
+The gateway behind LOCAL_LLM_URL allows 3 requests in flight per key (LiteLLM max_parallel_requests) and
+answers 429 to a 4th. The flood watch, the helmet patrol, the agents and the chat bot all share that key,
+so every Client waits for one of MAX_PARALLEL slots per endpoint + key, and retries a 429 twice.
 
 The flood agent uses `default`. The chat bot uses `chat`, which reads the same names with a CHAT_LLM_
 prefix and falls back to the LOCAL_LLM_ value for any it does not set, so the chat can point at another
@@ -22,12 +27,23 @@ off or the model not loaded, both fall back to their Thai rule-based answers.
 import json
 import os
 import re
+import threading
+import time
 
 import requests
 
 # Thai text runs about 2.2 characters per token on the Qwen tokenizer (measured on the chat context)
 CHARS_PER_TOKEN = 2.2
 _THINK = re.compile(r"<think>.*?</think>", re.S)
+MAX_PARALLEL = int(os.getenv("LOCAL_LLM_MAX_PARALLEL", "3"))
+RETRY_429 = (2, 5)   # seconds to wait before each retry of a 429
+_slots = {}          # (url, api_key) -> BoundedSemaphore shared by every Client on that endpoint + key
+_slots_lock = threading.Lock()
+
+
+def _slot(url, api_key):
+    with _slots_lock:
+        return _slots.setdefault((url, api_key), threading.BoundedSemaphore(MAX_PARALLEL))
 
 
 class ContextTooLong(Exception):
@@ -68,7 +84,18 @@ class Client:
             body["response_format"] = {"type": "json_schema",
                                        "json_schema": {"name": "reply", "strict": True, "schema": json_schema}}
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-        resp = requests.post(f"{self.url}/chat/completions", json=body, headers=headers, timeout=timeout or self.timeout)
+        timeout = timeout or self.timeout
+        slot = _slot(self.url, self.api_key)
+        if not slot.acquire(timeout=timeout):
+            raise RuntimeError(f"no free slot on the AI endpoint in {timeout}s ({MAX_PARALLEL} in flight)")
+        try:
+            for wait in (*RETRY_429, None):
+                resp = requests.post(f"{self.url}/chat/completions", json=body, headers=headers, timeout=timeout)
+                if resp.status_code != 429 or wait is None:
+                    break
+                time.sleep(wait)
+        finally:
+            slot.release()
         if resp.status_code == 400 and "context" in resp.text:
             raise ContextTooLong(resp.text[:200])
         resp.raise_for_status()

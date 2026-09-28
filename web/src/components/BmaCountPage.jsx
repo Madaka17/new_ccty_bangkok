@@ -97,7 +97,7 @@ export default function BmaCountPage({ isActive, onToast }) {
         title="นับรถจากกล้อง กทม."
         description={
           scan?.last_scan_time
-            ? `กล้อง ${cameras.length} ตัว สแกนล่าสุด ${scan.last_scan_time.slice(11, 16)} น. · รอบต่อไปอัตโนมัติทุก 4 นาที · ยอดสะสมรีเซ็ตทุก ${cycle?.cycle_minutes || 60} นาที (ครั้งถัดไป ${cycle ? `${fmtTime(cycle.next_reset)} น.` : '–'})`
+            ? `กล้อง ${cameras.length} ตัว สแกนล่าสุด ${scan.last_scan_time.slice(11, 16)} น. · รอบต่อไปอัตโนมัติทุก 3 นาที · ยอดสะสมรีเซ็ตทุก ${cycle?.cycle_minutes || 60} นาที (ครั้งถัดไป ${cycle ? `${fmtTime(cycle.next_reset)} น.` : '–'})`
             : 'กำลังรอรอบสแกนแรก'
         }
         actions={
@@ -120,7 +120,7 @@ export default function BmaCountPage({ isActive, onToast }) {
       {scan?.last_scan_time && !scanning && online === 0 && cameras.length > 0 && (
         <StatusBanner tone="yellow" label="ต้นทางไม่ส่งภาพ">
           เซิร์ฟเวอร์กล้อง กทม. (cpudapp.bangkok.go.th) ตอบกลับเป็นภาพว่างทุกกล้องในรอบสแกนล่าสุด {scan.last_scan_time.slice(11, 16)} น.
-          ตัวนับจึงเป็น 0 ชั่วคราว ระบบยังสแกนซ้ำทุก 4 นาทีและจะกลับมาเองเมื่อต้นทางส่งภาพ · ดูข้อมูลย้อนหลังได้ที่แท็บ "เทียบวัน / สัปดาห์ / เดือน"
+          ตัวนับจึงเป็น 0 ชั่วคราว ระบบยังสแกนซ้ำทุก 3 นาทีและจะกลับมาเองเมื่อต้นทางส่งภาพ · ดูข้อมูลย้อนหลังได้ที่แท็บ "เทียบวัน / สัปดาห์ / เดือน"
         </StatusBanner>
       )}
 
