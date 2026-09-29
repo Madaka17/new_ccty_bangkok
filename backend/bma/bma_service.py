@@ -49,12 +49,20 @@ class BmaSession:
     show.aspx serves the camera the ASP.NET session last opened in PlayVideo.aspx and ignores its image=
     (asked for camera 420 while bound to 310, it sends 310's picture). A session per camera stays bound,
     so a frame costs one request (show.aspx, ~1.3 s) instead of PlayVideo + show; a camera's first frame,
-    or one after its session expired, costs index.aspx + PlayVideo + show. Tested 2026-09-28: a jar
-    bound once kept serving that camera's live frame on later calls."""
+    or one after its session expired, costs index.aspx + PlayVideo + show (5-6 s). Tested 2026-09-28/29:
+    a jar bound once kept serving that camera's live frame on later calls, and was still bound after
+    8 min idle (a scan cycle revisits it every 3-4 min).
+
+    A camera that sends nothing keeps its bound session, so each cycle asks it once (show.aspx) and it
+    comes back as soon as it sends again; a new session is started for it at most every REBIND_BACKOFF
+    (15 such cameras bound again every cycle took ~30 s of a 230 s cycle)."""
+
+    REBIND_BACKOFF = 600
 
     def __init__(self):
         self._local = threading.local()
-        self._jars = {}   # camid -> RequestsCookieJar of the ASP.NET session bound to that camera
+        self._jars = {}          # camid -> RequestsCookieJar of the ASP.NET session bound to that camera
+        self._rebind_after = {}  # camid -> time before which a camera that sent nothing is not bound again
 
     def _get_session(self) -> requests.Session:
         s = getattr(self._local, 'session', None)
@@ -95,19 +103,24 @@ class BmaSession:
             if raw:
                 return raw
 
+        if time.time() < self._rebind_after.get(camid_str, 0):
+            return None
         # No session for this camera yet, it expired, or the camera is offline: start a new ASP.NET
         # session (index.aspx; PlayVideo.aspx alone gets a placeholder) and bind it to this camera
-        # index.aspx is a big page (~2.5 s, longer while other workers ask too): more time than one frame
+        # index.aspx is a big page (416 KB, 2.5-7 s, longer while other workers ask too): more time than one frame
         s.cookies = requests.cookies.RequestsCookieJar()
-        bind_timeout = max(timeout, 8.0)
+        bind_timeout = max(timeout, 15.0)
         try:
             s.get(f'{BMA_URL}index.aspx', timeout=bind_timeout)
             s.get(f'{BMA_URL}PlayVideo.aspx?ID={camid_str}', headers={'Referer': f'{BMA_URL}index.aspx'}, timeout=bind_timeout)
         except Exception:
-            return None
+            return None   # index.aspx (416 KB) timed out: BMA is busy, not this camera, so no backoff
         raw = self._show(s, camid_str, timeout)
+        self._jars[camid_str] = s.cookies
         if raw:
-            self._jars[camid_str] = s.cookies
+            self._rebind_after.pop(camid_str, None)
+        else:
+            self._rebind_after[camid_str] = time.time() + self.REBIND_BACKOFF
         return raw
 
 
