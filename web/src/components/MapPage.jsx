@@ -1232,8 +1232,10 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const camCounts = camFlood?.counts || {};
   const camWet = CAM_WET.reduce((n, k) => n + (camCounts[k] || 0), 0);
   const camWetList = (camFlood?.items || []).filter((c) => CAM_WET.includes(c.level));
+  // Until Traffy has answered once, its empty list is not "0 reports"
+  const reportHint = reports?.updated_at ? `คนแจ้ง ${reportPoints.length} เรื่อง (6 ชม.)` : reports ? 'คนแจ้ง: ยังโหลดไม่ได้' : 'คนแจ้ง: กำลังโหลด';
   const waterHint = flood
-    ? `${camFlood ? `กล้องเห็นน้ำ ${camWet} จุด · ` : ''}ถนนท่วม ${floodCounts.flood + floodCounts.slight} จุด · คนแจ้ง ${reportPoints.length} เรื่อง (6 ชม.)`
+    ? `${camFlood ? `กล้องเห็นน้ำ ${camWet} จุด · ` : ''}ถนนท่วม ${floodCounts.flood + floodCounts.slight} จุด · ${reportHint}`
     : 'ฝนตก น้ำท่วมถนน คนแจ้งน้ำท่วม และระดับน้ำ';
 
   return (
@@ -1520,10 +1522,12 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
             {reports ? (
               <>
                 <p className="text-[11px] text-slate-500 mb-1.5">
-                  {reportPoints.length > 0
-                    ? `${reportPoints.length} เรื่องใน 6 ชม. · ชั่วโมงล่าสุด ${reportFresh} เรื่อง`
-                    : 'ไม่มีคนแจ้งน้ำท่วมใน 6 ชม.'}
-                  {reports.error ? ' · อัปเดตล่าสุดไม่สำเร็จ' : ''}
+                  {!reports.updated_at
+                    ? 'ยังโหลดเรื่องจาก Traffy ไม่ได้ ระบบจะลองใหม่เอง'
+                    : reportPoints.length > 0
+                      ? `${reportPoints.length} เรื่องใน 6 ชม. · ชั่วโมงล่าสุด ${reportFresh} เรื่อง`
+                      : 'ไม่มีคนแจ้งน้ำท่วมใน 6 ชม.'}
+                  {reports.error && reports.updated_at ? ' · อัปเดตล่าสุดไม่สำเร็จ' : ''}
                 </p>
                 {reportDistricts.length > 0 && (
                   <ul className="flex flex-col gap-1">

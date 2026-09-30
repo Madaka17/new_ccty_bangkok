@@ -250,7 +250,9 @@ export default function AlertsPage({ isActive, onToast }) {
         {reports === null ? (
           <div className="space-y-2">{[0, 1].map((i) => <Skeleton key={i} className="h-12" />)}</div>
         ) : districts.length === 0 ? (
-          <EmptyState title="ยังไม่มีคนแจ้งน้ำท่วม" description="ใน 6 ชั่วโมงที่ผ่านมา" />
+          reports.updated_at
+            ? <EmptyState title="ยังไม่มีคนแจ้งน้ำท่วม" description="ใน 6 ชั่วโมงที่ผ่านมา" />
+            : <EmptyState title="ยังโหลดเรื่องจาก Traffy ไม่ได้" description="ระบบจะลองใหม่เอง" />
         ) : (
           <div className="space-y-3">
             {districts.map((d) => (

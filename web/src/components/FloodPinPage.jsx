@@ -153,10 +153,11 @@ export default function FloodPinPage({ isActive }) {
             {/* inline position: maplibre-gl.css sets .maplibregl-map { position: relative } over a class */}
             <div ref={mapEl} style={{ position: 'absolute', inset: 0 }} aria-label="แผนที่เรื่องน้ำท่วมที่แจ้งผ่าน Traffy Fondue" />
             <span className="absolute top-2.5 left-1/2 -translate-x-1/2 rounded-full bg-white border border-slate-200 px-3 py-1 text-[11px] text-slate-700 shadow-sm pointer-events-none whitespace-nowrap">
-              {data ? `📣 ${points.length} เรื่องใน 6 ชม. · อัปเดต ${fmtTime(data.updated_at)} น.` : 'กำลังโหลดเรื่องแจ้ง…'}
+              {!data ? 'กำลังโหลดเรื่องแจ้ง…' : data.updated_at ? `📣 ${points.length} เรื่องใน 6 ชม. · อัปเดต ${fmtTime(data.updated_at)} น.` : 'ยังโหลดเรื่องจาก Traffy ไม่ได้'}
             </span>
           </div>
-          {(failed || data?.error) && (
+          {/* never loaded: the badge and the list already say Traffy could not be read, and there is nothing "on hand" */}
+          {(failed || (data?.error && data.updated_at)) && (
             <p role="status" className="px-4 py-2 text-xs text-amber-800 bg-amber-50 border-t border-amber-200">
               อัปเดตรอบล่าสุดไม่สำเร็จ แสดงข้อมูลเท่าที่มี
             </p>
@@ -175,7 +176,7 @@ export default function FloodPinPage({ isActive }) {
           <Card className="p-0 overflow-hidden">
             <p className="px-4 pt-3 pb-2 text-xs font-semibold text-slate-600">แจ้งล่าสุด</p>
             {latest.length === 0 ? (
-              <p className="px-4 pb-4 text-sm text-slate-500">{data ? 'ยังไม่มีเรื่องน้ำท่วมใน 6 ชั่วโมงล่าสุด' : 'กำลังโหลด…'}</p>
+              <p className="px-4 pb-4 text-sm text-slate-500">{!data ? 'กำลังโหลด…' : data.updated_at ? 'ยังไม่มีเรื่องน้ำท่วมใน 6 ชั่วโมงล่าสุด' : 'ยังโหลดเรื่องจาก Traffy ไม่ได้ ระบบจะลองใหม่เอง'}</p>
             ) : (
               <ul className="divide-y divide-slate-100">
                 {latest.map((r) => (

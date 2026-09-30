@@ -210,9 +210,10 @@ export default function CityStatusStrip({ summary, incidents, flood, onNavigate,
 
   // Flood reports: people on Traffy Fondue in the last 6 h only, the same count as the map and the report page.
   // Flooded roads from traffic news are not people's reports and stay out of it.
-  const citizen = traffy?.items?.length ?? null;
+  // Until Traffy has answered once there is no count: "no reports" would be a wrong all-clear
+  const citizen = traffy?.updated_at ? traffy.items?.length ?? 0 : null;
   const repTone = citizen == null ? 'neutral' : citizen === 0 ? 'green' : citizen < 20 ? 'yellow' : 'red';
-  const repStatus = citizen == null ? 'กำลังโหลด' : citizen === 0 ? 'ไม่มีคนแจ้ง' : `${citizen} เรื่อง`;
+  const repStatus = citizen != null ? (citizen === 0 ? 'ไม่มีคนแจ้ง' : `${citizen} เรื่อง`) : traffy?.error ? 'ยังโหลดไม่ได้' : 'กำลังโหลด';
 
   // Air
   const pm = air?.avg_pm25;

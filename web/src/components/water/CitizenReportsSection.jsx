@@ -77,7 +77,7 @@ function mergeReports(traffy, longdo, hdms, js100) {
   return rows.sort((a, b) => (b.ts || 0) - (a.ts || 0));
 }
 
-function ReportList({ rows, loading, updatedAt }) {
+function ReportList({ rows, loading, updatedAt, traffyDown }) {
   const [query, setQuery] = useState('');
   const [district, setDistrict] = useState('');
   const [state, setState] = useState('');
@@ -137,13 +137,18 @@ function ReportList({ rows, loading, updatedAt }) {
       <p className="text-xs text-slate-500 mt-2">
         แสดง {fmtNum(shown)} จาก {fmtNum(rows.length)} เรื่อง · {groups.length} เขต{updatedAt ? ` · อัปเดต ${agoTh(updatedAt)}` : ''}
       </p>
+      {!loading && traffyDown && rows.length > 0 && (
+        <p role="status" className="mt-2 rounded-lg px-3 py-2 text-xs text-amber-800 bg-amber-50 border border-amber-200">
+          ยังโหลดเรื่องจาก Traffy ไม่ได้ ระบบจะลองใหม่เอง ตอนนี้แสดงเฉพาะเรื่องจากแหล่งอื่น
+        </p>
+      )}
 
       {loading ? (
         <div className="mt-3 space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-14" />)}</div>
       ) : groups.length === 0 ? (
         <EmptyState
-          title={rows.length ? 'ไม่พบเรื่องที่ค้นหา' : 'ยังไม่มีคนแจ้งน้ำท่วม'}
-          description={rows.length ? 'ลองเปลี่ยนคำค้นหรือเลือกทุกเขต' : 'ช่วงนี้ยังไม่มีเรื่องน้ำท่วม'}
+          title={rows.length ? 'ไม่พบเรื่องที่ค้นหา' : traffyDown ? 'ยังโหลดเรื่องจาก Traffy ไม่ได้' : 'ยังไม่มีคนแจ้งน้ำท่วม'}
+          description={rows.length ? 'ลองเปลี่ยนคำค้นหรือเลือกทุกเขต' : traffyDown ? 'ระบบจะลองใหม่เอง' : 'ช่วงนี้ยังไม่มีเรื่องน้ำท่วม'}
         />
       ) : (
         <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -210,10 +215,12 @@ export default function CitizenReportsSection({ isActive }) {
 
   const rows = useMemo(() => mergeReports(traffy, longdo, hdms, js100), [traffy, longdo, hdms, js100]);
   const updatedAt = Math.max(traffy?.updated_at || 0, longdo?.updated_at || 0, hdms?.updated_at || 0, js100?.updated_at || 0) || null;
+  // Traffy has never answered (server just started, or the API is down): its empty list is not "no reports"
+  const traffyDown = traffy !== null && !traffy.updated_at;
 
   return (
     <div className="flex flex-col gap-4">
-      <ReportList rows={rows} loading={traffy === null || longdo === null || hdms === null || js100 === null} updatedAt={updatedAt} />
+      <ReportList rows={rows} loading={traffy === null || longdo === null || hdms === null || js100 === null} updatedAt={updatedAt} traffyDown={traffyDown} />
       <TraffyAnalysisCard isActive={isActive} />
       <TraffyHistoryCard isActive={isActive} />
     </div>
