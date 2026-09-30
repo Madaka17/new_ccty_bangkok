@@ -83,12 +83,15 @@ SYSTEM_PROMPT = """คุณคือนักวิเคราะห์ผล�
 - ระบุเวลาเป็นช่วงวันที่หรือจำนวนวัน โดยคำนวณจาก peak.in_h, from_c2_h และวันที่ในคาดการณ์ สสน. ห้ามเดาวันที่ที่ไม่มีข้อมูลรองรับ
 - ใช้เฉพาะเขต ชื่อสถานี และตัวเลขที่อยู่ในข้อมูล ห้ามแต่งตัวเลข ถ้าข้อมูลไม่พอให้บอกว่าไม่พอ
 - districts: 3-12 เขตที่ควรจับตา เรียงจากเสี่ยงมากไปน้อย level = สูง / ปานกลาง / เฝ้าระวัง
-  cause = น้ำมาทางไหน, evidence = ตัวเลขที่ใช้, advice = สิ่งที่ประชาชนในเขตควรทำ
+  when = ช่วงเวลาสั้น ๆ เช่น "ตอนนี้" "อีก 2-3 วัน" "ราว 5 ต.ค.", cause = น้ำมาทางไหน 1 ประโยคสั้นภาษาง่าย,
+  evidence = ตัวเลขที่ใช้, advice = สิ่งที่ประชาชนในเขตควรทำ 1 ประโยคสั้น
 - watch_points: 2-4 สถานีหรือตัวเลขที่ประชาชนควรติดตามต่อ พร้อมค่าที่ต้องระวัง (ไม่ใช่รายชื่อเขต)
-- title: หัวข้อเดียวไม่เกิน 12 คำ บอกสถานการณ์ตอนนี้ให้คนทั่วไปเข้าใจทันที เช่น "น้ำเหนือกำลังมา อยุธยาล้นตลิ่งแล้ว"
-- easy: 3-4 ประโยคสั้นสำหรับคนทั่วไปที่ไม่รู้เรื่องน้ำ: ตอนนี้น้ำเหนือมากแค่ไหน กำลังขึ้นหรือลง จะมาถึงอยุธยา/กรุงเทพฯ เมื่อไร
-  และใครควรเตรียมตัว ใช้ชื่อจังหวัด/เขต ไม่ใช้รหัสสถานี ไม่ใช้ศัพท์เทคนิค ตัวเลขใส่เฉพาะที่จำเป็น ประโยคละไม่เกิน 30 คำ
-- actions: 2-4 สิ่งที่ประชาชนควรทำตอนนี้ ข้อละประโยคเดียว เหมาะกับสถานการณ์ในข้อมูล
+- title: หัวข้อเดียวไม่เกิน 10 คำ บอกสถานการณ์ตอนนี้ให้คนทั่วไปเข้าใจทันที เช่น "น้ำเหนือกำลังมา อยุธยาล้นตลิ่งแล้ว"
+- easy: 3 ประโยคสั้นสำหรับคนทั่วไปที่ไม่รู้เรื่องน้ำ ประโยคละไม่เกิน 20 คำ ตามลำดับ
+  (1) ตอนนี้น้ำเหนือมากแค่ไหน กำลังขึ้นหรือลง (2) น้ำจะถึงอยุธยา/นนทบุรี/กรุงเทพฯ เมื่อไร (3) ใครควรเตรียมตัว
+  เขียนเหมือนพูดกับชาวบ้าน ใช้ชื่อจังหวัด/เขต ห้ามใช้รหัสสถานี ชื่อย่อหน่วยงาน (เช่น สสน.) และหน่วยวัด (ลบ.ม./วินาที, ม.รทก.)
+  ตัวเลขใช้ได้เฉพาะเปอร์เซ็นต์ จำนวนวัน และวันที่ ไม่ต้องบอกวิธีรับมือ (อยู่ใน actions แล้ว)
+- actions: 2-3 สิ่งที่ประชาชนควรทำตอนนี้ ข้อละประโยคสั้นไม่เกิน 15 คำ เหมาะกับสถานการณ์ในข้อมูล
 - points: ทุกจุดใน points จุดละ 1-2 ประโยค เหมือนอธิบายให้ชาวบ้านฟัง: เริ่มด้วยแม่น้ำและจังหวัด แล้วบอกว่าน้ำเต็มลำน้ำกี่เปอร์เซ็นต์
   (ยังรับได้อีก/ใกล้เต็ม/ล้นแล้ว) กำลังขึ้นหรือลง เร็วหรือช้า (ใช้ now_10min ถ้ามี) และถ้ามี peak ให้บอกว่าจะเพิ่มถึงเท่าไรในอีกกี่ชั่วโมง/วัน
   ใส่ตัวเลขปริมาณน้ำได้ 1 ค่า ไม่ต้องใส่ระดับเทียบตลิ่งถ้ามีเปอร์เซ็นต์แล้ว ห้ามใส่ชื่อสถานี
@@ -168,6 +171,11 @@ def _day(ts):
 
 def _in_days(hours):
     return f"~{hours} ชม." if hours < 36 else f"~{hours / 24:.1f} วัน".replace(".0 ", " ")
+
+
+def _ahead(hours):
+    """Hours ahead in plain words for the public: hours within a day, whole days after that."""
+    return f"{max(1, round(hours))} ชม." if hours < 24 else f"{round(hours / 24)} วัน"
 
 
 # ---------------------------------------------------------------- facts + rule score
@@ -514,19 +522,25 @@ def rules_report(facts):
             "advice": ("ชุมชนริมน้ำนอกแนวคันกั้นน้ำ ยกของขึ้นที่สูง ติดตามเวลาน้ำขึ้นสูงสุด" if river
                        else "ติดตามระดับคลองในเขต เตรียมกระสอบทรายและย้ายรถขึ้นที่สูง"),
         })
+    # The same three plain sentences SYSTEM_PROMPT asks the model for: the north now, when it arrives, who prepares
     points = {p["code"]: p for p in facts.get("points") or []}
     easy = []
-    if "C.2" in points:
-        c2 = points["C.2"]
-        easy.append(f"น้ำเหนือที่ไหลผ่านนครสวรรค์ตอนนี้ {(c2.get('now_10min') or {}).get('q') or c2.get('q'):,} ลบ.ม. ทุกวินาที"
-                    f" ({trend_text(c2) or 'ไม่มีข้อมูลแนวโน้ม'})")
+    c2 = points.get("C.2")
+    if c2 and c2.get("pct") is not None:
+        trend = trend_text(c2).split(" ")[0]
+        easy.append("แม่น้ำเจ้าพระยาที่นครสวรรค์" + ("ล้นตลิ่งแล้ว" if c2["pct"] >= 100 else f"มีน้ำ {c2['pct']:.0f}% ของที่แม่น้ำรับได้")
+                    + (f" และน้ำ{trend}" if trend else ""))
+    arrival = []
     if c35:
-        easy.append(f"ที่อยุธยาน้ำ{'ล้นตลิ่งแล้ว' if (c35.get('pct') or 0) >= 100 else 'ยังอยู่ในลำน้ำ'}"
-                    + (f" และคาดว่าจะสูงสุดในอีก {_in_days(c35['peak']['in_h'])}" if c35.get("peak") else ""))
+        arrival.append(f"อยุธยา{'ล้นตลิ่งแล้ว' if (c35.get('pct') or 0) >= 100 else 'ยังไม่ล้นตลิ่ง'}"
+                       + (f" และจะสูงที่สุดในอีกราว {_ahead(c35['peak']['in_h'])}" if c35.get("peak") else ""))
     if hii.get("peak_msl") is not None and hii.get("bank") is not None:
-        easy.append(f"แม่น้ำเจ้าพระยาที่นนทบุรีคาดว่า{'จะสูงกว่าตลิ่ง' if hii['peak_msl'] >= hii['bank'] else 'ยังต่ำกว่าตลิ่ง'} ช่วงราว {hii['peak_day']}")
+        arrival.append(f"นนทบุรีคาดว่าจะล้นตลิ่งราว {hii['peak_day']}" if hii["peak_msl"] >= hii["bank"]
+                       else "นนทบุรีคาดว่า 7 วันนี้ยังไม่ล้นตลิ่ง")
+    if arrival:
+        easy.append(" ส่วน".join(arrival))
     if districts:
-        easy.append("เขตที่ควรเตรียมตัว: " + ", ".join(d["district"] for d in districts[:5]) + " ยกของขึ้นที่สูงและติดตามประกาศของเขต")
+        easy.append("เขตที่ควรเตรียมตัว: " + ", ".join(d["district"] for d in districts[:5]))
     return {
         "level": level, "title": rules_title(facts), "easy": easy,
         "actions": (["ชุมชนริมแม่น้ำและนอกแนวคันกั้นน้ำ ยกของขึ้นที่สูงและเตรียมย้ายรถ"] if districts else [])
@@ -546,7 +560,7 @@ def rules_title(facts):
     if over:
         return "น้ำเหนือล้นตลิ่งแล้วที่" + " ".join(dict.fromkeys(over))
     if soon:
-        return f"คาดว่าน้ำจะล้นตลิ่งที่{soon[0]['province']} ในอีก {_in_days(soon[0]['peak']['in_h'])}"
+        return f"คาดว่าน้ำจะล้นตลิ่งที่{soon[0]['province']} ในอีกราว {_ahead(soon[0]['peak']['in_h'])}"
     if any((s.get("pct") or 0) >= 70 for s in main):
         return "น้ำเหนือมาก แต่ยังไม่ล้นตลิ่ง"
     return "น้ำเหนือยังอยู่ในลำน้ำ ปกติ"
@@ -679,8 +693,8 @@ class NorthImpactAgent:
         # A gauge the model skipped still gets its rule sentence
         report["points"] = [{"code": p["code"], "text": texts.get(p["code"]) or point_text(p), "by": "ai" if p["code"] in texts else "rules"}
                             for p in facts.get("points") or []]
-        report["easy"] = [x for x in report.get("easy") or [] if isinstance(x, str) and x.strip()][:4]
-        report["actions"] = [x for x in report.get("actions") or [] if isinstance(x, str) and x.strip()][:4]
+        report["easy"] = [x for x in report.get("easy") or [] if isinstance(x, str) and x.strip()][:3]
+        report["actions"] = [x for x in report.get("actions") or [] if isinstance(x, str) and x.strip()][:3]
         report["title"] = (report.get("title") or "").strip() or rules_title(facts)
         if report.get("level") not in LEVELS:
             report["level"] = "watch"

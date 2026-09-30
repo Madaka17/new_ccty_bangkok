@@ -338,9 +338,9 @@ export default function NorthFlowSection({ isActive, onOpenRoad }) {
   const [impact, setImpact] = useState(null);
   const [impactFailed, setImpactFailed] = useState(false);
   const [nb, setNb] = useState(null);
-  // Simple view for anyone who opens the tab; every table and chart in the detail view
+  // Simple view for anyone who opens the tab; every table, chart and the map in the detail view
   const [view, setView] = useState('simple');
-  const [toChart, setToChart] = useState(false);
+  const [scrollTo, setScrollTo] = useState(null);
 
   const loadImpact = useCallback(
     () =>
@@ -389,16 +389,19 @@ export default function NorthFlowSection({ isActive, onOpenRoad }) {
   const dams = useMemo(() => Object.fromEntries((data?.dams || []).map((d) => [d.name, d])), [data]);
   const texts = useMemo(() => Object.fromEntries((impact?.report?.points || []).map((p) => [p.code, p.text])), [impact]);
 
-  // A stop picked in the simple view opens its chart in the detail view
+  // A link in the simple view opens the detail view at the card it names (a stop's chart, every road)
   useEffect(() => {
-    if (view !== 'detail' || !toChart) return;
-    setToChart(false);
-    setTimeout(() => document.getElementById('north-chart-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
-  }, [view, toChart]);
+    if (view !== 'detail' || !scrollTo) return;
+    setScrollTo(null);
+    setTimeout(() => document.getElementById(scrollTo)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  }, [view, scrollTo]);
+  const openDetail = (id) => {
+    setView('detail');
+    setScrollTo(id);
+  };
   const openChart = (c) => {
     setCode(c);
-    setView('detail');
-    setToChart(true);
+    openDetail('north-chart-title');
   };
 
   if (error && !data) return <ErrorState message="เชื่อมต่อข้อมูลกรมชลประทานผ่าน thaiwater.net ไม่สำเร็จ" onRetry={load} retrying={refreshing} />;
@@ -430,7 +433,7 @@ export default function NorthFlowSection({ isActive, onOpenRoad }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
+      <div id="north-view" className="flex flex-wrap items-center gap-2 scroll-mt-4">
         <Segmented label="มุมมองน้ำเหนือ" value={view} onChange={setView} options={[['simple', 'สรุปง่าย'], ['detail', 'ข้อมูลละเอียด']]} />
         <span className="text-xs text-slate-500">อัปเดตเองทุก 10 นาที</span>
       </div>
@@ -442,12 +445,11 @@ export default function NorthFlowSection({ isActive, onOpenRoad }) {
 
       {view === 'simple' ? (
         <>
-          <NorthFlowSimple data={data} impact={impact} nb={nb} by={by} dams={dams} code={code} onSelect={openChart} onDetail={() => setView('detail')} onOpenRoad={onOpenRoad} />
-          <NorthFlowMap data={data} code={code} onSelect={setCode} isActive={isActive} texts={texts} roads={impact?.report?.roads} nb={nb} />
+          <NorthFlowSimple data={data} impact={impact} by={by} onSelect={openChart} onDetail={openDetail} onOpenRoad={onOpenRoad} />
           <p className="text-xs text-slate-500 leading-5 px-1">
-            ข้อมูลจากกรมชลประทาน สสน. และคลังข้อมูลน้ำแห่งชาติ อัปเดตทุก 10 นาที · ค่าคาดการณ์ยังไม่รวมฝนที่จะตกใหม่ ใช้ประกอบการเฝ้าระวังเท่านั้น ·{' '}
-            <button type="button" onClick={() => setView('detail')} className={`underline text-blue-700 cursor-pointer ${FOCUS}`}>
-              ดูตัวเลข ตาราง และกราฟทั้งหมด
+            ข้อมูลจากกรมชลประทานและสถาบันสารสนเทศทรัพยากรน้ำ (สสน.) · การคาดการณ์ยังไม่รวมฝนที่จะตกเพิ่ม ใช้เพื่อเฝ้าระวังเท่านั้น ·{' '}
+            <button type="button" onClick={() => openDetail('north-view')} className={`underline text-blue-700 cursor-pointer ${FOCUS}`}>
+              ดูแผนที่ ตัวเลข และกราฟทั้งหมด
             </button>
           </p>
         </>

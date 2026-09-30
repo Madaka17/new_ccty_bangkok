@@ -60,6 +60,9 @@ def test_rules_report_without_the_model():
     assert r["level"] == "warning" and r["districts"][0]["district"] == "บางพลัด"   # river bank + northern edge
     assert all(d["district"] in nia.DISTRICTS for d in r["districts"])
     assert any("5 ต.ค." in t["when"] for t in r["timeline"])
+    # The public summary: at most three sentences, no gauge codes or units
+    assert 0 < len(r["easy"]) <= 3 and not any("C." in x or "ลบ.ม." in x or "ม.รทก." in x for x in r["easy"])
+    assert r["easy"][0] == "อยุธยาล้นตลิ่งแล้ว และจะสูงที่สุดในอีกราว 2 วัน ส่วนนนทบุรีคาดว่าจะล้นตลิ่งราว 5 ต.ค."
 
 
 def test_point_sentence_uses_the_ten_minute_figure():
