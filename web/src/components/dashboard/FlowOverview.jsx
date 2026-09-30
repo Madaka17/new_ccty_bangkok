@@ -1,9 +1,10 @@
 import { motion } from 'framer-motion';
 import { Card, Badge, Skeleton, ErrorState } from './ui.jsx';
-import { STATUS, flowLevel, fmtTime } from './format.js';
+import { STATUS, flowLevel, fmtNum, fmtTime } from './format.js';
 
 // Horizontal HUD meter: gradient track (red -> amber -> green), threshold ticks at the
 // flowLevel cut-offs, glowing marker at the current value. Replaces the old ring gauge.
+// Every position is a percentage of the track, so the meter follows the card width when the window changes.
 const ZONES = [
   { from: 0, to: 45, label: 'ติดขัด', key: 'red' },
   { from: 45, to: 75, label: 'ชะลอตัว', key: 'yellow' },
@@ -14,27 +15,23 @@ function Meter({ value, colorHex }) {
   const v = Math.min(100, Math.max(0, value ?? 0));
   return (
     <div className="w-full" role="img" aria-label={`คะแนนรถคล่อง ${value ?? '-'} จาก 100`}>
-      <div className="relative h-4 rounded-full bg-slate-100 overflow-visible">
+      <div className="relative h-4 rounded-full bg-slate-100">
         {/* muted zone gradient under everything */}
         <div
           className="absolute inset-0 rounded-full opacity-40"
           style={{ background: 'linear-gradient(90deg, #dc2626 0%, #dc2626 45%, #d97706 45%, #d97706 75%, #059669 75%, #059669 100%)' }}
         />
-        {/* lit portion up to the value */}
+        {/* lit portion up to the value. Its own overflow keeps the sheen inside it; the glow is its own shadow and
+            still shows. Both ends are percentages ('0%' too: mixed units would make framer-motion fix them in px). */}
         <motion.div
-          className="absolute inset-y-0 left-0 rounded-full"
-          initial={{ width: 0 }}
+          className="absolute inset-y-0 left-0 rounded-full overflow-hidden"
+          initial={{ width: '0%' }}
           animate={{ width: `${v}%` }}
           transition={{ type: 'spring', stiffness: 60, damping: 18 }}
           style={{ background: `linear-gradient(90deg, ${colorHex}66, ${colorHex})`, boxShadow: `0 0 14px ${colorHex}80` }}
-        />
-        {/* moving sheen */}
-        <motion.div
-          className="absolute inset-y-0 w-16 rounded-full pointer-events-none"
-          style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent)' }}
-          animate={{ left: ['-4rem', '100%'] }}
-          transition={{ duration: 2.6, repeat: Infinity, ease: 'linear', repeatDelay: 1.2 }}
-        />
+        >
+          <span className="meter-sheen" aria-hidden="true" />
+        </motion.div>
         {/* threshold ticks */}
         {[45, 75].map((t) => (
           <span key={t} className="absolute top-[-4px] bottom-[-4px] w-px bg-slate-300" style={{ left: `${t}%` }} aria-hidden="true" />
@@ -42,7 +39,7 @@ function Meter({ value, colorHex }) {
         {/* marker */}
         <motion.div
           className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2"
-          initial={{ left: 0 }}
+          initial={{ left: '0%' }}
           animate={{ left: `${v}%` }}
           transition={{ type: 'spring', stiffness: 60, damping: 18 }}
           aria-hidden="true"
@@ -89,9 +86,17 @@ export default function FlowOverview({ summary, error, onRetry, retrying }) {
   return (
     <Card aria-labelledby="flow-title" className="p-5 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="flow-title" className="text-[15px] font-semibold text-slate-900">
-          รถติดแค่ไหนตอนนี้
-        </h2>
+        <div className="min-w-0">
+          <h2 id="flow-title" className="text-[15px] font-semibold text-slate-900">
+            รถติดแค่ไหนตอนนี้
+          </h2>
+          {/* Where the score comes from: the road-share cards below read the map's line colours instead */}
+          {summary && (
+            <p className="text-[13px] text-slate-600 mt-0.5">
+              {summary.is_bma ? `นับจากรถในภาพกล้อง กทม. ${fmtNum(summary.camera_count)} ตัว` : 'คิดจากสีเส้นจราจรบนแผนที่'}
+            </p>
+          )}
+        </div>
         {summary ? (
           <Badge tone={summary.online === false ? 'yellow' : 'green'} dot>
             {summary.online === false ? 'ข้อมูลล่าช้า' : 'อัปเดต'} {fmtTime(summary.updated_at)} น.

@@ -41,6 +41,10 @@ export default function DensityPanel({ d, onOpenRoad, showShare = true }) {
         </div>
       </Card>
       )}
+      {/* Another source than the score card above (camera counts), so say which */}
+      <p className="text-[13px] text-slate-600 -mb-1 px-1">
+        สัดส่วนถนน: ดูจากสีเส้นจราจรบนแผนที่ (Longdo) ถนน {fmtNum(d.road_count)} สาย ไม่ใช่จากกล้อง จึงอาจไม่ตรงกับคะแนนด้านบน
+      </p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {d.tiers.map((t) => {
           const on = open === t.id;

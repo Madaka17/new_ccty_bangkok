@@ -172,28 +172,11 @@ const poiKindOf = (p) => POI_KIND[p.class] || POI_KIND[p.subclass];
 const poiTierOf = (p) => POI_TIER(POI_KIND[p.class] ? p.class : p.subclass);
 
 const KIND_TH = { accident: 'อุบัติเหตุ', breakdown: 'รถเสีย' };
+const METRO_PROVINCES = ['กรุงเทพมหานคร', 'นนทบุรี', 'ปทุมธานี', 'สมุทรปราการ', 'นครปฐม', 'สมุทรสาคร'];
 const agoTh = (ts) => {
   const m = Math.round((Date.now() / 1000 - ts) / 60);
   return m < 1 ? 'เมื่อสักครู่' : m < 60 ? `${m} นาทีก่อน` : `${Math.round(m / 60)} ชม.ก่อน`;
 };
-// BMA risk-map traffic layers (cpudapp.bangkok.go.th/riskbkk), slimmed by local/pipeline/build_riskbkk_layers.py
-// into web/public/riskbkk/<id>.geojson; each is loaded only when first switched on.
-const RISK_LAYERS = [
-  // accident: Thai RSC cases 2566-2568 pooled into ~110 m cells (n cases, i injured, k killed, y per year, d district, p place)
-  { id: 'accident', label: 'จุดเกิดอุบัติเหตุ ปี 2566–2568', color: '#dc2626', heat: true, weight: 'n', source: 'ศูนย์ข้อมูลอุบัติเหตุทางถนน (ThaiRSC)' },
-  { id: 'accident_risk', label: 'จุดเสี่ยงอุบัติเหตุ ปี 2566–2568', color: '#be123c' },
-  { id: 'risk100', label: '100 จุดเสี่ยงจราจร', color: '#ea580c' },
-  { id: 'risk100_solve', label: 'จุดเสี่ยงที่แก้แล้ว (เขียว = แก้เสร็จ)', color: ['case', ['get', 'done'], '#16a34a', '#f59e0b'], legend: '#16a34a' },
-  { id: 'friction', label: 'จุดที่รถติดเป็นประจำ', color: '#9333ea' },
-  { id: 'js100', label: 'เหตุจราจรจากวิทยุ จส.100 / FM91 (ข้อมูลเก่า ก.ย. 67)', color: '#e11d48' },
-  { id: 'construction', label: 'สถานที่ก่อสร้างอาคารใหญ่', color: '#ca8a04' },
-  { id: 'crosswalk', label: 'ทางม้าลาย', color: '#e2e8f0', minzoom: 13 },
-  { id: 'rail_crossing', label: 'จุดตัดทางรถไฟ', color: '#78350f' },
-  { id: 'bus_stop', label: 'ป้ายรถเมล์', color: '#0284c7', minzoom: 13 },
-  { id: 'motorcycle_taxi', label: 'วินมอเตอร์ไซค์', color: '#f97316', minzoom: 13 },
-  { id: 'parking', label: 'ที่จอดรถ', color: '#2563eb' },
-];
-
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // Pulsing warning marker for an incident
@@ -267,7 +250,6 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const [longdoCameras, setLongdoCameras] = useState([]);
   const [showTraffic, setShowTraffic] = useState(true);
   const [showRail, setShowRail] = useState(false);
-  const [riskOn, setRiskOn] = useState({}); // RISK_LAYERS id -> visible
   const [summary, setSummary] = useState(null);
   const [waterSummary, setWaterSummary] = useState(null);
   const [showRainRadar, setShowRainRadar] = useState(false);
@@ -304,6 +286,8 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const gaugeMarkersRef = useRef([]);
   // Building details: flat footprints in 2D, POI name labels (DOM markers) and click-for-info on any building
   const [showPlaces, setShowPlaces] = useState(false);
+  // Phones: the options panel is a sheet over the map, opened from a button on it (desktop keeps it at the side)
+  const [panelOpen, setPanelOpen] = useState(false);
   const showPlacesRef = useRef(false);
   const poiMarkersRef = useRef([]);
   // Wind overlay drawn by us (Open-Meteo grid) so nothing sits on top of the traffic map
@@ -397,6 +381,8 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const floodRiskCount = useMemo(() => {
     return currentCameras.filter((c) => c.floodRisk).length;
   }, [currentCameras]);
+  // The Longdo list covers the whole country; say how many of its cameras are in Bangkok and around it
+  const metroCameraCount = useMemo(() => currentCameras.filter((c) => METRO_PROVINCES.includes(c.province)).length, [currentCameras]);
 
   // Create map once
   useEffect(() => {
@@ -406,6 +392,10 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
     mapRef.current = map;
     window.__bkkMap = map; // devtools access
     map.on('error', (e) => console.warn('[map]', e?.error?.message || e));
+    // A place picked in the options sheet moves the map: close the sheet so the phone shows where it went
+    map.on('movestart', (e) => {
+      if (!e.originalEvent) setPanelOpen(false);
+    });
     return () => {
       map.remove();
       mapRef.current = null;
@@ -446,68 +436,6 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
     if (map.isStyleLoaded()) apply();
     else map.once('load', apply);
   }, [showTraffic]);
-
-  // BMA risk layers: add source + layers the first time one is switched on, then only toggle visibility.
-  // Dense layers (accidents) are a heatmap when zoomed out and points from z13.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const onClick = (e) => {
-      const p = e.features[0].properties;
-      const layer = RISK_LAYERS.find((l) => `risk-${l.id}-pt` === e.features[0].layer.id);
-      let title = p.title;
-      let info = JSON.parse(p.info || '[]');
-      if (p.n != null) {
-        // an accident cell: build the text from its short properties
-        const years = JSON.parse(p.y || '[]');
-        title = `อุบัติเหตุ ${p.n} ครั้ง (ปี 2566–2568)`;
-        info = [
-          [2566, 2567, 2568].map((yr, i) => (years[i] ? `ปี ${yr}: ${years[i]}` : '')).filter(Boolean).join(' · '),
-          `บาดเจ็บ ${p.i} · เสียชีวิต ${p.k}`,
-          p.p ? `สถานที่: ${p.p}` : '',
-          p.d ? `เขต${p.d}` : '',
-        ].filter(Boolean);
-      }
-      new maplibregl.Popup({ offset: 8, closeButton: true, maxWidth: '300px' })
-        .setLngLat(e.features[0].geometry.coordinates)
-        .setHTML(
-          `<div style="font-size:13px;line-height:1.45"><b>${esc(title)}</b>` +
-            info.map((l) => `<br><span style="font-size:12px">${esc(l)}</span>`).join('') +
-            `<br><span style="color:#94a3b8;font-size:11px">${esc(layer?.source || 'ข้อมูลจุดเสี่ยงจาก กทม.')}</span></div>`
-        )
-        .addTo(map);
-    };
-    const apply = () => {
-      for (const l of RISK_LAYERS) {
-        const on = !!riskOn[l.id];
-        const src = `risk-${l.id}`;
-        if (!map.getSource(src)) {
-          if (!on) continue;
-          map.addSource(src, { type: 'geojson', data: `${window.location.origin}/riskbkk/${l.id}.geojson`, attribution: 'จุดเสี่ยง © กรุงเทพมหานคร' });
-          if (l.heat) {
-            const weight = l.weight ? { 'heatmap-weight': ['interpolate', ['linear'], ['get', l.weight], 1, 0.2, 50, 1] } : {};
-            map.addLayer({ id: `${src}-heat`, type: 'heatmap', source: src, maxzoom: 13, paint: { ...weight, 'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 9, 6, 13, 14], 'heatmap-opacity': 0.6, 'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 9, 0.08, 13, 0.4] } }, 'buildings-3d');
-          }
-          map.addLayer(
-            {
-              id: `${src}-pt`,
-              type: 'circle',
-              source: src,
-              minzoom: l.heat ? 13 : l.minzoom || 0,
-              paint: { 'circle-radius': l.weight ? ['interpolate', ['linear'], ['get', l.weight], 1, 3, 20, 6, 200, 11] : ['interpolate', ['linear'], ['zoom'], 10, 3, 15, 6], 'circle-color': l.color, 'circle-stroke-color': '#0f172a', 'circle-stroke-width': 1, 'circle-opacity': 0.9 },
-            },
-            'buildings-3d'
-          );
-          map.on('click', `${src}-pt`, onClick);
-          map.on('mouseenter', `${src}-pt`, () => (map.getCanvas().style.cursor = 'pointer'));
-          map.on('mouseleave', `${src}-pt`, () => (map.getCanvas().style.cursor = ''));
-        }
-        [`${src}-heat`, `${src}-pt`].forEach((id) => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'));
-      }
-    };
-    if (map.getLayer('buildings-3d')) apply();
-    else map.once('styledata', apply);
-  }, [riskOn]);
 
   // BTS / MRT layer toggle; a station click shows its name and line
   useEffect(() => {
@@ -1299,20 +1227,20 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
 
   const trafficOn = (showTraffic ? 1 : 0) + (showRail ? 1 : 0) + Object.values(pinsOn).filter(Boolean).length;
   const incidentList = [...(incidents?.camera || []), ...(incidents?.longdo || [])];
-  const riskOnCount = Object.values(riskOn).filter(Boolean).length;
   const waterOn = [showRainRadar, showCamFlood, showUserReports, showFlood, showReports, showHdms, showGauges].filter(Boolean).length;
+  const optionsOn = trafficOn + waterOn + (showPm ? 1 : 0) + (showWind ? 1 : 0) + (showPlaces ? 1 : 0);
   const camCounts = camFlood?.counts || {};
   const camWet = CAM_WET.reduce((n, k) => n + (camCounts[k] || 0), 0);
   const camWetList = (camFlood?.items || []).filter((c) => CAM_WET.includes(c.level));
   const waterHint = flood
-    ? `${camFlood ? `กล้องเห็นน้ำ ${camWet} จุด · ` : ''}ถนนท่วม ${floodCounts.flood + floodCounts.slight} จุด · ประชาชนแจ้ง ${reportPoints.length} เรื่อง (6 ชม.)`
+    ? `${camFlood ? `กล้องเห็นน้ำ ${camWet} จุด · ` : ''}ถนนท่วม ${floodCounts.flood + floodCounts.slight} จุด · คนแจ้ง ${reportPoints.length} เรื่อง (6 ชม.)`
     : 'ฝนตก น้ำท่วมถนน คนแจ้งน้ำท่วม และระดับน้ำ';
 
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
         title={PAGE_TITLES.map}
-        description="สีของถนนบอกว่ารถติดแค่ไหน กดหมุดกล้องเพื่อดูภาพสด เลือกสิ่งที่จะแสดงบนแผนที่ได้ที่แผงด้านข้าง"
+        description="สีของถนนบอกว่ารถติดแค่ไหน กดหมุดกล้องเพื่อดูภาพสด เลือกสิ่งที่จะแสดงบนแผนที่ได้ที่แผงตัวเลือก"
         actions={
           <Button size="sm" onClick={locateMe}>
             <Icon name="pin" /> ไปที่ตำแหน่งของฉัน
@@ -1320,7 +1248,20 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
         }
       />
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 lg:h-[calc(100vh-13rem)] min-h-[520px]">
-      <aside aria-label="สิ่งที่แสดงบนแผนที่" className="order-2 lg:order-1 glass rounded-xl p-4 flex flex-col gap-3 overflow-y-auto scroll-soft">
+      {panelOpen && (
+        <button type="button" aria-label="ปิดตัวเลือกแผนที่" onClick={() => setPanelOpen(false)} className="lg:hidden fixed inset-0 z-40 bg-slate-900/50 cursor-pointer" />
+      )}
+      <aside
+        id="map-options"
+        aria-label="สิ่งที่แสดงบนแผนที่"
+        className={`${panelOpen ? 'flex' : 'hidden'} fixed inset-x-0 bottom-0 z-50 max-h-[75dvh] rounded-t-2xl pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl lg:static lg:z-auto lg:flex lg:max-h-none lg:rounded-xl lg:pb-4 lg:shadow-none lg:order-1 glass p-4 flex-col gap-3 overflow-y-auto scroll-soft`}
+      >
+        <div className="lg:hidden flex items-center justify-between gap-2 -mt-1">
+          <p className="text-sm font-semibold text-ink-900">เลือกสิ่งที่แสดงบนแผนที่</p>
+          <Button size="sm" onClick={() => setPanelOpen(false)}>
+            เสร็จ
+          </Button>
+        </div>
         <LayerGroup title="รถติดและกล้อง" hint="สีรถติด กล้อง อุบัติเหตุ และรถไฟฟ้า" on={trafficOn} defaultOpen>
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -1357,7 +1298,9 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                   <span className="font-medium text-ink-900">กล้องจราจร</span>
                   <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-medium">{currentCameras.length} ตัว</span>
                 </div>
-                <span className="text-[11px] text-ink-600 leading-tight">กดหมุดเพื่อดูภาพสด</span>
+                <span className="text-[11px] text-ink-600 leading-tight">
+                  ใน กทม. และปริมณฑล {metroCameraCount} ตัว ที่เหลืออยู่ต่างจังหวัด · กดหมุดเพื่อดูภาพสด
+                </span>
               </div>
             </label>
 
@@ -1410,24 +1353,6 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
               🚇 รถไฟฟ้า
             </label>
             <p className="text-[11px] text-slate-500 mt-1">BTS MRT แอร์พอร์ตลิงก์ และสายสีแดง · กดสถานีเพื่อดูชื่อ</p>
-          </div>
-        </LayerGroup>
-
-        <LayerGroup title="จุดเสี่ยงจราจร กทม." hint="จุดเกิดอุบัติเหตุ จุดรถติดประจำ ทางม้าลาย ป้ายรถเมล์" on={riskOnCount}>
-          {/* BMA risk-map traffic layers */}
-          <div>
-            <p className="text-sm text-ink-900 font-medium">⚠️ จุดเสี่ยงจราจร กทม.</p>
-            <p className="text-[11px] text-slate-500 mt-0.5 mb-1.5">ข้อมูลจาก กทม. · กดจุดเพื่อดูรายละเอียด</p>
-            <div className="flex flex-col gap-1">
-              {RISK_LAYERS.map((l) => (
-                <label key={l.id} className="inline-flex items-center gap-2 text-[13px] text-ink-900 cursor-pointer">
-                  <input type="checkbox" checked={!!riskOn[l.id]} onChange={(e) => setRiskOn((s) => ({ ...s, [l.id]: e.target.checked }))} className="accent-blue-600 w-4 h-4" />
-                  <span className="w-2.5 h-2.5 rounded-full shrink-0 border border-slate-400" style={{ background: l.legend || l.color }} />
-                  {l.label}
-                </label>
-              ))}
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1">ทางม้าลาย ป้ายรถเมล์ และวินมอเตอร์ไซค์ จะขึ้นเมื่อซูมเข้าใกล้</p>
           </div>
         </LayerGroup>
 
@@ -1775,6 +1700,16 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
 
       <section aria-label="แผนที่จราจร" className="order-1 lg:order-2 glass rounded-xl overflow-hidden min-h-[560px] relative">
         <div ref={mapEl} className="w-full h-full min-h-[540px]" />
+        <button
+          type="button"
+          onClick={() => setPanelOpen(true)}
+          aria-expanded={panelOpen}
+          aria-controls="map-options"
+          className="lg:hidden absolute left-3 bottom-8 z-10 inline-flex items-center gap-2 h-11 px-4 rounded-full bg-white border border-slate-300 text-sm font-semibold text-slate-900 shadow-lg cursor-pointer"
+        >
+          <Icon name="legend" /> ตัวเลือกแผนที่
+          {optionsOn > 0 && <span className="rounded-full bg-blue-600 text-white text-[11px] px-2 py-0.5 tabular-nums">เปิด {optionsOn}</span>}
+        </button>
       </section>
     </div>
     </div>

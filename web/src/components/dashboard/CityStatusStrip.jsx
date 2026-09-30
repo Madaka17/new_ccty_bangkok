@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 const WEATHER_POLL_MS = 600000;
-import { fetchWaterSummary, fetchAirStations, fetchFloodReports, fetchLongdoFloods, fetchWeatherNow } from '../../lib/api.js';
+import { fetchWaterSummary, fetchAirStations, fetchFloodReports, fetchWeatherNow } from '../../lib/api.js';
 import { flowLevel } from './format.js';
 
 // One glance, six answers: traffic / weather where the viewer is / rain-water / flood reports / dust / incidents. Headline only, no detail line. Each tile is a link to its page.
@@ -85,7 +85,7 @@ function Tile({ icon, title, status, tone = 'neutral', onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className={`group relative cursor-pointer text-left rounded-2xl border p-4 sm:p-5 flex flex-col justify-between overflow-hidden bg-white/95 dark:bg-slate-900/90 backdrop-blur-md transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl dark:hover:shadow-black/50 ${cfg.border} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900`}
+      className={`group relative cursor-pointer text-left rounded-2xl border p-3 sm:p-5 flex flex-col justify-between overflow-hidden bg-white/95 dark:bg-slate-900/90 backdrop-blur-md transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl dark:hover:shadow-black/50 ${cfg.border} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900`}
     >
       {/* Top accent gradient line */}
       <span className={`absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r ${cfg.topBar}`} />
@@ -96,16 +96,17 @@ function Tile({ icon, title, status, tone = 'neutral', onClick }) {
       <div className="relative z-10 w-full">
         {/* Header row: Icon & Title on left, Live Beacon & Arrow on right */}
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <span className={`w-8 h-8 rounded-xl border flex items-center justify-center shrink-0 transition-all duration-300 group-hover:scale-105 shadow-xs ${cfg.iconBg}`}>
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+            <span className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl border flex items-center justify-center shrink-0 transition-all duration-300 group-hover:scale-105 shadow-xs ${cfg.iconBg}`}>
               {icon}
             </span>
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
+            {/* two lines on a phone, where two tiles share a row; one line from sm up */}
+            <span className="text-xs font-semibold uppercase tracking-wider leading-tight text-slate-500 dark:text-slate-400 line-clamp-2 sm:line-clamp-1">
               {title}
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 py-1 px-2 rounded-full text-[11px] font-medium border bg-slate-50/90 dark:bg-slate-800/80 border-slate-200/80 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 shrink-0">
+          <div className="hidden sm:flex items-center gap-1.5 py-1 px-2 rounded-full text-[11px] font-medium border bg-slate-50/90 dark:bg-slate-800/80 border-slate-200/80 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 shrink-0">
             <span className="relative flex h-2 w-2">
               <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${cfg.ping}`} />
               <span className={`relative inline-flex rounded-full h-2 w-2 ${cfg.dot}`} />
@@ -125,8 +126,8 @@ function Tile({ icon, title, status, tone = 'neutral', onClick }) {
         </div>
 
         {/* Status metric */}
-        <div className="mt-3.5 flex items-baseline">
-          <p className={`text-lg sm:text-[19px] font-bold tracking-tight leading-snug ${cfg.statusColor}`}>
+        <div className="mt-2 sm:mt-3.5 flex items-baseline">
+          <p className={`text-base sm:text-[19px] font-bold tracking-tight leading-snug ${cfg.statusColor}`}>
             {status}
           </p>
         </div>
@@ -141,7 +142,6 @@ export default function CityStatusStrip({ summary, incidents, flood, onNavigate,
   const [air, setAir] = useState(null);
   const [traffy, setTraffy] = useState(null);
   const [weather, setWeather] = useState(null);   // { temp, code, rain, place }
-  const [longdoFloods, setLongdoFloods] = useState(null);
 
   useEffect(() => {
     if (!isActive) return;
@@ -153,7 +153,6 @@ export default function CityStatusStrip({ summary, incidents, flood, onNavigate,
     // flood reports move faster than the rest: every minute
     const reports = () => {
       fetchFloodReports().then((r) => alive && setTraffy(r)).catch(() => {});
-      fetchLongdoFloods().then((r) => alive && setLongdoFloods(r)).catch(() => {});
     };
     tick();
     reports();
@@ -209,13 +208,11 @@ export default function CityStatusStrip({ summary, incidents, flood, onNavigate,
   const waterTone = !water ? 'neutral' : flooding > 0 || worstZone?.watch === 'red' ? 'red' : heavyRain > 0 || overflow > 0 || worstZone?.watch === 'yellow' ? 'yellow' : 'green';
   const waterStatus = !water ? 'กำลังโหลด' : flooding > 0 ? `ถนนน้ำท่วม ${flooding} จุด` : worstZone?.watch === 'red' ? `เฝ้าระวัง ${worstZone.name}` : overflow > 0 ? `น้ำล้นตลิ่ง ${overflow} จุด` : heavyRain > 0 ? `ฝนหนัก ${heavyRain} จุด` : 'ปกติ';
 
-  // Flood reports: people on Traffy Fondue (last 6 h) + iTIC / FM91 flooded roads still open on Longdo
+  // Flood reports: people on Traffy Fondue in the last 6 h only, the same count as the map and the report page.
+  // Flooded roads from traffic news are not people's reports and stay out of it.
   const citizen = traffy?.items?.length ?? null;
-  const itic = longdoFloods ? longdoFloods.active ?? 0 : null;
-  const reportTotal = (citizen || 0) + (itic || 0);
-  const repLoading = citizen == null && itic == null;
-  const repTone = repLoading ? 'neutral' : reportTotal === 0 ? 'green' : reportTotal < 20 ? 'yellow' : 'red';
-  const repStatus = repLoading ? 'กำลังโหลด' : reportTotal === 0 ? 'ไม่มีคนแจ้ง' : `${reportTotal} เรื่อง`;
+  const repTone = citizen == null ? 'neutral' : citizen === 0 ? 'green' : citizen < 20 ? 'yellow' : 'red';
+  const repStatus = citizen == null ? 'กำลังโหลด' : citizen === 0 ? 'ไม่มีคนแจ้ง' : `${citizen} เรื่อง`;
 
   // Air
   const pm = air?.avg_pm25;
@@ -230,11 +227,11 @@ export default function CityStatusStrip({ summary, incidents, flood, onNavigate,
   const incStatus = !incidents ? 'กำลังโหลด' : total === 0 ? 'ไม่มีเหตุ' : `${total} จุด`;
 
   return (
-    <section aria-label="สถานการณ์เมืองตอนนี้" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-3">
+    <section aria-label="สถานการณ์เมืองตอนนี้" className="grid grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-2 sm:gap-3">
       <Tile icon={ICONS.traffic} title="รถติดทั้งเมือง" status={trafficStatus} tone={trafficTone} onClick={() => onNavigate('map')} />
       <Tile icon={ICONS.weather} title={weather?.mine ? 'อากาศตรงนี้' : 'อากาศ กทม.'} status={weatherStatus} tone={weather?.tone || 'neutral'} onClick={() => onNavigate('water')} />
       <Tile icon={ICONS.water} title="ฝนและน้ำ" status={waterStatus} tone={waterTone} onClick={() => onNavigate('water')} />
-      <Tile icon={ICONS.report} title="คนแจ้งน้ำท่วม" status={repStatus} tone={repTone} onClick={() => onNavigate('water')} />
+      <Tile icon={ICONS.report} title="คนแจ้งน้ำท่วม (6 ชม.)" status={repStatus} tone={repTone} onClick={() => onNavigate('water')} />
       <Tile icon={ICONS.air} title="ฝุ่น PM2.5" status={airStatus} tone={airTone} onClick={() => onNavigate('map')} />
       <Tile icon={ICONS.incident} title="อุบัติเหตุและรถเสีย" status={incStatus} tone={incTone} onClick={() => onNavigate('dashboard')} />
     </section>
