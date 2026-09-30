@@ -3,7 +3,9 @@ Flood signals that the road sensors and ThaiWater gauges do not give:
 
 - Traffy Fondue (publicapi.traffy.in.th): complaints Bangkok residents file with a location. The newest
   complaints have no category yet, so flood reports are picked out by wording ("น้ำท่วม", "น้ำขัง" ...).
-  A burst of them in one district is water in the sois, where there is no sensor.
+  A burst of them in one district is water in the sois, where there is no sensor. The search API holds only
+  the newest complaints of any kind (4-5 h on a busy day) and is down for hours at times (502 after 60 s),
+  so the map API that Traffy's own site uses is read as well and fills in the rest of the 6 h.
 - Thai Meteorological Department (tmd.go.th): the numbered heavy-rain / storm warnings. The data.tmd.go.th
   WeatherWarningNews API only serves a 2022 announcement with the public key, so the warning list on the
   website is read instead. Each item carries a title, a one-paragraph summary of the regions hit and a date.
@@ -29,9 +31,14 @@ BKK_TZ = timezone(timedelta(hours=7))
 USER_AGENT = "Mozilla/5.0 (BKK StreetSmart dashboard)"
 
 TRAFFY_URL = "https://publicapi.traffy.in.th/share/teamchadchart/search"
-TRAFFY_LIMIT = 500           # newest first; about half a day of Bangkok complaints
+TRAFFY_LIMIT = 500           # newest first, any kind: 4-5 h on a busy flood day
 TRAFFY_REFRESH = 300
 TRAFFY_KEEP_HOURS = 6
+# The map API gives at most 300 tickets per query, newest first (over half a day of flood tickets), and
+# only filters, so ask for flood-type tickets and for tickets that name a flood. It leaves out tickets
+# that have no category yet (about half of the newest ones).
+TRAFFY_MAP_URL = "https://publicapi.traffy.in.th/teamchadchart-stat-api/geojson/v2"
+TRAFFY_MAP_QUERIES = ({"problem_type": "น้ำท่วม"}, {"text": "ท่วม"}, {"text": "น้ำขัง"})
 FLOOD_WORDS = re.compile(r"น้ำท่วม|ท่วมขัง|น้ำขัง|น้ำรอการระบาย|น้ำไม่ระบาย|ระบายน้ำไม่ทัน")
 # Words that say the water is on the spot now (or comes every time), and words of what only follows a flood
 # (clean-up, aid, complaints). A report that names a flood with only the second kind is about something else
@@ -151,6 +158,23 @@ def parse_traffy(results, now=None):
                     "text": hide_contacts(text)[:300], "lat": lat, "lng": lng, "photo": r.get("photo_url") or None,
                     "url": f"https://share.traffy.in.th/teamchadchart/{r.get('ticket_id')}"})
     out.sort(key=lambda i: -i["ts"])
+    return out
+
+
+def traffy_map_results(features):
+    """Tickets from Traffy's map API (GeoJSON) -> the search API's shape, for parse_traffy."""
+    out = []
+    for f in features or []:
+        p = f.get("properties") or {}
+        try:
+            # Bangkok time without a zone, where the search API gives UTC
+            ts = datetime.strptime(p.get("timestamp") or "", "%Y-%m-%d %H:%M:%S").replace(tzinfo=BKK_TZ)
+        except ValueError:
+            continue
+        out.append({"ticket_id": p.get("ticket_id"), "description": p.get("description"), "timestamp": ts.isoformat(),
+                    "problem_type_abdul": p.get("problem_type_fondue") or [], "address": p.get("address"),
+                    "coords": (f.get("geometry") or {}).get("coordinates"), "state": p.get("state"),
+                    "photo_url": p.get("photo_url")})
     return out
 
 
@@ -286,8 +310,37 @@ class TraffyFloodReports(_Poller):
     refresh_seconds = TRAFFY_REFRESH
 
     def fetch(self):
-        data = json.loads(_get(f"{TRAFFY_URL}?limit={TRAFFY_LIMIT}", timeout=60))
-        return parse_traffy(data.get("results"))
+        # The search API has every ticket but only the newest ones; the map API has the whole 6 h but only
+        # tickets with a category. Join them, then keep what earlier reads found until it is 6 h old, so an
+        # uncategorised ticket does not drop out and the count does not fall only because one API is down.
+        found, failed = {}, []
+        for source, read in (("search", self._search), ("map", self._map)):
+            try:
+                for item in parse_traffy(read()):
+                    found.setdefault(item["id"], item)
+            except Exception as e:  # noqa: BLE001 - the other API may still answer
+                failed.append(f"{source} API: {e}")
+                print(f"[{self.name}] {source} API failed: {e}")
+        if len(failed) == 2:
+            raise RuntimeError("; ".join(failed))
+        now = time.time()
+        with self.lock:
+            for item in self.items:
+                if now - item["ts"] <= TRAFFY_KEEP_HOURS * 3600:
+                    found.setdefault(item["id"], item)
+        return sorted(found.values(), key=lambda i: -i["ts"])
+
+    def _search(self):
+        return json.loads(_get(f"{TRAFFY_URL}?limit={TRAFFY_LIMIT}", timeout=60)).get("results")
+
+    def _map(self):
+        start = datetime.fromtimestamp(time.time() - TRAFFY_KEEP_HOURS * 3600, BKK_TZ).strftime("%Y-%m-%d")
+        tickets = {}
+        for query in TRAFFY_MAP_QUERIES:
+            url = f"{TRAFFY_MAP_URL}?{urllib.parse.urlencode({**query, 'start': start})}"
+            for r in traffy_map_results(json.loads(_get(url, timeout=60)).get("features")):
+                tickets.setdefault(r["ticket_id"], r)
+        return list(tickets.values())
 
 
 class TmdWarnings(_Poller):

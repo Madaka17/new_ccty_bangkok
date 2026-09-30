@@ -1,5 +1,12 @@
 """Parsing of the Traffy Fondue, TMD, HDMS and JS100 feeds."""
-from backend.water.flood_feeds import parse_hdms, parse_hdms_photos, parse_js100, parse_tmd, parse_traffy
+import json
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from backend.water import flood_feeds
+from backend.water.flood_feeds import (BKK_TZ, TraffyFloodReports, parse_hdms, parse_hdms_photos, parse_js100,
+                                       parse_tmd, parse_traffy, traffy_map_results)
 
 NOW = 1_790_000_000  # 2026-09-21 14:13 UTC
 
@@ -31,6 +38,72 @@ def test_traffy_leaves_out_reports_about_what_follows_a_flood():
         _ticket("ขยะหลังน้ำท่วม", kinds=["น้ำท่วม"]),     # Traffy's own flood type decides
     ], now=NOW)
     assert [i["text"] for i in items] == ["ขยะอุดท่อ น้ำท่วมขังหน้าบ้าน", "ฝนตกทีไรน้ำท่วม ขยะเต็มซอย", "ขยะหลังน้ำท่วม"]
+
+
+def _map_ticket(ticket_id, when, text="น้ำท่วมขังหน้าซอย", kinds=("น้ำท่วม",)):
+    return {"type": "Feature", "geometry": {"type": "Point", "coordinates": [100.6, 13.67]},
+            "properties": {"ticket_id": ticket_id, "description": text, "timestamp": when.strftime("%Y-%m-%d %H:%M:%S"),
+                           "problem_type_fondue": list(kinds), "problem_type_abdul": None, "state": "รอรับเรื่อง",
+                           "address": "แขวงบางนาเหนือ เขตบางนา กรุงเทพมหานคร", "photo_url": None}}
+
+
+def test_traffy_map_api_tickets_read_like_search_results():
+    # NOW is 21:13:20 in Bangkok; the map API gives Bangkok time without a zone
+    items = parse_traffy(traffy_map_results([
+        _map_ticket("2026-MAP1", datetime(2026, 9, 21, 21, 0)),
+        _map_ticket("2026-MAP2", datetime(2026, 9, 21, 21, 5), text="ขยะหลังน้ำท่วม", kinds=("ความสะอาด",)),
+        _map_ticket("2026-MAP3", datetime(2026, 9, 21, 14, 0)),       # over 6 h ago
+    ]), now=NOW)
+    assert [i["id"] for i in items] == ["2026-MAP1"]
+    assert items[0]["ts"] == NOW - 800
+    assert (items[0]["district"], items[0]["lat"], items[0]["lng"]) == ("บางนา", 13.67, 100.6)
+
+
+def test_traffy_reads_the_map_api_when_the_search_api_is_down(monkeypatch):
+    recent = datetime.now(BKK_TZ) - timedelta(minutes=10)
+    asked = []
+
+    def fake_get(url, timeout=30):
+        asked.append(url)
+        if "/search" in url:
+            raise TimeoutError("The read operation timed out")
+        # every query finds the same ticket: it is listed once
+        return json.dumps({"features": [_map_ticket("2026-MAP1", recent.replace(tzinfo=None))]})
+
+    monkeypatch.setattr(flood_feeds, "_get", fake_get)
+    feed = TraffyFloodReports()
+    now = recent.timestamp() + 600
+    # found by the last search: one not in the map API (no category yet), one over 6 h old
+    feed.items = [{"id": "2026-OLD1", "ts": int(now - 3600)}, {"id": "2026-OLD2", "ts": int(now - 7 * 3600)}]
+    items = feed.fetch()
+    assert [i["id"] for i in items] == ["2026-MAP1", "2026-OLD1"]
+    assert len(asked) == 1 + len(flood_feeds.TRAFFY_MAP_QUERIES)
+
+
+def test_traffy_joins_the_search_and_map_apis(monkeypatch):
+    now = datetime.now(BKK_TZ)
+    newest = (now - timedelta(minutes=10)).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.000000+00")
+
+    def fake_get(url, timeout=30):
+        if "/search" in url:     # the newest tickets, with or without a category
+            return json.dumps({"results": [{**_ticket("น้ำท่วมขังหน้าบ้าน", ts=newest), "ticket_id": "2026-NEW1"}]})
+        # the whole 6 h, categorised tickets only; NEW1 is in both and listed once
+        return json.dumps({"features": [_map_ticket("2026-NEW1", (now - timedelta(minutes=10)).replace(tzinfo=None)),
+                                        _map_ticket("2026-MAP1", (now - timedelta(hours=5)).replace(tzinfo=None))]})
+
+    monkeypatch.setattr(flood_feeds, "_get", fake_get)
+    items = TraffyFloodReports().fetch()
+    assert [i["id"] for i in items] == ["2026-NEW1", "2026-MAP1"]
+    assert items[0]["text"] == "น้ำท่วมขังหน้าบ้าน"
+
+
+def test_traffy_fails_only_when_both_apis_fail(monkeypatch):
+    def fake_get(url, timeout=30):
+        raise TimeoutError("The read operation timed out")
+
+    monkeypatch.setattr(flood_feeds, "_get", fake_get)
+    with pytest.raises(RuntimeError, match="search API.*map API"):
+        TraffyFloodReports().fetch()
 
 
 def test_traffy_hides_contact_details():
