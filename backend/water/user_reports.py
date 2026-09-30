@@ -28,6 +28,7 @@ from PIL import Image, ImageOps
 
 from backend.core import local_llm
 from backend.core.instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
+from backend.water.flood_feeds import hide_contacts
 
 DB_PATH = os.path.join(DATA_DIR, "vehicle_counts.db")
 PHOTO_DIR = os.path.join(DATA_DIR, "cache", "user_reports")
@@ -216,7 +217,7 @@ class UserReports:
             rows = conn.execute("SELECT * FROM user_flood_reports WHERE status = 'published' AND ts > ? ORDER BY ts DESC",
                                 (since,)).fetchall()
         items = [{"id": r["id"], "ts": r["ts"], "lat": r["lat"], "lng": r["lng"], "depth": r["depth"],
-                  "depth_th": DEPTHS[r["depth"]][0], "depth_cm": DEPTHS[r["depth"]][1], "note": r["note"] or "",
+                  "depth_th": DEPTHS[r["depth"]][0], "depth_cm": DEPTHS[r["depth"]][1], "note": hide_contacts(r["note"] or ""),
                   "photo": f"/api/flood/user-reports/{r['id']}/photo" if r["has_photo"] else None,
                   "ai_level": r["ai_level"], "ai_level_th": LEVEL_TH.get(r["ai_level"] or ""), "ai_note": r["ai_note"] or ""}
                  for r in rows]

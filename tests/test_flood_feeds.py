@@ -21,6 +21,25 @@ def test_traffy_keeps_recent_flood_reports_only():
     assert (items[0]["lat"], items[0]["lng"]) == (13.67, 100.6)
 
 
+def test_traffy_leaves_out_reports_about_what_follows_a_flood():
+    items = parse_traffy([
+        _ticket("มีขยะหลังน้ำท่วมหน้าบ้าน #กองขยะน้ำท่วม"),
+        _ticket("ขอรับเงินเยียวยาน้ำท่วม"),
+        _ticket("ขยะอุดท่อ น้ำท่วมขังหน้าบ้าน"),          # the water is there now
+        _ticket("ขยะหลังน้ำท่วม", kinds=["น้ำท่วม"]),     # Traffy's own flood type decides
+    ], now=NOW)
+    assert [i["text"] for i in items] == ["ขยะอุดท่อ น้ำท่วมขังหน้าบ้าน", "ขยะหลังน้ำท่วม"]
+
+
+def test_traffy_hides_contact_details():
+    text = ("น้ำท่วมขังในซอย\nติดต่อคุณ ยุ้ย 0853712178\nบ้านเลขที่: 54/63\n"
+            "คุณ พรรณรี เบอร์โทรศัพท์ 093-725-5762 โดยเฉพาะบ้านเลขที่ 68/158 และ 68/110 อีเมล a.b@mail.com")
+    (item,) = parse_traffy([_ticket(text)], now=NOW)
+    for private in ("0853712178", "093-725-5762", "ยุ้ย", "พรรณรี", "54/63", "68/110", "a.b@mail.com"):
+        assert private not in item["text"]
+    assert item["text"].startswith("น้ำท่วมขังในซอย\n(ซ่อนข้อมูลติดต่อ)\nบ้านเลขที่: (ซ่อน)\nคุณ(ซ่อนชื่อ)")
+
+
 PAGE = """
 <div class="link-list-content"><div class="link-list-title">
 <a href="/warning-and-events/warning-storm/&#xE1D;&#xE19;-6-222-2569">ฝนตกหนักถึงหนักมากบริเวณประเทศไทย (มีผลกระทบจนถึงวันที่ 27 กันยายน 2569) ฉบับที่ 6 (222/2569)</a></div>

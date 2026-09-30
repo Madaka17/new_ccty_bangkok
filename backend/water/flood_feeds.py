@@ -33,8 +33,32 @@ TRAFFY_LIMIT = 500           # newest first; about half a day of Bangkok complai
 TRAFFY_REFRESH = 300
 TRAFFY_KEEP_HOURS = 6
 FLOOD_WORDS = re.compile(r"น้ำท่วม|ท่วมขัง|น้ำขัง|น้ำรอการระบาย|น้ำไม่ระบาย|ระบายน้ำไม่ทัน")
+# Words that say the water is on the spot now, and words of what only follows a flood (clean-up, aid,
+# complaints). A report that names a flood with only the second kind is about something else and is left out.
+FLOODED_NOW = re.compile(
+    r"ท่วมขัง|น้ำขัง|น้ำรอการระบาย|น้ำไม่ระบาย|ระบายน้ำไม่ทัน|ระบายไม่|ลงท่อไม่|ท่อ(?:อุด)?ตัน|ระดับน้ำ|ความสูงระดับ|"
+    r"ยังท่วม|ท่วมอยู่|น้ำ(?:ก็)?ยังไม่ลด|น้ำไม่ลด|น้ำเข้าบ้าน|ฝนตก|ท่วม(?:สูง|หนัก|ถึง|ถนน|ซอย|บ้าน|หมู่บ้าน|ชุมชน|ทาง|ทุกครั้ง)")
+AFTER_FLOOD = re.compile(
+    r"ขยะ|หลังน้ำ|หลังจากน้ำ|น้ำลด|ท่วมลด|น้ำลงแล้ว|โคลน|ฟูก|ที่นอน|เยียวยา|เงินช่วยเหลือ|ถุงยังชีพ|บริจาค|"
+    r"เสนอแนะ|โรงเรียน|ศูนย์เด็กเล็ก|เสียงดัง|แมว|สุนัข")
 # The Traffy form appends "ความสูงระดับ<ข้อเท้า|หน้าแข้ง|เข่า|...>" to flood reports
 DEPTH = re.compile(r"ความสูงระดับ\s*([^\s,]+)")
+# Contact details people type into a report: Traffy shows them on its own site, but this one does not
+CONTACT_LINE = re.compile(r"^[ \t]*(?:ติดต่อ|ผู้ติดต่อ|ชื่อผู้แจ้ง|ผู้แจ้ง|เบอร์|โทร|line|ไลน์|อีเมล|e-?mail)[^\n]*", re.I | re.M)
+NAME_BEFORE_PHONE = re.compile(r"คุณ\s*\S+(?=[^\n]{0,40}(?:\+66|0)\d)")
+PHONE = re.compile(r"(?:\+66|0)(?:[ .-]?\d){8,9}")
+EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+HOUSE_NO = re.compile(r"(บ้านเลขที่\s*:?\s*)[0-9][0-9/-]*(?:\s*(?:,|และ|หรือ)\s*[0-9][0-9/-]*)*")
+
+
+def hide_contacts(text):
+    """Report text without the reporter's contact details: contact lines, a name next to a phone number,
+    phone numbers, e-mail addresses and house numbers."""
+    text = CONTACT_LINE.sub("(ซ่อนข้อมูลติดต่อ)", text)
+    text = NAME_BEFORE_PHONE.sub("คุณ(ซ่อนชื่อ)", text)
+    text = PHONE.sub("(ซ่อนเบอร์โทร)", text)
+    text = EMAIL.sub("(ซ่อนอีเมล)", text)
+    return HOUSE_NO.sub(r"\1(ซ่อน)", text)
 
 TMD_BASE = "https://www.tmd.go.th"
 TMD_LIST = TMD_BASE + "/warning-and-events/warning-storm"
@@ -102,7 +126,11 @@ def parse_traffy(results, now=None):
     for r in results or []:
         text = (r.get("description") or "").strip()
         kinds = [k for k in r.get("problem_type_abdul") or [] if k]
-        if not (FLOOD_WORDS.search(text) or "น้ำท่วม" in kinds):
+        flood_kind = "น้ำท่วม" in kinds
+        if not (FLOOD_WORDS.search(text) or flood_kind):
+            continue
+        # A flood named only as the cause of something else (garbage after it, aid, noise): not a flooded place
+        if not flood_kind and not FLOODED_NOW.search(text) and AFTER_FLOOD.search(text):
             continue
         try:
             ts = datetime.fromisoformat((r.get("timestamp") or "").replace("+00", "+00:00")).timestamp()
@@ -119,7 +147,7 @@ def parse_traffy(results, now=None):
             lng = lat = None
         out.append({"id": r.get("ticket_id"), "ts": int(ts), "district": district.group(1) if district else None,
                     "address": addr, "state": r.get("state"), "depth": depth.group(1) if depth else None,
-                    "text": text[:300], "lat": lat, "lng": lng, "photo": r.get("photo_url") or None,
+                    "text": hide_contacts(text)[:300], "lat": lat, "lng": lng, "photo": r.get("photo_url") or None,
                     "url": f"https://share.traffy.in.th/teamchadchart/{r.get('ticket_id')}"})
     out.sort(key=lambda i: -i["ts"])
     return out
