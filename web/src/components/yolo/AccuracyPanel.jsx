@@ -109,14 +109,14 @@ export default function AccuracyPanel({ active, stats, camTitle, onToast }) {
   return (
     <Card className="p-5">
       <SectionHeader
-        title="ตรวจความแม่นยำ: นับมือ vs AI"
-        description="กด “เริ่มนับ” แล้วนับรถที่ผ่านกล้องด้วยตาไปพร้อมกัน จบแล้วกรอกตัวเลข ระบบคำนวณ Absolute Error และ Accuracy ให้"
+        title="AI นับแม่นแค่ไหน: ลองนับเทียบด้วยตา"
+        description="กด “เริ่มนับใหม่” แล้วนับรถที่ผ่านกล้องด้วยตาไปพร้อมกับ AI นับเสร็จกรอกตัวเลข ระบบจะบอกว่า AI นับต่างไปกี่คันและแม่นกี่ %"
         action={
           summary ? (
             <div className="flex items-center gap-2">
-              <Badge tone="neutral">MAE {fmtNum(summary.mae)} คัน</Badge>
+              <Badge tone="neutral">ต่างเฉลี่ย {fmtNum(summary.mae)} คัน</Badge>
               <Badge tone={accTone(summary.mean_accuracy_pct)} dot>
-                Accuracy เฉลี่ย {fmtAcc(summary.mean_accuracy_pct)}
+                แม่นเฉลี่ย {fmtAcc(summary.mean_accuracy_pct)}
               </Badge>
             </div>
           ) : null
@@ -142,7 +142,7 @@ export default function AccuracyPanel({ active, stats, camTitle, onToast }) {
 
           <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
             <label className="block">
-              <span className="text-xs text-slate-600">จำนวนที่นับด้วยตา (Manual Count)</span>
+              <span className="text-xs text-slate-600">จำนวนที่คุณนับได้</span>
               <input
                 type="number"
                 min="0"
@@ -169,27 +169,27 @@ export default function AccuracyPanel({ active, stats, camTitle, onToast }) {
           {preview && (
             <div className="grid grid-cols-3 gap-2 text-center">
               <div className="rounded-lg bg-white border border-slate-200 py-2">
-                <p className="text-[11px] text-slate-500">Manual</p>
+                <p className="text-[11px] text-slate-500">นับด้วยตา</p>
                 <p className="text-lg font-semibold tabular-nums text-blue-700">{fmtNum(manualNum)}</p>
               </div>
               <div className="rounded-lg bg-white border border-slate-200 py-2">
-                <p className="text-[11px] text-slate-500">Absolute Error</p>
+                <p className="text-[11px] text-slate-500">ต่างกัน</p>
                 <p className="text-lg font-semibold tabular-nums text-slate-900">{fmtNum(preview.err)}</p>
               </div>
               <div className="rounded-lg bg-white border border-slate-200 py-2">
-                <p className="text-[11px] text-slate-500">Accuracy</p>
+                <p className="text-[11px] text-slate-500">แม่นยำ</p>
                 <p className={`text-lg font-semibold tabular-nums ${preview.acc >= 95 ? 'text-emerald-700' : preview.acc >= 85 ? 'text-amber-700' : 'text-red-700'}`}>{fmtAcc(preview.acc)}</p>
               </div>
             </div>
           )}
         </div>
 
-        {/* Manual vs AI grouped bars */}
+        {/* Count-by-eye vs AI grouped bars */}
         <div className="rounded-xl border border-slate-200 p-4 min-w-0">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-slate-900">Manual vs. AI Vehicle Count</p>
+            <p className="text-sm font-semibold text-slate-900">จำนวนรถ: นับด้วยตา เทียบกับ AI</p>
             <div className="flex items-center gap-3 text-[11px] text-slate-600">
-              <span className="inline-flex items-center gap-1"><span className={`w-2.5 h-2.5 rounded-sm ${MANUAL}`} /> Manual</span>
+              <span className="inline-flex items-center gap-1"><span className={`w-2.5 h-2.5 rounded-sm ${MANUAL}`} /> นับด้วยตา</span>
               <span className="inline-flex items-center gap-1"><span className={`w-2.5 h-2.5 rounded-sm ${AI}`} /> AI</span>
             </div>
           </div>
@@ -202,7 +202,7 @@ export default function AccuracyPanel({ active, stats, camTitle, onToast }) {
           ) : (
             <div className="mt-3 flex items-end gap-2 h-44 border-b border-slate-200 pb-1">
               {chartRows.map((r) => (
-                <div key={r.id} className="flex-1 min-w-0 h-full flex flex-col justify-end items-center gap-1" title={`${r.title}: manual ${r.manual_count} · AI ${r.ai_count} · error ${r.abs_error}`}>
+                <div key={r.id} className="flex-1 min-w-0 h-full flex flex-col justify-end items-center gap-1" title={`${r.title}: นับด้วยตา ${r.manual_count} · AI ${r.ai_count} · ต่างกัน ${r.abs_error}`}>
                   <div className="w-full flex items-end justify-center gap-1 h-full">
                     <div className="flex-1 max-w-[26px] flex flex-col items-center justify-end h-full">
                       <span className="text-[9px] tabular-nums text-blue-700 mb-0.5">{fmtNum(r.manual_count)}</span>
@@ -226,11 +226,11 @@ export default function AccuracyPanel({ active, stats, camTitle, onToast }) {
         <table className="w-full text-xs min-w-[640px]">
           <thead>
             <tr className="bg-slate-50 text-slate-600 border-b border-slate-200">
-              <th className="text-left font-medium py-2.5 px-3">Camera / Location</th>
-              <th className="text-right font-medium py-2.5 px-3">Manual Count</th>
-              <th className="text-right font-medium py-2.5 px-3">AI Count</th>
-              <th className="text-right font-medium py-2.5 px-3">Absolute Error</th>
-              <th className="text-right font-medium py-2.5 px-3">Accuracy (%)</th>
+              <th className="text-left font-medium py-2.5 px-3">กล้อง</th>
+              <th className="text-right font-medium py-2.5 px-3">นับด้วยตา</th>
+              <th className="text-right font-medium py-2.5 px-3">AI นับ</th>
+              <th className="text-right font-medium py-2.5 px-3">ต่างกัน (คัน)</th>
+              <th className="text-right font-medium py-2.5 px-3">แม่นยำ (%)</th>
               <th className="text-right font-medium py-2.5 px-3">เวลา</th>
               <th className="py-2.5 px-2" />
             </tr>
@@ -266,7 +266,7 @@ export default function AccuracyPanel({ active, stats, camTitle, onToast }) {
           {summary && (
             <tfoot>
               <tr className="bg-slate-50 border-t border-slate-200 font-semibold text-slate-900">
-                <td className="py-2.5 px-3">Average ({summary.count} ครั้ง)</td>
+                <td className="py-2.5 px-3">เฉลี่ย ({summary.count} ครั้ง)</td>
                 <td className="py-2.5 px-3 text-right tabular-nums text-slate-500 font-normal">รวม {fmtNum(summary.manual_total)}</td>
                 <td className="py-2.5 px-3 text-right tabular-nums text-slate-500 font-normal">รวม {fmtNum(summary.ai_total)}</td>
                 <td className="py-2.5 px-3 text-right tabular-nums">{fmtNum(summary.mae)}</td>

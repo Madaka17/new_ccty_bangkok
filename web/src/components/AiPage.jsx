@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { fetchTrafficSummary, sendChat } from '../lib/api.js';
 import { PageHeader } from './dashboard/primitives.jsx';
+import { PAGE_TITLES } from './Sidebar.jsx';
 
 const SUGGESTIONS = ['ถนนไหนติดที่สุดตอนนี้', 'ตอนนี้มีน้ำท่วมขังที่ไหนบ้าง', 'วันนี้ฝนจะตกไหม', 'มีอุบัติเหตุตรงไหนบ้าง'];
-const WELCOME = 'สวัสดี! ถามได้ทุกเรื่อง ทั้งข้อมูลสดของเมือง (จราจรทุกสาย กล้องนับรถ กทม. 500+ ตัว น้ำท่วม-ฝน-พายุ 24 ชม.รายพื้นที่ อุบัติเหตุและเหตุการณ์ สถิติรายเขต) และคำถามทั่วไปอะไรก็ได้ เช่น แปลภาษา สรุปข้อความ คำนวณ สุขภาพ ท่องเที่ยว หรือให้ช่วยเขียนอะไรก็ได้เลย';
+const WELCOME = 'สวัสดี! ถามได้ทุกเรื่อง เช่น ถนนไหนรถติด ตรงไหนน้ำท่วม ฝนจะตกไหม มีอุบัติเหตุที่ไหน หรือเรื่องทั่วไป เช่น แปลภาษา สรุปข้อความ หรือช่วยเขียนอะไรก็ได้';
 
 function Bubble({ role, text, mode, model }) {
  const me = role === 'user';
@@ -13,7 +14,7 @@ function Bubble({ role, text, mode, model }) {
       <div className={`max-w-[85%] rounded-xl px-4 py-3 text-[15px] leading-relaxed whitespace-pre-wrap ${me ? 'bg-lavender-600 text-white rounded-br-lg' : 'bg-white border border-cream-200 text-ink-900 rounded-bl-lg'}`}>
         {text}
         {!me && mode === 'local' && <span className="block mt-1 text-[11px] text-ink-400">AI: {model || 'Qwen'}</span>}
-        {!me && mode === 'offline' && <span className="block mt-1 text-[11px] text-ink-400">โหมดออฟไลน์ (สรุปจากข้อมูลสด เชื่อมต่อโมเดล AI ไม่ได้)</span>}
+        {!me && mode === 'offline' && <span className="block mt-1 text-[11px] text-ink-400">AI ไม่พร้อม คำตอบนี้สรุปจากข้อมูลสดโดยตรง</span>}
       </div>
     </motion.div>
   );
@@ -66,7 +67,7 @@ export default function AiPage({ active, pendingQuestion, onQuestionConsumed }) 
    ? 'ถามบ่อยเกินไป รอสักครู่แล้วลองใหม่นะ'
    : e?.message === 'too_long'
      ? 'ข้อความยาวเกินไป ลองย่อคำถามให้สั้นลง'
-     : 'ผู้ช่วยยังไม่ตื่น ลองเปิด launch/localhost_8000/start.bat แล้วถามใหม่นะ';
+     : 'AI ยังไม่พร้อม ลองถามใหม่อีกครั้งในอีกสักครู่';
  setMessages([...next, { role: 'assistant', content: msg, mode: 'offline' }]);
     } finally {
  setBusy(false);
@@ -78,19 +79,19 @@ export default function AiPage({ active, pendingQuestion, onQuestionConsumed }) 
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title="Ask AI"
-        description="ถามข้อมูลสดของเมือง (จราจร กล้องนับรถ น้ำท่วม-ฝน อุบัติเหตุ สถิติรายเขต) หรือคำถามทั่วไปก็ได้"
+        title={PAGE_TITLES.ai}
+        description="ถามเรื่องรถติด น้ำท่วม ฝน อุบัติเหตุ หรือเรื่องทั่วไปก็ได้"
         actions={
           summary?.ready && (
             <span className="inline-flex items-center gap-1.5 rounded-lg bg-sage-50 border border-sage-100 px-3 py-1.5 text-xs text-sage-700">
               <span className="live-dot w-2 h-2 rounded-full bg-sage-400" />
-              ดูอยู่ {summary.road_count} สาย
+              ติดตามถนน {summary.road_count} สาย
             </span>
           )
         }
       />
 
-      <section className="glass rounded-xl flex flex-col overflow-hidden lg:h-[calc(100vh-13rem)] min-h-[480px]" aria-label="แชทกับผู้ช่วยการจราจร">
+      <section className="glass rounded-xl flex flex-col overflow-hidden lg:h-[calc(100vh-13rem)] min-h-[480px]" aria-label="แชทกับ AI">
         <div ref={listRef} className="flex-1 overflow-y-auto scroll-soft px-5 pt-5 pb-2 space-y-3 min-h-[280px]">
           {messages.map((m, i) => (
             <Bubble key={i} role={m.role} text={m.content} mode={m.mode} model={m.model} />
@@ -127,7 +128,7 @@ export default function AiPage({ active, pendingQuestion, onQuestionConsumed }) 
             }}
             className="flex items-center gap-2 rounded-lg bg-white border border-cream-200 pl-5 pr-1.5 py-1.5 focus-within:border-lavender-400 transition-colors duration-200"
           >
-            <label htmlFor="chat-input" className="sr-only">ถามผู้ช่วยการจราจร</label>
+            <label htmlFor="chat-input" className="sr-only">พิมพ์คำถาม</label>
             <input id="chat-input" value={input} onChange={(e) => setInput(e.target.value)} placeholder="ถามอะไรก็ได้ เช่น รัชดาตอนนี้ติดไหม, พรุ่งนี้ฝนตกไหม, ช่วยแปลประโยคนี้..." className="flex-1 min-w-0 bg-transparent outline-none text-base text-ink-900 placeholder:text-ink-400" disabled={busy} />
             <motion.button type="submit" whileTap={{ scale: 0.95 }} disabled={busy || !input.trim()} className="cursor-pointer rounded-lg bg-blue-600 text-white px-5 py-2.5 text-sm font-semibold hover:bg-blue-700 transition-colors duration-200 disabled:opacity-50">
               ถาม

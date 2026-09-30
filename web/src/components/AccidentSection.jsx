@@ -44,24 +44,24 @@ function Bars({ values, labelOf, highlight }) {
 
 // ---------------------------------------------------------------- 4. accidents
 export default function AccidentSection({ d }) {
-  if (!d?.ready) return <EmptyState title="ไม่มีข้อมูล Thai RSC" description="ยังดึงสถิติอุบัติเหตุไม่ได้" />;
+  if (!d?.ready) return <EmptyState title="ยังโหลดข้อมูลอุบัติเหตุไม่ได้" description="ลองใหม่อีกครั้งในอีกสักครู่" />;
   const hours = d.dead_by_hour?.length === 24 ? d.dead_by_hour : null;
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatTile label="เสียชีวิตวันนี้" value={fmtNum(d.today?.dead)} sub={`บาดเจ็บ ${fmtNum(d.today?.injured)} ราย`} tone={d.today?.dead ? 'red' : 'green'} />
         <StatTile label={`เสียชีวิตสะสมปี ${d.year_be || ''}`} value={fmtNum(d.ytd?.dead)} sub={`บาดเจ็บ ${fmtNum(d.ytd?.injured)} ราย`} tone="red" />
-        <StatTile label="จุดเกิดเหตุกระจุกตัว" value={fmtNum(d.black_spots.length)} sub={`จากพิกัดอุบัติเหตุ ${fmtNum(d.points_total)} จุด`} tone="yellow" />
+        <StatTile label="จุดที่เกิดอุบัติเหตุบ่อย" value={fmtNum(d.black_spots.length)} sub={`จากอุบัติเหตุ ${fmtNum(d.points_total)} ครั้ง`} tone="yellow" />
         <StatTile label="เขตเสี่ยงสูงสุด" value={d.districts[0]?.name || '–'} sub={d.districts[0] ? `เสียชีวิต ${d.districts[0].dead} · บาดเจ็บ ${d.districts[0].injured}` : ''} />
       </div>
       {d.citywide_measures.length > 0 && (
-        <StatusBanner tone="yellow" label="มาตรการทั่วเมือง">
+        <StatusBanner tone="yellow" label="สิ่งที่ควรทำทั้งเมือง">
           {d.citywide_measures.join(' · ')}
         </StatusBanner>
       )}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
         <Card className="p-5">
-          <SectionHeader id="black-spots" title="Black Spots และแนวทางลดอุบัติเหตุเฉพาะพื้นที่" description="จัดกลุ่มพิกัดอุบัติเหตุในรัศมี ~275 ม. · คะแนน = เคส + 3×บาดเจ็บ + 10×เสียชีวิต · มาตรการเลือกตามประเภทถนน" />
+          <SectionHeader id="black-spots" title="จุดที่เกิดอุบัติเหตุบ่อย และวิธีแก้" description="รวมอุบัติเหตุที่เกิดใกล้กัน (ในระยะราว 300 ม.) · เรียงจากจุดที่อันตรายที่สุด" />
           <ol className="mt-3 divide-y divide-slate-100">
             {d.black_spots.map((b, i) => (
               <li key={`${b.lat}-${b.lon}`} className="py-3 flex gap-3">
@@ -73,7 +73,7 @@ export default function AccidentSection({ d }) {
                     <Badge tone="neutral">{b.road_type}</Badge>
                   </div>
                   <p className="text-xs text-slate-600 mt-1 tabular-nums">
-                    เขต{b.district} · {fmtNum(b.cases)} เคส · เสียชีวิต <span className="font-medium text-red-700">{b.dead}</span> · บาดเจ็บ {fmtNum(b.injured)} · ปี {b.years.join('/')}
+                    เขต{b.district} · {fmtNum(b.cases)} ครั้ง · เสียชีวิต <span className="font-medium text-red-700">{b.dead}</span> · บาดเจ็บ {fmtNum(b.injured)} · ปี {b.years.join('/')}
                   </p>
                   <ul className="mt-1.5 flex flex-col gap-0.5">
                     {b.measures.map((m) => (
@@ -87,17 +87,17 @@ export default function AccidentSection({ d }) {
               </li>
             ))}
           </ol>
-          <p className="text-[11px] text-slate-500 mt-3">{d.injury_note} · แหล่งข้อมูล {d.source || 'Thai RSC'}</p>
+          <p className="text-[11px] text-slate-500 mt-3">{d.injury_note} · ข้อมูลจาก {d.source || 'ศูนย์ข้อมูลอุบัติเหตุ (ThaiRSC)'}</p>
         </Card>
         <div className="flex flex-col gap-4">
           <Card className="p-5">
-            <SectionHeader id="by-district" title="รายเขต" description="เรียงตามผู้เสียชีวิตสะสมปีนี้" />
+            <SectionHeader id="by-district" title="แต่ละเขต" description="เรียงตามจำนวนคนเสียชีวิตปีนี้" />
             <ul className="mt-3 divide-y divide-slate-100">
               {d.districts.map((x) => (
                 <li key={x.name} className="py-1.5 flex items-center text-sm">
                   <span className="text-slate-900">{x.name}</span>
                   <span className="ml-auto text-xs tabular-nums text-slate-600">
-                    <span className="font-medium text-red-700">{x.dead}</span> ตาย · {fmtNum(x.injured)} เจ็บ
+                    เสียชีวิต <span className="font-medium text-red-700">{x.dead}</span> · บาดเจ็บ {fmtNum(x.injured)}
                   </span>
                 </li>
               ))}
@@ -105,7 +105,7 @@ export default function AccidentSection({ d }) {
           </Card>
           {hours && (
             <Card className="p-5">
-              <SectionHeader id="by-hour" title="ผู้เสียชีวิตรายชั่วโมง" description="สะสมปีนี้ ทั้งกรุงเทพฯ" />
+              <SectionHeader id="by-hour" title="เวลาที่มีคนเสียชีวิตมากที่สุด" description="รวมทั้งปีนี้ ทั้งกรุงเทพฯ" />
               <div className="mt-3">
                 <Bars values={hours} labelOf={(i) => `${i}`} highlight={new Set(hours.map((v, i) => [v, i]).sort((a, b) => b[0] - a[0]).slice(0, 3).map((x) => x[1]))} />
               </div>

@@ -14,13 +14,14 @@ const LEVEL = {
   warning: { tone: 'red', label: 'เตือนภัย', bar: 'bg-orange-500' },
   critical: { tone: 'red', label: 'วิกฤต', bar: 'bg-red-600' },
 };
-const SOURCE = { local: 'AI', rules: 'กฎพื้นฐาน (ออฟไลน์)' };
+const SOURCE = { local: 'สรุปโดย AI', rules: 'สรุปตามเกณฑ์ของระบบ' };
 const CONFIDENCE = { low: 'ต่ำ', medium: 'ปานกลาง', high: 'สูง' };
 const TOOL_TH = {
-  get_road_sensors: 'เซ็นเซอร์น้ำบนถนน',
+  get_road_sensors: 'เครื่องวัดน้ำบนถนน',
   get_rivers_canals: 'แม่น้ำ/คลอง',
   get_rain_outlook: 'พยากรณ์ฝน',
-  get_citizen_reports: 'Traffy Fondue',
+  get_citizen_reports: 'เรื่องที่คนแจ้ง',
+  get_longdo_floods: 'ข่าวน้ำท่วม',
   get_weather_warnings: 'ประกาศกรมอุตุฯ',
   get_road_risk: 'ความเสี่ยงรายถนน',
   get_bma_events: 'ศูนย์จราจร กทม.',
@@ -48,8 +49,8 @@ function Weather({ summary, weather }) {
                 <th className="py-1 pr-3 font-medium text-right">ฝน 24 ชม. (มม.)</th>
                 <th className="py-1 pr-3 font-medium text-right">โอกาสฝน</th>
                 <th className="py-1 pr-3 font-medium">ฝนหนักสุด</th>
-                <th className="py-1 pr-3 font-medium">พายุฝนฟ้าคะนอง</th>
-                <th className="py-1 font-medium text-right">ลมกระโชก (กม./ชม.)</th>
+                <th className="py-1 pr-3 font-medium">ฝนฟ้าคะนอง</th>
+                <th className="py-1 font-medium text-right">ลมแรงสุด (กม./ชม.)</th>
               </tr>
             </thead>
             <tbody>
@@ -129,14 +130,14 @@ export default function FloodAgentCard({ isActive, onOpenRoad }) {
         return load();
       })
       .catch((e) => setRunError(e.message === 'forbidden'
-        ? 'สั่งวิเคราะห์ได้เฉพาะทีมปฏิบัติการ (เครือข่ายภายใน)'
-        : 'วิเคราะห์ไม่สำเร็จ ลองใหม่อีกครั้ง'))
+        ? 'สั่งสรุปใหม่ได้เฉพาะเจ้าหน้าที่'
+        : 'สรุปไม่สำเร็จ ลองใหม่อีกครั้ง'))
       .finally(() => setRunning(false));
   };
 
   if (!data) {
     return failed
-      ? <Card className="p-5"><EmptyState title="โหลดรายงาน AI น้ำท่วมไม่สำเร็จ" action={<Button size="sm" onClick={load}>ลองใหม่</Button>} /></Card>
+      ? <Card className="p-5"><EmptyState title="โหลดสรุปจาก AI ไม่สำเร็จ" action={<Button size="sm" onClick={load}>ลองใหม่</Button>} /></Card>
       : <Skeleton className="h-48" />;
   }
 
@@ -148,21 +149,21 @@ export default function FloodAgentCard({ isActive, onOpenRoad }) {
     <Card className="p-5" aria-labelledby="flood-agent">
       <SectionHeader
         id="flood-agent"
-        title="วิเคราะห์สถานการณ์น้ำท่วม"
+        title="AI สรุปสถานการณ์น้ำท่วม"
         description={r
-          ? `${r.source === 'local' && r.model ? r.model : SOURCE[r.source] || r.source} · ${fmtTime(r.generated_at)} น. (${agoText(r.generated_at)}) · วิเคราะห์อัตโนมัติทุก ${Math.round((data.interval_s || 900) / 60)} นาที`
-          : 'ยังไม่มีรายงาน รอบแรกจะเริ่มหลังเปิดเซิร์ฟเวอร์ราว 2 นาที'}
+          ? `${SOURCE[r.source] || r.source} · ${fmtTime(r.generated_at)} น. (${agoText(r.generated_at)}) · สรุปใหม่เองทุก ${Math.round((data.interval_s || 900) / 60)} นาที`
+          : 'ยังไม่มีสรุป กำลังเตรียมรอบแรก'}
         action={
           <div className="flex items-center gap-2">
             {r && <Badge tone={lv.tone} dot>{lv.label}</Badge>}
-            <Button size="sm" onClick={() => run('')} loading={busy}>{busy ? 'กำลังวิเคราะห์' : 'วิเคราะห์ใหม่'}</Button>
+            <Button size="sm" onClick={() => run('')} loading={busy}>{busy ? 'กำลังสรุป' : 'สรุปใหม่'}</Button>
           </div>
         }
       />
 
       {runError && <p role="alert" className="mt-3 text-xs text-red-700">{runError}</p>}
       {data.error && r?.source === 'rules' && (
-        <p className="mt-3 text-xs text-amber-700">เชื่อมต่อโมเดล AI ไม่ได้ ใช้รายงานตามเกณฑ์แทน: {data.error}</p>
+        <p className="mt-3 text-xs text-amber-700">AI ไม่ตอบ จึงใช้สรุปตามเกณฑ์ของระบบแทน</p>
       )}
 
       {r && (
@@ -222,7 +223,7 @@ export default function FloodAgentCard({ isActive, onOpenRoad }) {
 
           {r.outlook && (
             <div>
-              <p className="text-xs font-semibold text-slate-700 mb-1">แนวโน้ม 1-6 ชั่วโมง</p>
+              <p className="text-xs font-semibold text-slate-700 mb-1">อีก 1-6 ชั่วโมง</p>
               <p className="text-[13px] text-slate-700">{r.outlook}</p>
             </div>
           )}
@@ -231,12 +232,12 @@ export default function FloodAgentCard({ isActive, onOpenRoad }) {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <List title="คำแนะนำประชาชน" items={r.actions?.public} />
-            <List title="สำหรับทีมปฏิบัติการ" items={r.actions?.operators} />
+            <List title="สำหรับเจ้าหน้าที่" items={r.actions?.operators} />
           </div>
 
           {data.history?.length > 1 && (
             <div>
-              <p className="text-xs font-semibold text-slate-700 mb-1">ระดับย้อนหลัง</p>
+              <p className="text-xs font-semibold text-slate-700 mb-1">ระดับที่ผ่านมา</p>
               <div className="flex gap-0.5 h-3" role="img" aria-label="ระดับสถานการณ์ย้อนหลังจากเก่าไปใหม่">
                 {data.history.map((h) => (
                   <span
@@ -250,10 +251,9 @@ export default function FloodAgentCard({ isActive, onOpenRoad }) {
           )}
 
           <p className="text-xs text-slate-500">
-            ความเชื่อมั่น {CONFIDENCE[r.confidence] || r.confidence || '-'}
-            {r.steps?.length > 0 && ` · แหล่งที่ AI ตรวจ: ${[...new Set(r.steps.map((s) => TOOL_TH[s.tool] || s.tool))].join(', ')}`}
-            {r.took_s != null && ` · ใช้เวลา ${r.took_s} วินาที`}
-            {r.data_gaps?.length > 0 && ` · ข้อมูลที่ขาด: ${r.data_gaps.join(', ')}`}
+            AI มั่นใจระดับ{CONFIDENCE[r.confidence] || r.confidence || '-'}
+            {r.steps?.length > 0 && ` · ข้อมูลที่ AI ดู: ${[...new Set(r.steps.map((s) => TOOL_TH[s.tool] || s.tool))].join(', ')}`}
+            {r.data_gaps?.length > 0 && ` · ข้อมูลที่ยังขาด: ${r.data_gaps.join(', ')}`}
           </p>
         </div>
       )}
@@ -265,7 +265,7 @@ export default function FloodAgentCard({ isActive, onOpenRoad }) {
           if (question.trim() && !busy) run(question.trim());
         }}
       >
-        <label htmlFor="flood-agent-q" className="sr-only">ถาม AI วิเคราะห์น้ำท่วม</label>
+        <label htmlFor="flood-agent-q" className="sr-only">ถาม AI เรื่องน้ำท่วม</label>
         <input
           id="flood-agent-q"
           value={question}

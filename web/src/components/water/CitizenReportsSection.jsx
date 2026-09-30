@@ -15,12 +15,12 @@ const POLL_MS = 60000;
 const REPORTS_SHOWN = 3;   // per district, until the district is expanded
 const NO_DISTRICT = 'ไม่ระบุเขต';
 const SOURCES = {
-  longdo: { label: 'iTIC / FM91', tone: 'blue', hint: 'รายงานบน Longdo Traffic' },
-  traffy: { label: 'ประชาชน (Traffy)', tone: 'neutral', hint: 'Traffy Fondue' },
-  hdms: { label: 'กรมทางหลวง', tone: 'yellow', hint: 'HDMS กรมทางหลวง' },
-  js100: { label: 'JS100', tone: 'blue', hint: 'ข่าวจราจร JS100' },
+  longdo: { label: 'ข่าวจราจร', tone: 'blue', hint: 'ข่าวน้ำท่วมจาก iTIC / FM91' },
+  traffy: { label: 'คนแจ้ง (Traffy)', tone: 'neutral', hint: 'แจ้งผ่านแอป Traffy Fondue' },
+  hdms: { label: 'กรมทางหลวง', tone: 'yellow', hint: 'เจ้าหน้าที่กรมทางหลวงแจ้ง' },
+  js100: { label: 'จส.100', tone: 'blue', hint: 'ข่าวจราจรจากวิทยุ จส.100' },
 };
-const STATE_TONE = { รอรับเรื่อง: 'red', กำลังดำเนินการ: 'yellow', 'ส่งต่อ(ใหม่)': 'yellow', เสร็จสิ้น: 'green', ยังมีน้ำท่วม: 'red', สิ้นสุดแล้ว: 'green' };
+const STATE_TONE = { รอรับเรื่อง: 'red', กำลังดำเนินการ: 'yellow', 'ส่งต่อ(ใหม่)': 'yellow', เสร็จสิ้น: 'green', ยังมีน้ำท่วม: 'red', น้ำลดแล้ว: 'green' };
 const SELECT = 'h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700';
 const agoTh = (ts) => {
   const m = Math.round((Date.now() / 1000 - ts) / 60);
@@ -50,7 +50,7 @@ function mergeReports(traffy, longdo, hdms, js100) {
   for (const f of longdo?.items || []) {
     rows.push({
       id: f.id, source: 'longdo', ts: f.ts, title: f.place || f.title, text: f.description,
-      district: districtOf(`${f.description || ''} ${f.place || ''}`), state: f.active ? 'ยังมีน้ำท่วม' : 'สิ้นสุดแล้ว',
+      district: districtOf(`${f.description || ''} ${f.place || ''}`), state: f.active ? 'ยังมีน้ำท่วม' : 'น้ำลดแล้ว',
       by: f.credit || null, url: f.lat && f.lng ? `https://www.google.com/maps?q=${f.lat},${f.lng}` : null, urlLabel: 'ดูแผนที่',
     });
   }
@@ -66,7 +66,7 @@ function mergeReports(traffy, longdo, hdms, js100) {
       id: h.id, source: 'hdms', ts: h.ts, title: h.place || h.title,
       text: [h.title, h.closure, h.lane_closure ? 'ปิดช่องจราจร' : null, h.relief].filter(Boolean).join(' · '),
       district: !h.amphoe ? NO_DISTRICT : h.province === 'กรุงเทพมหานคร' ? `เขต${h.amphoe}` : `อ.${h.amphoe}`,
-      depth: h.depth_cm ? ` ${h.depth_cm} ซม.` : null, state: h.active ? 'ยังมีน้ำท่วม' : 'สิ้นสุดแล้ว',
+      depth: h.depth_cm ? ` ${h.depth_cm} ซม.` : null, state: h.active ? 'ยังมีน้ำท่วม' : 'น้ำลดแล้ว',
       url: h.lat && h.lng ? `https://www.google.com/maps?q=${h.lat},${h.lng}` : null, urlLabel: 'ดูแผนที่',
       photo: h.photos?.[0]?.thumb, photoUrl: h.photos?.[0]?.url, photoCount: h.photos?.length || 0,
     });
@@ -108,8 +108,8 @@ function ReportList({ rows, loading, updatedAt }) {
     <Card className="p-5">
       <SectionHeader
         id="flood-reports"
-        title="การแจ้งน้ำท่วม"
-        description="จุดที่มีรายงานน้ำท่วมบนแผนที่ (iTIC / FM91 ผ่าน Longdo Traffic), ทางหลวงน้ำท่วมจากกรมทางหลวง (HDMS), ข่าวจราจร JS100 48 ชม.ล่าสุด และเรื่องที่ประชาชนแจ้งผ่าน Traffy Fondue 6 ชม.ล่าสุด · กรุงเทพฯ และปริมณฑล · ยังไม่ผ่านการตรวจสอบจากเขต"
+        title="เรื่องน้ำท่วมที่คนแจ้ง"
+        description="จากแอป Traffy Fondue (6 ชม.) ข่าวจราจร (iTIC / FM91 / จส.100) และกรมทางหลวง · กรุงเทพฯ และปริมณฑล · ยังไม่ได้ตรวจสอบโดยเขต"
       />
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <label htmlFor="report-q" className="sr-only">ค้นหาข้อความ</label>
@@ -142,8 +142,8 @@ function ReportList({ rows, loading, updatedAt }) {
         <div className="mt-3 space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-14" />)}</div>
       ) : groups.length === 0 ? (
         <EmptyState
-          title={rows.length ? 'ไม่พบเรื่องที่ตรงกับตัวกรอง' : 'ไม่มีการแจ้งน้ำท่วม'}
-          description={rows.length ? 'ลองเปลี่ยนคำค้นหรือเลือกทุกเขต' : 'ยังไม่มีรายงานน้ำท่วมในช่วงนี้'}
+          title={rows.length ? 'ไม่พบเรื่องที่ค้นหา' : 'ยังไม่มีคนแจ้งน้ำท่วม'}
+          description={rows.length ? 'ลองเปลี่ยนคำค้นหรือเลือกทุกเขต' : 'ช่วงนี้ยังไม่มีเรื่องน้ำท่วม'}
         />
       ) : (
         <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -176,7 +176,7 @@ function ReportList({ rows, loading, updatedAt }) {
               </ul>
               {g.list.length > REPORTS_SHOWN && (
                 <button type="button" onClick={() => setOpen(open === g.name ? null : g.name)} className="cursor-pointer mt-1 text-xs text-blue-700 hover:underline">
-                  {open === g.name ? 'ย่อ' : `ดูอีก ${g.list.length - REPORTS_SHOWN} เรื่อง`}
+                  {open === g.name ? 'แสดงน้อยลง' : `ดูอีก ${g.list.length - REPORTS_SHOWN} เรื่อง`}
                 </button>
               )}
             </section>

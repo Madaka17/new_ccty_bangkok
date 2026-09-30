@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 const WEATHER_POLL_MS = 600000;
 import { fetchWaterSummary, fetchAirStations, fetchFloodReports, fetchLongdoFloods, fetchWeatherNow } from '../../lib/api.js';
+import { flowLevel } from './format.js';
 
 // One glance, six answers: traffic / weather where the viewer is / rain-water / flood reports / dust / incidents. Headline only, no detail line. Each tile is a link to its page.
 // tone: green = fine, yellow = watch, red = act, neutral = no data
@@ -192,8 +193,9 @@ export default function CityStatusStrip({ summary, incidents, flood, onNavigate,
 
   // Traffic
   const flow = summary?.flow_index;
-  const trafficTone = flow == null ? 'neutral' : flow >= 75 ? 'green' : flow >= 50 ? 'yellow' : 'red';
-  const trafficStatus = flow == null ? 'กำลังโหลด' : flow >= 75 ? 'คล่องตัว' : flow >= 50 ? 'ชะลอตัว' : 'ติดขัด';
+  const level = flowLevel(flow);
+  const trafficTone = level.key;
+  const trafficStatus = flow == null ? 'กำลังโหลด' : level.label;
 
   // Rain + water. Flooded-road counts come from the BMA drainage sensors (flood_service.py, ~250
   // stations); ThaiWater relays only about 107 of them, so it is the fallback.
@@ -205,7 +207,7 @@ export default function CityStatusStrip({ summary, incidents, flood, onNavigate,
   const heavyRain = (water?.ntw?.rain_counts?.heavy || 0) + (water?.ntw?.rain_counts?.extreme || 0);
   const worstZone = water?.weather?.[0];
   const waterTone = !water ? 'neutral' : flooding > 0 || worstZone?.watch === 'red' ? 'red' : heavyRain > 0 || overflow > 0 || worstZone?.watch === 'yellow' ? 'yellow' : 'green';
-  const waterStatus = !water ? 'กำลังโหลด' : flooding > 0 ? `น้ำท่วมขัง ${flooding} จุด` : worstZone?.watch === 'red' ? `เฝ้าระวัง ${worstZone.name}` : overflow > 0 ? `ล้นตลิ่ง ${overflow} สถานี` : heavyRain > 0 ? `ฝนหนัก ${heavyRain} จุด` : 'ปกติ';
+  const waterStatus = !water ? 'กำลังโหลด' : flooding > 0 ? `ถนนน้ำท่วม ${flooding} จุด` : worstZone?.watch === 'red' ? `เฝ้าระวัง ${worstZone.name}` : overflow > 0 ? `น้ำล้นตลิ่ง ${overflow} จุด` : heavyRain > 0 ? `ฝนหนัก ${heavyRain} จุด` : 'ปกติ';
 
   // Flood reports: people on Traffy Fondue (last 6 h) + iTIC / FM91 flooded roads still open on Longdo
   const citizen = traffy?.items?.length ?? null;
@@ -213,7 +215,7 @@ export default function CityStatusStrip({ summary, incidents, flood, onNavigate,
   const reportTotal = (citizen || 0) + (itic || 0);
   const repLoading = citizen == null && itic == null;
   const repTone = repLoading ? 'neutral' : reportTotal === 0 ? 'green' : reportTotal < 20 ? 'yellow' : 'red';
-  const repStatus = repLoading ? 'กำลังโหลด' : reportTotal === 0 ? 'ไม่มีเรื่องแจ้ง' : `${reportTotal} เคส`;
+  const repStatus = repLoading ? 'กำลังโหลด' : reportTotal === 0 ? 'ไม่มีคนแจ้ง' : `${reportTotal} เรื่อง`;
 
   // Air
   const pm = air?.avg_pm25;
@@ -225,16 +227,16 @@ export default function CityStatusStrip({ summary, incidents, flood, onNavigate,
   const longdo = incidents?.longdo || [];
   const total = cam.length + longdo.length;
   const incTone = !incidents ? 'neutral' : total === 0 ? 'green' : total <= 2 ? 'yellow' : 'red';
-  const incStatus = !incidents ? 'กำลังโหลด' : total === 0 ? 'ไม่มีเหตุ' : `${total} เหตุการณ์`;
+  const incStatus = !incidents ? 'กำลังโหลด' : total === 0 ? 'ไม่มีเหตุ' : `${total} จุด`;
 
   return (
     <section aria-label="สถานการณ์เมืองตอนนี้" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-3">
-      <Tile icon={ICONS.traffic} title="จราจรทั้งเมือง" status={trafficStatus} tone={trafficTone} onClick={() => onNavigate('map')} />
+      <Tile icon={ICONS.traffic} title="รถติดทั้งเมือง" status={trafficStatus} tone={trafficTone} onClick={() => onNavigate('map')} />
       <Tile icon={ICONS.weather} title={weather?.mine ? 'อากาศตรงนี้' : 'อากาศ กทม.'} status={weatherStatus} tone={weather?.tone || 'neutral'} onClick={() => onNavigate('water')} />
       <Tile icon={ICONS.water} title="ฝนและน้ำ" status={waterStatus} tone={waterTone} onClick={() => onNavigate('water')} />
-      <Tile icon={ICONS.report} title="การแจ้งน้ำท่วม" status={repStatus} tone={repTone} onClick={() => onNavigate('water')} />
+      <Tile icon={ICONS.report} title="คนแจ้งน้ำท่วม" status={repStatus} tone={repTone} onClick={() => onNavigate('water')} />
       <Tile icon={ICONS.air} title="ฝุ่น PM2.5" status={airStatus} tone={airTone} onClick={() => onNavigate('map')} />
-      <Tile icon={ICONS.incident} title="เหตุการณ์บนถนน" status={incStatus} tone={incTone} onClick={() => onNavigate('dashboard')} />
+      <Tile icon={ICONS.incident} title="อุบัติเหตุและรถเสีย" status={incStatus} tone={incTone} onClick={() => onNavigate('dashboard')} />
     </section>
   );
 }

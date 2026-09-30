@@ -68,7 +68,7 @@ export default function FloodPredictionCard({ prediction = [], modelNote }) {
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-base font-semibold text-ink-900 leading-6">
-              การคาดการณ์น้ำท่วมล่วงหน้า 1–6 ชั่วโมง
+              น้ำท่วม 6 ชั่วโมงข้างหน้า รายโซน
             </h2>
             {watchCount > 0 ? (
               <span className="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
@@ -83,7 +83,7 @@ export default function FloodPredictionCard({ prediction = [], modelNote }) {
             )}
           </div>
           <p className="text-xs text-ink-600 mt-1">
-            ประเมินความเสี่ยงน้ำท่วมรายโซนจาก ระดับน้ำในคลอง/แม่น้ำ + น้ำท่วมขังบนถนน + ปริมาณฝนคาดการณ์ 6 ชม. ข้างหน้า
+            ดูจากน้ำในคลองและแม่น้ำ ถนนที่น้ำท่วมอยู่ และฝนที่คาดว่าจะตก
           </p>
         </div>
 
@@ -99,7 +99,7 @@ export default function FloodPredictionCard({ prediction = [], modelNote }) {
                   : 'text-ink-600 hover:text-ink-900'
               }`}
             >
-              ตารางไทม์ไลน์
+              ตารางรายชั่วโมง
             </button>
             <button
               type="button"
@@ -110,7 +110,7 @@ export default function FloodPredictionCard({ prediction = [], modelNote }) {
                   : 'text-ink-600 hover:text-ink-900'
               }`}
             >
-              การ์ดรายโซน
+              ดูทีละโซน
             </button>
           </div>
 
@@ -151,7 +151,7 @@ export default function FloodPredictionCard({ prediction = [], modelNote }) {
           </div>
           {modelNote && (
             <p className="text-[10px] text-ink-500 pt-1">
-              หมายเหตุแบบจำลอง: {modelNote}
+              หมายเหตุ: {modelNote}
             </p>
           )}
         </div>
@@ -223,8 +223,8 @@ export default function FloodPredictionCard({ prediction = [], modelNote }) {
           <table className="w-full text-sm border-collapse min-w-[720px]">
             <thead>
               <tr className="bg-cream-100/70 dark:bg-slate-800/80 border-b border-cream-200 dark:border-slate-800 text-ink-600 text-xs font-medium">
-                <th className="text-left py-2.5 px-3.5 w-60">โซนและเขตพื้นที่</th>
-                <th className="text-center py-2.5 px-2 w-28">ฝนตกสะสมล่าสุด</th>
+                <th className="text-left py-2.5 px-3.5 w-60">โซน (เขต)</th>
+                <th className="text-center py-2.5 px-2 w-28">ฝนที่ตกแล้ว</th>
                 {hourHeaders.map((h) => (
                   <th key={h.h} className="text-center py-2.5 px-1.5 min-w-[70px]">
                     <div className="font-semibold text-ink-900">+{h.h} ชม.</div>
@@ -258,7 +258,7 @@ export default function FloodPredictionCard({ prediction = [], modelNote }) {
                         <span
                           className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${peakStyle.bg} ${peakStyle.border} ${peakStyle.text}`}
                         >
-                          {peakStyle.label} (สูงสุด {p.peak_score})
+                          {peakStyle.label}
                         </span>
                       </div>
                       <p className="text-[11px] text-ink-500 mt-1 line-clamp-1" title={p.areas}>
@@ -266,7 +266,7 @@ export default function FloodPredictionCard({ prediction = [], modelNote }) {
                       </p>
                       {/* Sub summary: forecast rain total */}
                       <p className="text-[10px] text-ink-400 mt-0.5">
-                        ฝนคาดการณ์ 6 ชม.: {p.rain_6h || 0} มม. (โอกาส {p.prob_6h || 0}%)
+                        ฝนใน 6 ชม. ข้างหน้า: {p.rain_6h || 0} มม. (โอกาส {p.prob_6h || 0}%)
                       </p>
                     </td>
 
@@ -343,7 +343,7 @@ export default function FloodPredictionCard({ prediction = [], modelNote }) {
                     <p className="text-xs text-ink-600 mt-1">{p.areas}</p>
                   </div>
                   <div className="text-right shrink-0">
-                    <span className="text-xs text-ink-500 block">คะแนนสูงสุด</span>
+                    <span className="text-xs text-ink-500 block">คะแนนเสี่ยงสูงสุด</span>
                     <span className={`text-base font-bold tabular-nums ${peakStyle.text}`}>
                       {p.peak_score}
                       <span className="text-xs font-normal text-ink-500">/100</span>
@@ -354,13 +354,13 @@ export default function FloodPredictionCard({ prediction = [], modelNote }) {
                 {/* Rain Metrics */}
                 <div className="grid grid-cols-2 gap-2 my-3 text-xs">
                   <div className="p-2 rounded-lg bg-cream-50 dark:bg-slate-800/50 border border-cream-200 dark:border-slate-700/50">
-                    <span className="text-ink-500 block text-[11px]">ฝนตกสะสมล่าสุด</span>
+                    <span className="text-ink-500 block text-[11px]">ฝนที่ตกแล้ว</span>
                     <span className="font-semibold text-ink-800 tabular-nums">
                       🌧️ {p.rain_observed_mm || 0} มม.
                     </span>
                   </div>
                   <div className="p-2 rounded-lg bg-cream-50 dark:bg-slate-800/50 border border-cream-200 dark:border-slate-700/50">
-                    <span className="text-ink-500 block text-[11px]">ฝนคาดการณ์ 6 ชม.</span>
+                    <span className="text-ink-500 block text-[11px]">ฝนใน 6 ชม. ข้างหน้า</span>
                     <span className="font-semibold text-ink-800 tabular-nums">
                       {p.rain_6h || 0} มม. (โอกาส {p.prob_6h || 0}%)
                     </span>
@@ -370,7 +370,7 @@ export default function FloodPredictionCard({ prediction = [], modelNote }) {
                 {/* 6-Hour Timeline Pills */}
                 <div>
                   <span className="text-[11px] font-medium text-ink-500 block mb-1.5">
-                    แนวโน้มคะแนนความเสี่ยงรายชั่วโมง (+1 ถึง +6 ชม.):
+                    ความเสี่ยงแต่ละชั่วโมง (อีก 1-6 ชม.)
                   </span>
                   <div className="grid grid-cols-6 gap-1.5">
                     {p.hours.map((h) => {

@@ -35,11 +35,11 @@ BUILD_INTERVAL = 60.0
 # Corridor catalogue: which Longdo road names form the corridor, and which roads are realistic
 # bypasses. `match` substrings are applied to the Longdo road name; `alternatives` are exact names.
 CORRIDORS = [
-    {"id": "sukhumvit", "name": "ถนนสุขุมวิท / อโศก / ทองหล่อ", "zone": "กรุงเทพฯ ชั้นใน / ตะวันออก (CBD)",
+    {"id": "sukhumvit", "name": "ถนนสุขุมวิท / อโศก / ทองหล่อ", "zone": "กรุงเทพฯ ชั้นใน ฝั่งตะวันออก",
      "search": "ถนนสุขุมวิท", "match": ["ถนนสุขุมวิท", "ถนนอโศกมนตรี", "ซอยสุขุมวิท 55", "ซอยสุขุมวิท 63"],
      "keys": ["สุขุมวิท", "อโศก", "ทองหล่อ", "เอกมัย"],
      "alternatives": ["ถนนเพชรบุรีตัดใหม่", "ถนนพระราม 4", "ทางพิเศษศรีรัช", "ทางพิเศษเฉลิมมหานคร", "ถนนอ่อนนุช (ซอยสุขุมวิท 77)"]},
-    {"id": "rama4", "name": "ถนนพระราม 4", "zone": "กรุงเทพฯ ชั้นใน (CBD ใต้)",
+    {"id": "rama4", "name": "ถนนพระราม 4", "zone": "กรุงเทพฯ ชั้นใน ฝั่งใต้",
      "search": "ถนนพระราม 4", "match": ["ถนนพระราม 4"], "keys": ["พระราม 4", "พระราม4", "คลองเตย", "สามย่าน"],
      "alternatives": ["ถนนพระราม 3", "ถนนสุรวงศ์", "ถนนสาทรใต้", "ถนนสาทรเหนือ", "ทางพิเศษเฉลิมมหานคร"]},
     {"id": "phetchaburi", "name": "ถนนเพชรบุรี / พระราม 9 / รามคำแหง", "zone": "กรุงเทพฯ ตะวันออก",
@@ -79,7 +79,7 @@ CORRIDORS = [
 ]
 
 FREE_FLOW = 75      # alternative counts as "recommended" from this flow score
-LEVEL_TH = {"free": "คล่องตัว", "moderate": "ชะลอตัว", "congested": "ติดขัดสะสม", "incident": "มีเหตุขัดขวาง"}
+LEVEL_TH = {"free": "คล่องตัว", "moderate": "ชะลอตัว", "congested": "ติดขัด", "incident": "มีเหตุบนถนน"}
 
 
 def _km(lat1, lon1, lat2, lon2):
@@ -225,26 +225,26 @@ class GuidanceService:
         rec = [a for a in it["alternatives"] if a["recommended"]]
         slow = [a for a in it["alternatives"] if not a["recommended"]]
         if it["status"] == "free":
-            action = f"สายทางคล่องตัว (ระบายได้ {it['flow']}/100) ใช้เส้นทางหลักได้ตามปกติ"
+            action = "รถคล่อง ใช้เส้นทางนี้ได้ตามปกติ"
             if slow:
-                action += f" · เลี่ยง {slow[0]['name']} ที่กำลังชะลอ ({slow[0]['flow']}/100)"
+                action += f" · เลี่ยง{slow[0]['name']} เพราะรถชะลอตัว"
         else:
             # Hotspots are listed on the card already, so the action text only says where to send the traffic
             parts = []
             if rec:
-                parts.append("ผันรถไปใช้ " + " หรือ ".join(f"{a['name']} ({a['flow']}/100)" for a in rec[:2]))
+                parts.append("เลี่ยงไปใช้" + " หรือ".join(a["name"] for a in rec[:2]) + " ที่รถคล่องกว่า")
             elif it["alternatives"]:
-                parts.append(f"ทางเลี่ยงทุกสายชะลอเช่นกัน ดีสุดคือ {it['alternatives'][0]['name']} ({it['alternatives'][0]['flow']}/100)")
-            action = " · ".join(parts) or "ยังไม่มีข้อมูลเส้นจราจรของสายทางนี้"
+                parts.append(f"ทางเลี่ยงก็ชะลอตัวเหมือนกัน ที่ดีที่สุดคือ{it['alternatives'][0]['name']}")
+            action = " · ".join(parts) or "ยังไม่มีข้อมูลรถติดของเส้นนี้"
         heavy = [s for s in it["hotspots"] if (s.get("camera") or {}).get("level") == "heavy"]
         if it["incidents"]:
-            signal = f"มีเหตุ {it['incidents'][0]['title']} เร่งเคลียร์ช่องทางและตั้งป้ายเตือนล่วงหน้า"
+            signal = f"มีเหตุ {it['incidents'][0]['title']} ควรเร่งเปิดช่องทางและตั้งป้ายเตือนก่อนถึงจุด"
         elif heavy:
-            signal = "เปิดไฟเขียวยาวขึ้นขาที่สะสมบริเวณ " + ", ".join(f"{s['label']} ({s['camera']['total']} คัน)" for s in heavy[:2])
+            signal = "ควรเปิดไฟเขียวให้นานขึ้นที่ " + ", ".join(s["label"] for s in heavy[:2])
         elif it["status"] in ("congested", "moderate"):
-            signal = "ซิงค์สัญญาณไฟตามแนวแกนหลัก (Green Wave) และห้ามจอดแช่ช่องซ้ายบริเวณจุดสะสม"
+            signal = "ควรตั้งไฟเขียวให้ต่อกันตามถนนหลัก และห้ามจอดริมซ้ายตรงจุดที่รถติด"
         else:
-            signal = "รักษาจังหวะสัญญาณไฟตามปกติ"
+            signal = "ใช้จังหวะไฟจราจรตามปกติ"
         bypass = " หรือ ".join(a["name"] for a in rec[:2]) if rec else (it["alternatives"][0]["name"] if it["alternatives"] else "-")
         return {"action": action, "signal": signal, "bypass": bypass, "ai": False}
 
@@ -263,13 +263,13 @@ class GuidanceService:
                   "alternatives": [{"name": a["name"], "flow": a["flow"], "free": a["recommended"]} for a in i["alternatives"]],
                   "incidents": [x["title"] for x in i["incidents"]]} for i in items]
         prompt = (
-            "คุณคือเจ้าหน้าที่ศูนย์ควบคุมจราจรกรุงเทพฯ ข้างล่างคือข้อมูลสดของสายทางหลัก (flow 0-100 ยิ่งสูงยิ่งโล่ง, "
-            "red_km = ระยะเส้นแดงสะสม, hotspots = จุดที่แดงตอนนี้พร้อมจำนวนรถจากกล้อง, alternatives = ทางเลี่ยงพร้อม flow สด)\n"
-            "เขียนคำแนะนำภาษาไทยสำหรับแต่ละสายทาง อิงตัวเลขที่ให้เท่านั้น ห้ามแต่งจุดหรือถนนที่ไม่มีในข้อมูล\n"
-            "- action: วิธีระบายรถตอนนี้ 1 ประโยคสั้น (ไม่เกิน 25 คำ) บอกว่าผันรถจากจุดไหนไปทางเลี่ยงใดที่ flow สูงจริง "
-            "(ห้ามแนะนำทางเลี่ยงที่ free=false และไม่ต้องทวนรายการจุดสะสม เพราะแสดงแยกอยู่แล้ว)\n"
-            "- signal: มาตรการสัญญาณไฟ/ตำรวจจราจร 1 ประโยคสั้น (ไม่เกิน 20 คำ) เจาะจงจุด\n"
-            "- ห้ามเขียนชื่อฟิลด์ภาษาอังกฤษ (flow, red_km, free) ในข้อความ ให้เขียนเป็น 'ระบายได้ 96/100' แทน\n"
+            "คุณคือเจ้าหน้าที่ศูนย์ควบคุมจราจรกรุงเทพฯ ข้างล่างคือข้อมูลสดของถนนสายหลัก (flow 0-100 ยิ่งสูงรถยิ่งคล่อง, "
+            "red_km = ความยาวช่วงที่รถติด, hotspots = จุดที่รถติดตอนนี้พร้อมจำนวนรถจากกล้อง, alternatives = ทางเลี่ยงพร้อม flow สด)\n"
+            "เขียนคำแนะนำภาษาไทยง่าย ๆ สำหรับแต่ละถนน อิงข้อมูลที่ให้เท่านั้น ห้ามแต่งจุดหรือถนนที่ไม่มีในข้อมูล\n"
+            "- action: คำแนะนำสำหรับคนขับรถ 1 ประโยคสั้น (ไม่เกิน 20 คำ) บอกว่าควรเลี่ยงไปใช้ถนนไหนที่รถคล่อง "
+            "(ห้ามแนะนำทางเลี่ยงที่ free=false และไม่ต้องทวนรายการจุดที่รถติด เพราะแสดงแยกอยู่แล้ว)\n"
+            "- signal: สิ่งที่ตำรวจจราจรหรือเจ้าหน้าที่ควรทำ 1 ประโยคสั้น (ไม่เกิน 20 คำ) เจาะจงจุด\n"
+            "- เขียนเหมือนพูดกับคนทั่วไป ห้ามใส่ตัวเลขคะแนน ห้ามใช้ศัพท์เทคนิคหรือคำอังกฤษ (เช่น flow, Green Wave, เฟส, ระบายได้)\n"
             "ตอบเป็น JSON array เท่านั้น รูปแบบ [{\"id\":..., \"action\":..., \"signal\":...}]\n\n"
             + json.dumps(facts, ensure_ascii=False)
         )

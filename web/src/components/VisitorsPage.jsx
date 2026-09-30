@@ -6,19 +6,19 @@ import { Card, Badge, SectionHeader, Skeleton, EmptyState, ErrorState } from './
 import { PageHeader, StatTile, ShareBar } from './dashboard/primitives.jsx';
 import { fmtNum } from './dashboard/format.js';
 import HourlyViewsCard from './dashboard/HourlyViewsCard.jsx';
+import { PAGE_TITLES } from './Sidebar.jsx';
 
-const TOPIC_LABEL = { traffic: 'Traffic', flood: 'Flood', road_status: 'Road Status', accidents: 'Accidents' };
+const TOPIC_LABEL = { traffic: 'จราจร', flood: 'น้ำท่วม', road_status: 'สภาพถนน', accidents: 'อุบัติเหตุ' };
 const TOPIC_COLOR = { traffic: 'bg-blue-600', flood: 'bg-cyan-500', road_status: 'bg-amber-500', accidents: 'bg-red-600' };
 const VISITOR_POLL_MS = 5000;
 const PAGE_LABEL = {
-  dashboard: 'Traffic Dashboard', analytics: 'City Analytics', cameras: 'My Cameras', map: 'Traffic Map',
-  water: 'Water Forecast', yolo: 'Camera AI', 'bma-count': 'นับรถกล้อง กทม.', helmet: 'Helmet Check',
-  wrongway: 'Wrong-Way Check', ai: 'Ask AI', safety: 'Accidents & Risk', visitors: 'Visitors', alerts: 'Alerts',
+  ...PAGE_TITLES, analytics: 'สถิติเมือง (หน้าเก่า)', 'bma-count': 'นับรถทุกกล้อง กทม.', helmet: 'คนไม่สวมหมวกกันน็อก', wrongway: 'รถขับย้อนศร',
 };
 const SUB_LABEL = {
-  overview: 'ภาพรวม', trend: 'แนวโน้ม', flood: 'น้ำท่วม', roads: 'ถนน', incidents: 'เหตุการณ์', 'bma-reports': 'รายงาน กทม.',
+  overview: 'ภาพรวม', trend: 'แนวโน้ม', flood: 'น้ำท่วม', roads: 'ถนนน้ำท่วม', incidents: 'อุบัติเหตุและรถเสีย', 'bma-reports': 'ข่าวจากศูนย์ กทม.',
   safety: 'ความปลอดภัย', traffic: 'จราจร', density: 'ความหนาแน่น', accidents: 'อุบัติเหตุ', riskbkk: 'จุดเสี่ยง กทม.', visitors: 'ผู้เข้าใช้งาน',
-  'road-risk': 'วิเคราะห์รายถนน', situation: 'สถานการณ์น้ำ', watch: 'เฝ้าระวังน้ำท่วม', reports: 'แจ้งน้ำท่วม', agent: 'AI สรุปสถานการณ์', analysis: 'AI คาดการณ์',
+  'road-risk': 'ถนนแต่ละสาย', situation: 'ระดับน้ำตอนนี้', north: 'น้ำเหนือ', watch: 'เขตเสี่ยงน้ำท่วม', shelter: 'จุดพักพิง', reports: 'เรื่องที่คนแจ้ง',
+  agent: 'AI สรุปสถานการณ์', analysis: 'AI คาดการณ์รายโซน',
 };
 const hh = (h) => `${String(h).padStart(2, '0')}:00`;
 function pageLabel(view) {
@@ -104,7 +104,7 @@ function VisitorSection({ isActive }) {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatTile label="กำลังใช้งานอยู่ตอนนี้" value={`${fmtNum(d.online)} คน`} sub="เปิดเว็บอยู่ใน 90 วินาทีล่าสุด" tone="green" badge={<Badge tone="green" dot>Live</Badge>} />
+        <StatTile label="กำลังใช้งานอยู่ตอนนี้" value={`${fmtNum(d.online)} คน`} sub="เปิดเว็บอยู่ตอนนี้" tone="green" badge={<Badge tone="green" dot>สด</Badge>} />
         <StatTile label="ผู้ใช้วันนี้" value={`${fmtNum(d.dau)} คน`} sub={`เมื่อวานเวลาเดียวกัน ${fmtNum(prev)} (${delta >= 0 ? '+' : ''}${fmtNum(delta)})`} tone="blue" />
         <StatTile label="ยอดเปิดดูวันนี้" value={`${fmtNum(d.views_today)} ครั้ง`} sub={`ชั่วโมงนี้ ${fmtNum(thisHour)} ครั้ง`} />
         <StatTile label="ช่วงคนใช้มากสุด" value={d.peak_hours[0] ? hh(d.peak_hours[0].hour) : '–'} sub={d.peak_hours.length ? `สถิติ ${d.peak_window_days} วันล่าสุด` : 'ยังไม่มีข้อมูล'} tone="yellow" />
@@ -119,8 +119,8 @@ function VisitorSection({ isActive }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         <Card className="p-5">
-          <SectionHeader id="online-now" title="ตอนนี้กำลังดูหน้าไหน" description="ผู้ใช้ที่ออนไลน์อยู่ แยกตามหน้าที่เปิด" />
-          <RankList rows={onlineRows} unit="คน" empty="ยังไม่มีผู้ใช้ออนไลน์" />
+          <SectionHeader id="online-now" title="ตอนนี้กำลังดูหน้าไหน" description="คนที่เปิดเว็บอยู่ แยกตามหน้าที่ดู" />
+          <RankList rows={onlineRows} unit="คน" empty="ตอนนี้ยังไม่มีคนเปิดเว็บ" />
         </Card>
         <Card className="p-5">
           <SectionHeader id="topic-share" title="หน้ายอดนิยมวันนี้" description="นับทุกครั้งที่เปิดหน้าหรือเปลี่ยนแท็บ" />
@@ -139,7 +139,7 @@ function VisitorSection({ isActive }) {
 export default function VisitorsPage({ isActive }) {
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Visitors" description="ผู้เข้าใช้งานเว็บ: ออนไลน์ตอนนี้ ผู้ใช้และยอดเปิดดูวันนี้ หน้ายอดนิยม และช่วงเวลาที่คนใช้มากสุด" />
+      <PageHeader title={PAGE_TITLES.visitors} description="มีคนใช้เว็บกี่คน ดูหน้าไหน และช่วงเวลาที่คนใช้มากที่สุด" />
       <VisitorSection isActive={isActive} />
     </div>
   );

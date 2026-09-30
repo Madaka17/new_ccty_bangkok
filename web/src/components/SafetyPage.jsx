@@ -7,13 +7,14 @@ import { Button, Card, Skeleton, ErrorState } from './dashboard/ui.jsx';
 import { PageHeader } from './dashboard/primitives.jsx';
 import { fmtDateTime } from './dashboard/format.js';
 import ViewSwitch from './ViewSwitch.jsx';
+import { PAGE_TITLES } from './Sidebar.jsx';
 import AccidentSection from './AccidentSection.jsx';
 import RiskAnalysisCard from './dashboard/RiskAnalysisCard.jsx';
 
 const POLL_MS = 60000;
 const TABS = [
-  { id: 'accidents', label: 'อุบัติเหตุและมาตรการ', hint: 'Thai RSC · Black Spots · มาตรการรายจุด', icon: 'safety' },
-  { id: 'riskbkk', label: 'จุดเสี่ยง กทม. (AI)', hint: 'แผนที่เสี่ยง กทม. · AI วิเคราะห์รายเขต', icon: 'analytics' },
+  { id: 'accidents', label: 'อุบัติเหตุปีนี้', hint: 'คนเจ็บและเสียชีวิต จุดที่เกิดบ่อย และวิธีลดอุบัติเหตุ', icon: 'safety' },
+  { id: 'riskbkk', label: 'จุดเสี่ยงแต่ละเขต (AI)', hint: 'AI ดูว่าเขตไหนเสี่ยงอุบัติเหตุและรถติดมากที่สุด', icon: 'analytics' },
 ];
 
 function Accidents({ isActive }) {
@@ -65,8 +66,8 @@ export default function SafetyPage({ isActive }) {
   };
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Accidents & Risk" description="อุบัติเหตุ มาตรการลดอุบัติเหตุรายจุด และจุดเสี่ยงจราจร กทม. ที่ AI วิเคราะห์" />
-      <ViewSwitch tabs={TABS} value={tab} onChange={pick} label="มุมมองอุบัติเหตุและจุดเสี่ยง" />
+      <PageHeader title={PAGE_TITLES.safety} description="อุบัติเหตุในกรุงเทพฯ จุดที่เกิดบ่อย และวิธีลดอุบัติเหตุ" />
+      <ViewSwitch tabs={TABS} value={tab} onChange={pick} label="หัวข้ออุบัติเหตุ" />
       {tab === 'accidents' && <Accidents isActive={isActive} />}
       {tab === 'riskbkk' && <RiskAnalysisCard isActive={isActive} />}
     </div>

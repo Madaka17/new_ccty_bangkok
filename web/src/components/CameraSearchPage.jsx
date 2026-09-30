@@ -17,7 +17,7 @@ const STATUS = [
 const norm = (v) => String(v || '').toLowerCase().replace(/\s+/g, '');
 
 function StatusBadge({ it }) {
-  if (it.status === 'checking') return <Badge>กำลังเช็คสัญญาณ</Badge>;
+  if (it.status === 'checking') return <Badge>กำลังตรวจสัญญาณ</Badge>;
   if (it.status === 'unknown') return <Badge>ไม่ทราบสถานะ</Badge>;
   if (it.status === 'offline') return <Badge tone="red" dot>ไม่มีสัญญาณ</Badge>;
   if (it.src === 'ai') return <Badge tone="green" dot>มีสัญญาณ</Badge>;
@@ -175,7 +175,7 @@ export default function CameraSearchPage({ isActive, cameras, favorites, onWatch
           <Segmented label="สถานะสัญญาณ" value={status} onChange={setStatus} options={STATUS} />
           <span className="text-xs text-slate-500 sm:ml-auto" aria-live="polite">
             พบ {shown.length} กล้อง
-            {health === null && ' · กำลังเช็คสัญญาณกล้องสด AI...'}
+            {health === null && ' · กำลังตรวจสัญญาณกล้อง...'}
             {bmaState === 'loading' && ' · กำลังโหลดกล้อง กทม....'}
           </span>
         </div>

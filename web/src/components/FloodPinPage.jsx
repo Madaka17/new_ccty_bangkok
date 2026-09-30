@@ -8,6 +8,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { fetchFloodReports } from '../lib/api.js';
 import { Card, Badge, FOCUS } from './dashboard/ui.jsx';
 import { PageHeader } from './dashboard/primitives.jsx';
+import { PAGE_TITLES } from './Sidebar.jsx';
 import { fmtTime } from './dashboard/format.js';
 import { baseStyle } from './water/WaterMap.jsx';
 
@@ -140,8 +141,8 @@ export default function FloodPinPage({ isActive }) {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title="Flood Pin"
-        description="แจ้งน้ำท่วมผ่าน Traffy Fondue ช่องทางรับเรื่องของ กทม. เรื่องจะส่งถึงสำนักงานเขตที่รับผิดชอบโดยตรง · แผนที่นี้แสดงเรื่องน้ำท่วมที่ประชาชนแจ้งใน 6 ชั่วโมงล่าสุด"
+        title={PAGE_TITLES.report}
+        description="แจ้งน้ำท่วมผ่าน Traffy Fondue เรื่องจะส่งถึงสำนักงานเขตโดยตรง · แผนที่นี้แสดงเรื่องน้ำท่วมที่คนแจ้งใน 6 ชั่วโมงล่าสุด"
       />
       {/* phones: the LINE card first, then the map, then the lists · wide: the map left, the rest stacked right */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] lg:grid-rows-[auto_1fr] gap-4 items-start">
@@ -157,7 +158,7 @@ export default function FloodPinPage({ isActive }) {
           </div>
           {(failed || data?.error) && (
             <p role="status" className="px-4 py-2 text-xs text-amber-800 bg-amber-50 border-t border-amber-200">
-              ดึงข้อมูลจาก Traffy Fondue รอบล่าสุดไม่สำเร็จ แสดงข้อมูลเท่าที่มี
+              อัปเดตรอบล่าสุดไม่สำเร็จ แสดงข้อมูลเท่าที่มี
             </p>
           )}
         </Card>

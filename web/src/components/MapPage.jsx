@@ -9,6 +9,7 @@ import { accuracyText, roughWarning, showAccuracy, frameFix } from '../lib/geo.j
 import { Icon } from './dashboard/icons.jsx';
 import { Button } from './dashboard/ui.jsx';
 import { PageHeader } from './dashboard/primitives.jsx';
+import { PAGE_TITLES } from './Sidebar.jsx';
 
 
 // Vite bundles maplibre into one chunk, so its worker module must be served separately (see public/assets/)
@@ -145,7 +146,7 @@ const GAUGE_STYLE = {
 // AI flood watch on the BMA cameras (flood_cam_service.py): a camera pill, the colour is what the AI saw
 const CAM_FLOOD_STYLE = {
   severe: { color: '#7f1d1d', label: 'น้ำท่วมหนัก' },
-  flooded: { color: '#dc2626', label: 'น้ำท่วมผิวจราจร' },
+  flooded: { color: '#dc2626', label: 'น้ำท่วมถนน' },
   puddle: { color: '#f59e0b', label: 'น้ำขังเล็กน้อย' },
   none: { color: '#16a34a', label: 'ไม่มีน้ำท่วม' },
   unclear: { color: '#94a3b8', label: 'มองไม่ชัด' },
@@ -170,7 +171,7 @@ const POI_TIER_MAX = [POI_MAX, 30, 15];
 const poiKindOf = (p) => POI_KIND[p.class] || POI_KIND[p.subclass];
 const poiTierOf = (p) => POI_TIER(POI_KIND[p.class] ? p.class : p.subclass);
 
-const KIND_TH = { accident: 'อุบัติเหตุ', breakdown: 'รถเสีย / จอดกีดขวาง' };
+const KIND_TH = { accident: 'อุบัติเหตุ', breakdown: 'รถเสีย' };
 const agoTh = (ts) => {
   const m = Math.round((Date.now() / 1000 - ts) / 60);
   return m < 1 ? 'เมื่อสักครู่' : m < 60 ? `${m} นาทีก่อน` : `${Math.round(m / 60)} ชม.ก่อน`;
@@ -179,12 +180,12 @@ const agoTh = (ts) => {
 // into web/public/riskbkk/<id>.geojson; each is loaded only when first switched on.
 const RISK_LAYERS = [
   // accident: Thai RSC cases 2566-2568 pooled into ~110 m cells (n cases, i injured, k killed, y per year, d district, p place)
-  { id: 'accident', label: 'จุดเกิดอุบัติเหตุ ปี 2566–2568 (ThaiRSC)', color: '#dc2626', heat: true, weight: 'n', source: 'ศูนย์ข้อมูลอุบัติเหตุ Thai RSC' },
+  { id: 'accident', label: 'จุดเกิดอุบัติเหตุ ปี 2566–2568', color: '#dc2626', heat: true, weight: 'n', source: 'ศูนย์ข้อมูลอุบัติเหตุทางถนน (ThaiRSC)' },
   { id: 'accident_risk', label: 'จุดเสี่ยงอุบัติเหตุ ปี 2566–2568', color: '#be123c' },
   { id: 'risk100', label: '100 จุดเสี่ยงจราจร', color: '#ea580c' },
-  { id: 'risk100_solve', label: 'ผลการแก้ไขจุดเสี่ยง (เขียว = เสร็จ)', color: ['case', ['get', 'done'], '#16a34a', '#f59e0b'], legend: '#16a34a' },
-  { id: 'friction', label: 'จุดฝืด (รถติดประจำ)', color: '#9333ea' },
-  { id: 'js100', label: 'เหตุจราจร จส.100 / FM91 (ข้อมูลเก่า ก.ย. 67)', color: '#e11d48' },
+  { id: 'risk100_solve', label: 'จุดเสี่ยงที่แก้แล้ว (เขียว = แก้เสร็จ)', color: ['case', ['get', 'done'], '#16a34a', '#f59e0b'], legend: '#16a34a' },
+  { id: 'friction', label: 'จุดที่รถติดเป็นประจำ', color: '#9333ea' },
+  { id: 'js100', label: 'เหตุจราจรจากวิทยุ จส.100 / FM91 (ข้อมูลเก่า ก.ย. 67)', color: '#e11d48' },
   { id: 'construction', label: 'สถานที่ก่อสร้างอาคารใหญ่', color: '#ca8a04' },
   { id: 'crosswalk', label: 'ทางม้าลาย', color: '#e2e8f0', minzoom: 13 },
   { id: 'rail_crossing', label: 'จุดตัดทางรถไฟ', color: '#78350f' },
@@ -200,7 +201,7 @@ function incidentEl(kind) {
   const el = document.createElement('button');
   el.type = 'button';
   el.className = 'cursor-pointer incident-pin';
-  el.setAttribute('aria-label', KIND_TH[kind] || 'เหตุการณ์');
+  el.setAttribute('aria-label', KIND_TH[kind] || 'เหตุบนถนน');
   const color = kind === 'breakdown' ? '#d97706' : '#dc2626';
   el.style.cssText = `width:30px;height:30px;border-radius:999px;background:${color};border:3px solid #fff;box-shadow:0 0 0 6px ${color}33,0 2px 8px rgba(15,23,42,.3);color:#fff;font-weight:700;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;animation:incident-pulse 1.6s ease-out infinite`;
   el.textContent = '!';
@@ -472,7 +473,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
         .setHTML(
           `<div style="font-size:13px;line-height:1.45"><b>${esc(title)}</b>` +
             info.map((l) => `<br><span style="font-size:12px">${esc(l)}</span>`).join('') +
-            `<br><span style="color:#94a3b8;font-size:11px">${esc(layer?.source || 'ข้อมูลจุดเสี่ยง กทม. (riskbkk)')}</span></div>`
+            `<br><span style="color:#94a3b8;font-size:11px">${esc(layer?.source || 'ข้อมูลจุดเสี่ยงจาก กทม.')}</span></div>`
         )
         .addTo(map);
     };
@@ -666,7 +667,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
           `<div style="font-size:13px;line-height:1.45"><b>${near ? esc(near.properties.name) : 'อาคาร'}</b>` +
             (kind ? `<br><span style="color:${kind[2]};font-weight:600">${kind[0]} ${kind[1]}</span>` : '') +
             (h > 0 ? `<br>สูงประมาณ <b>${Math.round(h)} ม.</b> (~${floors} ชั้น)${base > 0 ? ` · ยกจากพื้น ${Math.round(base)} ม.` : ''}` : '<br><span style="color:#64748b">ไม่มีข้อมูลความสูง</span>') +
-            `<br><span style="color:#94a3b8;font-size:11px">${e.lngLat.lat.toFixed(5)}, ${e.lngLat.lng.toFixed(5)} · OpenStreetMap</span></div>`
+            '<br><span style="color:#94a3b8;font-size:11px">ข้อมูล OpenStreetMap</span></div>'
         )
         .addTo(map);
     };
@@ -876,14 +877,14 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
       const popup = new maplibregl.Popup({ offset: 12, closeButton: true, maxWidth: '320px' }).setHTML(
         `<div style="font-size:13px;line-height:1.45">
           <b>${esc(c.title)}</b>
-          <br><span style="color:#64748b">${[c.road, c.district ? `เขต${c.district}` : c.province].filter(Boolean).map(esc).join(' · ')}${c.road || c.district || c.province ? ' · ' : ''}${c.kind === 'itic' ? `กล้อง iTIC${c.organization ? ` (${esc(c.organization)})` : ''}` : 'กล้อง กทม.'}</span>
+          <br><span style="color:#64748b">${[c.road, c.district ? `เขต${c.district}` : c.province].filter(Boolean).map(esc).join(' · ')}${c.road || c.district || c.province ? ' · ' : ''}${c.kind === 'itic' ? `กล้อง ${esc(c.organization || 'iTIC')}` : 'กล้อง กทม.'}</span>
           <br><span style="color:${sty.color};font-weight:700">${sty.label}</span>
           <span style="color:#64748b">· AI มั่นใจ ${Math.round((c.confidence || 0) * 100)}%</span>
           ${c.note_th ? `<br><span>${esc(c.note_th)}</span>` : ''}
-          <img src="/api/flood/cameras/${encodeURIComponent(c.camid)}/image?t=${c.checked_at}" alt="ภาพที่ AI ใช้ตัดสิน กล้อง ${esc(c.title)}" loading="lazy" style="display:block;margin-top:6px;width:100%;aspect-ratio:352/288;object-fit:cover;border-radius:6px;background:#e2e8f0">
+          <img src="/api/flood/cameras/${encodeURIComponent(c.camid)}/image?t=${c.checked_at}" alt="ภาพที่ AI ดู จากกล้อง ${esc(c.title)}" loading="lazy" style="display:block;margin-top:6px;width:100%;aspect-ratio:352/288;object-fit:cover;border-radius:6px;background:#e2e8f0">
           ${wet && c.wet_since ? `<span style="color:#64748b">เห็นน้ำตั้งแต่ ${fmtTime(c.wet_since)} น.</span><br>` : ''}
           <span style="color:${c.stale ? '#b45309' : '#94a3b8'};font-size:11px">ภาพเมื่อ ${fmtTime(c.frame_ts)} น. (${agoTh(c.frame_ts)})${c.stale ? ' · ภาพเก่า กล้องยังไม่ส่งภาพใหม่' : ''}</span>
-          <br><span style="color:#94a3b8;font-size:11px">AI ${esc(camFlood.model)} ดูจากภาพกล้อง อาจผิดพลาดได้</span>
+          <br><span style="color:#94a3b8;font-size:11px">AI ดูจากภาพกล้อง อาจผิดพลาดได้</span>
         </div>`
       );
       // a wet pill stands just above its point, so it does not cover the CCTV pin of the same (iTIC) camera
@@ -998,9 +999,9 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
       const popup = new maplibregl.Popup({ offset: 12, closeButton: true, maxWidth: '280px' }).setHTML(
         `<div style="font-size:13px;line-height:1.45">
           <b>${esc(g.name)}</b>
-          <br><span style="color:#64748b">${g.kind === 'river' ? 'สถานีแม่น้ำ' : 'สถานีคลอง'}${g.district ? ` · ${esc(g.district)}` : ''}${g.province ? ` · ${esc(g.province)}` : ''}</span>
-          <br><span style="color:${sty.color};font-weight:700">${sty.label}</span>${g.storage_pct != null ? ` <b>${g.storage_pct}%</b> ของความจุตลิ่ง` : ''}
-          ${g.msl != null ? `<br><span style="color:#64748b">ระดับน้ำ ${g.msl} ม.รทก.${g.bank != null ? ` · ตลิ่ง ${g.bank} ม.` : ''}</span>` : ''}
+          <br><span style="color:#64748b">${g.kind === 'river' ? 'จุดวัดน้ำแม่น้ำ' : 'จุดวัดน้ำคลอง'}${g.district ? ` · ${esc(g.district)}` : ''}${g.province ? ` · ${esc(g.province)}` : ''}</span>
+          <br><span style="color:${sty.color};font-weight:700">${sty.label}</span>${g.storage_pct != null ? ` น้ำเต็ม <b>${g.storage_pct}%</b>` : ''}
+          ${g.msl != null ? `<br><span style="color:#64748b">ระดับน้ำ ${g.msl} ม.${g.bank != null ? ` · ตลิ่ง ${g.bank} ม.` : ''} (วัดจากระดับน้ำทะเล)</span>` : ''}
           ${g.diff_text && g.diff_bank != null ? `<br><span style="color:#64748b">${esc(g.diff_text)} ${g.diff_bank}</span>` : ''}
           ${g.ts ? `<br><span style="color:#94a3b8;font-size:11px">ข้อมูล ${new Date(g.ts * 1000).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น. · ${g.source === 'bma' ? 'สำนักการระบายน้ำ กทม.' : 'คลังข้อมูลน้ำแห่งชาติ'}</span>` : ''}
         </div>`
@@ -1021,13 +1022,13 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
     for (const s of air.items || []) {
       const el = document.createElement('button');
       el.type = 'button';
-      el.title = `${s.name}: PM2.5 ${s.pm25} µg/m³`;
+      el.title = `${s.name}: ฝุ่น PM2.5 ${s.pm25} (${s.label})`;
       el.style.cssText = `display:flex;align-items:center;justify-content:center;width:30px;height:22px;border-radius:7px;background:${s.color};color:#0f172a;font:700 11px/1 var(--font-sans);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);cursor:pointer;padding:0`;
       el.textContent = Math.round(s.pm25);
       const t = s.ts ? new Date(s.ts * 1000).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '';
       const popup = new maplibregl.Popup({ offset: 14, closeButton: true, maxWidth: '260px' }).setHTML(
         `<div style="font-size:13px;line-height:1.4"><b>${s.name}</b><br><span style="color:#64748b">${s.area} ${s.province}</span><br>` +
-          `PM2.5 <b style="color:${s.color}">${s.pm25} µg/m³</b> · AQI ${s.aqi ?? '-'} · ${s.label}` +
+          `ฝุ่น PM2.5 <b style="color:${s.color}">${s.pm25}</b> · ${s.label}` +
           (t ? `<br><span style="color:#64748b;font-size:11px">ข้อมูล ${t} น. · ${s.source_label || 'Air4Thai (คพ.)'}</span>` : '') +
           '</div>'
       );
@@ -1116,10 +1117,10 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
         const floodHtml = c.floodRisk
           ? `<div style="background:${c.floodRisk.isOverflow ? '#fef2f2' : '#fffbeb'};border:1px solid ${c.floodRisk.isOverflow ? '#fecaca' : '#fde68a'};border-radius:6px;padding:6px 8px;margin-bottom:8px;font-size:11px;color:${c.floodRisk.isOverflow ? '#991b1b' : '#92400e'}">
               <div style="font-weight:700;display:flex;align-items:center;gap:4px">
-                <span>🌊</span> ${esc(c.floodRisk.badgeText)} (${c.floodRisk.storagePct}%)
+                ${esc(c.floodRisk.badgeText)} · น้ำเต็ม ${c.floodRisk.storagePct}%
               </div>
               <div style="font-size:10px;margin-top:2px;color:${c.floodRisk.isOverflow ? '#b91c1c' : '#b45309'}">
-                ใกล้${esc(c.floodRisk.stationName)} (${c.floodRisk.distanceKm} กม.)
+                จุดวัดน้ำใกล้กล้อง: ${esc(c.floodRisk.stationName)} ห่าง ${c.floodRisk.distanceKm} กม.
               </div>
             </div>`
           : '';
@@ -1136,7 +1137,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
             <p style="margin:0 0 8px;font-weight:500;color:#0f172a;font-size:13px;line-height:1.35">${esc(c.short_title || c.title)}</p>
             <div style="display:flex;gap:6px;flex-wrap:wrap">
               <button data-act="toggle" data-camid="${c.camid}" style="cursor:pointer;border:0;border-radius:8px;padding:6px 12px;background:${on ? '#fee2e2' : '#2563eb'};color:${on ? '#b91c1c' : '#fff'};font-size:12px;font-family:inherit">${on ? 'ปิดกล้องนี้' : 'เปิดดูกล้องนี้'}</button>
-              <button data-act="ai" data-camid="${c.camid}" style="cursor:pointer;border:0;border-radius:8px;padding:6px 12px;background:#f1f5f9;color:#0f172a;border:1px solid #cbd5e1;font-size:12px;font-family:inherit">${c.floodRisk ? 'ถาม AI เช็คน้ำท่วม' : 'ถามผู้ช่วย AI'}</button>
+              <button data-act="ai" data-camid="${c.camid}" style="cursor:pointer;border:0;border-radius:8px;padding:6px 12px;background:#f1f5f9;color:#0f172a;border:1px solid #cbd5e1;font-size:12px;font-family:inherit">${c.floodRisk ? 'ถาม AI เรื่องน้ำท่วม' : 'ถาม AI'}</button>
             </div>
           </div>`
         );
@@ -1150,7 +1151,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
           const status = root?.querySelector(`span[data-status="${c.camid}"]`);
           if (!img || !video) return;
           const hide = () => status && (status.style.display = 'none');
-          const fail = () => status && (status.textContent = 'กล้องขอพักสักครู่');
+          const fail = () => status && (status.textContent = 'ยังดูภาพจากกล้องนี้ไม่ได้ ลองใหม่อีกครั้ง');
 
           // Snapshot fallback: iTIC Motion entries carry placeholder X.X.X.X urls, so only real hosts count
           const still = [c.imgurl, c.vdourl].find((u) => u && !u.includes('X.X.X.X'));
@@ -1223,11 +1224,11 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
     all.forEach((i) => {
       const when = i.source === 'camera' ? agoTh(i.ts) : i.start ? `เริ่ม ${esc(i.start).slice(11, 16)}` : '';
       const html = `<div style="width:260px">
-          <p style="margin:0 0 4px;font-weight:600;color:${i.kind === 'breakdown' ? '#b85f41' : '#d9534f'};font-size:13px">${KIND_TH[i.kind] || 'เหตุการณ์'} · ${i.source === 'camera' ? 'กล้อง AI ตรวจพบ' : 'รายงานจราจร'}</p>
+          <p style="margin:0 0 4px;font-weight:600;color:${i.kind === 'breakdown' ? '#b85f41' : '#d9534f'};font-size:13px">${KIND_TH[i.kind] || 'เหตุบนถนน'} · ${i.source === 'camera' ? 'กล้อง AI เห็น' : 'ข่าวจราจร'}</p>
           <p style="margin:0 0 6px;color:#0f172a;font-size:13px;line-height:1.35">${esc(i.title)}</p>
           ${i.image ? `<img src="${i.image}" alt="" style="display:block;width:100%;border-radius:8px;margin-bottom:6px" />` : ''}
           ${i.description ? `<p style="margin:0 0 6px;color:#475569;font-size:12px;line-height:1.4">${esc(i.description)}</p>` : ''}
-          <p style="margin:0;color:#94a3b8;font-size:11px">${when}${i.confidence ? ` · ความมั่นใจ ${Math.round(i.confidence * 100)}%` : ''}${i.stopped_s ? ` · จอดนิ่ง ${i.stopped_s} วิ` : ''}</p>
+          <p style="margin:0;color:#94a3b8;font-size:11px">${when}${i.stopped_s ? ` · รถจอดนิ่งมา ${Math.max(1, Math.round(i.stopped_s / 60))} นาที` : ''}</p>
           ${i.camid ? `<div style="margin-top:8px"><button data-act="ai" data-camid="${esc(i.camid)}" style="cursor:pointer;border:0;border-radius:8px;padding:6px 12px;background:#2563eb;color:#fff;font-size:12px;font-family:inherit">ดูภาพสดกล้องนี้</button></div>` : ''}
         </div>`;
  const popup = new maplibregl.Popup({ offset: 18, closeButton: true, maxWidth: '300px', anchor: 'bottom' }).setHTML(html);
@@ -1305,13 +1306,13 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const camWetList = (camFlood?.items || []).filter((c) => CAM_WET.includes(c.level));
   const waterHint = flood
     ? `${camFlood ? `กล้องเห็นน้ำ ${camWet} จุด · ` : ''}ถนนท่วม ${floodCounts.flood + floodCounts.slight} จุด · ประชาชนแจ้ง ${reportPoints.length} เรื่อง (6 ชม.)`
-    : 'เรดาร์ฝน น้ำท่วมถนน ประชาชนแจ้ง ทางหลวง และระดับน้ำ';
+    : 'ฝนตก น้ำท่วมถนน คนแจ้งน้ำท่วม และระดับน้ำ';
 
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title="Traffic Map"
-        description="เส้นสีบอกการระบายรถแบบสด จิ้มหมุดกล้องเพื่อเปิดภาพสด เปิด/ปิดชั้นข้อมูลได้ที่แผงชั้นข้อมูล"
+        title={PAGE_TITLES.map}
+        description="สีของถนนบอกว่ารถติดแค่ไหน กดหมุดกล้องเพื่อดูภาพสด เลือกสิ่งที่จะแสดงบนแผนที่ได้ที่แผงด้านข้าง"
         actions={
           <Button size="sm" onClick={locateMe}>
             <Icon name="pin" /> ไปที่ตำแหน่งของฉัน
@@ -1319,44 +1320,44 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
         }
       />
       <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 lg:h-[calc(100vh-13rem)] min-h-[520px]">
-      <aside aria-label="ชั้นข้อมูลแผนที่" className="order-2 lg:order-1 glass rounded-xl p-4 flex flex-col gap-3 overflow-y-auto scroll-soft">
-        <LayerGroup title="จราจรและกล้อง" hint="เส้นจราจร หมุดกล้อง อุบัติเหตุ และรถไฟฟ้า" on={trafficOn} defaultOpen>
+      <aside aria-label="สิ่งที่แสดงบนแผนที่" className="order-2 lg:order-1 glass rounded-xl p-4 flex flex-col gap-3 overflow-y-auto scroll-soft">
+        <LayerGroup title="รถติดและกล้อง" hint="สีรถติด กล้อง อุบัติเหตุ และรถไฟฟ้า" on={trafficOn} defaultOpen>
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer">
                 <input type="checkbox" checked={showTraffic} onChange={(e) => setShowTraffic(e.target.checked)} className="accent-lavender-600 w-4 h-4" />
-                เส้นจราจร
+                สีรถติดบนถนน
               </label>
               {summary && (
                 <span className={`inline-flex items-center gap-1 text-[11px] rounded-lg px-2 py-0.5 ${summary.online ? 'bg-sage-50 text-sage-700' : 'bg-gold-50 text-gold-700'}`}>
-                  {summary.online ? `สด ${updated}` : `ออฟไลน์ ${updated || ''}`}
+                  {summary.online ? `สด ${updated}` : `ไม่อัปเดต ${updated || ''}`}
                 </span>
               )}
             </div>
             <div className="grid grid-cols-3 gap-1.5 text-[11px] text-ink-600">
-              <span className="inline-flex items-center gap-1.5"><span className="w-5 h-1.5 rounded-full" style={{ background: '#54C00C' }} />โล่ง</span>
-              <span className="inline-flex items-center gap-1.5"><span className="w-5 h-1.5 rounded-full" style={{ background: '#FEDE04' }} />ปานกลาง</span>
+              <span className="inline-flex items-center gap-1.5"><span className="w-5 h-1.5 rounded-full" style={{ background: '#54C00C' }} />คล่องตัว</span>
+              <span className="inline-flex items-center gap-1.5"><span className="w-5 h-1.5 rounded-full" style={{ background: '#FEDE04' }} />ชะลอตัว</span>
               <span className="inline-flex items-center gap-1.5"><span className="w-5 h-1.5 rounded-full" style={{ background: '#FF2020' }} />ติดขัด</span>
             </div>
             {summary?.ready && (
               <p className="mt-2 text-xs text-ink-600">
-                ทั้งเมืองระบายได้ <span className="text-base text-ink-900">{summary.flow_index}</span>/100 · แดง {summary.red_pct}%
+                ถนนทั้งเมืองติดขัด (สีแดง) <span className="text-base text-ink-900">{summary.red_pct}%</span>
               </p>
             )}
           </div>
 
           <div className="flex flex-col gap-2.5 text-xs">
             <p className="text-sm text-ink-900 font-medium">หมุดบนแผนที่</p>
-            {/* กล้อง CCTV ปกติ */}
+            {/* กล้องจราจร */}
             <label className={`flex items-center gap-2.5 cursor-pointer ${pinsOn.cctv ? '' : 'opacity-50'}`}>
               <input type="checkbox" checked={pinsOn.cctv} onChange={() => togglePins('cctv')} className="accent-blue-600 w-4 h-4 shrink-0" />
               <span className="w-5 h-5 rounded-full bg-blue-600 border-2 border-white/90 shadow-xs shrink-0 flex items-center justify-center" />
               <div className="flex flex-col min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <span className="font-medium text-ink-900">กล้อง CCTV จราจร</span>
+                  <span className="font-medium text-ink-900">กล้องจราจร</span>
                   <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-medium">{currentCameras.length} ตัว</span>
                 </div>
-                <span className="text-[11px] text-ink-600 leading-tight">คลิกที่หมุดเพื่อเปิดดูภาพสดและ AI ตรวจนับรถ</span>
+                <span className="text-[11px] text-ink-600 leading-tight">กดหมุดเพื่อดูภาพสด</span>
               </div>
             </label>
 
@@ -1368,12 +1369,12 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
               </span>
               <div className="flex flex-col min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <span className="font-medium text-ink-900">กล้องจุดเฝ้าระวังน้ำท่วม</span>
+                  <span className="font-medium text-ink-900">กล้องจุดเสี่ยงน้ำท่วม</span>
                   {floodRiskCount > 0 && (
                     <span className="text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded font-medium">{floodRiskCount} จุด</span>
                   )}
                 </div>
-                <span className="text-[11px] text-ink-600 leading-tight">อยู่ใกล้สถานีวัดน้ำแม่น้ำ/คลองที่น้ำสูงหรือเสี่ยงล้นตลิ่ง</span>
+                <span className="text-[11px] text-ink-600 leading-tight">กล้องใกล้แม่น้ำหรือคลองที่น้ำสูง</span>
               </div>
             </label>
 
@@ -1384,8 +1385,8 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                 !
               </span>
               <div className="flex flex-col min-w-0">
-                <span className="font-medium text-ink-900">อุบัติเหตุ / กีดขวางทาง</span>
-                <span className="text-[11px] text-ink-600 leading-tight">จุดเกิดอุบัติเหตุหรือชนกีดขวาง (ตรวจพบโดย AI / รายงานสด)</span>
+                <span className="font-medium text-ink-900">อุบัติเหตุ</span>
+                <span className="text-[11px] text-ink-600 leading-tight">จากกล้อง AI และข่าวจราจร</span>
               </div>
             </label>
 
@@ -1396,8 +1397,8 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                 !
               </span>
               <div className="flex flex-col min-w-0">
-                <span className="font-medium text-ink-900">รถจอดเสีย / สิ่งกีดขวาง</span>
-                <span className="text-[11px] text-ink-600 leading-tight">รถจอดเสียในช่องทางจราจร</span>
+                <span className="font-medium text-ink-900">รถเสีย</span>
+                <span className="text-[11px] text-ink-600 leading-tight">รถจอดเสียขวางถนน</span>
               </div>
             </label>
           </div>
@@ -1406,17 +1407,17 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
           <div>
             <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
               <input type="checkbox" checked={showRail} onChange={(e) => setShowRail(e.target.checked)} className="accent-blue-600 w-4 h-4" />
-              🚇 รถไฟฟ้า BTS / MRT
+              🚇 รถไฟฟ้า
             </label>
-            <p className="text-[11px] text-slate-500 mt-1">BTS, MRT, Airport Rail Link และสายสีแดง จาก OpenStreetMap · คลิกสถานีเพื่อดูชื่อ</p>
+            <p className="text-[11px] text-slate-500 mt-1">BTS MRT แอร์พอร์ตลิงก์ และสายสีแดง · กดสถานีเพื่อดูชื่อ</p>
           </div>
         </LayerGroup>
 
-        <LayerGroup title="จุดเสี่ยงจราจร กทม." hint="จุดอุบัติเหตุ จุดฝืด ทางม้าลาย ป้ายรถเมล์ (riskbkk)" on={riskOnCount}>
+        <LayerGroup title="จุดเสี่ยงจราจร กทม." hint="จุดเกิดอุบัติเหตุ จุดรถติดประจำ ทางม้าลาย ป้ายรถเมล์" on={riskOnCount}>
           {/* BMA risk-map traffic layers */}
           <div>
             <p className="text-sm text-ink-900 font-medium">⚠️ จุดเสี่ยงจราจร กทม.</p>
-            <p className="text-[11px] text-slate-500 mt-0.5 mb-1.5">จากแผนที่จุดเสี่ยงกรุงเทพมหานคร (riskbkk) · คลิกจุดเพื่อดูรายละเอียด</p>
+            <p className="text-[11px] text-slate-500 mt-0.5 mb-1.5">ข้อมูลจาก กทม. · กดจุดเพื่อดูรายละเอียด</p>
             <div className="flex flex-col gap-1">
               {RISK_LAYERS.map((l) => (
                 <label key={l.id} className="inline-flex items-center gap-2 text-[13px] text-ink-900 cursor-pointer">
@@ -1426,7 +1427,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                 </label>
               ))}
             </div>
-            <p className="text-[11px] text-slate-500 mt-1">ทางม้าลาย ป้ายรถเมล์ และวินมอเตอร์ไซค์ แสดงเมื่อซูม ≥ 13</p>
+            <p className="text-[11px] text-slate-500 mt-1">ทางม้าลาย ป้ายรถเมล์ และวินมอเตอร์ไซค์ จะขึ้นเมื่อซูมเข้าใกล้</p>
           </div>
         </LayerGroup>
 
@@ -1441,7 +1442,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                   onChange={(e) => setShowRainRadar(e.target.checked)}
                   className="accent-blue-600 w-4 h-4"
                 />
-                <Icon name="rain" /> ซ้อนเรดาร์ฝน (สด)
+                <Icon name="rain" /> ฝนตกตอนนี้ (เรดาร์)
               </label>
               {radarTime && (
                 <span className="text-[11px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-full">
@@ -1449,10 +1450,10 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-slate-500 mb-1.5">กลุ่มเมฆฝนซ้อนใต้เส้นรถติดและกล้อง CCTV</p>
+            <p className="text-[11px] text-slate-500 mb-1.5">แสดงบริเวณที่ฝนกำลังตก</p>
             {showRainRadar && (
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-slate-400 shrink-0">ความเข้ม</span>
+                <span className="text-[10px] text-slate-400 shrink-0">ความเข้มของสี</span>
                 <input
                   type="range"
                   min="0.2"
@@ -1472,7 +1473,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
             <div className="flex items-center justify-between mb-1">
               <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
                 <input type="checkbox" checked={showCamFlood} onChange={(e) => setShowCamFlood(e.target.checked)} className="accent-blue-600 w-4 h-4" />
-                <span aria-hidden="true">📷</span> กล้องเห็นน้ำท่วม (AI)
+                <span aria-hidden="true">📷</span> AI เห็นน้ำท่วมในภาพกล้อง
               </label>
               {camFlood?.last_check && <span className="text-[11px] text-slate-500">{fmtTime(camFlood.last_check)} น.</span>}
             </div>
@@ -1482,9 +1483,9 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                   {camWet > 0
                     ? `ท่วมหนัก ${camCounts.severe} · ท่วม ${camCounts.flooded} · น้ำขัง ${camCounts.puddle} จุด`
                     : 'ไม่พบน้ำท่วมบนถนนในภาพกล้อง'}
-                  {` · ตรวจแล้ว ${camFlood.checked}/${camFlood.total} กล้อง`}
-                  {camFlood.stale_wet > 0 ? ` · ${camFlood.stale_wet} จุดเป็นภาพเก่ากว่า ${camFlood.stale_minutes} นาที` : ''}
-                  {!camFlood.enabled ? ' · ยังไม่ได้ตั้งโมเดล AI (LOCAL_LLM_MODEL)' : camFlood.error ? ' · เรียก AI ไม่สำเร็จ กำลังลองใหม่' : ''}
+                  {` · ดูแล้ว ${camFlood.checked} จาก ${camFlood.total} กล้อง`}
+                  {camFlood.stale_wet > 0 ? ` · ${camFlood.stale_wet} จุดเป็นภาพเก่า` : ''}
+                  {!camFlood.enabled ? ' · AI ยังไม่พร้อม' : camFlood.error ? ' · AI ขัดข้อง กำลังลองใหม่' : ''}
                 </p>
                 <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-slate-600 mb-1.5">
                   {CAM_WET.map((k) => (
@@ -1493,7 +1494,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                 </div>
                 <label className="inline-flex items-center gap-2 text-[11px] text-slate-600 cursor-pointer">
                   <input type="checkbox" checked={camFloodDry} onChange={(e) => setCamFloodDry(e.target.checked)} className="accent-blue-600" disabled={!showCamFlood} />
-                  แสดงกล้องที่ไม่ท่วม / มองไม่ชัดด้วย
+                  แสดงกล้องที่ไม่มีน้ำท่วมหรือภาพไม่ชัดด้วย
                 </label>
                 {camWetList.length > 0 && (
                   <ul className="mt-2 flex flex-col gap-1">
@@ -1513,9 +1514,9 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                 )}
               </>
             ) : (
-              <p className="text-[11px] text-slate-500">{showCamFlood ? 'กำลังโหลดผลตรวจจากกล้อง ...' : 'เปิดเพื่อดูจุดที่ AI เห็นน้ำท่วมในภาพกล้อง'}</p>
+              <p className="text-[11px] text-slate-500">{showCamFlood ? 'กำลังโหลด ...' : 'เปิดเพื่อดูจุดที่ AI เห็นน้ำท่วมในภาพกล้อง'}</p>
             )}
-            <p className="text-[11px] text-slate-400 mt-1">AI ดูภาพกล้อง กทม. ทุกตัว และกล้อง iTIC รอบกรุงเทพฯ-ปริมณฑล ราว 10 นาที/รอบ อาจผิดพลาดได้ กดหมุดเพื่อดูภาพที่ AI ใช้ตัดสิน</p>
+            <p className="text-[11px] text-slate-400 mt-1">AI ดูภาพกล้องทุก ~10 นาที อาจผิดพลาดได้ · กดหมุดเพื่อดูภาพ</p>
           </div>
 
           {/* ประชาชนแจ้งน้ำท่วมผ่านเว็บนี้ (พร้อมรูป ผ่าน AI ตรวจ) */}
@@ -1523,14 +1524,14 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
             <div className="flex items-center justify-between mb-1">
               <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
                 <input type="checkbox" checked={showUserReports} onChange={(e) => setShowUserReports(e.target.checked)} className="accent-blue-600 w-4 h-4" />
-                <span aria-hidden="true">📷</span> ประชาชนแจ้งผ่านเว็บ
+                <span aria-hidden="true">📷</span> คนแจ้งผ่านเว็บนี้
               </label>
               {userReports && <span className="text-[11px] text-slate-500">{userReports.total} เรื่อง</span>}
             </div>
             <p className="text-[11px] text-slate-500">
-              {userReports ? (userReports.total ? `${userReports.total} เรื่องใน ${userReports.hours} ชม. · AI ตรวจรูปก่อนขึ้นแผนที่` : `ยังไม่มีใครแจ้งใน ${userReports.hours} ชม.`) : 'เปิดเพื่อดูจุดที่ประชาชนแจ้งพร้อมรูป'}
+              {userReports ? (userReports.total ? `${userReports.total} เรื่องใน ${userReports.hours} ชม. · AI ดูรูปก่อนขึ้นแผนที่` : `ยังไม่มีใครแจ้งใน ${userReports.hours} ชม.`) : 'เปิดเพื่อดูจุดที่คนแจ้งพร้อมรูป'}
             </p>
-            <a href="#/report" className="text-[11px] text-blue-700 hover:underline">เห็นน้ำท่วม? แจ้งพร้อมรูปได้ที่หน้าแจ้งน้ำท่วม</a>
+            <a href="#/report" className="text-[11px] text-blue-700 hover:underline">เห็นน้ำท่วม? กดตรงนี้เพื่อแจ้ง</a>
           </div>
 
           {/* น้ำท่วมขังถนน (เซ็นเซอร์ กทม.) + ระดับน้ำแม่น้ำ/คลอง (ปริมณฑล) */}
@@ -1538,7 +1539,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
             <div className="flex items-center justify-between mb-1">
               <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
                 <input type="checkbox" checked={showFlood} onChange={(e) => setShowFlood(e.target.checked)} className="accent-blue-600 w-4 h-4" />
-                <Icon name="water" /> น้ำท่วมขังถนน กทม. (สด)
+                <Icon name="water" /> น้ำท่วมบนถนน กทม. (เครื่องวัด)
               </label>
               {flood?.feed_time && <span className="text-[11px] text-slate-500">{fmtTime(flood.feed_time)} น.</span>}
             </div>
@@ -1547,8 +1548,8 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                 <p className="text-[11px] text-slate-500 mb-1.5">
                   {floodCounts.flood + floodCounts.slight > 0
                     ? `ท่วม ${floodCounts.flood} จุด · เล็กน้อย ${floodCounts.slight} จุด จาก ${flood.total} จุดวัด`
-                    : `ไม่มีจุดน้ำท่วมขังขณะนี้ (ตรวจ ${flood.total} จุด)`}
-                  {floodCounts.offline > 0 ? ` · ขัดข้อง ${floodCounts.offline}` : ''}
+                    : `ตอนนี้ไม่มีถนนน้ำท่วม (วัด ${flood.total} จุด)`}
+                  {floodCounts.offline > 0 ? ` · เครื่องวัดเสีย ${floodCounts.offline}` : ''}
                 </p>
                 <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-slate-600 mb-1.5">
                   <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: FLOOD_STYLE.flood.color }} />ท่วม &gt;10 ซม.</span>
@@ -1557,7 +1558,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                 </div>
                 <label className="inline-flex items-center gap-2 text-[11px] text-slate-600 cursor-pointer">
                   <input type="checkbox" checked={floodDry} onChange={(e) => setFloodDry(e.target.checked)} className="accent-blue-600" disabled={!showFlood} />
-                  แสดงจุดวัดที่ยังไม่ท่วมด้วย
+                  แสดงจุดวัดที่ไม่มีน้ำท่วมด้วย
                 </label>
                 {floodTop.length > 0 && (
                   <ul className="mt-2 flex flex-col gap-1">
@@ -1577,9 +1578,9 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                 )}
               </>
             ) : (
-              <p className="text-[11px] text-slate-500">กำลังโหลดจุดวัดน้ำท่วม ...</p>
+              <p className="text-[11px] text-slate-500">กำลังโหลด ...</p>
             )}
-            <p className="text-[11px] text-slate-400 mt-1">เซ็นเซอร์วัดน้ำบนผิวถนนมีเฉพาะ กทม. 50 เขต</p>
+            <p className="text-[11px] text-slate-400 mt-1">เครื่องวัดน้ำบนถนนมีเฉพาะใน กทม.</p>
           </div>
 
           {/* ประชาชนแจ้งน้ำท่วม (Traffy Fondue) */}
@@ -1587,7 +1588,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
             <div className="flex items-center justify-between mb-1">
               <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
                 <input type="checkbox" checked={showReports} onChange={(e) => setShowReports(e.target.checked)} className="accent-blue-600 w-4 h-4" />
-                <span aria-hidden="true">📣</span> ประชาชนแจ้งน้ำท่วม
+                <span aria-hidden="true">📣</span> คนแจ้งน้ำท่วม (Traffy Fondue)
               </label>
               {reports?.updated_at && <span className="text-[11px] text-slate-500">{fmtTime(reports.updated_at)} น.</span>}
             </div>
@@ -1596,8 +1597,8 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                 <p className="text-[11px] text-slate-500 mb-1.5">
                   {reportPoints.length > 0
                     ? `${reportPoints.length} เรื่องใน 6 ชม. · ชั่วโมงล่าสุด ${reportFresh} เรื่อง`
-                    : 'ไม่มีเรื่องแจ้งน้ำท่วมใน 6 ชม.'}
-                  {reports.error ? ' · ดึงข้อมูลล่าสุดไม่สำเร็จ' : ''}
+                    : 'ไม่มีคนแจ้งน้ำท่วมใน 6 ชม.'}
+                  {reports.error ? ' · อัปเดตล่าสุดไม่สำเร็จ' : ''}
                 </p>
                 {reportDistricts.length > 0 && (
                   <ul className="flex flex-col gap-1">
@@ -1617,9 +1618,9 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                 )}
               </>
             ) : (
-              <p className="text-[11px] text-slate-500">กำลังโหลดเรื่องแจ้งจาก Traffy Fondue ...</p>
+              <p className="text-[11px] text-slate-500">กำลังโหลด ...</p>
             )}
-            <p className="text-[11px] text-slate-400 mt-1">จาก Traffy Fondue คัดด้วยคำว่า น้ำท่วม/น้ำขัง ยังไม่ผ่านการตรวจสอบจากเขต</p>
+            <p className="text-[11px] text-slate-400 mt-1">เรื่องที่คนแจ้ง กทม. ผ่านแอป Traffy Fondue ยังไม่ได้ตรวจสอบโดยเขต</p>
           </div>
 
           {/* ทางหลวงน้ำท่วม (กรมทางหลวง HDMS) */}
@@ -1635,9 +1636,9 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
               <>
                 <p className="text-[11px] text-slate-500 mb-1.5">
                   {hdmsPoints.length > 0
-                    ? `ยังท่วม ${hdmsActive} จุด · คลี่คลายใน 3 ชม. ${hdmsPoints.length - hdmsActive} จุด`
+                    ? `ยังท่วม ${hdmsActive} จุด · น้ำลดแล้วใน 3 ชม. ${hdmsPoints.length - hdmsActive} จุด`
                     : 'ไม่มีทางหลวงน้ำท่วมในกรุงเทพฯ และปริมณฑล'}
-                  {hdms.error ? ' · ดึงข้อมูลล่าสุดไม่สำเร็จ' : ''}
+                  {hdms.error ? ' · อัปเดตล่าสุดไม่สำเร็จ' : ''}
                 </p>
                 {hdmsAreas.length > 0 && (
                   <ul className="flex flex-col gap-1">
@@ -1657,22 +1658,22 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                 )}
               </>
             ) : (
-              <p className="text-[11px] text-slate-500">กำลังโหลดข้อมูลกรมทางหลวง ...</p>
+              <p className="text-[11px] text-slate-500">กำลังโหลด ...</p>
             )}
-            <p className="text-[11px] text-slate-400 mt-1">จากศูนย์บริหารงานอุบัติภัย กรมทางหลวง (HDMS) เฉพาะกรุงเทพฯ และปริมณฑล</p>
+            <p className="text-[11px] text-slate-400 mt-1">ข้อมูลจากกรมทางหลวง เฉพาะกรุงเทพฯ และปริมณฑล</p>
           </div>
 
           {/* ระดับน้ำแม่น้ำ / คลอง ทั่วเขตปริมณฑล (คลังข้อมูลน้ำแห่งชาติ) */}
           <div>
             <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
               <input type="checkbox" checked={showGauges} onChange={(e) => setShowGauges(e.target.checked)} className="accent-blue-600 w-4 h-4" />
-              <Icon name="water" /> ระดับน้ำแม่น้ำ/คลอง (ปริมณฑล)
+              <Icon name="water" /> น้ำในแม่น้ำและคลอง
             </label>
             {gauges.length > 0 ? (
               <>
                 <p className="text-[11px] text-slate-500 mt-1 mb-1.5">
-                  {gauges.length} สถานีใน {provinceCount} จังหวัด (กทม. นนทบุรี ปทุมธานี สมุทรปราการ นครปฐม สมุทรสาคร) ·
-                  {gaugeCounts.overflow > 0 ? ` ล้นตลิ่ง ${gaugeCounts.overflow} สถานี` : ' ไม่มีสถานีล้นตลิ่ง'}
+                  {gauges.length} จุดวัดใน {provinceCount} จังหวัด ·
+                  {gaugeCounts.overflow > 0 ? ` ล้นตลิ่ง ${gaugeCounts.overflow} จุด` : ' ไม่มีจุดที่ล้นตลิ่ง'}
                   {gaugeCounts.high > 0 ? ` · น้ำมาก ${gaugeCounts.high}` : ''}
                 </p>
                 <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-slate-600">
@@ -1680,31 +1681,31 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                   <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: GAUGE_STYLE.high.color }} />น้ำมาก</span>
                   <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: GAUGE_STYLE.normal.color }} />ปกติ</span>
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1">เป็นระดับน้ำในแม่น้ำ/คลอง เทียบ % ความจุตลิ่ง ไม่ใช่ความลึกของน้ำบนถนน</p>
+                <p className="text-[11px] text-slate-400 mt-1">บอกว่าน้ำในแม่น้ำหรือคลองเต็มแค่ไหน ไม่ใช่น้ำบนถนน</p>
               </>
             ) : (
-              <p className="text-[11px] text-slate-500 mt-1">กำลังโหลดสถานีวัดระดับน้ำ ...</p>
+              <p className="text-[11px] text-slate-500 mt-1">กำลังโหลด ...</p>
             )}
           </div>
         </LayerGroup>
 
-        <LayerGroup title="อากาศ" hint={air?.avg_pm25 != null ? `PM2.5 เฉลี่ย ${air.avg_pm25} µg/m³ · ลม` : 'ฝุ่น PM2.5 รายสถานี และลูกศรลม'} on={(showPm ? 1 : 0) + (showWind ? 1 : 0)}>
+        <LayerGroup title="อากาศ" hint={air?.avg_pm25 != null ? `ฝุ่น PM2.5 เฉลี่ย ${air.avg_pm25} · ลม` : 'ฝุ่น PM2.5 และลม'} on={(showPm ? 1 : 0) + (showWind ? 1 : 0)}>
           {/* PM2.5 station toggle */}
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
                 <input type="checkbox" checked={showPm} onChange={(e) => setShowPm(e.target.checked)} className="accent-blue-600 w-4 h-4" />
-                <Icon name="mask" /> ฝุ่น PM2.5 รายสถานี
+                <Icon name="mask" /> ฝุ่น PM2.5
               </label>
               {air?.avg_pm25 != null && (
                 <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">เฉลี่ย {air.avg_pm25}</span>
               )}
             </div>
             <p className="text-[11px] text-slate-500 mb-1.5">
-              {air ? `${air.total} สถานี (คพ. + กทม.) หน่วย µg/m³ แตะจุดเพื่อดูรายละเอียด` : 'กำลังโหลด AirBKK + Air4Thai'}
+              {air ? `${air.total} จุดวัด · แตะจุดเพื่อดูรายละเอียด` : 'กำลังโหลด ...'}
             </p>
             <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-slate-600">
-              {[['#3BA0FF', 'ดีมาก ≤15'], ['#4CC74A', 'ดี ≤25'], ['#FFD400', 'ปานกลาง ≤37.5'], ['#FF8C00', 'เริ่มมีผล ≤75'], ['#E3272C', 'มีผล >75']].map(([c, l]) => (
+              {[['#3BA0FF', 'ดีมาก ≤15'], ['#4CC74A', 'ดี ≤25'], ['#FFD400', 'ปานกลาง ≤37.5'], ['#FF8C00', 'เริ่มมีผลต่อสุขภาพ ≤75'], ['#E3272C', 'มีผลต่อสุขภาพ >75']].map(([c, l]) => (
                 <span key={l} className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: c }} />{l}</span>
               ))}
             </div>
@@ -1715,11 +1716,11 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
             <div className="flex items-center justify-between mb-1">
               <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
                 <input type="checkbox" checked={showWind} onChange={(e) => setShowWind(e.target.checked)} className="accent-blue-600 w-4 h-4" />
-                <Icon name="wind" /> ลูกศรลม (สด)
+                <Icon name="wind" /> ลม (สด)
               </label>
               {wind?.points?.[24]?.time && <span className="text-[11px] text-slate-500">{wind.points[24].time.slice(11, 16)} น.</span>}
             </div>
-            <p className="text-[11px] text-slate-500 mb-1.5">ทิศทางและความเร็วลม กม./ชม. ทุก 10 กม. จาก Open-Meteo อัปเดตทุก 15 นาที · ไม่บังแผนที่</p>
+            <p className="text-[11px] text-slate-500 mb-1.5">ลูกศรชี้ทางที่ลมพัดไป สีบอกความแรงลม (กม./ชม.)</p>
             <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-slate-600">
               {[['#60a5fa', '<10 เบา'], ['#22c55e', '10-20'], ['#f59e0b', '20-35 แรง'], ['#ef4444', '>35 พายุ']].map(([c, l]) => (
                 <span key={l} className="inline-flex items-center gap-1"><span className="w-3 h-1 rounded-full" style={{ background: c }} />{l}</span>
@@ -1728,27 +1729,27 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
           </div>
         </LayerGroup>
 
-        <LayerGroup title="อาคารและสถานที่" hint="อาคาร 3 มิติ และชื่อสถานที่เมื่อซูมใกล้" on={showPlaces ? 1 : 0}>
+        <LayerGroup title="อาคารและสถานที่" hint="อาคาร 3 มิติ และชื่อสถานที่เมื่อซูมเข้าใกล้" on={showPlaces ? 1 : 0}>
           {/* Buildings: 3D is automatic from zoom 15; this only adds footprints and names */}
           <div>
             <p className="text-sm text-ink-900 font-medium inline-flex items-center gap-2"><Icon name="building" /> อาคาร 3 มิติ</p>
-            <p className="text-[11px] text-slate-500 mt-1">ซูม ≥ 15 อาคารขึ้นเป็น 3 มิติตามความสูงจริง (OpenFreeMap) และแผนที่เอียง 45° อัตโนมัติ · คลิกขวา / Ctrl+ลาก เพื่อหมุนหรือเอียงเอง</p>
+            <p className="text-[11px] text-slate-500 mt-1">ซูมเข้าใกล้แล้วอาคารจะขึ้นเป็น 3 มิติเอง · คลิกขวาค้างแล้วลากเพื่อหมุนแผนที่</p>
             <label className="mt-2 inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
               <input type="checkbox" checked={showPlaces} onChange={(e) => setShowPlaces(e.target.checked)} className="accent-blue-600 w-4 h-4" />
-              <Icon name="pin" /> รายละเอียดสิ่งปลูกสร้าง
+              <Icon name="pin" /> ชื่อสถานที่และผังอาคาร
             </label>
-            <p className="text-[11px] text-slate-500 mt-1">ซูม ≥ 15: ชื่อโรงพยาบาล โรงเรียน ห้าง วัด สถานี ฯลฯ บนแผนที่ + ผังอาคาร (2D) · คลิกอาคารดูชื่อ/ความสูง/จำนวนชั้น</p>
+            <p className="text-[11px] text-slate-500 mt-1">ซูมเข้าใกล้เพื่อดูชื่อโรงพยาบาล โรงเรียน ห้าง วัด ฯลฯ · กดอาคารเพื่อดูชื่อและความสูง</p>
           </div>
         </LayerGroup>
 
         {incidentList.length > 0 && (
           <div className="rounded-lg bg-red-50 border border-red-200 p-3">
-            <p className="text-xs font-semibold text-red-700 mb-1.5">อุบัติเหตุ / เหตุการณ์ตอนนี้ ({incidentList.length})</p>
+            <p className="text-xs font-semibold text-red-700 mb-1.5">อุบัติเหตุและรถเสียตอนนี้ ({incidentList.length})</p>
             <div className="max-h-36 overflow-y-auto scroll-soft flex flex-col gap-1">
               {incidentList.map((i) => (
                 <button key={i.id} type="button" onClick={() => flyToIncident(i)} className="cursor-pointer text-left rounded-lg px-2.5 py-1.5 text-sm text-ink-900 hover:bg-white transition-colors duration-200">
                   <span className="line-clamp-1">{i.title}</span>
-                  <span className="block text-[11px] text-ink-600">{KIND_TH[i.kind] || 'เหตุการณ์'} · {i.source === 'camera' ? 'กล้อง AI' : 'รายงานจราจร'}</span>
+                  <span className="block text-[11px] text-ink-600">{KIND_TH[i.kind] || 'เหตุบนถนน'} · {i.source === 'camera' ? 'กล้อง AI' : 'ข่าวจราจร'}</span>
                 </button>
               ))}
             </div>
@@ -1758,7 +1759,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
         <div className="flex-1 min-h-40 flex flex-col">
           <p className="text-xs text-ink-600 mb-2">กล้องที่เปิดอยู่ ({activeCams.length})</p>
           {activeCams.length === 0 ? (
-            <p className="text-sm text-ink-400">ยังไม่มีกล้องที่เปิด จิ้มหมุดบนแผนที่ได้เลย</p>
+            <p className="text-sm text-ink-400">ยังไม่ได้เปิดกล้อง กดหมุดกล้องบนแผนที่ได้เลย</p>
           ) : (
             <div className="flex-1 overflow-y-auto scroll-soft flex flex-col gap-1.5">
               {activeCams.map((c) => (

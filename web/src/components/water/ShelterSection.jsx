@@ -87,7 +87,7 @@ export default function ShelterSection({ isActive }) {
 
   const locate = () => {
     if (!window.isSecureContext || !navigator.geolocation) {
-      setGeoError('เบราว์เซอร์ใช้ตำแหน่งได้เฉพาะเว็บที่เปิดผ่าน https หรือ localhost เลือกเขตด้านล่างแทน');
+      setGeoError('เบราว์เซอร์นี้ไม่ให้ใช้ตำแหน่ง เลือกเขตด้านล่างแทน');
       return;
     }
     setLocating(true);
@@ -125,7 +125,7 @@ export default function ShelterSection({ isActive }) {
       <Card className="p-4 flex flex-col gap-3">
         <SectionHeader
           title="จุดพักพิงชั่วคราวใกล้ฉัน"
-          description={`สถานที่พักพิงชั่วคราวของกรุงเทพมหานคร${shelters ? ` ${fmtNum(shelters.length)} แห่ง` : ''} (โรงเรียน วัด อาคาร กทม.) เรียงจากใกล้ที่สุด ตำแหน่งของคุณใช้คำนวณในเครื่องเท่านั้น ไม่ส่งไปที่เซิร์ฟเวอร์`}
+          description={`จุดพักพิงชั่วคราวของ กทม.${shelters ? ` ${fmtNum(shelters.length)} แห่ง` : ''} (โรงเรียน วัด อาคาร กทม.) เรียงจากใกล้ที่สุด · ตำแหน่งของคุณไม่ถูกส่งออกไปจากเครื่อง`}
         />
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="primary" onClick={locate} loading={locating} disabled={!shelters}>
@@ -144,7 +144,7 @@ export default function ShelterSection({ isActive }) {
           </select>
           {pos && (
             <span className="text-xs text-slate-500">
-              ตำแหน่ง {pos.lat.toFixed(4)}, {pos.lng.toFixed(4)} · แม่นยำ ±{fmtNum(Math.round(pos.accuracy))} ม.
+              ใช้ตำแหน่งของคุณแล้ว (คลาดเคลื่อนได้ราว {fmtNum(Math.round(pos.accuracy))} ม.)
             </span>
           )}
         </div>
@@ -182,8 +182,8 @@ export default function ShelterSection({ isActive }) {
       )}
 
       <p className="text-xs text-slate-500 leading-5 px-1">
-        แหล่งข้อมูล: สถานที่พักพิงชั่วคราว แผนที่เสี่ยงภัยกรุงเทพมหานคร (cpudapp.bangkok.go.th/riskbkk) ข้อมูลไม่ระบุวันที่ปรับปรุง
-        ก่อนเดินทางควรโทรยืนยันว่าเปิดรับผู้อพยพ · ระยะทางเป็นเส้นตรง ไม่ใช่ระยะทางถนน · เหตุฉุกเฉิน โทร 199 (ดับเพลิงและกู้ภัย) · 1784 (ปภ.) · 1669 (เจ็บป่วยฉุกเฉิน)
+        ข้อมูลจากแผนที่เสี่ยงภัยของ กทม. · ก่อนไปควรโทรถามว่าเปิดรับคนอยู่หรือไม่ · ระยะทางเป็นเส้นตรง ไม่ใช่ระยะทางตามถนน ·
+        เหตุฉุกเฉิน โทร 199 (ดับเพลิงและกู้ภัย) · 1784 (ปภ.) · 1669 (เจ็บป่วยฉุกเฉิน)
       </p>
     </div>
   );

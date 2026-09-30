@@ -12,32 +12,32 @@ const SELECT = `h-10 w-full rounded-lg border border-slate-300 bg-white px-2.5 t
 const LAYERS = {
   water: {
     label: 'ระดับน้ำ',
-    note: 'คลอง: เทียบตลิ่งที่ต่ำกว่า (สนน. กทม.) · แม่น้ำ: เทียบตลิ่ง (สสน.)',
+    note: 'สีบอกว่าน้ำในแม่น้ำหรือคลองใกล้ตลิ่งแค่ไหน',
     status: [
       ['overflow', 'ล้นตลิ่ง', '#dc2626'],
-      ['high', 'ใกล้ล้น', '#d97706'],
+      ['high', 'ใกล้ล้นตลิ่ง', '#d97706'],
       ['normal', 'ปกติ', '#059669'],
       ['low', 'น้ำน้อย', '#0284c7'],
-      ['offline', 'ขาดข้อมูล', '#94a3b8'],
+      ['offline', 'ไม่มีข้อมูล', '#94a3b8'],
     ],
   },
   roads: {
     label: 'น้ำท่วมถนน',
-    note: 'เซ็นเซอร์บนถนน สนน. กทม. (ซม. เหนือผิวถนน ทุก 5 นาที), รายงานน้ำท่วมผ่าน Longdo Traffic (iTIC / FM91) และทางหลวงน้ำท่วมจากกรมทางหลวง (HDMS)',
+    note: 'จากเครื่องวัดน้ำบนถนนของ กทม. ข่าวจราจร และกรมทางหลวง',
     status: [
-      ['flood', 'ท่วมขัง > 10 ซม.', '#dc2626'],
-      ['slight', 'ท่วมเล็กน้อย 5-10 ซม.', '#d97706'],
-      ['hdms', 'ทางหลวงน้ำท่วม (กรมทางหลวง)', '#be185d'],
-      ['report', 'มีรายงานน้ำท่วม', '#7c3aed'],
-      ['report_ended', 'รายงานสิ้นสุด < 3 ชม.', '#c4b5fd'],
-      ['hdms_ended', 'ทางหลวงคลี่คลาย < 3 ชม.', '#f9a8d4'],
-      ['normal', 'แห้ง (เซ็นเซอร์)', '#059669'],
-      ['offline', 'เซ็นเซอร์ขาดข้อมูล', '#94a3b8'],
+      ['flood', 'น้ำท่วมเกิน 10 ซม.', '#dc2626'],
+      ['slight', 'น้ำท่วม 5-10 ซม.', '#d97706'],
+      ['hdms', 'ทางหลวงน้ำท่วม', '#be185d'],
+      ['report', 'มีข่าวน้ำท่วม', '#7c3aed'],
+      ['report_ended', 'น้ำลดแล้ว (ใน 3 ชม.)', '#c4b5fd'],
+      ['hdms_ended', 'ทางหลวงน้ำลดแล้ว (ใน 3 ชม.)', '#f9a8d4'],
+      ['normal', 'ไม่มีน้ำท่วม', '#059669'],
+      ['offline', 'เครื่องวัดไม่ส่งข้อมูล', '#94a3b8'],
     ],
   },
   rain: {
     label: 'ฝน 24 ชม.',
-    note: 'ฝนสะสม 24 ชม. รายสถานี (คลังข้อมูลน้ำแห่งชาติ) · เกณฑ์กรมอุตุนิยมวิทยา',
+    note: 'ฝนที่ตกรวมใน 24 ชม. ที่ผ่านมา',
     status: [
       ['extreme', 'หนักมาก > 90 มม.', '#7c3aed'],
       ['heavy', 'หนัก 50-90 มม.', '#dc2626'],
@@ -48,7 +48,7 @@ const LAYERS = {
   },
   dams: {
     label: 'เขื่อนและน้ำเหนือ',
-    note: 'เขื่อนหลักลุ่มเจ้าพระยา รายงานรายวัน (กรมชลประทาน ผ่านคลังข้อมูลน้ำแห่งชาติ)',
+    note: 'เขื่อนใหญ่ที่ส่งน้ำลงแม่น้ำเจ้าพระยา อัปเดตวันละครั้ง',
     status: [
       ['high', 'น้ำมาก ≥ 90%', '#dc2626'],
       ['normal', 'ปกติ 50-90%', '#059669'],
@@ -64,14 +64,14 @@ const colorOf = (layer, status) => (LAYERS[layer].status.find((s) => s[0] === st
 function valueText(p) {
   if (p.kind === 'rain') return `${fmt(p.rain_24h, 1)} มม.`;
   if (p.kind === 'sensor') return `${fmt(p.depth_cm, 0)} ซม.`;
-  if (p.kind === 'report') return 'รายงานจากผู้ใช้ถนน';
-  if (p.kind === 'hdms') return p.depth_cm ? `${p.depth_cm} ซม.` : 'รายงานกรมทางหลวง';
+  if (p.kind === 'report') return 'มีข่าวน้ำท่วม';
+  if (p.kind === 'hdms') return p.depth_cm ? `${p.depth_cm} ซม.` : 'กรมทางหลวงแจ้ง';
   if (p.kind === 'dam') return `${fmt(p.storage_pct, 0)}%`;
   if (p.diff_bank != null) {
     const cm = Math.round(Math.abs(p.diff_bank) * 100);
     return p.diff_bank > 0 ? `ต่ำกว่าตลิ่ง ${cm} ซม.` : `เกินตลิ่ง ${cm} ซม.`;
   }
-  return p.msl != null ? `${fmt(p.msl)} ม.รทก.` : '–';
+  return p.msl != null ? `ระดับน้ำ ${fmt(p.msl)} ม.` : '–';
 }
 
 // Also used by FloodPointsMap
@@ -243,9 +243,9 @@ export default function WaterMap({ isActive, onPickStation }) {
       <div className="p-5 pb-4">
         <SectionHeader
           id="water-map-title"
-          title="แผนที่จุดวัดและเฝ้าระวัง"
-          description={`ชี้หรือแตะจุดเพื่อดูรายละเอียด · ${LAYERS[layer].note}`}
-          action={<Segmented label="ชั้นข้อมูล" value={layer} onChange={pickLayer} options={Object.entries(LAYERS).map(([k, v]) => [k, v.label])} />}
+          title="แผนที่น้ำ"
+          description={`แตะจุดเพื่อดูรายละเอียด · ${LAYERS[layer].note}`}
+          action={<Segmented label="เรื่องที่แสดง" value={layer} onChange={pickLayer} options={Object.entries(LAYERS).map(([k, v]) => [k, v.label])} />}
         />
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end">
           <label className="block">
@@ -348,7 +348,7 @@ export default function WaterMap({ isActive, onPickStation }) {
                 </button>
               </div>
               <p className="text-xs text-slate-500">
-                {{ river: 'สถานีแม่น้ำ', canal: 'สถานีคลอง', rain: 'สถานีวัดฝน', dam: 'เขื่อน', sensor: 'เซ็นเซอร์น้ำบนถนน สนน.', report: 'รายงานน้ำท่วม Longdo Traffic', hdms: 'ทางหลวงน้ำท่วม กรมทางหลวง (HDMS)' }[sel.kind]}
+                {{ river: 'จุดวัดน้ำแม่น้ำ', canal: 'จุดวัดน้ำคลอง', rain: 'จุดวัดฝน', dam: 'เขื่อน', sensor: 'เครื่องวัดน้ำบนถนน กทม.', report: 'ข่าวน้ำท่วมบนถนน', hdms: 'ทางหลวงน้ำท่วม (กรมทางหลวง)' }[sel.kind]}
                 {sel.road ? ` · ${sel.road}` : ''}
                 {sel.river ? ` · ${sel.river}` : ''}
                 {sel.district ? ` · ${sel.district}` : ''}
@@ -364,24 +364,24 @@ export default function WaterMap({ isActive, onPickStation }) {
                 {sel.msl != null && (
                   <>
                     <dt>ระดับน้ำ</dt>
-                    <dd className="tabular-nums">{fmt(sel.msl)} ม.รทก.</dd>
+                    <dd className="tabular-nums">{fmt(sel.msl)} ม. (เทียบระดับน้ำทะเล)</dd>
                   </>
                 )}
                 {sel.bank != null && (
                   <>
                     <dt>ตลิ่ง</dt>
-                    <dd className="tabular-nums">{fmt(sel.bank)} ม.รทก.</dd>
+                    <dd className="tabular-nums">{fmt(sel.bank)} ม.</dd>
                   </>
                 )}
                 {sel.control === 'critical' && (
                   <>
-                    <dt>ระดับควบคุม</dt>
-                    <dd>เกินระดับควบคุม สนน. ({fmt(sel.control_critical)} ม.)</dd>
+                    <dt>ระดับที่ กทม. คุมไว้</dt>
+                    <dd>น้ำสูงกว่าระดับที่ กทม. ตั้งไว้ ({fmt(sel.control_critical)} ม.)</dd>
                   </>
                 )}
                 {sel.max_cm != null && (
                   <>
-                    <dt>สูงสุดรอบนี้</dt>
+                    <dt>สูงสุดครั้งนี้</dt>
                     <dd className="tabular-nums">
                       {fmt(sel.max_cm, 0)} ซม.{sel.trend ? ` · ${sel.trend}` : ''}
                     </dd>
@@ -389,7 +389,7 @@ export default function WaterMap({ isActive, onPickStation }) {
                 )}
                 {sel.credit && (
                   <>
-                    <dt>ที่มา</dt>
+                    <dt>ข้อมูลจาก</dt>
                     <dd>{sel.credit}</dd>
                   </>
                 )}
@@ -401,11 +401,11 @@ export default function WaterMap({ isActive, onPickStation }) {
                 )}
                 {sel.kind === 'dam' && (
                   <>
-                    <dt>ปริมาตร</dt>
+                    <dt>น้ำในเขื่อน</dt>
                     <dd className="tabular-nums">
                       {fmt(sel.storage, 0)} / {fmt(sel.max_storage, 0)} ล้าน ลบ.ม.
                     </dd>
-                    <dt>ไหลเข้า / ระบาย</dt>
+                    <dt>น้ำไหลเข้า / ปล่อยออก</dt>
                     <dd className="tabular-nums">
                       {fmt(sel.inflow, 1)} / {fmt(sel.released, 1)} ล้าน ลบ.ม.
                     </dd>
@@ -422,13 +422,13 @@ export default function WaterMap({ isActive, onPickStation }) {
                 )}
                 {sel.url && (
                   <a href={sel.url} target="_blank" rel="noreferrer" className={`inline-flex items-center h-8 px-3 rounded-lg border border-slate-300 text-xs text-slate-800 hover:bg-slate-50 ${FOCUS}`}>
-                    หน้าสถานี สนน.
+                    ดูที่เว็บ กทม.
                   </a>
                 )}
               </div>
             </div>
           ) : (
-            <p className="text-xs text-slate-500">แตะจุดบนแผนที่เพื่อดูระดับน้ำ ตลิ่ง และเวลาวัด</p>
+            <p className="text-xs text-slate-500">แตะจุดบนแผนที่เพื่อดูรายละเอียด</p>
           )}
         </aside>
       </div>
@@ -446,7 +446,7 @@ export default function WaterMap({ isActive, onPickStation }) {
             {text}
           </button>
         ))}
-        <span className="ml-auto text-[11px] text-slate-500">เวลาวัดแต่ละจุดต่างกัน · จุดสีไม่ใช่ขอบเขตน้ำท่วม</span>
+        <span className="ml-auto text-[11px] text-slate-500">จุดสีคือจุดวัด ไม่ใช่พื้นที่ที่น้ำท่วม</span>
       </div>
     </Card>
   );

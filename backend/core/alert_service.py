@@ -39,10 +39,10 @@ except ImportError:  # keeps the server bootable without the push libraries
 
 TOPICS = {
     "flood": "น้ำท่วมถนน",
-    "zone": "เขตเตือนภัย/คลองล้นตลิ่ง",
+    "zone": "เขตเสี่ยงน้ำท่วม / คลองล้นตลิ่ง",
     "incident": "อุบัติเหตุ/ปิดถนน",
-    "air": "PM2.5",
-    "system": "ระบบ",
+    "air": "ฝุ่น PM2.5",
+    "system": "ระบบขัดข้อง (ผู้ดูแล)",
 }
 TOPIC_URL = {"flood": "/#water", "zone": "/#water", "incident": "/#dashboard", "air": "/#map", "system": "/#dashboard"}
 CHECK_SECONDS = 60
@@ -148,7 +148,7 @@ class AlertService:
                 depths = sorted({r["depth"] for r in reps if r.get("depth")})
                 depth = f" · ระดับ{'/'.join(depths)}" if depths else ""
                 out.append({"topic": "flood", "key": f"traffy:{district}", "level": 2 if len(reps) >= TRAFFY_SEVERE else 1,
-                            "title": f"ประชาชนแจ้งน้ำท่วม {len(reps)} เรื่อง: เขต{district}",
+                            "title": f"คนแจ้งน้ำท่วม {len(reps)} เรื่อง: เขต{district}",
                             "body": f"Traffy Fondue ในชั่วโมงที่ผ่านมา{depth} · {reps[0].get('text', '')[:100]}"})
 
         water = self._call("water") or {}
@@ -157,7 +157,7 @@ class AlertService:
                 storm = f" · พายุเริ่ม {z['storm_at']} น." if z.get("storm_at") else ""
                 out.append({"topic": "zone", "key": f"zone:{z.get('id')}", "level": 1,
                             "title": f"เตือนภัยสีแดง: {z.get('name')}",
-                            "body": f"{z.get('areas')} · ฝน 24 ชม. {z.get('rain_24h')} มม. ลมกระโชก {z.get('gust_max', 0):.0f} กม./ชม.{storm}"})
+                            "body": f"{z.get('areas')} · ฝน 24 ชม. {z.get('rain_24h')} มม. ลมแรงสุด {z.get('gust_max', 0):.0f} กม./ชม.{storm}"})
         series = set()
         for w in (self._call("tmd") or {}).get("active") or []:    # newest issue first
             if w.get("bkk") and w.get("series") not in series:
@@ -186,7 +186,7 @@ class AlertService:
         for i in inc.get("longdo") or []:
             if i.get("kind") == "accident":
                 out.append({"topic": "incident", "key": _event_key(i.get("title")), "level": 1,
-                            "title": f"อุบัติเหตุ (Longdo): {i.get('title')}", "body": (i.get("description") or "")[:140]})
+                            "title": f"อุบัติเหตุ (ข่าวจราจร): {i.get('title')}", "body": (i.get("description") or "")[:140]})
         ev = self._call("bma_events") or {}
         for e in ev.get("items") or []:
             title = e.get("title") or ""
@@ -200,7 +200,7 @@ class AlertService:
         for a in air.get("items") or []:
             if a.get("level") == "very_unhealthy":
                 out.append({"topic": "air", "key": f"air:{a.get('id')}", "level": 1,
-                            "title": f"PM2.5 {a.get('pm25')} µg/m³: {a.get('name')}",
+                            "title": f"ฝุ่น PM2.5 {a.get('pm25')}: {a.get('name')}",
                             "body": f"{a.get('label')} · {a.get('area') or ''} {a.get('province') or ''}".strip()})
 
         h = self._call("health") or {}

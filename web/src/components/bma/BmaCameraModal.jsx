@@ -52,15 +52,15 @@ export default function BmaCameraModal({ cam, onClose }) {
                 </p>
                 {liveStats?.live && (
                   <span className="text-xs text-emerald-600 font-medium flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" /> วิเคราะห์สด Real-time
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" /> AI กำลังนับสด
                   </span>
                 )}
               </div>
-              <span className="text-xs text-slate-500">สะสมรอบนี้ {cam.acc_total || 0} คัน</span>
+              <span className="text-xs text-slate-500">ยอดรอบนี้ {cam.acc_total || 0} คัน</span>
             </div>
             <div className="flex items-center gap-2">
               <Button size="sm" variant={live ? 'secondary' : 'primary'} onClick={() => setLive((v) => !v)}>
-                {live ? 'สลับเป็นภาพนิ่งสด' : 'ดูสตรีมสดต่อเนื่อง (YOLO)'}
+                {live ? 'กลับเป็นภาพนิ่ง' : 'ดูภาพเคลื่อนไหวต่อเนื่อง'}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setTick(Date.now())} title="ดึงภาพใหม่อีกครั้ง">
                 รีเฟรชภาพ
@@ -97,7 +97,7 @@ export default function BmaCameraModal({ cam, onClose }) {
           <div className="absolute top-3 left-3 flex items-center gap-2 z-20">
             <span className="rounded-md bg-red-600/90 text-white text-xs font-semibold px-2 py-0.5 flex items-center gap-1.5 shadow backdrop-blur-xs">
               <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-              {live ? 'สตรีมสด Real-time (YOLO)' : 'ภาพสด Real-time'}
+              {live ? 'ภาพสดต่อเนื่อง' : 'ภาพสด'}
             </span>
           </div>
         </div>

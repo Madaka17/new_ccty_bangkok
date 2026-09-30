@@ -311,8 +311,8 @@ class HelmetPatrol:
 
     def _agent_reason(self, now):
         if self.agent_error and now - self.agent_error["ts"] < self.agent_error.get("for", AGENT_BACKOFF_S):
-            return "AI agent หยุดชั่วคราว: " + self.agent_error["message"]
-        return "เกินงบเรียก AI ต่อชั่วโมง"
+            return "AI ตรวจซ้ำพักชั่วคราว: " + self.agent_error["message"]
+        return "ใช้ AI ตรวจซ้ำครบโควตาชั่วโมงนี้แล้ว"
 
     def _worker(self):
         while True:
@@ -353,12 +353,12 @@ class HelmetPatrol:
             return
         if agent == "auto" and local and local[0] == "helmet":
             self._update(hid, verdict="helmet", source="local", riders=1, no_helmet=0, confidence=round(local[1], 2),
-                         note=f"โมเดลในเครื่องเห็นหมวกกันน็อก ({local[1]:.0%})")
+                         note=f"AI ของระบบเห็นหมวกกันน็อก (มั่นใจ {local[1]:.0%})")
             self.last_check = int(now)
             return
         provider = self.provider()
         if not provider or (agent == "auto" and not self._budget_ok(now)):
-            reason = self._agent_reason(now) if provider else "ไม่มี AI agent ตรวจ (ตั้ง LOCAL_LLM_MODEL, GEMINI_API_KEY หรือ ANTHROPIC_API_KEY)"
+            reason = self._agent_reason(now) if provider else "ไม่มี AI ตรวจซ้ำ"
             self._settle_without_agent(hid, camid, cam, crop, marked, local, reason, provider or "none")
             return
         jpeg = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 90])[1].tobytes()
@@ -370,15 +370,15 @@ class HelmetPatrol:
         except Exception as e:  # noqa: BLE001
             msg = str(e)
             if "429" in msg or "RATE_LIMIT" in msg:
-                self.agent_error = {"ts": now, "message": "ชนลิมิตต่อนาทีของ API", "for": RATE_BACKOFF_S}
+                self.agent_error = {"ts": now, "message": "เรียกใช้ถี่เกินไป", "for": RATE_BACKOFF_S}
                 print(f"[Helmet] cloud agent rate-limited, pausing {RATE_BACKOFF_S}s")
             elif any(k in msg for k in ("402", "401", "400", "RESOURCE_EXHAUSTED", "credits", "API key")):
-                short = "เครดิต/โควตา API หมด" if ("402" in msg or "credits" in msg or "RESOURCE_EXHAUSTED" in msg) else msg[:120]
+                short = "โควตา AI หมด" if ("402" in msg or "credits" in msg or "RESOURCE_EXHAUSTED" in msg) else "ตั้งค่า AI ไม่ถูกต้อง"
                 self.agent_error = {"ts": now, "message": short, "for": AGENT_BACKOFF_S}
                 print(f"[Helmet] cloud agent paused {AGENT_BACKOFF_S}s: {msg[:160]}")
             else:
                 print(f"[Helmet] cloud agent error: {msg[:160]}")
-            self._settle_without_agent(hid, camid, cam, crop, marked, local, "AI agent ไม่ตอบ: " + msg[:100], provider)
+            self._settle_without_agent(hid, camid, cam, crop, marked, local, "AI ตรวจซ้ำไม่ตอบ", provider)
             return
         self.agent_error = None
         self._apply_verdict(hid, camid, cam, crop, marked, text, provider)
@@ -470,19 +470,19 @@ class HelmetPatrol:
     def _settle_local(self, hid, camid, cam, crop, marked, local):
         """Verdict from the local helmet detector alone (reanalyse with agent=local): no API call at all."""
         if not local:
-            self._update(hid, verdict="unclear", source="local", note="โมเดลในเครื่องไม่เห็นหัวผู้ขับขี่ชัดพอจะตัดสิน")
+            self._update(hid, verdict="unclear", source="local", note="AI ของระบบเห็นหัวผู้ขับขี่ไม่ชัด ตัดสินไม่ได้")
         elif local[0] == "no_helmet":
             self._finish_no_helmet(hid, camid, cam, crop, marked, 1, 1, local[1],
-                                   f"โมเดลในเครื่องไม่เห็นหมวกกันน็อก ({local[1]:.0%})", "local")
+                                   f"AI ของระบบไม่เห็นหมวกกันน็อก (มั่นใจ {local[1]:.0%})", "local")
         else:
             self._update(hid, verdict="helmet", source="local", riders=1, no_helmet=0, confidence=round(local[1], 2),
-                         note=f"โมเดลในเครื่องเห็นหมวกกันน็อก ({local[1]:.0%})")
+                         note=f"AI ของระบบเห็นหมวกกันน็อก (มั่นใจ {local[1]:.0%})")
 
     def _settle_without_agent(self, hid, camid, cam, crop, marked, local, reason, provider):
         """Agent unavailable: trust the local detector when it flagged no helmet, else leave it unclear."""
         if local and local[0] == "no_helmet":
             self._finish_no_helmet(hid, camid, cam, crop, marked, 1, 1, local[1],
-                                   f"โมเดลในเครื่องไม่เห็นหมวกกันน็อก ({local[1]:.0%}) · {reason}", "local")
+                                   f"AI ของระบบไม่เห็นหมวกกันน็อก (มั่นใจ {local[1]:.0%}) · {reason}", "local")
         else:
             self._update(hid, verdict="unclear", source=provider, note=reason)
 

@@ -1,37 +1,37 @@
 import NavIcon from './NavIcons.jsx';
 
-// Left navigation on a navy panel, grouped by what the page is for. `hint` is the Thai one-liner
-// shown as the tooltip; the label is also the page's title in its header and the mobile top bar.
+// Left navigation on a navy panel, grouped by what the page is for. `hint` is the one-liner shown as the
+// tooltip; the label is also the page's title in its header and the mobile top bar.
 export const NAV_GROUPS = [
   {
-    label: 'Overview',
+    label: 'ภาพรวม',
     items: [
-      { id: 'dashboard', label: 'Traffic Dashboard', hint: 'ภาพรวมจราจร เหตุการณ์สด และคำแนะนำการระบายรถ' },
-      { id: 'map', label: 'Traffic Map', hint: 'แผนที่เส้นจราจรสด กล้อง น้ำท่วม และจุดเสี่ยง' },
+      { id: 'dashboard', label: 'ภาพรวมจราจร', hint: 'รถติดตรงไหน มีเหตุอะไรบนถนน และควรเลี่ยงทางไหน' },
+      { id: 'map', label: 'แผนที่จราจร', hint: 'แผนที่รถติด กล้อง น้ำท่วม และจุดอันตราย' },
     ],
   },
   {
-    label: 'Cameras & AI',
+    label: 'กล้อง',
     items: [
-      { id: 'yolo', label: 'Camera AI & Analysis', hint: 'AI ตรวจจับรถสด นับรถกล้อง กทม. ตรวจหมวกกันน็อกและรถย้อนศร' },
-      { id: 'cameras', label: 'My Cameras', hint: 'เลือกกล้อง CCTV มาดูภาพสดพร้อมกันได้ 9 กล้อง' },
+      { id: 'yolo', label: 'กล้อง AI', hint: 'AI นับรถจากกล้อง ค้นหากล้อง และตรวจคนไม่สวมหมวกกันน็อกหรือขับย้อนศร' },
+      { id: 'cameras', label: 'ดูกล้องสด', hint: 'เลือกกล้องมาดูภาพสดพร้อมกันได้ 9 กล้อง' },
     ],
   },
   {
-    label: 'City Watch',
+    label: 'เฝ้าระวังเมือง',
     items: [
-      { id: 'water', label: 'Water Forecast', hint: 'ระดับน้ำ เฝ้าระวังน้ำท่วม การแจ้งน้ำท่วม และ AI คาดการณ์' },
-      { id: 'safety', label: 'Accidents & Risk', hint: 'อุบัติเหตุ มาตรการรายจุด และจุดเสี่ยง กทม.' },
-      { id: 'alerts', label: 'Alerts', hint: 'ตั้งค่าการแจ้งเตือนและประกาศเตือนภัย' },
-      { id: 'enviro', label: 'Earthquake', hint: 'ENVIRO Seismic Command: เฝ้าระวังและเตือนภัยแผ่นดินไหว' },
+      { id: 'water', label: 'น้ำท่วม', hint: 'ระดับน้ำ น้ำเหนือ ถนนที่น้ำท่วม จุดพักพิง และ AI สรุปสถานการณ์' },
+      { id: 'safety', label: 'อุบัติเหตุ', hint: 'จุดที่เกิดอุบัติเหตุบ่อย และจุดเสี่ยงในกรุงเทพฯ' },
+      { id: 'alerts', label: 'แจ้งเตือน', hint: 'ประกาศเตือนภัย และตั้งให้เว็บเตือนเมื่อมีเหตุ' },
+      { id: 'enviro', label: 'แผ่นดินไหว', hint: 'เฝ้าระวังและเตือนภัยแผ่นดินไหว' },
     ],
   },
   {
-    label: 'Tools',
+    label: 'เครื่องมือ',
     items: [
-      { id: 'ai', label: 'Ask AI', hint: 'ถาม AI เรื่องจราจร น้ำท่วม หรือเรื่องทั่วไป' },
-      { id: 'report', label: 'Flood Pin', hint: 'แจ้งน้ำท่วมผ่าน Traffy Fondue · แผนที่เรื่องที่ประชาชนแจ้ง 6 ชม.' },
-      { id: 'visitors', label: 'Visitors', hint: 'สถิติผู้เข้าใช้งานเว็บ' },
+      { id: 'ai', label: 'ถาม AI', hint: 'ถาม AI เรื่องรถติด น้ำท่วม หรือเรื่องทั่วไป' },
+      { id: 'report', label: 'แจ้งน้ำท่วม', hint: 'แจ้งน้ำท่วมถึงเขต ผ่าน Traffy Fondue และดูเรื่องที่คนแจ้งใน 6 ชม.' },
+      { id: 'visitors', label: 'สถิติผู้ใช้', hint: 'มีคนใช้เว็บกี่คน และดูหน้าไหนมากที่สุด' },
     ],
   },
 ];
@@ -58,7 +58,7 @@ function LogoMark() {
 
 export default function Sidebar({ page, onNavigate, aiActive, liveCount = 0, onClose }) {
   const badges = {
-    ai: aiActive ? 'ทำงาน' : null,
+    ai: aiActive ? 'พร้อม' : null,
     cameras: liveCount ? `${liveCount}` : null,
   };
   return (
@@ -67,7 +67,7 @@ export default function Sidebar({ page, onNavigate, aiActive, liveCount = 0, onC
         <LogoMark />
         <div className="min-w-0 flex-1">
           <p className="text-[15px] font-semibold text-white tracking-tight leading-tight">BKK StreetSmart</p>
-          <p className="text-[10.5px] text-[#9fb2cc] leading-tight">Bangkok Traffic Analytics</p>
+          <p className="text-[10.5px] text-[#9fb2cc] leading-tight">จราจรและน้ำท่วม กรุงเทพฯ</p>
         </div>
         {onClose && (
           <button

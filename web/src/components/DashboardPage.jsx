@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchTrafficSummary, fetchBmaAnalytics, fetchAnalytics, fetchOnlineCount, fetchFloodStatus } from '../lib/api.js';
 import { trackView } from '../lib/telemetry.js';
-import { Button, Badge } from './dashboard/ui.jsx';
+import { Button } from './dashboard/ui.jsx';
 import { PageHeader, Tabs } from './dashboard/primitives.jsx';
 import { fmtDateTime, fmtNum } from './dashboard/format.js';
+import { PAGE_TITLES } from './Sidebar.jsx';
 import FlowOverview from './dashboard/FlowOverview.jsx';
 import IncidentPanel from './dashboard/IncidentPanel.jsx';
 import DensityPanel from './dashboard/DensityPanel.jsx';
@@ -15,10 +16,10 @@ import BMAEventFeed from './water/BMAEventFeed.jsx';
 const POLL_MS = 60000;
 // Dashboard sections; each tab groups one topic
 const SECTIONS = [
-  { id: 'overview', label: 'ภาพรวมจราจร' },
-  { id: 'road-risk', label: 'วิเคราะห์รายถนน' },
-  { id: 'incidents', label: 'เหตุการณ์สด' },
-  { id: 'bma-reports', label: 'รายงานสดจากศูนย์' },
+  { id: 'overview', label: 'รถติดตอนนี้' },
+  { id: 'road-risk', label: 'ถนนแต่ละสาย' },
+  { id: 'incidents', label: 'อุบัติเหตุและรถเสีย' },
+  { id: 'bma-reports', label: 'ข่าวจากศูนย์ กทม.' },
 ];
 
 
@@ -136,7 +137,7 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title={source === 'bma' ? 'Traffic Dashboard' : 'แดชบอร์ดสภาพจราจร Longdo'}
+        title={PAGE_TITLES.dashboard}
         description={
           activeSummary
             ? `ข้อมูลล่าสุด ${fmtDateTime(activeSummary.updated_at)}`
@@ -149,20 +150,19 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
             </Button>
             <div
               className="inline-flex items-center gap-2 h-8 px-3 rounded-lg border border-cream-200 bg-white text-xs shadow-xs"
-              title="ผู้ใช้ออนไลน์ตอนนี้ (heartbeat ภายใน 90 วินาที)"
+              title="จำนวนคนที่เปิดเว็บอยู่ตอนนี้"
             >
               <span className="flex items-center gap-1.5 font-medium text-ink-900">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
-                ผู้ใช้ออนไลน์
+                คนดูอยู่ตอนนี้
               </span>
               <span className="font-semibold text-emerald-600 dark:text-emerald-400 text-sm tabular-nums">
                 {onlineCount != null ? fmtNum(onlineCount) : '–'}
               </span>
               <span className="text-[11px] text-ink-600">คน</span>
-              <Badge tone="green" dot>Real-time</Badge>
             </div>
           </div>
         }
@@ -178,7 +178,7 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
       <CityStatusStrip summary={activeSummary} incidents={incidents} flood={flood} onNavigate={onNavigate} isActive={isActive} />
 
       <Tabs
-        label="หมวดข้อมูลแดชบอร์ด"
+        label="หมวดข้อมูลจราจร"
         value={section}
         onChange={(id) => {
           setSection(id);

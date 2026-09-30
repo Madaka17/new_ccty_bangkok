@@ -62,7 +62,7 @@ export default function CameraCard({ cam, status, isActive, isFav, km, onToggleA
               {level.text}
             </span>
           ) : (
-            <span className="rounded-lg px-2 py-0.5 text-[11px] text-ink-400 bg-cream-100" title="AI ยังไม่ได้วัดกล้องนี้">รอ AI วัด</span>
+            <span className="rounded-lg px-2 py-0.5 text-[11px] text-ink-400 bg-cream-100" title="AI ยังไม่ได้ดูกล้องนี้">AI ยังไม่ได้ดู</span>
           )}
           {typeof km === 'number' && (
             <span className="text-[11px] text-slate-500">{km < 1 ? `${Math.round(km * 1000)} ม.` : `${km.toFixed(1)} กม.`}</span>
@@ -85,8 +85,8 @@ export default function CameraCard({ cam, status, isActive, isFav, km, onToggleA
         <button
  type="button"
  onClick={onOpenAI}
- aria-label="เปิดผู้ช่วย AI กับกล้องนี้"
- title="ผู้ช่วย AI"
+ aria-label="ให้ AI นับรถจากกล้องนี้"
+ title="ให้ AI นับรถจากกล้องนี้"
  className="cursor-pointer h-8 px-2 rounded-lg flex items-center justify-center opacity-70 group-hover:opacity-100 hover:bg-slate-100 transition-all duration-200"
         >
           <span className="text-xs text-slate-600">AI</span>

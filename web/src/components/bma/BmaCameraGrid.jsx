@@ -72,14 +72,14 @@ export default function BmaCameraGrid({ cameras, loading, filters, onFilters }) 
           ))}
         </select>
         <Segmented
-          label="ระดับจราจร"
+          label="รถติดแค่ไหน"
           value={level}
           onChange={(v) => set({ level: v })}
           options={[
             ['all', 'ทั้งหมด'],
             ['has', 'มีรถ'],
-            ['heavy', 'หนาแน่น'],
-            ['moderate', 'ปานกลาง'],
+            ['heavy', 'ติดขัด'],
+            ['moderate', 'ชะลอตัว'],
             ['free', 'คล่องตัว'],
           ]}
         />
@@ -105,10 +105,10 @@ export default function BmaCameraGrid({ cameras, loading, filters, onFilters }) 
               ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-400/50 hover:bg-emerald-700'
               : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
           }`}
-          title="เปิดดึงภาพสดจากกล้อง กทม. พร้อมรัน YOLO นับรถอัตโนมัติทุก 3.5 วินาที"
+          title="ดูภาพสดจากกล้อง กทม. และให้ AI นับรถใหม่ทุก 3.5 วินาที"
         >
           <span className={`w-2 h-2 rounded-full ${realtime ? 'bg-white animate-ping' : 'bg-slate-400'}`} />
-          {realtime ? 'โหมดสด Real-time: เปิดอยู่' : 'เปิดภาพสด Real-time'}
+          {realtime ? 'ภาพสด: เปิดอยู่' : 'เปิดภาพสด'}
         </button>
         <span className="text-xs text-slate-500 ml-auto">
           แสดง {Math.min(limit, shown.length)} จาก {shown.length} กล้อง
@@ -151,10 +151,10 @@ export default function BmaCameraGrid({ cameras, loading, filters, onFilters }) 
                       สด AI
                     </span>
                   )}
-                  {offline && <span className="absolute inset-0 flex items-center justify-center bg-slate-900/70 text-slate-200 text-sm">ออฟไลน์</span>}
+                  {offline && <span className="absolute inset-0 flex items-center justify-center bg-slate-900/70 text-slate-200 text-sm">ไม่มีภาพ</span>}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2.5">
                     <span className="text-xs font-medium text-white flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" /> แตะเพื่อดูสตรีมสด YOLO Real-time
+                      <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" /> แตะเพื่อดูภาพสด
                     </span>
                   </div>
                 </button>
@@ -164,7 +164,7 @@ export default function BmaCameraGrid({ cameras, loading, filters, onFilters }) 
                       <Truncate text={cam.short_title || cam.title} className="text-sm font-medium text-slate-900" />
                       <Truncate text={`${cam.district || 'กทม.'} · ${cam.camera_code || cam.camid}`} className="text-xs text-slate-500" />
                     </div>
-                    <Badge tone={offline ? 'neutral' : lv.tone}>{offline ? 'ออฟไลน์' : lv.label}</Badge>
+                    <Badge tone={offline ? 'neutral' : lv.tone}>{offline ? 'ไม่มีภาพ' : lv.label}</Badge>
                   </div>
                   <div className="flex items-center justify-between text-xs text-slate-600">
                     <span className="tabular-nums">

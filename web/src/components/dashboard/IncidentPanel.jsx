@@ -7,11 +7,11 @@ const KIND = {
   accident: { label: 'อุบัติเหตุ', tone: 'red' },
   breakdown: { label: 'รถเสีย / กีดขวาง', tone: 'yellow' },
 };
-const SOURCE = { camera: 'กล้อง AI', longdo: 'รายงาน Longdo' };
+const SOURCE = { camera: 'กล้อง AI', longdo: 'ข่าวจราจร' };
 const FILTERS = [
   ['all', 'ทั้งหมด'],
-  ['camera', 'กล้อง AI'],
-  ['longdo', 'รายงานจราจร'],
+  ['camera', 'กล้อง AI เห็น'],
+  ['longdo', 'ข่าวจราจร'],
 ];
 
 // Longdo timestamps are 'YYYY-MM-DD HH:MM:SS' local time
@@ -19,9 +19,7 @@ const longdoClock = (s) => (s ? `${s.slice(11, 16)} น.` : '');
 
 function metaLine(i) {
   if (i.source === 'camera') {
-    const parts = [`ตรวจพบ ${agoText(i.ts)}`];
-    if (i.confidence != null) parts.push(`ความมั่นใจ ${Math.round(i.confidence * 100)}%`);
-    return parts.join(' · ');
+    return `กล้อง AI เห็นเมื่อ ${agoText(i.ts)}`;
   }
   const parts = [SOURCE.longdo];
   if (i.start) parts.push(`เริ่ม ${longdoClock(i.start)}`);
@@ -72,27 +70,25 @@ function IncidentRow({ i, expanded, onToggle, onOpenAI, onNavigate }) {
       {expanded && (
         <div id={detailId} className="mt-3 ml-0 sm:ml-[92px] rounded-lg border border-slate-200 bg-slate-50 p-3 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-            <dt className="text-slate-500">แหล่งที่มา</dt>
+            <dt className="text-slate-500">ข้อมูลจาก</dt>
             <dd className="text-slate-900">{SOURCE[i.source] || i.source}</dd>
             <dt className="text-slate-500">เวลาที่พบ</dt>
             <dd className="text-slate-900 tabular-nums">{i.source === 'camera' ? fmtDateTime(i.ts) : longdoClock(i.start) || '–'}</dd>
             {i.source === 'camera' && (
               <>
-                <dt className="text-slate-500">อัปเดตล่าสุด</dt>
+                <dt className="text-slate-500">เห็นล่าสุด</dt>
                 <dd className="text-slate-900">{agoText(i.last_seen)}</dd>
-                <dt className="text-slate-500">รถหยุดนิ่ง</dt>
+                <dt className="text-slate-500">รถจอดนิ่งมา</dt>
                 <dd className="text-slate-900">{i.stopped_s != null ? fmtDuration(i.stopped_s) : '–'}</dd>
-                <dt className="text-slate-500">คนใกล้จุดเกิดเหตุ</dt>
-                <dd className="text-slate-900">{i.persons_near ?? 0} คน</dd>
               </>
             )}
             {i.source === 'longdo' && (
               <>
-                <dt className="text-slate-500">คาดว่าสิ้นสุด</dt>
+                <dt className="text-slate-500">คาดว่าเคลียร์เสร็จ</dt>
                 <dd className="text-slate-900">{longdoClock(i.stop) || 'ไม่ระบุ'}</dd>
                 {i.severity && (
                   <>
-                    <dt className="text-slate-500">ระดับ</dt>
+                    <dt className="text-slate-500">ความรุนแรง</dt>
                     <dd className="text-slate-900">{i.severity}</dd>
                   </>
                 )}
@@ -125,7 +121,7 @@ function IncidentRow({ i, expanded, onToggle, onOpenAI, onNavigate }) {
 
 function ResolvedList({ items, loading, error, onRetry }) {
   const [open, setOpen] = useState(false);
-  if (error && !items) return <ErrorState message="โหลดประวัติเหตุการณ์ไม่สำเร็จ" onRetry={onRetry} />;
+  if (error && !items) return <ErrorState message="โหลดเหตุที่ผ่านมาไม่สำเร็จ" onRetry={onRetry} />;
   if (loading && !items) return <Skeleton className="h-9" />;
   const n = items?.length || 0;
   return (
@@ -137,7 +133,7 @@ function ResolvedList({ items, loading, error, onRetry }) {
         aria-controls="incident-resolved"
         className={`cursor-pointer w-full flex items-center justify-between text-left rounded-lg px-1 py-1 hover:bg-slate-50 ${FOCUS}`}
       >
-        <span className="text-[13px] font-medium text-slate-700">เหตุการณ์ที่คลี่คลายแล้ว ใน 24 ชม.</span>
+        <span className="text-[13px] font-medium text-slate-700">เหตุที่เคลียร์แล้ว ใน 24 ชม.</span>
         <span className="flex items-center gap-2 text-xs text-slate-500">
           {n} รายการ
           {open ? 'ซ่อน' : 'แสดง'}
@@ -146,7 +142,7 @@ function ResolvedList({ items, loading, error, onRetry }) {
       {open && (
         <div id="incident-resolved" className="mt-2">
           {n === 0 ? (
-            <p className="text-[13px] text-slate-500 px-1 py-2">ไม่มีเหตุการณ์ที่คลี่คลายใน 24 ชม. ที่ผ่านมา</p>
+            <p className="text-[13px] text-slate-500 px-1 py-2">ไม่มีเหตุที่เคลียร์แล้วใน 24 ชม. ที่ผ่านมา</p>
           ) : (
             <ul className="divide-y divide-slate-100">
               {items.map((i) => {
@@ -208,14 +204,14 @@ export default function IncidentPanel({ incidents, onOpenAI, onNavigate }) {
         id="incident-title"
         title={
           <span className="inline-flex items-center gap-2">
-            เหตุการณ์บนถนน
-            {total > 0 ? <Badge tone="red" dot>{total} จุดกำลังเกิด</Badge> : incidents ? <Badge tone="green" dot>ไม่มีเหตุการณ์</Badge> : null}
+            อุบัติเหตุและรถเสียตอนนี้
+            {total > 0 ? <Badge tone="red" dot>{total} จุด</Badge> : incidents ? <Badge tone="green" dot>ไม่มีเหตุ</Badge> : null}
           </span>
         }
-        description={incidents ? `อัปเดต ${fmtTime(incidents.updated)} น. · กล้อง AI ยืนยันด้วยภาพก่อนแจ้ง · รายงานสาธารณะจาก Longdo` : 'กำลังโหลด'}
+        description={incidents ? `อัปเดต ${fmtTime(incidents.updated)} น. · จากกล้อง AI และข่าวจราจร` : 'กำลังโหลด'}
         action={
           <div className="flex items-center gap-2">
-            <Segmented options={FILTERS} value={filter} onChange={setFilter} label="กรองแหล่งที่มา" />
+            <Segmented options={FILTERS} value={filter} onChange={setFilter} label="ข้อมูลจาก" />
             <Button size="sm" onClick={() => onNavigate('map')} disabled={!total}>
               แผนที่
             </Button>
@@ -232,8 +228,8 @@ export default function IncidentPanel({ incidents, onOpenAI, onNavigate }) {
           </div>
         ) : active.length === 0 ? (
           <EmptyState
-            title={filter === 'all' ? 'ไม่มีเหตุการณ์ที่กำลังเกิดขึ้น' : `ไม่มีเหตุการณ์จาก${FILTERS.find(([k]) => k === filter)[1]}`}
-            description="ระบบตรวจสอบกล้องที่นับต่อเนื่องและรายงานสาธารณะทุก 30 วินาที"
+            title={filter === 'all' ? 'ตอนนี้ไม่มีอุบัติเหตุหรือรถเสีย' : `ไม่มีเหตุจาก${FILTERS.find(([k]) => k === filter)[1]}`}
+            description="ระบบตรวจทุก 30 วินาที"
           />
         ) : (
           <ul className="divide-y divide-slate-100 -my-1">

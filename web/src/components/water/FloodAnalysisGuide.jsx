@@ -7,10 +7,10 @@ import { fmtDateTime, agoText } from '../dashboard/format.js';
 
 const POLL_MS = 60000;
 const TABS = [
-  ['forecast', '🔮 คาดการณ์สถานการณ์'],
-  ['diagnosis', '🔍 วิเคราะห์ความเสี่ยง 3 น้ำ (เหนือ/หนุน/ฝน)'],
-  ['action', '🛡️ แนวทางแก้ไข & มาตรการภาครัฐ'],
-  ['public', '🚗 คู่มือประชาชน & ผู้ใช้รถ'],
+  ['forecast', '🔮 จะเกิดอะไรขึ้น'],
+  ['diagnosis', '🔍 น้ำมาจากไหน (น้ำเหนือ น้ำทะเล ฝน)'],
+  ['action', '🛡️ รัฐควรทำอะไร'],
+  ['public', '🚗 ประชาชนควรทำอะไร'],
 ];
 const LEVEL = {
   normal: { tone: 'green', label: 'ปกติ', box: 'bg-emerald-50/70 border-emerald-200 text-emerald-900' },
@@ -25,14 +25,14 @@ const ZONE = {
   green: { dot: 'bg-emerald-500', box: 'border-emerald-200 bg-emerald-50/30', foot: 'border-emerald-100 text-emerald-700' },
 };
 const WATERS = [
-  ['upstream', '🏔️', '1. ปริมาณน้ำเหนือ (Upstream)', 'เขื่อนและแม่น้ำตอนบน'],
-  ['tide', '🌊', '2. น้ำทะเลหนุน (Tidal Surge)', 'ปากอ่าวไทยและสถานีปากแม่น้ำ'],
-  ['rain', '🌧️', '3. น้ำฝนและน้ำในพื้นที่ (Local Rain)', 'คูคลอง ท่อระบายน้ำ และถนน'],
+  ['upstream', '🏔️', '1. น้ำเหนือ', 'น้ำจากเขื่อนและแม่น้ำทางเหนือ'],
+  ['tide', '🌊', '2. น้ำทะเลหนุน', 'น้ำทะเลดันขึ้นมาที่ปากแม่น้ำ'],
+  ['rain', '🌧️', '3. ฝนในเมือง', 'ฝนที่ตกลงคลอง ท่อระบายน้ำ และถนน'],
 ];
 const MEASURES = [
-  ['immediate', '⚡', 'มาตรการเร่งด่วน (0 - 24 ชม.)'],
-  ['medium', '🔧', 'มาตรการระยะกลาง (1 - 3 เดือน)'],
-  ['long', '🏗️', 'มาตรการโครงสร้างระยะยาว'],
+  ['immediate', '⚡', 'ทำทันที (ภายใน 24 ชม.)'],
+  ['medium', '🔧', 'ทำในอีก 1-3 เดือน'],
+  ['long', '🏗️', 'แก้ระยะยาว'],
 ];
 
 function Items({ items }) {
@@ -74,7 +74,7 @@ export default function FloodAnalysisGuide({ isActive, onNavigate, onAsk }) {
     runWaterAgent()
       .then(setData)
       .catch((e) => setRunError(e.message === 'forbidden'
-        ? 'สั่งวิเคราะห์ใหม่ได้เฉพาะทีมปฏิบัติการ (เครือข่ายภายใน)'
+        ? 'สั่งวิเคราะห์ใหม่ได้เฉพาะเจ้าหน้าที่'
         : 'วิเคราะห์ไม่สำเร็จ ลองใหม่อีกครั้ง'))
       .finally(() => setRunning(false));
   };
@@ -90,13 +90,13 @@ export default function FloodAnalysisGuide({ isActive, onNavigate, onAsk }) {
           <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center text-xl shrink-0 shadow-sm">📋</div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-base font-bold text-slate-900">วิเคราะห์และคาดการณ์สถานการณ์น้ำท่วม พร้อมแนวทางป้องกัน</h3>
+              <h3 className="text-base font-bold text-slate-900">AI คาดการณ์น้ำท่วมรายโซน และวิธีรับมือ</h3>
               {r && <Badge tone={lv.tone} dot>{lv.label}</Badge>}
             </div>
             <p className="text-xs text-slate-600 mt-0.5">
               {r
-                ? `AI ${r.model} · วิเคราะห์ ${fmtDateTime(r.generated_at)} (${agoText(r.generated_at)}) · ดึงข้อมูลใหม่ทุก ${Math.round((data.interval_s || 300) / 60)} นาที วิเคราะห์ใหม่เมื่อข้อมูลเปลี่ยน`
-                : 'AI อ่านเซ็นเซอร์น้ำบนถนน แม่น้ำ/คลอง น้ำทะเลหนุน เขื่อน พยากรณ์ฝน Traffy และประกาศกรมอุตุฯ'}
+                ? `วิเคราะห์โดย AI ${fmtDateTime(r.generated_at)} (${agoText(r.generated_at)}) · วิเคราะห์ใหม่เองเมื่อข้อมูลเปลี่ยน`
+                : 'AI ดูน้ำบนถนน แม่น้ำ คลอง น้ำทะเลหนุน เขื่อน ฝน และเรื่องที่คนแจ้ง'}
             </p>
           </div>
         </div>
@@ -110,17 +110,17 @@ export default function FloodAnalysisGuide({ isActive, onNavigate, onAsk }) {
       </div>
 
       {runError && <p role="alert" className="mt-3 text-xs text-red-700">{runError}</p>}
-      {data?.error && <p className="mt-3 text-xs text-amber-700">วิเคราะห์รอบล่าสุดไม่สำเร็จ{r ? ' แสดงผลรอบก่อนหน้า' : ''}: {data.error}</p>}
+      {data?.error && <p className="mt-3 text-xs text-amber-700">วิเคราะห์รอบล่าสุดไม่สำเร็จ{r ? ' แสดงผลรอบก่อนหน้า' : ''}</p>}
 
       {!r ? (
         <div className="mt-4">
           {failed
             ? <EmptyState title="โหลดบทวิเคราะห์ไม่สำเร็จ" action={<Button size="sm" onClick={load}>ลองใหม่</Button>} />
-            : <><p className="text-sm text-slate-600 mb-3">AI กำลังวิเคราะห์ข้อมูลน้ำ รอบแรกเริ่มหลังเปิดเซิร์ฟเวอร์ราว 2 นาที ...</p><Skeleton className="h-40" /></>}
+            : <><p className="text-sm text-slate-600 mb-3">AI กำลังวิเคราะห์ข้อมูลน้ำ ...</p><Skeleton className="h-40" /></>}
         </div>
       ) : (
         <>
-          <div role="tablist" aria-label="หมวดบทวิเคราะห์น้ำท่วม" className="mt-4 flex items-center gap-1.5 border-b border-slate-100 pb-2 overflow-x-auto scroll-soft">
+          <div role="tablist" aria-label="หัวข้อ" className="mt-4 flex items-center gap-1.5 border-b border-slate-100 pb-2 overflow-x-auto scroll-soft">
             {TABS.map(([id, label]) => (
               <button
                 key={id}
@@ -140,7 +140,7 @@ export default function FloodAnalysisGuide({ isActive, onNavigate, onAsk }) {
           {tab === 'forecast' && (
             <div className="mt-4 space-y-3.5">
               <div className={`rounded-xl border p-3.5 ${lv.box}`}>
-                <h4 className="text-xs font-bold uppercase tracking-wide mb-1.5">⚠️ สรุปภาพรวมการคาดการณ์ · {r.status_label}</h4>
+                <h4 className="text-xs font-bold uppercase tracking-wide mb-1.5">⚠️ สรุป · {r.status_label}</h4>
                 <p className="text-xs leading-relaxed">{r.outlook_summary}</p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -159,7 +159,7 @@ export default function FloodAnalysisGuide({ isActive, onNavigate, onAsk }) {
                         <p className="text-[11px] text-slate-700 leading-relaxed mt-1"><strong>พื้นที่เสี่ยง:</strong> {z.areas}</p>
                         <p className="text-[11px] text-slate-600 leading-relaxed mt-1"><strong>คาดการณ์:</strong> {z.forecast}</p>
                       </div>
-                      <div className={`mt-2.5 pt-2 border-t text-[10px] font-medium ${zs.foot}`}>⚡ ข้อมูลอ้างอิง: {z.evidence}</div>
+                      <div className={`mt-2.5 pt-2 border-t text-[10px] font-medium ${zs.foot}`}>⚡ ดูจาก: {z.evidence}</div>
                     </div>
                   );
                 })}
@@ -205,11 +205,11 @@ export default function FloodAnalysisGuide({ isActive, onNavigate, onAsk }) {
           {tab === 'public' && (
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="rounded-xl border border-slate-200 p-3.5">
-                <h4 className="text-xs font-bold text-slate-900 mb-2">🚗 คำแนะนำสำหรับผู้ขับขี่และสัญจรบนถนน</h4>
+                <h4 className="text-xs font-bold text-slate-900 mb-2">🚗 คนขับรถและคนเดินทาง</h4>
                 <Items items={r.public?.drivers} />
               </div>
               <div className="rounded-xl border border-slate-200 p-3.5">
-                <h4 className="text-xs font-bold text-slate-900 mb-2">🏠 คำแนะนำสำหรับผู้อยู่อาศัยริมน้ำและพื้นที่ลุ่มต่ำ</h4>
+                <h4 className="text-xs font-bold text-slate-900 mb-2">🏠 คนที่อยู่ริมน้ำหรือที่ลุ่ม</h4>
                 <Items items={r.public?.residents} />
               </div>
             </div>

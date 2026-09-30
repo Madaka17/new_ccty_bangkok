@@ -192,7 +192,7 @@ export default function App() {
  navigator.geolocation.getCurrentPosition(
         (p) => setUserPos({ lat: p.coords.latitude, lng: p.coords.longitude }),
         () => {
- showToast('ขอตำแหน่งไม่สำเร็จ แสดงกล้องทั้งหมดแทนนะ');
+ showToast('ไม่ได้รับตำแหน่งของคุณ จึงแสดงกล้องทั้งหมดแทน');
  setFilter('all');
         },
         { timeout: 8000 }
@@ -236,7 +236,7 @@ export default function App() {
 
  const askAI = useCallback(
     (road) => {
- setPendingQuestion(road ? `${road} ตอนนี้ระบายรถเป็นยังไง ควรเลี่ยงไหม` : '');
+ setPendingQuestion(road ? `${road} ตอนนี้รถติดไหม ควรเลี่ยงไหม` : '');
  navigate('ai');
     },
     [navigate]
@@ -304,7 +304,7 @@ export default function App() {
 
             {page === 'cameras' && (
               <>
-                <PageHeader title={PAGE_TITLES.cameras} description="เลือกกล้องจากรายการด้านซ้าย ภาพสดจะแสดงทางขวา เปิดพร้อมกันได้ 9 กล้อง" />
+                <PageHeader title={PAGE_TITLES.cameras} description="ติ๊กเลือกกล้องจากรายการ แล้วดูภาพสดได้พร้อมกันสูงสุด 9 กล้อง" />
                 <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-4">
                   <div className="h-[46vh] lg:h-[calc(100vh-13rem)] lg:sticky lg:top-4">
                     <SidePanel
@@ -354,7 +354,7 @@ export default function App() {
               <>
                 <PageHeader
                   title={PAGE_TITLES.enviro}
-                  description="เฝ้าระวังและเตือนภัยแผ่นดินไหวแบบเรียลไทม์ · สถานีตรวจวัด USGS EMSC GEOFON และ TMD · ENVIRO Seismic Command"
+                  description="แผ่นดินไหวล่าสุดทั่วโลกและใกล้ไทย อัปเดตสด จากกรมอุตุนิยมวิทยาและสถานีวัดแผ่นดินไหวต่างประเทศ"
                   actions={
                     <a
                       href="/enviro/"
@@ -383,8 +383,8 @@ export default function App() {
             type="button"
             onClick={() => askAI('')}
             className="fixed bottom-20 lg:bottom-8 right-5 lg:right-8 z-30 w-14 h-14 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-xl shadow-blue-500/35 hover:shadow-blue-500/55 hover:scale-108 active:scale-95 transition-all duration-200 flex items-center justify-center cursor-pointer group"
-            title="ถาม AI ผู้ช่วยจราจร"
-            aria-label="ถาม AI ผู้ช่วยจราจร"
+            title="ถาม AI"
+            aria-label="ถาม AI"
           >
             <BotFace className="w-11 h-11 group-hover:scale-110 transition-transform duration-200" />
           </button>

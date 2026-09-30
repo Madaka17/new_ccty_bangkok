@@ -128,7 +128,7 @@ export default function SidePanel({
         </AnimatePresence>
         {list.length === 0 && (
           <div className="text-center text-sm text-ink-600 py-10">
-            ยังไม่พบกล้องที่ตรงกัน ลองคำอื่นดูนะ
+            ไม่พบกล้องที่ค้นหา ลองพิมพ์คำอื่น
           </div>
         )}
       </div>

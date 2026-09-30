@@ -15,26 +15,26 @@ import { baseStyle, bounds } from './WaterMap.jsx';
 const POLL_MS = 60000;
 // Feeds in drawing order (last on top): the measured and camera-seen points over the many reports
 const SOURCES = [
-  { id: 'report', label: 'รายงาน iTIC / FM91', color: '#7c3aed', r: 4 },
-  { id: 'hdms', label: 'ทางหลวง (กรมทางหลวง)', color: '#be185d', r: 5 },
-  { id: 'user', label: 'ประชาชนแจ้งผ่านเว็บ', color: '#0891b2', r: 6 },
-  { id: 'sensor', label: 'เซ็นเซอร์ กทม.', color: '#dc2626', r: 6 },
-  { id: 'cam', label: 'AI กล้อง', color: '#b91c1c', r: 7 },
+  { id: 'report', label: 'ข่าวจราจร', color: '#7c3aed', r: 4 },
+  { id: 'hdms', label: 'กรมทางหลวง', color: '#be185d', r: 5 },
+  { id: 'user', label: 'คนแจ้งผ่านเว็บ', color: '#0891b2', r: 6 },
+  { id: 'sensor', label: 'เครื่องวัด กทม.', color: '#dc2626', r: 6 },
+  { id: 'cam', label: 'AI ดูกล้อง', color: '#b91c1c', r: 7 },
 ];
 const CAM_LEVEL = {
   severe: { label: 'น้ำท่วมหนัก', color: '#7f1d1d' },
-  flooded: { label: 'น้ำท่วมผิวจราจร', color: '#dc2626' },
+  flooded: { label: 'น้ำท่วมถนน', color: '#dc2626' },
   puddle: { label: 'น้ำขังเล็กน้อย', color: '#f59e0b' },
 };
-const SENSOR_LEVEL = { flood: { label: 'ท่วมขัง > 10 ซม.', color: '#dc2626' }, slight: { label: 'ท่วมเล็กน้อย 5-10 ซม.', color: '#d97706' } };
+const SENSOR_LEVEL = { flood: { label: 'น้ำท่วมเกิน 10 ซม.', color: '#dc2626' }, slight: { label: 'น้ำท่วม 5-10 ซม.', color: '#d97706' } };
 
 // One shape for every feed: where, how bad (label + colour), what was measured or seen, when
 function toPoints(roads, cams, users) {
   const out = [];
   for (const u of users?.items || []) {
     out.push({
-      id: `user-${u.id}`, src: 'user', lat: u.lat, lng: u.lng, name: u.note || 'ประชาชนแจ้งน้ำท่วม', color: '#0891b2',
-      label: 'ประชาชนแจ้ง ยังไม่ยืนยัน', value: `น้ำสูง${u.depth_th} ~${u.depth_cm} ซม.`, ts: u.ts, via: 'แจ้งผ่านเว็บนี้',
+      id: `user-${u.id}`, src: 'user', lat: u.lat, lng: u.lng, name: u.note || 'คนแจ้งน้ำท่วม', color: '#0891b2',
+      label: 'คนแจ้ง ยังไม่ยืนยัน', value: `น้ำสูง${u.depth_th} ~${u.depth_cm} ซม.`, ts: u.ts, via: 'แจ้งผ่านเว็บนี้',
       note: u.photo && u.ai_level_th ? `AI ดูรูปแล้ว: ${u.ai_level_th}${u.ai_note ? ` · ${u.ai_note}` : ''}` : '', image: u.photo,
     });
   }
@@ -45,7 +45,7 @@ function toPoints(roads, cams, users) {
       id: `cam-${c.camid}`, src: 'cam', lat: c.lat, lng: c.lng, name: c.title, color: lv.color, label: lv.label, faded: c.stale,
       area: [c.road, c.district ? `เขต${c.district}` : c.province].filter(Boolean).join(' · '),
       value: `AI มั่นใจ ${Math.round((c.confidence || 0) * 100)}%`, note: c.note_th, ts: c.frame_ts,
-      via: c.kind === 'itic' ? `กล้อง iTIC${c.organization ? ` (${c.organization})` : ''}` : 'กล้อง กทม.',
+      via: c.kind === 'itic' ? `กล้อง ${c.organization || 'iTIC'}` : 'กล้อง กทม.',
       image: `/api/flood/cameras/${encodeURIComponent(c.camid)}/image?t=${c.checked_at}`,
     });
   }
@@ -55,12 +55,12 @@ function toPoints(roads, cams, users) {
     if (p.kind === 'sensor' && SENSOR_LEVEL[p.status]) {
       const lv = SENSOR_LEVEL[p.status];
       out.push({ id: p.id, src: 'sensor', lat: p.lat, lng: p.lng, name: p.name, color: lv.color, label: lv.label, area,
-        value: `${Math.round(p.depth_cm)} ซม.${p.max_cm != null ? ` · สูงสุด ${Math.round(p.max_cm)} ซม.` : ''}`, ts: p.ts, via: 'เซ็นเซอร์ สำนักการระบายน้ำ กทม.' });
+        value: `${Math.round(p.depth_cm)} ซม.${p.max_cm != null ? ` · สูงสุด ${Math.round(p.max_cm)} ซม.` : ''}`, ts: p.ts, via: 'เครื่องวัดน้ำบนถนน กทม.' });
     } else if (p.kind === 'hdms' && p.status === 'hdms') {
       out.push({ id: p.id, src: 'hdms', lat: p.lat, lng: p.lng, name: p.name, color: '#be185d', label: 'ทางหลวงน้ำท่วม', area,
-        value: p.depth_cm ? `${String(p.depth_cm).trim()} ซม. (ประเมินด้วยตา)` : '', note: p.description, ts: p.ts, via: 'กรมทางหลวง (HDMS)' });
+        value: p.depth_cm ? `${String(p.depth_cm).trim()} ซม. (กะด้วยตา)` : '', note: p.description, ts: p.ts, via: 'กรมทางหลวง' });
     } else if (p.kind === 'report' && p.status === 'report') {
-      out.push({ id: p.id, src: 'report', lat: p.lat, lng: p.lng, name: p.name, color: '#7c3aed', label: 'มีรายงานน้ำท่วม', area,
+      out.push({ id: p.id, src: 'report', lat: p.lat, lng: p.lng, name: p.name, color: '#7c3aed', label: 'มีข่าวน้ำท่วม', area,
         note: p.description, ts: p.ts, via: 'Longdo Traffic (iTIC / FM91)' });
     }
   }
@@ -182,11 +182,11 @@ export default function FloodPointsMap({ isActive, onReport }) {
       <div className="p-5 pb-4">
         <SectionHeader
           id="flood-points-title"
-          title="แผนที่จุดน้ำท่วมตอนนี้"
-          description={`เฉพาะจุดที่มีน้ำบนถนน ${all.length ? `${all.length} จุด` : ''} · ไม่รวมเซ็นเซอร์ที่แห้งหรือขัดข้อง และรายงานที่สิ้นสุดแล้ว · แตะจุดเพื่อดูรายละเอียด · รีเฟรชเองทุก 1 นาที`}
+          title="แผนที่ถนนน้ำท่วมตอนนี้"
+          description={`${all.length ? `${all.length} จุดที่มีน้ำบนถนน · ` : ''}แตะจุดเพื่อดูรายละเอียด · อัปเดตทุก 1 นาที`}
           action={onReport && <Button variant="primary" size="sm" onClick={onReport}>📷 แจ้งจุดน้ำท่วม</Button>}
         />
-        <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="แหล่งข้อมูลจุดน้ำท่วม">
+        <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="ข้อมูลจาก">
           {[...SOURCES].reverse().map((s) => (
             <button
               key={s.id}
@@ -219,12 +219,12 @@ export default function FloodPointsMap({ isActive, onReport }) {
           <div className="flex flex-col gap-1.5 text-[11px] text-slate-600">
             <span className="text-xs font-medium text-slate-700">สีของจุด</span>
             {Object.values(CAM_LEVEL).map((l) => (
-              <span key={l.label} className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: l.color, boxShadow: '0 0 0 2px #0f172a' }} />AI กล้อง: {l.label}</span>
+              <span key={l.label} className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: l.color, boxShadow: '0 0 0 2px #0f172a' }} />AI ดูกล้อง: {l.label}</span>
             ))}
             {Object.values(SENSOR_LEVEL).map((l) => (
-              <span key={l.label} className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: l.color }} />เซ็นเซอร์: {l.label}</span>
+              <span key={l.label} className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: l.color }} />เครื่องวัด: {l.label}</span>
             ))}
-            {staleCams > 0 && <span className="text-amber-700">จุดจางคือกล้องที่ภาพเก่ากว่า {cams?.stale_minutes ?? 15} นาที ({staleCams} จุด)</span>}
+            {staleCams > 0 && <span className="text-amber-700">จุดสีจาง = ภาพกล้องเก่า ({staleCams} จุด)</span>}
           </div>
 
           {sel ? (
@@ -243,20 +243,20 @@ export default function FloodPointsMap({ isActive, onReport }) {
               </p>
               {sel.note && <p className="mt-1.5 text-xs text-slate-700 leading-5">{sel.note}</p>}
               {sel.image && (
-                <img src={sel.image} alt={`ภาพที่ AI ใช้ตัดสิน กล้อง ${sel.name}`} loading="lazy" className="mt-2 w-full rounded-md bg-slate-200 object-cover" style={{ aspectRatio: '352 / 288' }} />
+                <img src={sel.image} alt={`ภาพที่ AI ดู จากกล้อง ${sel.name}`} loading="lazy" className="mt-2 w-full rounded-md bg-slate-200 object-cover" style={{ aspectRatio: '352 / 288' }} />
               )}
               <p className={`mt-1.5 text-xs ${sel.faded ? 'text-amber-700' : 'text-slate-500'}`}>
                 {sel.src === 'cam' ? 'ภาพเมื่อ' : sel.src === 'sensor' ? 'วัดเมื่อ' : 'แจ้งเมื่อ'} {fmtTime(sel.ts)} น. ({agoText(sel.ts)}){sel.faded ? ' · ภาพเก่า กล้องยังไม่ส่งภาพใหม่' : ''}
               </p>
             </div>
           ) : (
-            <p className="text-xs text-slate-500">แตะจุดบนแผนที่เพื่อดูระดับน้ำ ภาพ และเวลา · เห็นน้ำท่วมตรงไหน กด "แจ้งจุดน้ำท่วม" ด้านบน</p>
+            <p className="text-xs text-slate-500">แตะจุดบนแผนที่เพื่อดูรายละเอียด · เห็นน้ำท่วมที่ไหน กด "แจ้งจุดน้ำท่วม" ด้านบน</p>
           )}
         </aside>
       </div>
 
       <p className="px-5 py-3 border-t border-slate-200 text-[11px] text-slate-500 leading-4">
-        AI กล้องดูภาพกล้อง กทม. และ iTIC อาจผิดพลาดได้ · เซ็นเซอร์วัดทุก 5 นาที · ทางหลวง รายงาน iTIC / FM91 และประชาชนแจ้งเป็นการแจ้งของคน ยังไม่ผ่านการยืนยัน · จุดสีไม่ใช่ขอบเขตน้ำท่วม
+        AI ดูจากภาพกล้อง อาจผิดพลาดได้ · ข่าวจราจรและเรื่องที่คนแจ้งยังไม่ได้ยืนยัน · จุดสีคือจุดที่พบน้ำ ไม่ใช่พื้นที่น้ำท่วมทั้งหมด
       </p>
     </Card>
   );

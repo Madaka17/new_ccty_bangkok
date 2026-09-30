@@ -10,7 +10,7 @@ import { fmtNum } from '../dashboard/format.js';
 const POLL_MS = 30000;
 const SHOWN = 12;
 const TREND = { rising: { text: 'น้ำขึ้น', tone: 'red' }, falling: { text: 'น้ำลด', tone: 'green' }, steady: { text: 'ทรงตัว', tone: 'neutral' } };
-const FILTERS = [['all', 'ทั้งหมด'], ['bma', 'ถนน กทม. (เซ็นเซอร์)'], ['hdms', 'ทางหลวง (กรมทางหลวง)']];
+const FILTERS = [['all', 'ทั้งหมด'], ['bma', 'ถนน กทม.'], ['hdms', 'ทางหลวง']];
 
 const agoTh = (ts) => {
   if (!ts) return '';
@@ -95,12 +95,12 @@ export default function FloodRoadsCard({ isActive, onOpenRoad }) {
         }
         description={
           loading
-            ? 'กำลังโหลดข้อมูลถนนน้ำท่วม'
-            : `ถนน กทม. ${fmtNum(nBma)} สาย (เซ็นเซอร์วัดระดับน้ำ สำนักการระบายน้ำ) · ทางหลวง ${fmtNum(nHdms)} จุด (กรมทางหลวง)${rising ? ` · น้ำกำลังขึ้น ${rising} สาย` : ''} · รีเฟรชเองทุก 30 วินาที${updated ? ` · ข้อมูลล่าสุด ${agoTh(updated)}` : ''}`
+            ? 'กำลังโหลด'
+            : `ถนน กทม. ${fmtNum(nBma)} สาย · ทางหลวง ${fmtNum(nHdms)} จุด${rising ? ` · น้ำกำลังขึ้น ${rising} สาย` : ''}${updated ? ` · อัปเดต ${agoTh(updated)}` : ''}`
         }
       />
       <div className="flex flex-wrap items-center gap-2 mt-3">
-        <Segmented options={FILTERS} value={filter} onChange={(v) => { setFilter(v); setAll(false); }} label="แหล่งข้อมูลถนนน้ำท่วม" />
+        <Segmented options={FILTERS} value={filter} onChange={(v) => { setFilter(v); setAll(false); }} label="ข้อมูลจาก" />
         <input
           type="search"
           value={query}
@@ -112,7 +112,7 @@ export default function FloodRoadsCard({ isActive, onOpenRoad }) {
       </div>
       {(bma?.failed || hdms?.failed) && (
         <p role="status" className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          โหลดข้อมูล{bma?.failed ? 'เซ็นเซอร์ กทม.' : 'กรมทางหลวง'}ไม่สำเร็จ จะลองใหม่อัตโนมัติ
+          โหลดข้อมูล{bma?.failed ? 'ถนน กทม.' : 'ทางหลวง'}ไม่สำเร็จ ระบบจะลองใหม่เอง
         </p>
       )}
 
@@ -120,7 +120,7 @@ export default function FloodRoadsCard({ isActive, onOpenRoad }) {
         <div className="mt-3 space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-12" />)}</div>
       ) : shown.length === 0 ? (
         <div className="mt-3">
-          <EmptyState title={rows.length ? 'ไม่พบถนนที่ตรงกับตัวกรอง' : 'ตอนนี้ไม่มีรายงานถนนน้ำท่วม'} description={rows.length ? 'ลองเปลี่ยนคำค้นหรือแหล่งข้อมูล' : 'เซ็นเซอร์ กทม. และกรมทางหลวงไม่พบน้ำท่วมขัง'} />
+          <EmptyState title={rows.length ? 'ไม่พบถนนที่ตรงกับตัวกรอง' : 'ตอนนี้ไม่มีรายงานถนนน้ำท่วม'} description={rows.length ? 'ลองเปลี่ยนคำค้น' : 'เครื่องวัดของ กทม. และกรมทางหลวงไม่พบน้ำท่วม'} />
         </div>
       ) : (
         <>
@@ -147,7 +147,7 @@ export default function FloodRoadsCard({ isActive, onOpenRoad }) {
                       {[r.where !== r.road ? r.where : null, r.extra, r.since ? `ท่วมตั้งแต่ ${r.since}` : null].filter(Boolean).join(' · ')}
                     </p>
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-xs text-slate-500">
-                      <Badge tone={r.source === 'bma' ? 'blue' : 'yellow'}>{r.source === 'bma' ? 'เซ็นเซอร์ กทม.' : 'กรมทางหลวง'}</Badge>
+                      <Badge tone={r.source === 'bma' ? 'blue' : 'yellow'}>{r.source === 'bma' ? 'เครื่องวัด กทม.' : 'กรมทางหลวง'}</Badge>
                       {t && <Badge tone={t.tone}>{t.text}{r.delta ? ` ${r.delta > 0 ? '+' : ''}${r.delta} ซม.` : ''}</Badge>}
                       {r.ts && <span>{r.source === 'bma' ? 'วัดเมื่อ' : 'แจ้งเมื่อ'} {agoTh(r.ts)}</span>}
                       {r.lat && r.lng && (
@@ -164,14 +164,14 @@ export default function FloodRoadsCard({ isActive, onOpenRoad }) {
           </ul>
           {shown.length > SHOWN && (
             <button type="button" onClick={() => setAll(!all)} className="cursor-pointer mt-2 text-xs text-blue-700 hover:underline">
-              {all ? 'ย่อ' : `ดูทั้งหมด ${fmtNum(shown.length)} รายการ`}
+              {all ? 'แสดงน้อยลง' : `ดูทั้งหมด ${fmtNum(shown.length)} รายการ`}
             </button>
           )}
         </>
       )}
       <p className="text-[11px] text-slate-500 mt-2 leading-4">
-        ระดับน้ำเซ็นเซอร์ กทม. วัดทุก 5 นาที (weather.bangkok.go.th/flood) · ทางหลวงเป็นรายงานของเจ้าหน้าที่กรมทางหลวง (hdms.doh.go.th) ระดับน้ำประเมินด้วยตา ·
-        ถนนที่ไม่มีเซ็นเซอร์หรือเซ็นเซอร์ออฟไลน์จะไม่อยู่ในรายการ ดูรายงานประชาชนเพิ่มในแท็บ “การแจ้งน้ำท่วม”
+        ถนน กทม. วัดจากเครื่องวัดน้ำทุก 5 นาที · ทางหลวงเป็นการแจ้งของเจ้าหน้าที่กรมทางหลวง (กะความลึกด้วยตา) ·
+        ถนนที่ไม่มีเครื่องวัดจะไม่อยู่ในรายการ ดูเรื่องที่คนแจ้งเพิ่มได้ในแท็บ “เรื่องที่คนแจ้ง”
       </p>
     </Card>
   );

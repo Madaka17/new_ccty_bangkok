@@ -5,15 +5,15 @@ import { STATUS, flowLevel, fmtTime } from './format.js';
 // Horizontal HUD meter: gradient track (red -> amber -> green), threshold ticks at the
 // flowLevel cut-offs, glowing marker at the current value. Replaces the old ring gauge.
 const ZONES = [
-  { from: 0, to: 45, label: 'หนาแน่น', key: 'red' },
-  { from: 45, to: 75, label: 'ปานกลาง', key: 'yellow' },
+  { from: 0, to: 45, label: 'ติดขัด', key: 'red' },
+  { from: 45, to: 75, label: 'ชะลอตัว', key: 'yellow' },
   { from: 75, to: 100, label: 'คล่องตัว', key: 'green' },
 ];
 
 function Meter({ value, colorHex }) {
   const v = Math.min(100, Math.max(0, value ?? 0));
   return (
-    <div className="w-full" role="img" aria-label={`ดัชนีการระบายรถ ${value ?? '-'} จาก 100`}>
+    <div className="w-full" role="img" aria-label={`คะแนนรถคล่อง ${value ?? '-'} จาก 100`}>
       <div className="relative h-4 rounded-full bg-slate-100 overflow-visible">
         {/* muted zone gradient under everything */}
         <div
@@ -70,14 +70,14 @@ function Delta({ history }) {
   if (!history) return null;
   // BMA history is one point per hour; Longdo history is one point per minute
   const step = history[history.length - 1]?.hourly ? 1 : 60;
-  if (history.length <= step) return <p className="text-xs text-slate-500">ยังไม่ครบ 1 ชม. สำหรับเทียบแนวโน้ม</p>;
+  if (history.length <= step) return null;
   const d = history[history.length - 1].flow - history[history.length - 1 - step].flow;
   if (!Number.isFinite(d)) return null;
   if (Math.abs(d) <= 2) return <p className="text-xs text-slate-500">ใกล้เคียงกับ 1 ชม.ก่อน</p>;
   const up = d > 0;
   return (
     <p className={`text-xs font-medium ${up ? 'text-emerald-700' : 'text-red-700'}`}>
-      {up ? '▲' : '▼'} {up ? 'ดีขึ้น' : 'ชะลอลง'} {Math.abs(d)} จุด จาก 1 ชม.ก่อน
+      {up ? '▲ รถคล่องขึ้น' : '▼ รถติดขึ้น'}กว่าเมื่อ 1 ชม.ก่อน
     </p>
   );
 }
@@ -90,7 +90,7 @@ export default function FlowOverview({ summary, error, onRetry, retrying }) {
     <Card aria-labelledby="flow-title" className="p-5 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="flow-title" className="text-[15px] font-semibold text-slate-900">
-          {summary?.is_bma ? 'ภาพรวมการจราจรจากกล้อง CCTV กทม. (BMA)' : 'ภาพรวมการจราจร กรุงเทพฯ และปริมณฑล'}
+          รถติดแค่ไหนตอนนี้
         </h2>
         {summary ? (
           <Badge tone={summary.online === false ? 'yellow' : 'green'} dot>
@@ -103,7 +103,7 @@ export default function FlowOverview({ summary, error, onRetry, retrying }) {
 
       {error && !summary && (
         <div className="mt-4">
-          <ErrorState message="ดึงข้อมูลสภาพจราจรไม่สำเร็จ ตรวจสอบว่า server ทำงานอยู่" onRetry={onRetry} retrying={retrying} />
+          <ErrorState message="โหลดข้อมูลรถติดไม่สำเร็จ ลองใหม่อีกครั้ง" onRetry={onRetry} retrying={retrying} />
         </div>
       )}
 
@@ -124,7 +124,7 @@ export default function FlowOverview({ summary, error, onRetry, retrying }) {
 
         {/* meter */}
         <div className="min-w-0">
-          <p className="text-xs text-slate-500 mb-3">ดัชนีการระบายรถ</p>
+          <p className="text-xs text-slate-500 mb-3">คะแนนรถคล่อง (เต็ม 100 ยิ่งมากรถยิ่งคล่อง)</p>
           {summary ? <Meter value={summary.flow_index} colorHex={status.hex} /> : <Skeleton className="h-4 w-full rounded-full" />}
         </div>
 

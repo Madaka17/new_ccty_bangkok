@@ -102,7 +102,7 @@ export default function VideoSlot({ cam, status: aiStatus, incident, onClose, on
             สด
           </span>
         )}
-        <button type="button" onClick={onOpenAI} title="เปิดผู้ช่วย AI กับกล้องนี้" className="cursor-pointer h-7 px-2 rounded-md text-[11px] text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors duration-200">
+        <button type="button" onClick={onOpenAI} title="ให้ AI นับรถจากกล้องนี้" className="cursor-pointer h-7 px-2 rounded-md text-[11px] text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors duration-200">
           AI
         </button>
         <button type="button" onClick={fullscreen} title="ขยายเต็มจอ" className="cursor-pointer h-7 px-2 rounded-md text-[11px] text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors duration-200">
@@ -123,7 +123,7 @@ export default function VideoSlot({ cam, status: aiStatus, incident, onClose, on
           <div className="absolute bottom-2 left-2 flex items-center gap-1.5">
             {incident ? (
               <span className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold bg-red-600 text-white " title={incident.description || ''}>
-                {incident.kind === 'breakdown' ? 'รถเสียกีดขวาง' : 'อุบัติเหตุ'}
+                {incident.kind === 'breakdown' ? 'รถเสียขวางถนน' : 'อุบัติเหตุ'}
               </span>
             ) : level ? (
               <span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium  ${level.cls}`} title={camStatusText(aiStatus)}>
@@ -132,7 +132,7 @@ export default function VideoSlot({ cam, status: aiStatus, incident, onClose, on
                 <span className="opacity-70 font-normal">· {aiStatus.rate_per_min} คัน/นาที</span>
               </span>
             ) : (
-              <span className="rounded-lg px-2.5 py-1 text-xs bg-white text-slate-500 border border-slate-200">รอ AI วัด</span>
+              <span className="rounded-lg px-2.5 py-1 text-xs bg-white text-slate-500 border border-slate-200">AI ยังไม่ได้ดู</span>
             )}
           </div>
         )}
@@ -147,7 +147,7 @@ export default function VideoSlot({ cam, status: aiStatus, incident, onClose, on
         {status === 'offline' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center px-4 bg-slate-50">
             <p className="font-medium text-ink-900">ไม่มีสัญญาณภาพ</p>
-            <p className="text-xs text-ink-600">กล้องออฟไลน์ กำลังนำออกจากจอ...</p>
+            <p className="text-xs text-ink-600">กล้องนี้ไม่มีภาพ กำลังนำออกจากจอ...</p>
             <div className="flex items-center gap-2 mt-1">
               <button
  type="button"

@@ -38,7 +38,7 @@ export default function BMAEventFeed({ isActive, onToast }) {
           const fresh = d.items.filter((i) => !known.current.has(i.id));
           if (fresh.length && onToast) {
             const f = fresh[0];
-            onToast(`${KIND[f.kind]?.label || 'รายงาน'} กทม.: ${f.title}${fresh.length > 1 ? ` และอีก ${fresh.length - 1} รายการ` : ''}`);
+            onToast(`${KIND[f.kind]?.label || 'ข่าว'} จาก กทม.: ${f.title}${fresh.length > 1 ? ` และอีก ${fresh.length - 1} เรื่อง` : ''}`);
           }
         }
         known.current = ids;
@@ -62,20 +62,20 @@ export default function BMAEventFeed({ isActive, onToast }) {
     <Card aria-labelledby="water-bma-title" className="p-5">
       <SectionHeader
         id="water-bma-title"
-        title="รายงานสดจากศูนย์ควบคุมจราจร กทม."
+        title="ข่าวจากศูนย์ควบคุมจราจร กทม."
         description={
           data?.updated_at
-            ? `cpudapp.bangkok.go.th · ดึงข้อมูลทุก ${data.poll_seconds} วินาที · อัปเดต ${agoText(data.updated_at)} · 24 ชม. ที่ผ่านมา: น้ำท่วม ${counts.flood || 0} · อุบัติเหตุ ${counts.accident || 0}`
-            : 'cpudapp.bangkok.go.th · กำลังเชื่อมต่อ'
+            ? `อัปเดต ${agoText(data.updated_at)} · 24 ชม. ที่ผ่านมา: น้ำท่วม ${counts.flood || 0} เรื่อง อุบัติเหตุ ${counts.accident || 0} เรื่อง`
+            : 'กำลังโหลด'
         }
         action={
           <div className="flex items-center gap-2">
             {data && !data.error && (
               <Badge tone="green" dot>
-                LIVE
+                สด
               </Badge>
             )}
-            <Segmented label="ประเภทรายงาน" value={filter} onChange={setFilter} options={FILTERS} />
+            <Segmented label="ประเภทข่าว" value={filter} onChange={setFilter} options={FILTERS} />
           </div>
         }
       />
@@ -89,13 +89,13 @@ export default function BMAEventFeed({ isActive, onToast }) {
 
       {data?.error && (
         <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          ดึงข้อมูลรอบล่าสุดไม่สำเร็จ ({data.error}) แสดงรายการที่ได้ล่าสุด
+          อัปเดตรอบล่าสุดไม่สำเร็จ แสดงข่าวที่มีอยู่
         </p>
       )}
 
       <div className="mt-3">
         {error && !data ? (
-          <ErrorState message="เชื่อมต่อศูนย์ควบคุมจราจร กทม. ไม่สำเร็จ" onRetry={load} />
+          <ErrorState message="โหลดข่าวจาก กทม. ไม่สำเร็จ" onRetry={load} />
         ) : !data ? (
           <div className="space-y-2">
             {[...Array(5)].map((_, i) => (
@@ -103,7 +103,7 @@ export default function BMAEventFeed({ isActive, onToast }) {
             ))}
           </div>
         ) : !items.length ? (
-          <EmptyState title="ยังไม่มีรายงานในหมวดนี้ใน 24 ชม. ที่ผ่านมา" description={data.updated_at ? undefined : 'ระบบกำลังดึงข้อมูลรอบแรก ลองใหม่ในอีกสักครู่'} />
+          <EmptyState title="ไม่มีข่าวประเภทนี้ใน 24 ชม. ที่ผ่านมา" description={data.updated_at ? undefined : 'กำลังโหลดครั้งแรก ลองใหม่ในอีกสักครู่'} />
         ) : (
           <ul className="divide-y divide-slate-100 max-h-[520px] overflow-y-auto pr-1">
             {items.map((e) => {
@@ -132,7 +132,7 @@ export default function BMAEventFeed({ isActive, onToast }) {
                         )}
                         {' · '}
                         <a href={e.url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">
-                          ต้นทาง
+                          ข่าวต้นฉบับ
                         </a>
                       </p>
                     </div>

@@ -1,8 +1,8 @@
-// Road density tiers (หนาแน่น / ปานกลาง / คล่องตัว) from /api/analytics/summary .density.
+// Road density tiers (ติดขัด / ชะลอตัว / คล่องตัว) from /api/analytics/summary .density.
 // Shared by the dashboard overview tab and the analytics page; click a tier card to list its roads.
 import { useState } from 'react';
 import { Card, Badge, SectionHeader, EmptyState, FOCUS } from './ui.jsx';
-import { StatusBanner, ShareBar } from './primitives.jsx';
+import { ShareBar } from './primitives.jsx';
 import { fmtNum, STATUS } from './format.js';
 
 const TIER_CONFIG = {
@@ -29,14 +29,13 @@ const TIER_CONFIG = {
 // showShare=false hides the network share card (dashboard overview only needs the tier cards)
 export default function DensityPanel({ d, onOpenRoad, showShare = true }) {
   const [open, setOpen] = useState(null); // tier id whose roads are listed
-  if (!d?.ready) return <EmptyState title="รอข้อมูลเส้นจราจร" description="ระบบกำลังสร้างดัชนีถนน" />;
+  if (!d?.ready) return <EmptyState title="กำลังโหลดข้อมูลรถติด" description="รอสักครู่" />;
   const tier = d.tiers.find((t) => t.id === open);
   return (
     <div className="flex flex-col gap-4">
-      <StatusBanner tone="neutral" label="หมายเหตุ">{d.proxy_note}</StatusBanner>
       {showShare && (
       <Card className="p-5">
-        <SectionHeader id="density-share" title="สัดส่วนโครงข่ายถนนตามระดับความหนาแน่น" description={`คิดจากระยะทางรวม ${fmtNum(Math.round(d.total_km))} กม. (${fmtNum(d.road_count)} สายที่มีชื่อ) · กดกล่องด้านล่างเพื่อดูรายชื่อถนน`} />
+        <SectionHeader id="density-share" title="ถนนที่ติดขัด ชะลอตัว และคล่องตัว" description={`จากถนน ${fmtNum(d.road_count)} สาย ยาวรวม ${fmtNum(Math.round(d.total_km))} กม. · กดกล่องด้านล่างเพื่อดูรายชื่อถนน`} />
         <div className="mt-4">
           <ShareBar parts={d.tiers.map((t) => ({ label: t.label, value: t.km, color: STATUS[t.color].bar }))} unit=" กม." />
         </div>
@@ -70,7 +69,7 @@ export default function DensityPanel({ d, onOpenRoad, showShare = true }) {
                   <Badge tone={cfg.badgeTone} dot>
                     {t.label}
                   </Badge>
-                  <span className="text-xs px-2 py-0.5 rounded-md font-medium border bg-slate-50/90 dark:bg-slate-800/80 border-slate-200/80 dark:border-slate-700/80 text-slate-600 dark:text-slate-300">
+                  <span title={d.proxy_note} className="text-xs px-2 py-0.5 rounded-md font-medium border bg-slate-50/90 dark:bg-slate-800/80 border-slate-200/80 dark:border-slate-700/80 text-slate-600 dark:text-slate-300">
                     {t.speed}
                   </span>
                 </div>
@@ -81,16 +80,11 @@ export default function DensityPanel({ d, onOpenRoad, showShare = true }) {
                     {t.km_pct}%
                   </span>
                   <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                    ของระยะทาง
+                    ของถนนทั้งหมด
                   </span>
                 </div>
 
-                <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
-                  {t.road_pct}% ของจำนวนสาย ({fmtNum(t.roads)} สาย)
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  {t.note}
-                </p>
+                <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">{t.note}</p>
               </div>
 
               {/* Action row at bottom with divider */}
@@ -120,12 +114,12 @@ export default function DensityPanel({ d, onOpenRoad, showShare = true }) {
         <Card className="p-5">
           <SectionHeader
             id="tier-roads"
-            title={`ถนนระดับ${tier.label} (${tier.speed})`}
-            description={`${fmtNum(tier.roads)} สาย · เรียงตามระยะทางที่ติด · กดชื่อถนนเพื่อเปิดกล้อง`}
+            title={`ถนนที่${tier.label} ${fmtNum(tier.roads)} สาย`}
+            description="เรียงจากช่วงที่ติดยาวที่สุด · กดชื่อถนนเพื่อดูกล้อง"
             action={<Badge tone={tier.color} dot>{tier.label}</Badge>}
           />
           {tier.road_list.length === 0 ? (
-            <p className="text-sm text-slate-600 mt-3">ไม่มีถนนในระดับนี้ขณะนี้</p>
+            <p className="text-sm text-slate-600 mt-3">ตอนนี้ไม่มีถนนในกลุ่มนี้</p>
           ) : (
             <ol className="mt-3 divide-y divide-slate-100 max-h-[32rem] overflow-y-auto scroll-soft">
               {tier.road_list.map((r, i) => (
@@ -133,7 +127,7 @@ export default function DensityPanel({ d, onOpenRoad, showShare = true }) {
                   <button
                     type="button"
                     onClick={() => onOpenRoad?.(r.name)}
-                    title={`เปิดกล้องบน ${r.name}`}
+                    title={`ดูกล้องบน${r.name}`}
                     className={`cursor-pointer w-full text-left flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-slate-50 transition-colors duration-150 ${FOCUS}`}
                   >
                     <span className="w-7 text-center text-xs text-slate-500 tabular-nums shrink-0">{i + 1}</span>
@@ -144,7 +138,7 @@ export default function DensityPanel({ d, onOpenRoad, showShare = true }) {
                       {r.red_pct > 0 && <div className={STATUS.red.bar} style={{ width: `${r.red_pct}%` }} />}
                     </div>
                     <span className="text-xs text-slate-600 tabular-nums whitespace-nowrap shrink-0">
-                      ติด {r.red_km} / {r.length_km} กม. · ระบาย {r.flow}
+                      ติด {r.red_km} จาก {r.length_km} กม.
                     </span>
                   </button>
                 </li>
