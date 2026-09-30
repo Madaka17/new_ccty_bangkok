@@ -25,10 +25,12 @@ def test_traffy_leaves_out_reports_about_what_follows_a_flood():
     items = parse_traffy([
         _ticket("มีขยะหลังน้ำท่วมหน้าบ้าน #กองขยะน้ำท่วม"),
         _ticket("ขอรับเงินเยียวยาน้ำท่วม"),
+        _ticket("ฝนตก เก็บขยะหลังน้ำท่วมให้หน่อย"),        # rain alone does not say the water is there
         _ticket("ขยะอุดท่อ น้ำท่วมขังหน้าบ้าน"),          # the water is there now
+        _ticket("ฝนตกทีไรน้ำท่วม ขยะเต็มซอย"),            # it floods every time it rains
         _ticket("ขยะหลังน้ำท่วม", kinds=["น้ำท่วม"]),     # Traffy's own flood type decides
     ], now=NOW)
-    assert [i["text"] for i in items] == ["ขยะอุดท่อ น้ำท่วมขังหน้าบ้าน", "ขยะหลังน้ำท่วม"]
+    assert [i["text"] for i in items] == ["ขยะอุดท่อ น้ำท่วมขังหน้าบ้าน", "ฝนตกทีไรน้ำท่วม ขยะเต็มซอย", "ขยะหลังน้ำท่วม"]
 
 
 def test_traffy_hides_contact_details():

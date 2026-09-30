@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 const WEATHER_POLL_MS = 600000;
 import { fetchWaterSummary, fetchAirStations, fetchFloodReports, fetchWeatherNow } from '../../lib/api.js';
-import { flowLevel } from './format.js';
+import { flowLevel, fmtTime } from './format.js';
 
 // One glance, six answers: traffic / weather where the viewer is / rain-water / flood reports / dust / incidents. Headline only, no detail line. Each tile is a link to its page.
 // tone: green = fine, yellow = watch, red = act, neutral = no data
@@ -79,7 +79,7 @@ const ICONS = {
   ),
 };
 
-function Tile({ icon, title, status, tone = 'neutral', onClick }) {
+function Tile({ icon, title, status, note, tone = 'neutral', onClick }) {
   const cfg = TONE_CONFIG[tone] || TONE_CONFIG.neutral;
   return (
     <button
@@ -131,6 +131,8 @@ function Tile({ icon, title, status, tone = 'neutral', onClick }) {
             {status}
           </p>
         </div>
+        {/* e.g. an old count kept because the latest update failed */}
+        {note && <p className="mt-0.5 text-[11px] leading-4 text-amber-700 dark:text-amber-400">{note}</p>}
       </div>
 
     </button>
@@ -141,6 +143,7 @@ export default function CityStatusStrip({ summary, incidents, flood, onNavigate,
   const [water, setWater] = useState(null);
   const [air, setAir] = useState(null);
   const [traffy, setTraffy] = useState(null);
+  const [traffyFailed, setTraffyFailed] = useState(false);   // this page's last request for the reports failed
   const [weather, setWeather] = useState(null);   // { temp, code, rain, place }
 
   useEffect(() => {
@@ -152,7 +155,13 @@ export default function CityStatusStrip({ summary, incidents, flood, onNavigate,
     };
     // flood reports move faster than the rest: every minute
     const reports = () => {
-      fetchFloodReports().then((r) => alive && setTraffy(r)).catch(() => {});
+      fetchFloodReports()
+        .then((r) => {
+          if (!alive) return;
+          setTraffy(r);
+          setTraffyFailed(false);
+        })
+        .catch(() => alive && setTraffyFailed(true));
     };
     tick();
     reports();
@@ -210,10 +219,13 @@ export default function CityStatusStrip({ summary, incidents, flood, onNavigate,
 
   // Flood reports: people on Traffy Fondue in the last 6 h only, the same count as the map and the report page.
   // Flooded roads from traffic news are not people's reports and stay out of it.
-  // Until Traffy has answered once there is no count: "no reports" would be a wrong all-clear
+  // Until Traffy has answered once there is no count: "no reports" would be a wrong all-clear.
+  // After that a failed update (Traffy on the server, or this page's request) keeps the old count, marked as old.
   const citizen = traffy?.updated_at ? traffy.items?.length ?? 0 : null;
+  const repFailed = !!traffy?.error || traffyFailed;
   const repTone = citizen == null ? 'neutral' : citizen === 0 ? 'green' : citizen < 20 ? 'yellow' : 'red';
-  const repStatus = citizen != null ? (citizen === 0 ? 'ไม่มีคนแจ้ง' : `${citizen} เรื่อง`) : traffy?.error ? 'ยังโหลดไม่ได้' : 'กำลังโหลด';
+  const repStatus = citizen != null ? (citizen === 0 ? 'ไม่มีคนแจ้ง' : `${citizen} เรื่อง`) : repFailed ? 'ยังโหลดไม่ได้' : 'กำลังโหลด';
+  const repNote = citizen != null && repFailed ? `อัปเดตไม่สำเร็จ · ข้อมูล ${fmtTime(traffy.updated_at)}\u00a0น.` : null;
 
   // Air
   const pm = air?.avg_pm25;
@@ -232,7 +244,7 @@ export default function CityStatusStrip({ summary, incidents, flood, onNavigate,
       <Tile icon={ICONS.traffic} title="รถติดทั้งเมือง" status={trafficStatus} tone={trafficTone} onClick={() => onNavigate('map')} />
       <Tile icon={ICONS.weather} title={weather?.mine ? 'อากาศตรงนี้' : 'อากาศ กทม.'} status={weatherStatus} tone={weather?.tone || 'neutral'} onClick={() => onNavigate('water')} />
       <Tile icon={ICONS.water} title="ฝนและน้ำ" status={waterStatus} tone={waterTone} onClick={() => onNavigate('water')} />
-      <Tile icon={ICONS.report} title="คนแจ้งน้ำท่วม (6 ชม.)" status={repStatus} tone={repTone} onClick={() => onNavigate('water')} />
+      <Tile icon={ICONS.report} title="คนแจ้งน้ำท่วม (6 ชม.)" status={repStatus} note={repNote} tone={repTone} onClick={() => onNavigate('water')} />
       <Tile icon={ICONS.air} title="ฝุ่น PM2.5" status={airStatus} tone={airTone} onClick={() => onNavigate('map')} />
       <Tile icon={ICONS.incident} title="อุบัติเหตุและรถเสีย" status={incStatus} tone={incTone} onClick={() => onNavigate('dashboard')} />
     </section>

@@ -270,6 +270,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const floodMarkersRef = useRef([]);
   const [showReports, setShowReports] = useState(false);
   const [reports, setReports] = useState(null);
+  const [reportsFailed, setReportsFailed] = useState(false);   // this page's last request for the reports failed
   const reportMarkersRef = useRef([]);
   // AI flood watch on every BMA camera: on by default, the map shows only the cameras with water
   const [showCamFlood, setShowCamFlood] = useState(true);
@@ -674,7 +675,14 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   useEffect(() => {
     if (!isActive) return;
     let alive = true;
-    const tick = () => fetchFloodReports().then((d) => alive && setReports(d)).catch(() => {});
+    const tick = () =>
+      fetchFloodReports()
+        .then((d) => {
+          if (!alive) return;
+          setReports(d);
+          setReportsFailed(false);
+        })
+        .catch(() => alive && setReportsFailed(true));
     tick();
     const id = setInterval(tick, 300000);
     return () => {
@@ -1233,7 +1241,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const camWet = CAM_WET.reduce((n, k) => n + (camCounts[k] || 0), 0);
   const camWetList = (camFlood?.items || []).filter((c) => CAM_WET.includes(c.level));
   // Until Traffy has answered once, its empty list is not "0 reports"
-  const reportHint = reports?.updated_at ? `คนแจ้ง ${reportPoints.length} เรื่อง (6 ชม.)` : reports ? 'คนแจ้ง: ยังโหลดไม่ได้' : 'คนแจ้ง: กำลังโหลด';
+  const reportHint = reports?.updated_at ? `คนแจ้ง ${reportPoints.length} เรื่อง (6 ชม.)` : reports || reportsFailed ? 'คนแจ้ง: ยังโหลดไม่ได้' : 'คนแจ้ง: กำลังโหลด';
   const waterHint = flood
     ? `${camFlood ? `กล้องเห็นน้ำ ${camWet} จุด · ` : ''}ถนนท่วม ${floodCounts.flood + floodCounts.slight} จุด · ${reportHint}`
     : 'ฝนตก น้ำท่วมถนน คนแจ้งน้ำท่วม และระดับน้ำ';
@@ -1527,7 +1535,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                     : reportPoints.length > 0
                       ? `${reportPoints.length} เรื่องใน 6 ชม. · ชั่วโมงล่าสุด ${reportFresh} เรื่อง`
                       : 'ไม่มีคนแจ้งน้ำท่วมใน 6 ชม.'}
-                  {reports.error && reports.updated_at ? ' · อัปเดตล่าสุดไม่สำเร็จ' : ''}
+                  {(reports.error || reportsFailed) && reports.updated_at ? ' · อัปเดตล่าสุดไม่สำเร็จ' : ''}
                 </p>
                 {reportDistricts.length > 0 && (
                   <ul className="flex flex-col gap-1">
@@ -1547,7 +1555,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                 )}
               </>
             ) : (
-              <p className="text-[11px] text-slate-500">กำลังโหลด ...</p>
+              <p className="text-[11px] text-slate-500">{reportsFailed ? 'ยังโหลดเรื่องจาก Traffy ไม่ได้ ระบบจะลองใหม่เอง' : 'กำลังโหลด ...'}</p>
             )}
             <p className="text-[11px] text-slate-400 mt-1">เรื่องที่คนแจ้ง กทม. ผ่านแอป Traffy Fondue ยังไม่ได้ตรวจสอบโดยเขต</p>
           </div>

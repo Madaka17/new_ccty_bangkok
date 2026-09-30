@@ -77,7 +77,7 @@ function mergeReports(traffy, longdo, hdms, js100) {
   return rows.sort((a, b) => (b.ts || 0) - (a.ts || 0));
 }
 
-function ReportList({ rows, loading, updatedAt, traffyDown }) {
+function ReportList({ rows, loading, updatedAt, traffyDown, traffyOldAt }) {
   const [query, setQuery] = useState('');
   const [district, setDistrict] = useState('');
   const [state, setState] = useState('');
@@ -142,6 +142,11 @@ function ReportList({ rows, loading, updatedAt, traffyDown }) {
           ยังโหลดเรื่องจาก Traffy ไม่ได้ ระบบจะลองใหม่เอง ตอนนี้แสดงเฉพาะเรื่องจากแหล่งอื่น
         </p>
       )}
+      {!loading && traffyOldAt && (
+        <p role="status" className="mt-2 rounded-lg px-3 py-2 text-xs text-amber-800 bg-amber-50 border border-amber-200">
+          อัปเดตเรื่องจาก Traffy รอบล่าสุดไม่สำเร็จ ที่เห็นเป็นเรื่องที่โหลดไว้ {agoTh(traffyOldAt)}
+        </p>
+      )}
 
       {loading ? (
         <div className="mt-3 space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-14" />)}</div>
@@ -194,13 +199,22 @@ function ReportList({ rows, loading, updatedAt, traffyDown }) {
 
 export default function CitizenReportsSection({ isActive }) {
   const [traffy, setTraffy] = useState(null);
+  const [traffyFailed, setTraffyFailed] = useState(false);   // this page's last request for Traffy failed
   const [longdo, setLongdo] = useState(null);
   const [hdms, setHdms] = useState(null);
   const [js100, setJs100] = useState(null);
 
   const load = useCallback(() => {
     // one feed failing must not hide the other: a failure counts as an empty list
-    fetchFloodReports().then(setTraffy).catch(() => setTraffy((x) => x || { items: [] }));
+    fetchFloodReports()
+      .then((r) => {
+        setTraffy(r);
+        setTraffyFailed(false);
+      })
+      .catch(() => {
+        setTraffy((x) => x || { items: [] });
+        setTraffyFailed(true);
+      });
     fetchLongdoFloods().then(setLongdo).catch(() => setLongdo((x) => x || { items: [] }));
     fetchHdmsFloods().then(setHdms).catch(() => setHdms((x) => x || { items: [] }));
     fetchJs100Floods().then(setJs100).catch(() => setJs100((x) => x || { items: [] }));
@@ -217,10 +231,12 @@ export default function CitizenReportsSection({ isActive }) {
   const updatedAt = Math.max(traffy?.updated_at || 0, longdo?.updated_at || 0, hdms?.updated_at || 0, js100?.updated_at || 0) || null;
   // Traffy has never answered (server just started, or the API is down): its empty list is not "no reports"
   const traffyDown = traffy !== null && !traffy.updated_at;
+  // Traffy answered before but the latest update failed (on the server, or this page's request): old reports on show
+  const traffyOldAt = traffy?.updated_at && (traffy.error || traffyFailed) ? traffy.updated_at : null;
 
   return (
     <div className="flex flex-col gap-4">
-      <ReportList rows={rows} loading={traffy === null || longdo === null || hdms === null || js100 === null} updatedAt={updatedAt} traffyDown={traffyDown} />
+      <ReportList rows={rows} loading={traffy === null || longdo === null || hdms === null || js100 === null} updatedAt={updatedAt} traffyDown={traffyDown} traffyOldAt={traffyOldAt} />
       <TraffyAnalysisCard isActive={isActive} />
       <TraffyHistoryCard isActive={isActive} />
     </div>

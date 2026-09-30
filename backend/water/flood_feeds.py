@@ -33,11 +33,12 @@ TRAFFY_LIMIT = 500           # newest first; about half a day of Bangkok complai
 TRAFFY_REFRESH = 300
 TRAFFY_KEEP_HOURS = 6
 FLOOD_WORDS = re.compile(r"น้ำท่วม|ท่วมขัง|น้ำขัง|น้ำรอการระบาย|น้ำไม่ระบาย|ระบายน้ำไม่ทัน")
-# Words that say the water is on the spot now, and words of what only follows a flood (clean-up, aid,
-# complaints). A report that names a flood with only the second kind is about something else and is left out.
+# Words that say the water is on the spot now (or comes every time), and words of what only follows a flood
+# (clean-up, aid, complaints). A report that names a flood with only the second kind is about something else
+# and is left out. Rain alone is not the first kind: "it rained" does not say the water is still there.
 FLOODED_NOW = re.compile(
     r"ท่วมขัง|น้ำขัง|น้ำรอการระบาย|น้ำไม่ระบาย|ระบายน้ำไม่ทัน|ระบายไม่|ลงท่อไม่|ท่อ(?:อุด)?ตัน|ระดับน้ำ|ความสูงระดับ|"
-    r"ยังท่วม|ท่วมอยู่|น้ำ(?:ก็)?ยังไม่ลด|น้ำไม่ลด|น้ำเข้าบ้าน|ฝนตก|ท่วม(?:สูง|หนัก|ถึง|ถนน|ซอย|บ้าน|หมู่บ้าน|ชุมชน|ทาง|ทุกครั้ง)")
+    r"ยังท่วม|ท่วมอยู่|น้ำ(?:ก็)?ยังไม่ลด|น้ำไม่ลด|น้ำเข้าบ้าน|ทีไร(?:ก็)?(?:น้ำ)?ท่วม|ท่วม(?:สูง|หนัก|ถึง|ถนน|ซอย|บ้าน|หมู่บ้าน|ชุมชน|ทาง|ทุกครั้ง)")
 AFTER_FLOOD = re.compile(
     r"ขยะ|หลังน้ำ|หลังจากน้ำ|น้ำลด|ท่วมลด|น้ำลงแล้ว|โคลน|ฟูก|ที่นอน|เยียวยา|เงินช่วยเหลือ|ถุงยังชีพ|บริจาค|"
     r"เสนอแนะ|โรงเรียน|ศูนย์เด็กเล็ก|เสียงดัง|แมว|สุนัข")

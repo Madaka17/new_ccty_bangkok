@@ -93,7 +93,7 @@ export default function FlowOverview({ summary, error, onRetry, retrying }) {
           {/* Where the score comes from: the road-share cards below read the map's line colours instead */}
           {summary && (
             <p className="text-[13px] text-slate-600 mt-0.5">
-              {summary.is_bma ? `นับจากรถในภาพกล้อง กทม. ${fmtNum(summary.camera_count)} ตัว` : 'คิดจากสีเส้นจราจรบนแผนที่'}
+              {summary.is_bma ? `ใช้ข้อมูลจากกล้อง กทม. ${fmtNum(summary.camera_count)} ตัว` : 'คิดจากสีเส้นจราจรบนแผนที่'}
             </p>
           )}
         </div>

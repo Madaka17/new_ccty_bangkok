@@ -37,13 +37,19 @@ export default function AlertsPage({ isActive, onToast }) {
   const [popups, setPopups] = useState(inPageAlertsOn);
   const [warnings, setWarnings] = useState(null);
   const [reports, setReports] = useState(null);
+  const [reportsFailed, setReportsFailed] = useState(false);   // this page's last request for the reports failed
   const [openDistrict, setOpenDistrict] = useState(null);
 
   const load = useCallback(async (endpoint) => {
     try {
       // The flood feeds are extras: the page still works when one of them is down
       fetchWeatherWarnings().then(setWarnings).catch(() => {});
-      fetchFloodReports().then(setReports).catch(() => {});
+      fetchFloodReports()
+        .then((r) => {
+          setReports(r);
+          setReportsFailed(false);
+        })
+        .catch(() => setReportsFailed(true));
       const [st, rc] = await Promise.all([fetchAlertStatus(endpoint), fetchAlertRecent(50)]);
       setStatus(st);
       setRecent(rc.items);
@@ -247,10 +253,15 @@ export default function AlertsPage({ isActive, onToast }) {
         <p className="text-xs text-slate-500 mb-3">
           จากแอป Traffy Fondue ยังไม่ได้ตรวจสอบโดยเขต · จะเตือนเมื่อเขตเดียวกันมีคนแจ้ง 3 เรื่องขึ้นไปใน 1 ชม.
         </p>
-        {reports === null ? (
+        {reports?.updated_at && (reports.error || reportsFailed) && (
+          <p role="status" className="mb-3 rounded-lg px-3 py-2 text-xs text-amber-800 bg-amber-50 border border-amber-200">
+            อัปเดตรอบล่าสุดไม่สำเร็จ ที่เห็นเป็นข้อมูลเมื่อ {fmtDateTime(reports.updated_at)}
+          </p>
+        )}
+        {reports === null && !reportsFailed ? (
           <div className="space-y-2">{[0, 1].map((i) => <Skeleton key={i} className="h-12" />)}</div>
         ) : districts.length === 0 ? (
-          reports.updated_at
+          reports?.updated_at
             ? <EmptyState title="ยังไม่มีคนแจ้งน้ำท่วม" description="ใน 6 ชั่วโมงที่ผ่านมา" />
             : <EmptyState title="ยังโหลดเรื่องจาก Traffy ไม่ได้" description="ระบบจะลองใหม่เอง" />
         ) : (
