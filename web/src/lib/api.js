@@ -464,6 +464,34 @@ export async function fetchWaterForecast(stationId) {
   return res.json();
 }
 
+// Northern rivers to the Central Plain: RID discharge, routed 4-day outlook, dams, warnings (north_flow.py)
+export async function fetchWaterNorth() {
+  const res = await fetch('/api/water/north');
+  if (!res.ok) throw new Error('water_north');
+  return res.json();
+}
+
+// AI read of which Bangkok districts the northern water reaches, when and why (north_impact_agent.py)
+export async function fetchNorthImpact() {
+  const res = await fetch('/api/water/north/impact');
+  if (!res.ok) throw new Error('north_impact');
+  return res.json();
+}
+
+export async function runNorthImpact() {
+  const res = await fetch('/api/water/north/impact/run', { method: 'POST' });
+  if (res.status === 403) throw new Error('forbidden');
+  if (!res.ok) throw new Error('north_impact_run');
+  return res.json();
+}
+
+// Nonthaburi roads beside the Chao Phraya and the chance the river tops its bank next to them (river_roads.py)
+export async function fetchNorthNonthaburi() {
+  const res = await fetch('/api/water/north/nonthaburi');
+  if (!res.ok) throw new Error('north_nonthaburi');
+  return res.json();
+}
+
 export async function fetchBMAEvents({ kind, hours = 24, limit = 60 } = {}) {
   const params = new URLSearchParams({ hours, limit });
   if (kind) params.set('kind', kind);

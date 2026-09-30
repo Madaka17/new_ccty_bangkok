@@ -205,6 +205,15 @@ def tide_context(water):
     return [f"น้ำทะเลหนุน {t.get('name')} วันที่ {t.get('date')}: สูงสุด {round(t.get('max') or 0, 2)} ม. เวลา {t.get('max_time')}, ต่ำสุด {round(t.get('min') or 0, 2)} ม. เวลา {t.get('min_time')}"]
 
 
+def north_flow_context(nf):
+    """Northern water on its way down the Chao Phraya (north_flow.brief()): headline, then the warnings."""
+    if not nf:
+        return []
+    lines = [f"น้ำเหนือ → ภาคกลาง (กรมชลประทาน/ThaiWater + คาดการณ์ 4 วัน): {nf['headline']}"]
+    lines += [f"  - {a}" for a in nf.get("alerts") or []]
+    return lines
+
+
 def _asked(question, *names):
     """True when any place name (with or without the เขต/แขวง prefix) appears in the question."""
     for n in names:
@@ -414,7 +423,7 @@ def context_sections(traffic, question, camera_stats=None, water=None, extra=Non
             f"รถบรรทุก {camera_stats.get('trucks', 0)} รวม {camera_stats.get('total', 0)} คัน — {camera_stats.get('traffic_level', '')}")
     sec["traffic"] += (guidance_context(ex.get("guidance"), question) + bma_count_context(ex.get("bma_analytics"))
                        + analytics_traffic(ex.get("analytics")))
-    sec["flood"] += (water_context(water) + tide_context(water)
+    sec["flood"] += (water_context(water) + north_flow_context(ex.get("north_flow")) + tide_context(water)
                      + road_flood_context(ex.get("road_risk"), ex.get("flood_report"), question)
                      + analytics_flood(ex.get("analytics")))
     sec["accident"] += (incident_context(ex.get("incidents"), ex.get("bma_events"))

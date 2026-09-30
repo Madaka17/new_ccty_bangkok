@@ -41,6 +41,7 @@ BKK_TZ = timezone(timedelta(hours=7))
 METRO_PROVINCES = {"10": "กรุงเทพมหานคร", "11": "สมุทรปราการ", "12": "นนทบุรี", "13": "ปทุมธานี", "73": "นครปฐม", "74": "สมุทรสาคร"}
 # Stations with an official HII forecast that drive Bangkok's river level (upstream -> downstream)
 OFFICIAL_FORECAST_STATIONS = {
+    1648: {"name": "สะพานเดชาติวงศ์", "province": "นครสวรรค์"},
     1143: {"name": "ท่าเรือ (ป่าสัก)", "province": "พระนครศรีอยุธยา"},
     1142: {"name": "พระนครศรีอยุธยา", "province": "พระนครศรีอยุธยา"},
     1132: {"name": "สะพานนวลฉวี", "province": "นนทบุรี"},

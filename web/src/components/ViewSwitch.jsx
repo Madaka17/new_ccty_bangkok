@@ -4,7 +4,7 @@ import NavIcon from './NavIcons.jsx';
 // Segmented switch between the views of one page (Camera AI, Water, Accidents & Risk): each view is a card,
 // the open one lifts out of the tray. tabs: [{ id, label, icon, hint? }]; the hint is the tooltip only.
 export default function ViewSwitch({ tabs, value, onChange, label }) {
-  const cols = { 2: 'grid-cols-2', 3: 'grid-cols-1 md:grid-cols-3', 4: 'grid-cols-2 xl:grid-cols-4', 7: 'grid-cols-2 md:grid-cols-4' }[tabs.length]
+  const cols = { 2: 'grid-cols-2', 3: 'grid-cols-1 md:grid-cols-3', 4: 'grid-cols-2 xl:grid-cols-4', 7: 'grid-cols-2 md:grid-cols-4', 8: 'grid-cols-2 md:grid-cols-4' }[tabs.length]
     || 'grid-cols-2 md:grid-cols-3 xl:grid-cols-5';
   return (
     <div role="tablist" aria-label={label} className={`seg-tray grid ${cols} gap-1.5 p-1.5 rounded-2xl w-full ${tabs.length > 2 ? '' : 'sm:w-fit sm:min-w-[520px]'}`}>

@@ -14,11 +14,13 @@ import CitizenReportsSection from './water/CitizenReportsSection.jsx';
 import ShelterSection from './water/ShelterSection.jsx';
 import FloodRoadsCard from './water/FloodRoadsCard.jsx';
 import FloodPointsMap from './water/FloodPointsMap.jsx';
+import NorthFlowSection from './water/NorthFlowSection.jsx';
 import { RiverStations, CanalCard, NtwRainCard } from './water/WaterLists.jsx';
 
 const POLL_MS = 60000;
 const TABS = [
   { id: 'situation', label: 'สถานการณ์น้ำ', hint: 'ระดับน้ำ · แผนที่จุดวัด · กราฟแนวโน้ม · คลองและฝน', icon: 'water' },
+  { id: 'north', label: 'น้ำเหนือ → ภาคกลาง', hint: 'ปิง วัง ยม น่าน → นครสวรรค์ → เขื่อนเจ้าพระยา → อยุธยา · คาดการณ์ 4 วัน', icon: 'water' },
   { id: 'roads', label: 'ถนนน้ำท่วม', hint: 'แผนที่จุดน้ำท่วม · AI กล้อง · เซ็นเซอร์ กทม. · กรมทางหลวง', icon: 'map' },
   { id: 'watch', label: 'เฝ้าระวังน้ำท่วม', hint: 'สถานีเทียบตลิ่ง · เขตเร่งด่วน · คาดการณ์ 1-6 ชม.', icon: 'alerts' },
   { id: 'shelter', label: 'จุดพักพิงใกล้ฉัน', hint: 'จุดพักพิงชั่วคราว กทม. · ระยะทาง · โทร · นำทาง', icon: 'map' },
@@ -115,6 +117,8 @@ export default function WaterPage({ isActive, onToast, onNavigate, onAsk, onOpen
           <FloodRoadsCard isActive={isActive} onOpenRoad={onOpenRoad} />
         </>
       )}
+
+      {tab === 'north' && <NorthFlowSection isActive={isActive} onOpenRoad={onOpenRoad} />}
 
       {tab === 'watch' && <FloodWatchSection isActive={isActive} />}
 
