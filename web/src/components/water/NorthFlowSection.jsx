@@ -445,7 +445,15 @@ export default function NorthFlowSection({ isActive, onOpenRoad }) {
 
       {view === 'simple' ? (
         <>
-          <NorthFlowSimple data={data} impact={impact} by={by} onSelect={openChart} onDetail={openDetail} onOpenRoad={onOpenRoad} />
+          <NorthFlowSimple
+            data={data}
+            impact={impact}
+            by={by}
+            map={<NorthFlowMap data={data} code={code} onSelect={setCode} isActive={isActive} texts={texts} roads={impact?.report?.roads} nb={nb} />}
+            onSelect={openChart}
+            onDetail={openDetail}
+            onOpenRoad={onOpenRoad}
+          />
           <p className="text-xs text-slate-500 leading-5 px-1">
             ข้อมูลจากกรมชลประทานและสถาบันสารสนเทศทรัพยากรน้ำ (สสน.) · การคาดการณ์ยังไม่รวมฝนที่จะตกเพิ่ม ใช้เพื่อเฝ้าระวังเท่านั้น ·{' '}
             <button type="button" onClick={() => openDetail('north-view')} className={`underline text-blue-700 cursor-pointer ${FOCUS}`}>

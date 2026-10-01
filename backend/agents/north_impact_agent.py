@@ -36,7 +36,7 @@ from backend.agents.flood_agent import ZONE_DISTRICTS
 from backend.core import local_llm
 from backend.water.north_flow import RIVERS, STATIONS, STATUS_TH
 
-POLL_SECONDS = int(os.getenv("NORTH_IMPACT_SECONDS", "600"))
+POLL_SECONDS = int(os.getenv("NORTH_IMPACT_SECONDS", "1800"))   # not below MAX_AGE: then every run writes a new report
 MAX_AGE = int(os.getenv("NORTH_IMPACT_MAX_AGE", "1800"))
 REPLY_TOKENS = int(os.getenv("NORTH_IMPACT_REPLY_TOKENS", "5000"))
 BKK_TZ = timezone(timedelta(hours=7))
