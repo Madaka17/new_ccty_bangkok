@@ -51,6 +51,7 @@ local/archive/
 local/dataset*/
 local/runs/
 local/logs/
+local/labels/
 # Server instances: runtime data of production (:8000) and test (:8001): cache, DB, agent state, web UI build
 instances/
 weights/
