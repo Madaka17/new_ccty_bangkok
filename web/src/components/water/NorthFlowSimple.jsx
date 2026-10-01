@@ -622,11 +622,13 @@ function Actions({ report }) {
   );
 }
 
-export default function NorthFlowSimple({ data, impact, by, onSelect, onDetail, onOpenRoad }) {
+// map: the water-flow map (NorthFlowMap), shown right under the headline
+export default function NorthFlowSimple({ data, impact, by, map, onSelect, onDetail, onOpenRoad }) {
   const r = impact?.report;
   return (
     <div className="flex flex-col gap-4">
       <Hero data={data} impact={impact} by={by} />
+      {map}
       <Journey by={by} bangkok={data.bangkok} onSelect={onSelect} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Districts report={r} />

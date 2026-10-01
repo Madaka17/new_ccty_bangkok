@@ -4,6 +4,7 @@ import { Badge, Button } from './dashboard/ui.jsx';
 import { PageHeader, Tabs, StatusBanner } from './dashboard/primitives.jsx';
 import { fmtTime } from './dashboard/format.js';
 import BmaOverview from './bma/BmaOverview.jsx';
+import BmaSiteNotice, { bmaSiteDown } from './bma/BmaSiteNotice.jsx';
 import BmaComparison from './bma/BmaComparison.jsx';
 import BmaCameraGrid from './bma/BmaCameraGrid.jsx';
 
@@ -117,7 +118,9 @@ export default function BmaCountPage({ isActive, onToast }) {
         }
       />
 
-      {scan?.last_scan_time && !scanning && online === 0 && cameras.length > 0 && (
+      <BmaSiteNotice source={scan?.source} />
+
+      {scan?.last_scan_time && !scanning && online === 0 && cameras.length > 0 && !bmaSiteDown(scan?.source) && (
         <StatusBanner tone="yellow" label="กล้อง กทม. ไม่ส่งภาพ">
           รอบล่าสุด ({scan.last_scan_time.slice(11, 16)} น.) กล้อง กทม. ส่งภาพว่างมาทุกตัว ตัวเลขจึงเป็น 0 ชั่วคราว
           ระบบจะลองใหม่ทุก 3 นาที · ดูข้อมูลย้อนหลังได้ที่แท็บ "เทียบวัน / สัปดาห์ / เดือน"

@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { Card, Badge, Skeleton, ErrorState } from './ui.jsx';
 import { STATUS, flowLevel, fmtNum, fmtTime } from './format.js';
+import BmaSiteNotice, { bmaSiteDown } from '../bma/BmaSiteNotice.jsx';
 
 // Horizontal HUD meter: gradient track (red -> amber -> green), threshold ticks at the
 // flowLevel cut-offs, glowing marker at the current value. Replaces the old ring gauge.
@@ -80,7 +81,8 @@ function Delta({ history }) {
 }
 
 export default function FlowOverview({ summary, error, onRetry, retrying }) {
-  const level = flowLevel(summary?.flow_index);
+  const siteDown = summary?.is_bma && bmaSiteDown(summary.site);
+  const level = siteDown ? { key: 'neutral', label: 'ไม่มีข้อมูลสด', hint: 'รอให้เว็บกล้อง กทม. กลับมา' } : flowLevel(summary?.flow_index);
   const status = STATUS[level.key];
 
   return (
@@ -112,6 +114,12 @@ export default function FlowOverview({ summary, error, onRetry, retrying }) {
         </div>
       )}
 
+      {siteDown && (
+        <div className="mt-4">
+          <BmaSiteNotice source={summary.site} />
+        </div>
+      )}
+
       <div className="mt-5 grid grid-cols-1 md:grid-cols-[auto_1fr_auto] gap-6 md:gap-8 items-center">
         {/* score */}
         <div className="flex items-end gap-1.5 shrink-0">
@@ -139,9 +147,11 @@ export default function FlowOverview({ summary, error, onRetry, retrying }) {
             <>
               <p className={`text-xl font-semibold leading-7 ${status.text}`}>{level.label}</p>
               <p className="text-[13px] text-slate-600 mt-0.5 leading-5">{level.hint}</p>
-              <div className="mt-2">
-                <Delta history={summary.history} />
-              </div>
+              {!siteDown && (
+                <div className="mt-2">
+                  <Delta history={summary.history} />
+                </div>
+              )}
             </>
           ) : (
             <div className="space-y-2 mt-1">

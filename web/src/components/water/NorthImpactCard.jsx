@@ -36,7 +36,7 @@ export default function NorthImpactCard({ data, failed, onReload, onData }) {
         title="AI วิเคราะห์ผลกระทบต่อเขตในกรุงเทพฯ"
         description={
           r
-            ? `${r.source === 'ai' ? `AI ${r.model}` : 'ประเมินตามเกณฑ์ของระบบ (AI ไม่พร้อม)'} · วิเคราะห์ ${fmtDateTime(r.generated_at)} (${agoText(r.generated_at)}) · ตรวจข้อมูลทุก ${Math.round((data.interval_s || 1800) / 60)} นาที วิเคราะห์ใหม่เมื่อสถานการณ์เปลี่ยน`
+            ? `${r.source === 'ai' ? `AI ${r.model}` : 'ประเมินตามเกณฑ์ของระบบ (AI ไม่พร้อม)'} · วิเคราะห์ ${fmtDateTime(r.generated_at)} (${agoText(r.generated_at)}) · วิเคราะห์ใหม่ทุก ${Math.round((data.interval_s || 1800) / 60)} นาที`
             : 'AI อ่านน้ำเหนือที่กำลังมา คาดการณ์ สสน. ที่นนทบุรี น้ำทะเลหนุน และระดับคลอง/ถนน/ฝนรายเขต'
         }
         action={

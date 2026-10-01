@@ -232,6 +232,7 @@ def health():
         "ok": scan_ok and (SERVER_START < now),
         "uptime_s": int(now - SERVER_START),
         "scan": {"cycle": scan.get("cycle_count"), "age_s": scan_age, "running": scan.get("is_scanning"), "ok": scan_ok},
+        "bma_source": scan.get("source"),
         "ai_fps": detector.get_stats().get("fps"),
         "helmet": {"agent": hs.get("agent"), "agent_error": hs.get("agent_error"), "queue": hs.get("queue")},
         "wrongway": {"enabled": wrongway.enabled(), "queue": wrongway._queue.qsize()},

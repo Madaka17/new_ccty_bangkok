@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchTrafficSummary, fetchBmaAnalytics, fetchAnalytics, fetchOnlineCount, fetchFloodStatus } from '../lib/api.js';
+import { bmaSiteDown } from './bma/BmaSiteNotice.jsx';
 import { trackView } from '../lib/telemetry.js';
 import { Button } from './dashboard/ui.jsx';
 import { PageHeader, Tabs } from './dashboard/primitives.jsx';
@@ -70,15 +71,21 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
 
   // BMA unified summary
   const cg = bma?.summary?.congestion;
+  const site = bma?.scan_status?.source;
+  const siteDown = bmaSiteDown(site);
   const bmaSummary = bma?.summary
     ? {
         ready: true,
-        online: true,
+        online: !siteDown,
         is_bma: true,
-        updated_at: bma.scan_status?.last_scan_time
-          ? Math.floor(new Date(bma.scan_status.last_scan_time.replace(' ', 'T')).getTime() / 1000)
-          : Math.floor(Date.now() / 1000),
-        flow_index: Math.min(100, Math.max(1, Math.round((cg?.free_pct || 0) + 0.5 * (cg?.moderate_pct || 0)))),
+        site,
+        // site down: the time of the last picture, not the last (empty) scan
+        updated_at: siteDown && site.last_frame_at
+          ? site.last_frame_at
+          : bma.scan_status?.last_scan_time
+            ? Math.floor(new Date(bma.scan_status.last_scan_time.replace(' ', 'T')).getTime() / 1000)
+            : Math.floor(Date.now() / 1000),
+        flow_index: siteDown ? null : Math.min(100, Math.max(1, Math.round((cg?.free_pct || 0) + 0.5 * (cg?.moderate_pct || 0)))),
         green_pct: Math.round(cg?.free_pct || 0),
         yellow_pct: Math.round(cg?.moderate_pct || 0),
         red_pct: Math.round(cg?.heavy_pct || 0),
