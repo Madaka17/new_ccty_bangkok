@@ -13,7 +13,8 @@ alert candidates, each with a stable key and a severity:
     incident   an accident / breakdown confirmed by the camera AI, a Longdo accident report, and BMA
                traffic-centre reports of accidents, fires, fallen trees and road closures
     air        a PM2.5 station at the "มีผลต่อสุขภาพ" band (> 75 µg/m³) - air_service
-    system     BMA scan stalled, vision agent failing, data disk nearly full, and "server started"
+    system     BMA scan stalled, the BMA camera site down or frozen, vision agent failing, data disk nearly
+               full, and "server started"
 
 A candidate is pushed when its key is new or its severity went up. It is forgotten after it has been
 absent for CLEAR_SECONDS, so a condition that clears and comes back alerts again, while one that stays
@@ -27,6 +28,7 @@ import json
 import os
 import threading
 import time
+from datetime import datetime
 from collections import deque
 
 try:
@@ -208,6 +210,12 @@ class AlertService:
         if h and not scan.get("ok", True):
             out.append({"topic": "system", "key": "sys:scan", "level": 1, "title": "สแกนกล้อง กทม. หยุดทำงาน",
                         "body": f"สแกนล่าสุด {scan.get('age_s')} วินาทีก่อน (รอบที่ {scan.get('cycle')}) watchdog จะ restart ถ้ายังไม่ฟื้น"})
+        src = h.get("bma_source") or {}
+        if src.get("state") in ("down", "frozen"):
+            since = (" ตั้งแต่ " + datetime.fromtimestamp(src["last_frame_at"]).strftime("%H:%M") + " น.") if src.get("last_frame_at") else ""
+            out.append({"topic": "system", "key": "sys:bma_site", "level": 1,
+                        "title": "เว็บกล้อง กทม. ล่ม" if src["state"] == "down" else "เว็บกล้อง กทม. ส่งภาพค้าง",
+                        "body": f"{src.get('site')} ไม่ส่งภาพใหม่{since} ข้อมูลรถติดจากกล้อง กทม. ไม่อัปเดต"})
         err = (h.get("helmet") or {}).get("agent_error")
         if err:
             out.append({"topic": "system", "key": "sys:agent", "level": 1, "title": "AI ตรวจภาพใช้งานไม่ได้", "body": str(err)[:140]})

@@ -8,7 +8,8 @@ import VideoSlot from './VideoSlot.jsx';
 import ViewSwitch from './ViewSwitch.jsx';
 import { Button, Skeleton } from './dashboard/ui.jsx';
 import { distanceKm } from '../lib/store.js';
-import { getBmaSnapshotUrl } from '../lib/api.js';
+import { fetchBmaScanStatus, getBmaSnapshotUrl } from '../lib/api.js';
+import BmaSiteNotice from './bma/BmaSiteNotice.jsx';
 
 const CHIP_OFF = 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50';
 const CHIP_ON = 'bg-blue-600 text-white border-blue-600';
@@ -247,6 +248,14 @@ export default function CameraWall({
 }) {
   const [focus, setFocus] = useState(null);
   const [tab, setTab] = useState(readTab);
+  const [site, setSite] = useState(null);   // is the BMA camera site sending pictures (scan_status.source)
+  useEffect(() => {
+    if (tab !== 'bma') return undefined;
+    const load = () => fetchBmaScanStatus().then((s) => setSite(s.source)).catch(() => {});
+    load();
+    const id = setInterval(load, BMA_TILE_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [tab]);
   const pickTab = (id) => {
     setTab(id);
     try {
@@ -323,6 +332,7 @@ export default function CameraWall({
       ) : (
         <Section id="wall-bma" title="กล้อง กทม." count={bma.length} loading={loading}
           hint="รูปล่าสุดจากกล้อง กทม. อัปเดตทุก 1 นาที แตะเพื่อดูรูปใหม่ทุก 3 วินาที">
+          <BmaSiteNotice source={site} />
           <div className={GRID}>
             {bma.map((cam) => <BmaTile key={cam.camid} cam={cam} pinned={pinned.has(cam.camid)} onOpen={setFocus} />)}
           </div>

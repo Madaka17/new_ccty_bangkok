@@ -4,6 +4,7 @@ import time
 import json
 import sqlite3
 import threading
+import hashlib
 import io
 import re
 from datetime import datetime, timedelta
@@ -59,6 +60,16 @@ CLASS_THAI = {
 
 
 BMA_URL = 'https://cpudapp.bangkok.go.th/bmatraffic/'
+BMA_SITE = 'cpudapp.bangkok.go.th'
+# A scan cycle with fresh frames from fewer than this share of the cameras means the BMA site is down (no
+# frames) or frozen (the same picture again). On Oct 1 2026 the whole site answered 404 from 10:19 on.
+SOURCE_MIN_SHARE = 0.05
+
+
+def _pixels_id(img):
+    """Same id for the same picture: a frozen feed re-sends identical pixels, a live camera's clock overlay
+    changes them every second even on an empty street."""
+    return hashlib.md5(img.tobytes()).digest()
 
 
 class BmaSession:
@@ -351,6 +362,12 @@ class BmaScanner:
         self.last_scan_time = None
         self.last_scan_duration = 0.0
         self.cycle_count = 0
+        # Is the BMA site giving us live pictures? Set after every cycle; see source_status()
+        self._frame_ids = {}       # camid -> _pixels_id of its last frame
+        raw = [os.path.join(RAW_DIR, f) for f in os.listdir(RAW_DIR) if f.endswith('.jpg')]
+        self._last_fresh = max((os.path.getmtime(p) for p in raw), default=None)   # survives a restart
+        self.source = {"state": "starting", "site": BMA_SITE, "frames_ok": None, "frames_new": None,
+                       "last_frame_at": int(self._last_fresh) if self._last_fresh else None}
         # BMA answers slowly (~1.3 s a picture): 5 at a time with one session per camera (BmaSession)
         # scan the 574 cameras in ~2.5 min; the first cycle after a start binds every session (~10 min)
         self.download_workers = int(os.getenv("BMA_SCAN_WORKERS", "8"))
@@ -419,7 +436,8 @@ class BmaScanner:
                 "percent": pct,
                 "cycle_count": self.cycle_count,
                 "last_scan_time": self.last_scan_time,
-                "last_scan_duration": round(self.last_scan_duration, 1)
+                "last_scan_duration": round(self.last_scan_duration, 1),
+                "source": dict(self.source),
             }
 
     def _auto_scan_loop(self):
@@ -442,7 +460,21 @@ class BmaScanner:
         
         # We fetch and process cameras using worker thread pool
         cams = list(self.cameras)
-        
+        tally = {"ok": 0, "new": 0}   # cameras that sent a picture / a picture different from their last one
+
+        def note_frame(camid, img):
+            fid = _pixels_id(img)
+            prev = self._frame_ids.get(camid)
+            if prev is None:   # first frame since a restart: compare with the one kept on disk
+                old = cv2.imread(os.path.join(RAW_DIR, f"{camid}.jpg"))
+                prev = _pixels_id(old) if old is not None else None
+            self._frame_ids[camid] = fid
+            with self.lock:
+                tally["ok"] += 1
+                if fid != prev:
+                    tally["new"] += 1
+                    self._last_fresh = time.time()
+
         def process_camera(cam):
             if self.stop_event.is_set():
                 return
@@ -468,6 +500,7 @@ class BmaScanner:
                         level='free', status='offline', latency_ms=0.0, detections=[]
                     )
                     return
+                note_frame(camid, img)
                 save_raw_frame(camid, raw_bytes)
                 if self.flood is not None:
                     try:
@@ -559,6 +592,13 @@ class BmaScanner:
         self.last_scan_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         self.cycle_count += 1
         self.is_scanning = False
+        if not self.stop_event.is_set():
+            need = SOURCE_MIN_SHARE * max(1, len(cams))
+            state = "down" if tally["ok"] < need else "frozen" if tally["new"] < need else "ok"
+            if state != "ok":
+                print(f"[BMA Scanner] BMA site {state}: {tally['ok']} pictures, {tally['new']} new, from {len(cams)} cameras")
+            self.source = {"state": state, "site": BMA_SITE, "frames_ok": tally["ok"], "frames_new": tally["new"],
+                           "last_frame_at": int(self._last_fresh) if self._last_fresh else None}
         print(f"[BMA Scanner] Finished scan cycle #{self.cycle_count} in {self.last_scan_duration:.1f}s")
         # Live snapshot CSVs (what every camera sees right now); cycle files are written by the archiver
         try:
@@ -640,6 +680,10 @@ class BmaScanner:
         
         now_ts = int(time.time())
         online_cams = [c for c in latest_cams if c.get('status') == 'online' or (c.get('total', 0) > 0 and c.get('ts', 0) > now_ts - 1800)]
+        if self.source["state"] in ("down", "frozen"):
+            # an offline camera keeps its last counts and gets a new ts every cycle, so with the site down the
+            # rule above still counted 539 cameras with the morning's traffic as live
+            online_cams = []
         offline_cams = [c for c in latest_cams if c not in online_cams]
         
         total_cars = sum(c.get('cars', 0) for c in online_cams)
