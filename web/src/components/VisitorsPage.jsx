@@ -4,13 +4,15 @@ import { useEffect, useState } from 'react';
 import { fetchVisitorStats } from '../lib/api.js';
 import { Card, Badge, SectionHeader, Skeleton, EmptyState, ErrorState } from './dashboard/ui.jsx';
 import { PageHeader, StatTile, ShareBar } from './dashboard/primitives.jsx';
-import { fmtNum } from './dashboard/format.js';
+import { fmtDay, fmtNum } from './dashboard/format.js';
 import HourlyViewsCard from './dashboard/HourlyViewsCard.jsx';
 import { PAGE_TITLES } from './Sidebar.jsx';
 
 const TOPIC_LABEL = { traffic: 'จราจร', flood: 'น้ำท่วม', road_status: 'สภาพถนน', accidents: 'อุบัติเหตุ' };
 const TOPIC_COLOR = { traffic: 'bg-blue-600', flood: 'bg-cyan-500', road_status: 'bg-amber-500', accidents: 'bg-red-600' };
 const VISITOR_POLL_MS = 5000;
+// The fifth tile (everyone so far): a row of its own under the other four, beside them from xl up
+const TOTAL_SPAN = 'col-span-2 lg:col-span-4 xl:col-span-1';
 const PAGE_LABEL = {
   ...PAGE_TITLES, analytics: 'สถิติเมือง (หน้าเก่า)', 'bma-count': 'นับรถทุกกล้อง กทม.', helmet: 'คนไม่สวมหมวกกันน็อก', wrongway: 'รถขับย้อนศร',
 };
@@ -78,9 +80,9 @@ function VisitorSection({ isActive }) {
     return stale
       ? <ErrorState message="โหลดข้อมูลผู้เข้าใช้งานไม่สำเร็จ" />
       : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[0, 1, 2, 3].map((i) => (
-            <Card key={i} as="div" className="p-4"><Skeleton className="h-7 w-24" /><Skeleton className="h-3 w-32 mt-2" /></Card>
+        <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <Card key={i} as="div" className={`p-4 ${i === 4 ? TOTAL_SPAN : ''}`}><Skeleton className="h-7 w-24" /><Skeleton className="h-3 w-32 mt-2" /></Card>
           ))}
         </div>
       );
@@ -103,11 +105,17 @@ function VisitorSection({ isActive }) {
         <span className="text-slate-500 tabular-nums">· ล่าสุด {new Date(lastOk).toLocaleTimeString('th-TH')}</span>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3">
         <StatTile label="กำลังใช้งานอยู่ตอนนี้" value={`${fmtNum(d.online)} คน`} sub="เปิดเว็บอยู่ตอนนี้" tone="green" badge={<Badge tone="green" dot>สด</Badge>} />
         <StatTile label="ผู้ใช้วันนี้" value={`${fmtNum(d.dau)} คน`} sub={`เมื่อวานเวลาเดียวกัน ${fmtNum(prev)} (${delta >= 0 ? '+' : ''}${fmtNum(delta)})`} tone="blue" />
         <StatTile label="ยอดเปิดดูวันนี้" value={`${fmtNum(d.views_today)} ครั้ง`} sub={`ชั่วโมงนี้ ${fmtNum(thisHour)} ครั้ง`} />
         <StatTile label="ช่วงคนใช้มากสุด" value={d.peak_hours[0] ? hh(d.peak_hours[0].hour) : '–'} sub={d.peak_hours.length ? `สถิติ ${d.peak_window_days} วันล่าสุด` : 'ยังไม่มีข้อมูล'} tone="yellow" />
+        <StatTile
+          className={TOTAL_SPAN}
+          label="ผู้เข้าชมทั้งหมด"
+          value={`${fmtNum(d.visitors_total)} คน`}
+          sub={d.counting_since ? `นับตั้งแต่ ${fmtDay(d.counting_since * 1000)}` : 'ยังไม่มีข้อมูล'}
+        />
       </div>
 
       <HourlyViewsCard

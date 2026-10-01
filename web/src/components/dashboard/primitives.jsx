@@ -28,10 +28,10 @@ export function PageHeader({ title, description, actions, children }) {
 }
 
 // KPI tile: label, big number, one-line note, optional badge
-export function StatTile({ label, value, sub, badge, loading, tone }) {
+export function StatTile({ label, value, sub, badge, loading, tone, className = '' }) {
   const valueTone = { red: 'text-red-700', yellow: 'text-amber-700', green: 'text-emerald-700', blue: 'text-blue-700' }[tone] || 'text-slate-900';
   return (
-    <Card as="div" className="p-4">
+    <Card as="div" className={`p-4 ${className}`}>
       <div className="min-w-0">
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-slate-600 truncate">{label}</p>

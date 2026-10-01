@@ -112,6 +112,9 @@ class Telemetry:
             # Yesterday up to this time of day: a fair comparison while today is still running
             dau_prev_now = q("SELECT COUNT(DISTINCT sid) FROM views WHERE ts >= ? AND ts <= ?", (day_start - 86400, now - 86400)).fetchone()[0]
             views_today = q("SELECT COUNT(*) FROM views WHERE ts BETWEEN ? AND ?", (day_start, hi)).fetchone()[0]
+            # Everyone since counting began: one id per browser, as for the users of a day
+            visitors_total = q("SELECT COUNT(DISTINCT sid) FROM views WHERE ts <= ?", (hi,)).fetchone()[0]
+            counting_since = q("SELECT MIN(ts) FROM views WHERE ts <= ?", (hi,)).fetchone()[0]
             by_view = q("SELECT view, COUNT(*) FROM views WHERE ts BETWEEN ? AND ? GROUP BY view ORDER BY 2 DESC", (day_start, hi)).fetchall()
             week_rows = q("SELECT ts FROM views WHERE ts BETWEEN ? AND ?", (week_start, hi)).fetchall()
             daily = q("SELECT ts, sid FROM views WHERE ts BETWEEN ? AND ?", (week_start, hi)).fetchall()
@@ -144,6 +147,8 @@ class Telemetry:
             "dau_yesterday": dau_prev,
             "dau_yesterday_same_time": dau_prev_now,
             "views_today": views_today,
+            "visitors_total": visitors_total,
+            "counting_since": counting_since,
             "hours_today": hours_today,
             "current_hour": datetime.fromtimestamp(now, BKK_TZ).hour,
             "by_view": [{"view": v, "views": n} for v, n in by_view],
