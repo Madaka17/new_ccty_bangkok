@@ -4,7 +4,7 @@ cd /d "%~dp0..\.."
 title BKK StreetSmart - Restart PRODUCTION
 
 echo ======================================================================
-echo   BKK StreetSmart - Restart PRODUCTION (Tailscale Funnel on port 8000)
+echo   BKK StreetSmart - Restart PRODUCTION (port 8000, https://bkksmartstreet.com)
 echo ======================================================================
 echo.
 
@@ -14,6 +14,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\kill_server.ps1" -P
 rem Give the OS a moment to release the port
 ping -n 3 127.0.0.1 >nul
 
-echo [*] Starting server with Tailscale Funnel ...
+echo [*] Starting server ...
 echo.
 call "%~dp0start.bat"

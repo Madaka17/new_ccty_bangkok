@@ -25,11 +25,10 @@ The port defaults to 5050 (5000 collides with macOS AirPlay Receiver on most
 Macs). Override with `PORT=8080 python3 main.py`.
 
 On the public server, start it with `launch\enviro\start.bat` (or
-`restart.bat` / `stop.bat`) instead. It is public at https://enviro.bkksmartstreet.com
-and at /enviro/ next to BKK StreetSmart (https://cctv.bkksmartstreet.com/enviro/, whose
-"Earthquake" page shows it in a frame) through Cloudflare Tunnel (`launch\cloudflare`), and at
-https://cctv-bangkok.tail95e28b.ts.net/enviro/ through Tailscale Funnel. Funnel strips the
-/enviro prefix; the tunnel does not, so `server/app.py` strips it itself. Before
+`restart.bat` / `stop.bat`) instead. It is public at https://bkksmartstreet.com/enviro/,
+next to BKK StreetSmart on the same address (whose "Earthquake" page shows it in a frame),
+through Cloudflare Tunnel (`launch\cloudflare`). The tunnel passes the /enviro prefix on, so
+`server/app.py` strips it; ENVIRO still works at / too (http://localhost:5050/). Before
 each start it replaces the demo passwords above and the PROTO-01 node key with
 random ones, and writes them to `data/accounts.txt` (not in git).
 

@@ -101,20 +101,21 @@ BMA_DATA_DIR=E:\data smartstreet
 
 ### 🌐 เปิดเว็บให้คนอื่นเข้าดู
 
-ลิงก์สาธารณะ:
+ลิงก์สาธารณะ (ชื่อเดียว):
 
-| เว็บ | Cloudflare (หลัก) | Tailscale Funnel (ลิงก์เดิม เปิดคู่กันไปก่อน) |
-|---|---|---|
-| BKK StreetSmart | https://cctv.bkksmartstreet.com | https://cctv-bangkok.tail95e28b.ts.net |
-| ENVIRO | https://enviro.bkksmartstreet.com | https://cctv-bangkok.tail95e28b.ts.net/enviro/ |
+| เว็บ | ลิงก์ |
+|---|---|
+| BKK StreetSmart | https://bkksmartstreet.com |
+| ENVIRO | https://bkksmartstreet.com/enviro/ (หน้า "แผ่นดินไหว" ใน BKK ก็ฝังหน้านี้ไว้) |
 
-- **Cloudflare Tunnel** รันเป็น Windows service ชื่อ `cloudflared` เปิดเองตอนบูต ไม่ขึ้นกับสคริปต์ start/stop ตั้งค่าอยู่ที่ `launch\cloudflare\config.yml` (tunnel `bkk-streetsmart`) ไฟล์ลับของ tunnel อยู่ที่ `C:\Users\user\.cloudflared\` ไม่เก็บใน Git
+- เปิดให้คนนอกเข้าผ่าน **Cloudflare Tunnel** อย่างเดียว ไม่ใช้ Tailscale Funnel แล้ว (Tailscale ยังเปิดอยู่สำหรับเข้าเครื่องจาก tailnet)
+- Tunnel รันเป็น Windows service ชื่อ `cloudflared` เปิดเองตอนบูต ไม่ขึ้นกับสคริปต์ start/stop ตั้งค่าอยู่ที่ `launch\cloudflare\config.yml` (tunnel `bkk-streetsmart`) ไฟล์ลับของ tunnel อยู่ที่ `C:\Users\user\.cloudflared\` ไม่เก็บใน Git
   - หลังแก้ `config.yml`: `Restart-Service cloudflared` (ต้องเปิด PowerShell แบบ admin)
   - ติดตั้งใหม่หรือซ่อม service: `launch\cloudflare\install_service.ps1` (แบบ admin)
-  - BKK ต้องชี้ไปที่ `http://127.0.0.2:8000` ไม่ใช่ `127.0.0.1` เพราะ `access_guard.py` อ่าน IP จริงของผู้เข้าชมจาก `CF-Connecting-IP` เฉพาะการเชื่อมต่อที่เข้ามาทาง `127.0.0.2`
-- `launch\production\start.bat` เปิด Tailscale Funnel ให้ด้วยถ้ามี tailscale ในเครื่อง ถ้าไม่มีก็ข้ามไป เว็บยังเข้าได้ทาง Cloudflare
-- ถ้าต้องการใช้เฉพาะในเครื่องหรือเครือข่ายภายใน ให้เปิด `launch\production\start_local.bat` แทน (Cloudflare Tunnel ยังเปิดอยู่ ถ้าไม่ให้คนนอกเข้าต้องหยุด service `cloudflared` ด้วย)
-- `launch\production\stop.bat` จะหยุดเซิร์ฟเวอร์ Production และปิด Funnel ระหว่างนั้นลิงก์ Cloudflare จะขึ้นหน้า error ของ Cloudflare
+  - `/enviro` ส่งไปที่ ENVIRO (:5050) ส่วนที่เหลือส่งไปที่ BKK ซึ่งต้องชี้ไปที่ `http://127.0.0.2:8000` ไม่ใช่ `127.0.0.1` เพราะ `access_guard.py` อ่าน IP จริงของผู้เข้าชมจาก `CF-Connecting-IP` เฉพาะการเชื่อมต่อที่เข้ามาทาง `127.0.0.2`
+- `launch\production\start.bat` เช็คว่า service `cloudflared` รันอยู่ แล้วแสดงลิงก์สาธารณะ
+- `start_local.bat` ไม่ได้ปิดลิงก์สาธารณะ ถ้าจะใช้แค่ในเครื่อง/เครือข่ายภายใน ต้องหยุด service ด้วย `Stop-Service cloudflared` (แบบ admin)
+- `launch\production\stop.bat` หยุดเซิร์ฟเวอร์ Production ระหว่างนั้นลิงก์สาธารณะจะขึ้นหน้า error ของ Cloudflare
 
 ดูวิธีเริ่มและหยุดเซิร์ฟเวอร์ได้ในหัวข้อ **🚀 วิธีเปิดใช้งาน** ด้านล่าง
 
@@ -186,9 +187,9 @@ GENERAL_RATE_PER_MIN=600
 │   └── agents/   AI วิเคราะห์: flood, riskbkk, traffy (+history), water, chat
 ├── config/                       ← 🌐 ข้อมูลกล้อง cameras_bkk.json, cameras_bma.json
 ├── launch/                       ← ▶️ ตัวรัน
-│   ├── production/      start / restart / stop / start_local   (:8000; start เปิด Funnel)
+│   ├── production/      start / restart / stop / start_local   (:8000)
 │   ├── test/            start / restart / stop                 (ทดสอบ :8001)
-│   ├── cloudflare/      config.yml + install_service.ps1        (Cloudflare Tunnel → cctv. / enviro.bkksmartstreet.com)
+│   ├── cloudflare/      config.yml + install_service.ps1        (Cloudflare Tunnel → bkksmartstreet.com)
 │   ├── enviro/, bma_watch/
 │   ├── kill_server.ps1  (ใช้ร่วม: หยุดเซิร์ฟเวอร์ตามพอร์ต)
 │   └── build_web.bat
@@ -255,7 +256,7 @@ GENERAL_RATE_PER_MIN=600
 | `local/pipeline/prep_wrongway_cls.py`, `train_wrongway_cls.py` | ตัดกรอบ `toward/away` จาก `dataset_wrongway` เป็นภาพครอป (`local/dataset_wrongway_cls/`) → เทรน `yolo26s-cls` 128 px (`--clean` ย้ายภาพที่ label น่าจะผิดไป `rejected/` แล้วเทรนซ้ำ) → `wrongway_cls.pt`; รันข้างเซิร์ฟเวอร์ได้ ใช้ GPU ~1-2 GB |
 | `backend/water/river_roads.py` + `config/chao_phraya.json` + `config/nonthaburi_areas.json` | **นนทบุรี: ถนนทุกสาย ช่วงไหนท่วมก่อน + โอกาสน้ำท่วม** (`/api/water/north/nonthaburi`): แนวกลางแม่น้ำเจ้าพระยาและเขตจังหวัด/อำเภอ/ตำบลนนทบุรีจาก OpenStreetMap (ODbL, สร้างใหม่ด้วย `local/pipeline/fetch_river_areas.py`) × ถนนทุกเส้นใน road index ของ Longdo ที่อยู่ในนนทบุรี (~160 สาย) ตัดเป็นช่วงละ ~330 ม. แต่ละช่วงมีระยะห่างจากแม่น้ำ ตำบล/อำเภอ และถนนที่ตัดผ่าน เรียงช่วงเสี่ยงที่สุด → รองลงมา · AI เรียกรอบที่ 3 อธิบายแต่ละสาย · โอกาสน้ำสูงกว่าตลิ่งรายวันที่สะพานนวลฉวี = 1 − Φ((ตลิ่ง − ระดับสูงสุดที่ สสน. คาด)/σ) โดย σ มาจากประวัติคาดการณ์ สสน. ที่ระบบเก็บเอง (`cache/hii_1132_forecasts.json`, ใช้เมื่อครบ 5 ค่าต่อช่วงล่วงหน้า) ไม่งั้นใช้การเปลี่ยนแปลงของระดับน้ำสูงสุดรายวันจริง 30 วัน · ภาพรวม 7 วัน = วันที่โอกาสสูงสุด · ถนน = โอกาส × น้ำหนักระยะ (≤200 ม. 1, ≤500 ม. 0.6, ≤1 กม. 0.3, ≤2 กม. 0.1 เป็นสมมติฐาน) ส่งต่อให้ AI อธิบายด้วย |
 | `backend/core/local_llm.py` | ไคลเอนต์ AI (OpenAI-compatible, `LOCAL_LLM_*`) ที่ทุกงานใช้ร่วมกัน จำกัด 3 คำขอพร้อมกันต่อ key และ **นับ token ทุกคำขอแยกตามโมดูลที่เรียก** (จาก `usage` ที่ gateway ส่งกลับ เก็บ 24 ชม.) ดูได้ที่ `GET /api/ai/usage?minutes=30` (เฉพาะ LAN/operator) |
-| `backend/core/access_guard.py` | ป้องกันเมื่อเปิด Funnel สาธารณะ: POST ควบคุมทำได้จาก LAN/tailnet หรือ `X-Admin-Token`; `/api/chat` จำกัดต่อ IP |
+| `backend/core/access_guard.py` | ป้องกันเมื่อเปิดสาธารณะผ่าน Cloudflare Tunnel: POST ควบคุมทำได้จาก LAN/tailnet หรือ `X-Admin-Token`; `/api/chat` จำกัดต่อ IP (IP จริงจาก `CF-Connecting-IP` บนการเชื่อมต่อทาง `127.0.0.2`) |
 | `local/pipeline/backup_db.py` (`backup_db.bat`) | งานกลางคืน: ลบ `bma_history`/`samples` เกิน 90 วัน, VACUUM, สำเนา DB + CSV + .env ไป `BMA_DATA_DIR\backup\` (ลงทะเบียน Task Scheduler 03:30 แล้ว) |
 | `local/pipeline/watchdog.bat` | ping `/api/health` ทุก 1 นาที ล้ม 3 ครั้งติดจึงรัน `launch\production\restart.bat` |
 | `local/pipeline/prep_helmet_det.py`, `train_helmet_det.py`, `watch_train.*` | dataset Kaggle helmet-detection → YOLO format → fine-tune `yolo26x.pt` เป็น `helmet_det.pt` (helmet / no_helmet) + หน้าต่าง % ความคืบหน้า |

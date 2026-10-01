@@ -21,8 +21,8 @@ _stop_event = threading.Event()
 
 
 class _StripPrefix:
-    """Serves the app under /enviro as well as at /. Tailscale Funnel strips /enviro before it gets here,
-    Cloudflare Tunnel (cctv.bkksmartstreet.com/enviro/ framed by BKK's Earthquake page) does not."""
+    """Serves the app under /enviro as well as at /. The public address is bkksmartstreet.com/enviro/ (also framed
+    by BKK's Earthquake page), and Cloudflare Tunnel passes the /enviro prefix on instead of stripping it."""
 
     def __init__(self, app, prefix):
         self.app, self.prefix = app, prefix

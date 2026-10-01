@@ -1,10 +1,10 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0..\..\ENVIRO"
-title ENVIRO Seismic Command - Public (Tailscale Funnel /enviro)
+title ENVIRO Seismic Command - Public (bkksmartstreet.com/enviro)
 
 echo ======================================================================
-echo   ENVIRO Seismic Command  (Public via Tailscale Funnel at /enviro)
+echo   ENVIRO Seismic Command  (Public at https://bkksmartstreet.com/enviro/)
 echo ======================================================================
 echo.
 
@@ -31,13 +31,11 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-rem Mounted next to BKK StreetSmart launch\production, which serves "/" on the same address
-echo [*] Enabling Tailscale Funnel at /enviro ...
-tailscale funnel --bg --set-path=/enviro 5050
-echo.
-echo [*] Public URL: https://enviro.bkksmartstreet.com  ^(Tailscale: https://cctv-bangkok.tail95e28b.ts.net/enviro/^)
+rem Public through the Cloudflare Tunnel service (launch\cloudflare): /enviro on the same address as
+rem BKK StreetSmart (launch\production), which serves "/". ENVIRO strips the /enviro prefix itself.
+echo [*] Public URL: https://bkksmartstreet.com/enviro/
 echo [*] Local  URL: http://localhost:5050
-echo [*] Close this window to stop ENVIRO. Funnel stays on until stop.bat.
+echo [*] Close this window to stop ENVIRO.
 echo.
 
 set PORT=5050

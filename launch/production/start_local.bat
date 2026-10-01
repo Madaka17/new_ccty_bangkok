@@ -1,16 +1,17 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0..\.."
-title BKK StreetSmart - PRODUCTION (localhost:8000 only)
+title BKK StreetSmart - PRODUCTION (localhost:8000, local start)
 rem Silence FFmpeg h264 decoder spam; must be set before python starts (os.environ inside python is too late on Windows)
 set OPENCV_FFMPEG_LOGLEVEL=-8
 
-rem Same production server and data as start.bat, without Tailscale Funnel: this machine and the LAN only.
+rem Same production server and data as start.bat. To keep it to this machine and the LAN, stop the Cloudflare
+rem Tunnel service first (Stop-Service cloudflared, as administrator): while it runs the site stays public.
 set "PORT=8000"
 set "INSTANCE_DIR=%CD%\instances\production"
 
 echo ======================================================================
-echo   BKK StreetSmart - PRODUCTION  http://localhost:8000  (not public)
+echo   BKK StreetSmart - PRODUCTION  http://localhost:8000
 echo   data: instances\production\
 echo ======================================================================
 echo.
@@ -21,6 +22,13 @@ if %ERRORLEVEL% EQU 0 (
     echo.
     pause
     exit /b 0
+)
+
+sc query cloudflared 2>nul | findstr /c:"RUNNING" >nul
+if %ERRORLEVEL% EQU 0 (
+    echo [!] Cloudflare Tunnel is running: the site is still public at https://bkksmartstreet.com
+    echo     For this machine / LAN only, run as administrator: Stop-Service cloudflared
+    echo.
 )
 
 call launch\build_web.bat

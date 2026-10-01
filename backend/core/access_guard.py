@@ -1,4 +1,4 @@
-"""Access guard for public exposure (Tailscale Funnel / LAN).
+"""Access guard for public exposure (Cloudflare Tunnel at bkksmartstreet.com / LAN).
 
 - Control endpoints (POST/PUT/DELETE that change AI or scanner state) are only
   allowed from trusted networks (localhost, LAN, tailnet) or with a valid
