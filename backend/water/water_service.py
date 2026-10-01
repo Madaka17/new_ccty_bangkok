@@ -61,6 +61,9 @@ WEATHER_ZONES = [
     {"id": "samut_prakan", "name": "สมุทรปราการ", "areas": "เมืองสมุทรปราการ บางพลี พระประแดง", "lat": 13.600, "lng": 100.600},
 ]
 STORM_CODES = {95, 96, 99}   # WMO thunderstorm codes
+# Open-Meteo without a key allows 10,000 location-calls a day per IP (shared with the test server).
+# Refetched with every 60 s summary, the 8 zones alone used ~11,500 a day and the quota ran out (HTTP 429).
+WEATHER_TTL = 1800
 
 SUMMARY_TTL = 60
 # BMA Drainage Department canal gauges (the same sensors ThaiWater relays ~45 min later, plus ~40 more).
@@ -699,7 +702,7 @@ def _weather_alert(rain_24h, gust, storm):
 # Wind field for the map overlay: a 7x7 grid over Bangkok + suburbs, current conditions only
 WIND_GRID_LAT = [13.45 + i * 0.1 for i in range(7)]
 WIND_GRID_LNG = [100.25 + i * 0.1 for i in range(7)]
-WIND_TTL = 900
+WIND_TTL = 3600     # 49 points per call: hourly keeps the grid under 1,200 Open-Meteo calls a day
 
 
 def _load_wind_grid():
@@ -725,7 +728,10 @@ def _load_wind_grid():
 
 
 def get_wind_grid():
-    data, stale = _cache.get("wind_grid", WIND_TTL, _load_wind_grid)
+    try:
+        data, stale = _cache.get("wind_grid", WIND_TTL, _load_wind_grid)
+    except Exception:   # nothing cached yet and Open-Meteo is down or over quota: the map just shows no arrows
+        return {"updated_at": None, "points": [], "stale": True}
     return {**data, "stale": stale}
 
 
@@ -860,7 +866,7 @@ def _build_summary():
     threads = [threading.Thread(target=run, args=a, daemon=True) for a in (
         ("river", _load_river), ("canals", _load_canals), ("flood_roads", _load_flood_roads),
         ("tide", _load_tide), ("rain", _load_rain_warnings), ("official", _load_official_stations),
-        ("weather", _load_weather),
+        ("weather", lambda: _cache.get("weather", WEATHER_TTL, _load_weather)[0]),
         ("ntw", lambda: {k: v for k, v in _cache.get("ntw", NTW_TTL, _load_ntw)[0].items() if k != "rain_all"}))]
     for t in threads:
         t.start()
