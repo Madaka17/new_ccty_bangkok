@@ -1,289 +1,133 @@
-# BKK StreetSmart: กล้องจราจร กรุงเทพฯ และปริมณฑล + AI วิเคราะห์เมือง
+# BKK StreetSmart
 
-เว็บแอปติดตามเมืองแบบเรียลไทม์ ครอบคลุม **กรุงเทพมหานคร และปริมณฑล**: กล้อง CCTV (กล้องสตรีมสด 34 ตัว + กล้อง กทม. 574 ตัวที่สแกนนับรถทุก ~4 นาที) ตรวจจับและนับรถด้วย **YOLO26x (Ultralytics)** จราจรรายถนน น้ำท่วม/ฝน/ระดับคลอง PM2.5 อุบัติเหตุ ตรวจหมวกกันน็อกและรถย้อนศร และ AI ผู้ช่วยตอบคำถาม
+เว็บดูสถานการณ์กรุงเทพฯ และปริมณฑลแบบสด: รถติดตรงไหน น้ำท่วมที่ไหน ฝุ่นเป็นอย่างไร และมีเหตุอะไรบนถนน
+ทุกอย่างอยู่ในเว็บเดียว ใช้ภาษาไทยง่าย ๆ ใครก็เปิดดูได้
 
----
-
-## 🤖 ฟังก์ชันระบบ AI ตรวจจับยานพาหนะ (YOLO26x)
-- **โมเดลที่ใช้**: `yolo26x.pt` ค่าเริ่มต้น (COCO) + ByteTrack
-- **อัตราการประมวลผล (Target Frame Rate)**: **~10 FPS** บนกล้องสดที่เลือก (ปรับได้ในหน้า Camera AI) และนับรถหลายกล้องในพื้นหลังที่ 0.5 FPS
-- **การจำแนกประเภทยานพาหนะ**:
-  1. 🚗 **รถยนต์ (Cars)**: สีฟ้า/น้ำเงินนีออน พร้อมกรอบและข้อความเปอร์เซ็นต์ความมั่นใจ
-  2. 🏍️ **มอไซ (Motorcycles)**: สีส้ม/เหลืองทอง พร้อมกรอบและข้อความเปอร์เซ็นต์ความมั่นใจ
-  3. 🚚 **รถบรรทุก (Trucks / Buses)**: สีแดงส้ม พร้อมกรอบและข้อความเปอร์เซ็นต์ความมั่นใจ
-- **การนับและประเมินสภาพจราจรแบบเรียลไทม์**:
-  - แสดงตัวเลขดิจิทัลนับแยกตามประเภทแบบสดๆ
-  - ประเมินสถานะการจราจร: `🟢 คล่องตัว` / `🟡 ปานกลาง` / `🔴 หนาแน่น`
-  - รองรับการเปิดดูกล้อง CCTV ใดก็ได้จาก `config/cameras_bkk.json` (34 ตัว) และกล้อง กทม. ทุกตัว
-- **เปลี่ยนโมเดลได้ผ่าน `.env`**: `AI_MODEL=yolo26x.pt` (YOLO26x: mAP 57.5 vs YOLO11x 54.7, NMS-free, เร็วกว่าเล็กน้อย — ทดสอบบน RTX 3080 FP16 ได้ ~36 ms/เฟรม) ไฟล์ `.pt` ดาวน์โหลดอัตโนมัติถ้ายังไม่มี
-- **ติดตั้ง PyTorch แบบ CUDA** (ถ้า `torch.cuda.is_available()` เป็น False ระบบจะตกไปใช้ CPU ช้ากว่า ~30 เท่า):
-
-```bash
-.venv\Scripts\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130 --force-reinstall --no-deps
-```
-
-- **รองรับ GPU Acceleration**: ใช้งาน PyTorch CUDA 12.4 บนการ์ดจอ **NVIDIA GeForce RTX 3050** ความเร็ว Latency เพียง ~65 ms ต่อเฟรม!
+**เปิดดูได้ที่ https://bkksmartstreet.com**
 
 ---
 
-## 🌸 หน้าเว็บใหม่ (React + Tailwind + framer-motion)
+## เว็บนี้ทำอะไรได้บ้าง
 
-โค้ดหน้าเว็บอยู่ใน `web/` แต่ละเซิร์ฟเวอร์ใช้ไฟล์เว็บที่ build แยกกัน:
-
-- Production (`:8000`): `instances\production\dist`
-- Test (`:8001`): `instances\test\dist`
-
-ถ้ายังไม่มีไฟล์เว็บ เซิร์ฟเวอร์ยังเปิด API ได้ แต่หน้าแรกจะแสดงข้อผิดพลาด `503` ให้ build หน้าเว็บก่อน โดยต้องติดตั้ง Node.js ไว้ในเครื่อง
-
-```bash
-cd web
-npm install
-npm run build -- --outDir ../instances/test/dist   # สร้างหน้าเว็บสำหรับ Test (:8001)
-npm run dev        # แก้หน้าเว็บและดูผลที่ http://localhost:5173 โดยใช้ API ของ :8000
-npm run dev:8001   # เหมือนกัน แต่ใช้ API ของ Test (:8001)
-```
-
-ไฟล์ที่ build แล้วไม่เก็บใน Git ตอนเปิดเซิร์ฟเวอร์ สคริปต์จะลองสร้างหน้าเว็บให้ถ้ายังไม่มี `dist` ถ้าแก้หน้าเว็บแล้วมี `dist` อยู่เดิม ให้ build ใหม่ด้วยคำสั่งด้านล่าง เพราะการ restart อย่างเดียวจะยังใช้หน้าเว็บเดิม คำสั่ง `npm run build` แบบไม่มี `--outDir` จะสร้าง `web/dist` ซึ่งเซิร์ฟเวอร์ไม่ได้ใช้
-
----
-
-## 🗺️ แผนที่จราจร / 🤖 AI ผู้ช่วยการจราจร / 📊 แดชบอร์ด
-
-หน้าเว็บมี 8 หน้า (เมนูซ้าย): **Traffic Dashboard**, **City Analytics**, **Camera AI & Analysis**, **Traffic Map**, **Helmet Check**, **Wrong-Way Check**, **Water Forecast**, **Ask AI (Routes)**
-
-- **เส้นจราจร (เขียว/เหลือง/แดง)** ดึงจาก Longdo Traffic vector tiles (`msv.longdo.com/maps/traffic`) ผ่านเซิร์ฟเวอร์ของเราที่แคชไว้ในโฟลเดอร์ `instances\production\cache\` ถ้าเน็ตหลุดจะแสดงข้อมูลล่าสุดที่บันทึกไว้
-- **แผนที่ออฟไลน์**: แผนที่พื้นฐาน (OpenStreetMap) จะถูกเก็บลงเครื่องอัตโนมัติเมื่อเปิดดู หรือดาวน์โหลดล่วงหน้าทั้งกรุงเทพฯ ด้วย
-
-```bash
-.venv\Scripts\python local\pipeline\prefetch_tiles.py
-```
-
-- **AI ผู้ช่วยการจราจร** วิเคราะห์การระบายรถรายถนนจากเส้นจราจรทุกสาย (จับคู่ชื่อถนนจาก Longdo base map) ใช้ **Gemini Flash-Lite** เมื่อใส่ key ในไฟล์ `.env` (สร้าง key ฟรีที่ https://aistudio.google.com/apikey):
-
-```
-GEMINI_API_KEY=AIza...
-# ไม่บังคับ: เปลี่ยนรุ่น (ค่าเริ่มต้น gemini-3.5-flash-lite) รุ่นฟรีจำกัด 500 ครั้ง/วัน หมดแล้วแชทจะตกไปโหมดออฟไลน์
-GEMINI_MODEL=gemini-3.5-flash-lite
-# ไม่บังคับ: ตัวสำรองเมื่อ Gemini ใช้ไม่ได้ (โควตาหมด/ล่ม)
-ANTHROPIC_API_KEY=
-# โมเดล vision สำหรับตรวจภาพ (อุบัติเหตุ/หมวก) ใช้รุ่น lite ที่ไม่ใช่ thinking จะเร็วกว่ามาก (2-6 วิ/ภาพ)
-GEMINI_VISION_MODEL=gemini-3.5-flash-lite
-# ตรวจหมวก: ใช้ AI ตัวไหน (qwen = โมเดล Qwen vision ตัวเดียวกับ LOCAL_LLM_* ค่าเริ่มต้น, cloud = Gemini/Claude), จำกัดการเรียกต่อชั่วโมง, โมเดล Gemini เมื่อใช้ cloud
-HELMET_AGENT=qwen
-HELMET_PATROL_MAX_PER_HOUR=600
-HELMET_AGENT_MODEL=gemini-3.1-flash-lite
-# สแกนกล้อง กทม.: ดึงภาพพร้อมกันกี่ตัว, เริ่มรอบใหม่ทุกกี่วินาที (ตรวจหมวกทุกกล้องตามรอบนี้)
-BMA_SCAN_WORKERS=5
-BMA_SCAN_INTERVAL=180
-# ตรวจย้อนศร: โมเดลทิศทางรถ (เทรนด้วย local\pipeline\wrongway_pipeline.bat), งบ AI ต่อชั่วโมง, จำนวนรถขั้นต่ำต่อช่องก่อนตัดสิน
-WRONGWAY_DET=wrongway_det.pt
-WRONGWAY_MAX_PER_HOUR=120
-WRONGWAY_MIN_VOTES=40
-# AI ดูน้ำท่วมจากกล้อง กทม. (ใช้โมเดล Qwen vision ตัวเดียวกับ LOCAL_LLM_*): ตรวจกล้องแห้งทุกกี่วินาที, กล้องที่มีน้ำทุกกี่วินาที, งบเรียกต่อชั่วโมง
-FLOOD_CAM_INTERVAL=300
-FLOOD_CAM_WET_INTERVAL=300
-FLOOD_CAM_MAX_PER_HOUR=1500
-# กล้อง iTIC ที่ให้ AI ดูน้ำท่วมด้วย: จังหวัด (คั่นด้วย , หรือ all = ทุกตัว ~210 ตัว โหลด ~150 MB/รอบ) และรอบดึงภาพ (วินาที)
-FLOOD_CAM_ITIC_PROVINCES=กรุงเทพมหานคร,นนทบุรี,ปทุมธานี,สมุทรปราการ,สมุทรสาคร,นครปฐม
-FLOOD_CAM_ITIC_SECONDS=300
-# ประชาชนแจ้งน้ำท่วมพร้อมรูป: แสดงบนแผนที่กี่ชั่วโมง, จำกัดต่อ IP ต่อชั่วโมง/วัน, ขนาดคำขอสูงสุด (ไบต์)
-USER_REPORT_HOURS=6
-USER_REPORT_RATE_PER_HOUR=5
-USER_REPORT_RATE_PER_DAY=20
-USER_REPORT_MAX_BODY=6291456
-# ป้องกันสาธารณะ: ตั้งแล้วส่ง header X-Admin-Token เพื่อกดปุ่มควบคุมจากนอก LAN
-ADMIN_TOKEN=
-# โฟลเดอร์เก็บ CSV รอบนับกล้อง กทม. + ภาพหลักฐานฝ่าฝืน (ค่าเริ่มต้น D:\Data)
-BMA_DATA_DIR=E:\data smartstreet
-```
-
-ลำดับผู้ให้บริการ: Gemini (`GEMINI_API_KEY`) → Claude (`ANTHROPIC_API_KEY`) → โหมดออฟไลน์ (สรุปจากข้อมูลสด ไม่ต้องใช้ key)
-
-### 🌐 เปิดเว็บให้คนอื่นเข้าดู
-
-ลิงก์สาธารณะ (ชื่อเดียว):
-
-| เว็บ | ลิงก์ |
+| เมนู | ดูอะไรได้ |
 |---|---|
-| BKK StreetSmart | https://bkksmartstreet.com |
-| ENVIRO | https://bkksmartstreet.com/enviro/ (หน้า "แผ่นดินไหว" ใน BKK ก็ฝังหน้านี้ไว้) |
-
-- เปิดให้คนนอกเข้าผ่าน **Cloudflare Tunnel** อย่างเดียว ไม่ใช้ Tailscale Funnel แล้ว (Tailscale ยังเปิดอยู่สำหรับเข้าเครื่องจาก tailnet)
-- Tunnel รันเป็น Windows service ชื่อ `cloudflared` เปิดเองตอนบูต ไม่ขึ้นกับสคริปต์ start/stop ตั้งค่าอยู่ที่ `launch\cloudflare\config.yml` (tunnel `bkk-streetsmart`) ไฟล์ลับของ tunnel อยู่ที่ `C:\Users\user\.cloudflared\` ไม่เก็บใน Git
-  - หลังแก้ `config.yml`: `Restart-Service cloudflared` (ต้องเปิด PowerShell แบบ admin)
-  - ติดตั้งใหม่หรือซ่อม service: `launch\cloudflare\install_service.ps1` (แบบ admin)
-  - `/enviro` ส่งไปที่ ENVIRO (:5050) ส่วนที่เหลือส่งไปที่ BKK ซึ่งต้องชี้ไปที่ `http://127.0.0.2:8000` ไม่ใช่ `127.0.0.1` เพราะ `access_guard.py` อ่าน IP จริงของผู้เข้าชมจาก `CF-Connecting-IP` เฉพาะการเชื่อมต่อที่เข้ามาทาง `127.0.0.2`
-- `launch\production\start.bat` เช็คว่า service `cloudflared` รันอยู่ แล้วแสดงลิงก์สาธารณะ
-- `start_local.bat` ไม่ได้ปิดลิงก์สาธารณะ ถ้าจะใช้แค่ในเครื่อง/เครือข่ายภายใน ต้องหยุด service ด้วย `Stop-Service cloudflared` (แบบ admin)
-- `launch\production\stop.bat` หยุดเซิร์ฟเวอร์ Production ระหว่างนั้นลิงก์สาธารณะจะขึ้นหน้า error ของ Cloudflare
-
-ดูวิธีเริ่มและหยุดเซิร์ฟเวอร์ได้ในหัวข้อ **🚀 วิธีเปิดใช้งาน** ด้านล่าง
-
-- API: `GET /api/traffic/summary`, `GET /api/traffic/roads?q=`, `POST /api/chat`, tiles ที่ `/api/traffic/tile/{z}/{x}/{y}.pbf` และ `/api/tiles/base/{z}/{x}/{y}.png`
-
-#### 🔒 การป้องกันเมื่อเปิดสาธารณะ (`backend/core/access_guard.py`)
-
-เปิดใช้อัตโนมัติ ไม่ต้องตั้งค่าเพิ่ม:
-
-- **endpoint ควบคุม** (POST/PUT/DELETE เช่น เปลี่ยนกล้อง, ตั้ง FPS, สแกน BMA, ลบผลตรวจ) ใช้ได้เฉพาะ localhost / LAN / tailnet (ผู้เข้าชมผ่าน Cloudflare นับเป็นคนนอกเสมอ) หรือส่ง header `X-Admin-Token` ให้ตรงกับ `ADMIN_TOKEN` ใน `.env` — คนนอกได้ `403`
-- **`/api/chat`** (ใช้ key Gemini/Claude) จำกัดต่อ IP ค่าเริ่มต้น 6 ครั้ง/นาที, 60 ครั้ง/วัน, body ไม่เกิน 8000 bytes — เกินได้ `429` / `413`
-- request ทั่วไปจากคนนอกจำกัด 600 ครั้ง/นาที ต่อ IP
-
-ปรับได้ใน `.env`:
-
-```
-ADMIN_TOKEN=รหัสลับสำหรับสั่งงานจากข้างนอก
-CHAT_RATE_PER_MIN=6
-CHAT_RATE_PER_DAY=60
-CHAT_MAX_BODY=8000
-GENERAL_RATE_PER_MIN=600
-```
-
-หมายเหตุ: endpoint เส้นจราจรของ Longdo เป็นการใช้งานแบบไม่เป็นทางการ อาจเปลี่ยนหรือต้องใช้ key ในอนาคต
+| **ภาพรวมจราจร** | ตอนนี้รถติดแค่ไหน ถนนไหนติดที่สุด และมีเหตุอะไรบนถนน |
+| **แผนที่จราจร** | แผนที่สีรถติด กล้อง น้ำท่วมบนถนน ฝน ลม และฝุ่น PM2.5 |
+| **กล้อง AI** | AI นับรถจากกล้อง ตรวจคนไม่สวมหมวกกันน็อก และรถขับย้อนศร |
+| **ดูกล้องสด** | ดูภาพจากกล้องจราจรหลายตัวพร้อมกัน |
+| **น้ำท่วม** | ระดับน้ำในคลองและแม่น้ำ น้ำเหนือที่กำลังลงมา ถนนที่น้ำท่วม และจุดพักพิง |
+| **อุบัติเหตุ** | จุดที่เกิดอุบัติเหตุบ่อยในกรุงเทพฯ |
+| **แจ้งเตือน** | ประกาศเตือนภัย และตั้งให้เว็บเตือนเมื่อมีเหตุ |
+| **แผ่นดินไหว** | เฝ้าระวังแผ่นดินไหว (เปิดจากเว็บ ENVIRO ที่ `/enviro/`) |
+| **ถาม AI** | ถามเรื่องรถติด น้ำท่วม หรือเส้นทาง แล้ว AI ตอบจากข้อมูลสด |
+| **แจ้งน้ำท่วม** | คนทั่วไปแจ้งน้ำท่วมพร้อมรูป |
+| **สถิติผู้ใช้** | มีคนใช้เว็บกี่คน และดูหน้าไหนมากที่สุด |
 
 ---
 
-## 📍 ขอบเขตพื้นที่กล้อง
-- **กล้องสตรีมสด (`config/cameras_bkk.json`, 34 ตัว)**: กรุงเทพมหานคร 22, นครปฐม 5, นนทบุรี 3, สมุทรปราการ 3, ปทุมธานี 1
-- **กล้อง กทม. (`config/cameras_bma.json`, 574 ตัว)**: snapshot ทุก ~4 นาที นับรถด้วย YOLO และใช้ตรวจหมวกกันน็อก/ย้อนศร
+## ทำงานอย่างไร
+
+```
+แหล่งข้อมูลสด                     เครื่องเซิร์ฟเวอร์                       คนดู
+─────────────                     ────────────────                        ────
+กล้อง กทม. 574 ตัว  ──┐
+กล้อง iTIC / ทางหลวง ─┤           AI ดูภาพ (YOLO)
+ระดับน้ำ ฝน น้ำทะเล   ─┼──────►   นับรถ ตรวจหมวก/ย้อนศร   ──────►   เว็บ bkksmartstreet.com
+เซ็นเซอร์น้ำบนถนน    ─┤           AI สรุปสถานการณ์ (Qwen/Gemini)       (ผ่าน Cloudflare)
+ฝุ่น จราจร อุบัติเหตุ ─┘           เก็บสถิติลงฐานข้อมูล
+```
+
+1. **ดึงข้อมูล:** เซิร์ฟเวอร์ดึงภาพกล้องและข้อมูลน้ำ ฝน ฝุ่น จราจร จากหน่วยงานต่าง ๆ เอง ทุก 1–10 นาที
+2. **ให้ AI ดู:** AI นับรถในภาพกล้อง กทม. ทุก 3 นาที และหาคนไม่สวมหมวกกันน็อกกับรถย้อนศร
+3. **สรุปเป็นภาษาง่าย ๆ:** AI อ่านตัวเลขทั้งหมดแล้วเขียนสรุปสั้น ๆ เช่น น้ำเหนือจะถึงกรุงเทพฯ เมื่อไร เขตไหนควรเตรียมตัว
+4. **แสดงบนเว็บ:** หน้าเว็บโหลดข้อมูลใหม่เอง ไม่ต้องกดรีเฟรช
+
+ถ้าแหล่งข้อมูลไหนล่ม (เช่น เว็บกล้อง กทม. `cpudapp.bangkok.go.th`) เว็บจะขึ้นป้ายเตือน และไม่เอาข้อมูลเก่ามาแสดงเหมือนเป็นข้อมูลสด
+
+### ข้อมูลมาจากไหน
+
+- **กล้อง:** กล้องจราจร กทม. (cpudapp.bangkok.go.th), กล้อง iTIC และกรมทางหลวง
+- **น้ำ:** คลังข้อมูลน้ำ สสน. (ThaiWater), กรมชลประทาน, สำนักการระบายน้ำ กทม.
+- **อากาศ:** กรมอุตุนิยมวิทยา, Open-Meteo, MET Norway, Air4Thai, AirBKK
+- **จราจรและเหตุ:** Longdo Traffic, Traffy Fondue, JS100, กรมทางหลวง (HDMS), ThaiRSC
 
 ---
 
-## 🚀 วิธีเปิดใช้งาน
+## เริ่มใช้งานบนเครื่องตัวเอง
 
-มีเซิร์ฟเวอร์ 2 ตัว ใช้โค้ดชุดเดียวกัน แต่เก็บข้อมูลไว้คนละโฟลเดอร์ ทั้งสองตัวเริ่มและหยุดได้จากสคริปต์ใน `launch\production` และ `launch\test`
+### สิ่งที่ต้องมี
 
-| เซิร์ฟเวอร์ | ที่อยู่ | ใช้ทำอะไร | สคริปต์ใน `launch\` | โฟลเดอร์ข้อมูล |
-|---|---|---|---|---|
-| 🌐 **Production** | `http://localhost:8000` และลิงก์สาธารณะ | เซิร์ฟเวอร์หลัก | `production\start.bat` เปิดลิงก์สาธารณะ · `production\start_local.bat` เปิดในเครื่อง/เครือข่าย · `production\restart.bat` เริ่มใหม่ · `production\stop.bat` หยุดและปิดลิงก์ | `instances\production\` |
-| 🧪 **Test** | `http://localhost:8001` | ทดลองการแก้ไขก่อนอัปเดต Production | `test\start.bat` เริ่ม · `test\restart.bat` เริ่มใหม่ · `test\stop.bat` หยุด | `instances\test\` |
+- Windows 10/11
+- Python 3 (เครื่องที่รันจริงใช้ 3.14)
+- Node.js 18 ขึ้นไป (ใช้สร้างหน้าเว็บ)
+- การ์ดจอ NVIDIA ไม่บังคับ แต่ถ้าไม่มี AI ดูภาพจะช้ากว่ามาก
 
-- Production กับ Test เปิดพร้อมกันได้ เพราะใช้คนละพอร์ตและฐานข้อมูล
-- Test ใช้ cache แผนที่และ API key เดียวกับ Production และรันงาน AI เบื้องหลังด้วย จึงควรปิดเมื่อไม่ใช้งาน
-- เปิด Test ครั้งแรก ระบบจะคัดลอก cache บางส่วนและฐานข้อมูลจาก Production ไปไว้ใน `instances\test\` ถ้าจะลบโฟลเดอร์นี้เพื่อเริ่มใหม่ ให้หยุด Test และสำรองข้อมูลก่อน (ข้อมูลใน Test จะถูกลบ)
-- หลังแก้หน้าเว็บ ให้ build สำหรับ Test ด้วย `npm run build -- --outDir ../instances/test/dist` จากโฟลเดอร์ `web` แล้วเปิดหรือรีโหลดหน้า `:8001`
-- เมื่อตรวจหน้าเว็บบน Test แล้ว ให้ build สำหรับ Production ด้วย `npm run build -- --outDir ../instances/production/dist`
-- ทดลองแก้หน้าเว็บโดยไม่ build ได้ด้วย `npm run dev` (ใช้ API ของ `:8000`) หรือ `npm run dev:8001` (ใช้ API ของ `:8001`)
-
-ขั้นตอน:
-1. ดับเบิลคลิก **`launch\production\start.bat`** เพื่อเปิดลิงก์สาธารณะ หรือ **`launch\production\start_local.bat`** เพื่อใช้ในเครื่อง/เครือข่ายภายในเท่านั้น
-2. รอให้เซิร์ฟเวอร์เริ่มทำงาน แล้วเปิด `http://localhost:8000` ในเว็บเบราว์เซอร์
-3. ระบบเริ่มงาน AI โดยใช้ GPU ถ้ามีและพร้อมใช้งาน หากไม่มี GPU การประมวลผลอาจช้าลง
-4. เลือกหน้า **Camera AI & Analysis** จากเมนูซ้าย หรือกดไอคอนหุ่นยนต์บนหน้าต่างกล้องเพื่อดูผลวิเคราะห์การจราจร
-
-## 📁 โครงสร้างโฟลเดอร์หลัก
-
-โฟลเดอร์หลักมีโค้ดและการตั้งค่าของเซิร์ฟเวอร์ ส่วน `instances/` เก็บฐานข้อมูล cache และหน้าเว็บที่ build แล้ว ข้อมูลใน `instances/` ไม่เก็บใน Git จึงควรสำรองแยกต่างหาก โฟลเดอร์ `local/` ใช้เก็บสคริปต์ทำงานในเครื่อง ชุดข้อมูลฝึกโมเดล บันทึก และไฟล์เก่า
-
-```
-<project root>\
-├── server.py                     ← 🌐 จุดเริ่มต้นเซิร์ฟเวอร์ (FastAPI, REST API ทั้งหมด)
-├── backend/                      ← 🌐 โค้ด backend แยกตามหมวด (Python package)
-│   ├── core/     instance (พอร์ต/โฟลเดอร์ข้อมูล), access_guard, telemetry, alert, local_llm
-│   ├── vision/   yolo_detector, count_workers, survey, vehicle_log, helmet, wrongway, violation, incident
-│   ├── bma/      กล้อง กทม.: bma_service, bma_archive, bma_events
-│   ├── traffic/  traffic, road, guidance, rsc, analytics
-│   ├── water/    water, flood, flood_feeds, weather_now, air
-│   └── agents/   AI วิเคราะห์: flood, riskbkk, traffy (+history), water, chat
-├── config/                       ← 🌐 ข้อมูลกล้อง cameras_bkk.json, cameras_bma.json
-├── launch/                       ← ▶️ ตัวรัน
-│   ├── production/      start / restart / stop / start_local   (:8000)
-│   ├── test/            start / restart / stop                 (ทดสอบ :8001)
-│   ├── cloudflare/      config.yml + install_service.ps1        (Cloudflare Tunnel → bkksmartstreet.com)
-│   ├── enviro/, bma_watch/
-│   ├── kill_server.ps1  (ใช้ร่วม: หยุดเซิร์ฟเวอร์ตามพอร์ต)
-│   └── build_web.bat
-├── instances/                    ← ฐานข้อมูลและ cache ของแต่ละเซิร์ฟเวอร์ (ไม่เก็บใน Git)
-│   ├── production/      cache/, vehicle_counts.db, *_agent.json, dist/   ← ของ :8000
-│   └── test/            cache/, vehicle_counts.db, data/, dist/          ← ของ :8001
-├── web/  (src/ = ซอร์ส React)    ← 🌐 หน้าเว็บ (build ลง instances\<ชื่อ>\dist)
-├── tests/                        ← pytest
-├── requirements.txt, .env        ← config (.env ห้าม commit)
-├── yolo26x.pt (+ yolo26l/m), *_bkk.pt, helmet_*.pt, wrongway_*.pt ← 🌐 โมเดล ใช้ร่วมทั้งสองเซิร์ฟเวอร์ (gitignore, ต้องคัดลอกเอง)
-│
-└── local/                                            ← 💻 ใช้ในเครื่องเท่านั้น
-    ├── pipeline/   สคริปต์เก็บภาพ/label/เทรน + .bat/.sh ทั้งหมด (pipeline.bat, collect.bat, status.bat, watch_training.bat ...)
-    ├── dataset/, dataset_helmet/, runs/, logs/         ข้อมูลเทรนและผลลัพธ์ (gitignore)
-    ├── scratch/    ไฟล์ทดลอง
-    └── archive/    ของเก่า/สำรอง
-```
-
-- ไฟล์ `.bat` ใน `local/pipeline/` ดับเบิลคลิกได้เหมือนเดิม (สคริปต์ `cd` กลับไป root เอง) ผลลัพธ์โมเดล `*_bkk.pt` / `helmet_cls.pt` ยังถูกเขียนลง root ให้เซิร์ฟเวอร์หยิบใช้
-- เซิร์ฟเวอร์ส่งให้ผู้ใช้เฉพาะหน้าเว็บใน `instances\<ชื่อ>\dist` ไม่ได้เปิดให้เข้าถึงไฟล์ทั้งโฟลเดอร์โปรเจกต์
-
----
-
-## 🧪 Tests
+### ติดตั้ง
 
 ```bash
-.venv\Scripts\python -m pytest tests
+git clone https://github.com/Madaka17/new_ccty_bangkok.git
+cd new_ccty_bangkok
+
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+# ถ้ามีการ์ดจอ NVIDIA: ลง PyTorch รุ่นที่ใช้ GPU
+.venv\Scripts\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
 ```
 
-ครอบคลุมเกณฑ์ระดับน้ำบนถนน/ฝน/ตลิ่งใน `backend/traffic/road_service.py`, การคาดการณ์น้ำเหนือใน `backend/water/north_flow.py` และผลกระทบรายเขตใน `backend/agents/north_impact_agent.py`, การป้องกันใน `backend/core/access_guard.py` และ context ของ chatbot
+หน้าเว็บไม่ต้องสร้างเอง ตอนเปิดเซิร์ฟเวอร์ครั้งแรก `start.bat` จะสร้างให้ (ต้องติดตั้ง Node.js ไว้ก่อน)
+
+### ตั้งค่า
+
+สร้างไฟล์ `.env` ไว้ที่โฟลเดอร์หลัก ใส่เท่าที่มี ไม่มี key ก็เปิดเว็บได้ แต่ AI จะสรุปและตอบแชทได้แค่แบบพื้นฐานจากตัวเลข
+
+```
+GEMINI_API_KEY=        # AI แชทและตรวจภาพ (สร้างฟรีที่ https://aistudio.google.com/apikey)
+LOCAL_LLM_URL=         # AI Qwen สำหรับสรุปสถานการณ์และตรวจภาพ
+LOCAL_LLM_MODEL=
+LOCAL_LLM_API_KEY=
+BMA_DATA_DIR=D:\Data   # โฟลเดอร์เก็บสถิติและภาพหลักฐาน
+```
+
+ห้าม commit ไฟล์ `.env` ขึ้น GitHub เพราะมี key ลับอยู่ในนั้น
+
+### เปิดเว็บ
+
+1. ดับเบิลคลิก `launch\production\start.bat`
+2. รอสักครู่ แล้วเปิด http://localhost:8000
+3. หยุดใช้งาน: `launch\production\stop.bat` · เริ่มใหม่: `launch\production\restart.bat`
+
+ไฟล์โมเดล AI (`*.pt`) ไม่อยู่ใน GitHub เพราะใหญ่เกิน โมเดลนับรถ `yolo26x.pt` จะดาวน์โหลดให้เองตอนเปิดครั้งแรก
+ส่วนโมเดลตรวจหมวกและย้อนศร ต้องเทรนเองหรือขอไฟล์จากผู้ดูแล
 
 ---
 
-## แผนผังโค้ด (Code map)
+## ถ้ามีปัญหา
 
-### Backend (Python, FastAPI)
-| ไฟล์ | หน้าที่ |
+| อาการ | สาเหตุ / วิธีแก้ |
 |---|---|
-| `backend/core/instance.py` | พอร์ตและโฟลเดอร์ข้อมูลของ instance นี้ (`PORT`, `INSTANCE_DIR`): ทุก service ดึง path ของ `cache/`, `vehicle_counts.db` และ `dist/` จากที่นี่ (`instances/production` หรือ `instances/test`) ให้เซิร์ฟเวอร์จริง (:8000, `launch/production`) กับเซิร์ฟเวอร์ทดสอบ (:8001, `launch/test`) รันพร้อมกันได้โดยไม่เขียนทับกัน |
-| `server.py` | จุดเริ่มต้น: โหลดกล้อง, สร้าง detector/scanner/services, ประกาศ REST API ทั้งหมด, เสิร์ฟหน้าเว็บจาก `<instance>/dist` |
-| `backend/vision/yolo_detector.py` | YOLO26x + ByteTrack บนสตรีมกล้องเดียว (หน้า AI ตรวจจับรถสด), นับรถผ่าน, ประเมินระดับจราจร, ตรวจรถจอดนิ่ง/ชน |
-| `backend/vision/count_workers.py` | นับรถต่อเนื่องหลายกล้องในพื้นหลัง (แดชบอร์ด "จำนวนรถที่ผ่านกล้อง AI") |
-| `backend/vision/survey.py` | วนสำรวจทุกกล้องสั้น ๆ เพื่อให้ป้ายระดับ โล่ง/ปานกลาง/ติดขัด ในหน้ากล้อง |
-| `backend/vision/vehicle_log.py` | SQLite `vehicle_counts.db`: ยอดรายชั่วโมง, sample จาก survey, เหตุการณ์จากกล้อง |
-| `backend/vision/incident_service.py` | รวมเหตุการณ์: กล้อง AI (ยืนยันด้วย Claude vision) + รายงาน Longdo |
-| `backend/traffic/traffic_service.py` | ดึง tile จราจร Longdo, สรุปการระบายรถรายถนน, proxy tile แผนที่ |
-| `backend/agents/chat_service.py` | หน้า "Ask AI": รวมข้อมูลสดทุกหมวด (จราจร น้ำ/ฝน PM2.5 อุบัติเหตุ เส้นเลี่ยง น้ำท่วมรายถนน การฝ่าฝืน analytics) เป็น context ดึงถนน/เขตที่ผู้ใช้ถามขึ้นก่อน แล้วให้ Gemini → Claude → rule-based ตอบตามลำดับ |
-| `backend/bma/bma_service.py` | สแกนกล้อง กทม. 574 ตัว (snapshot ทุก ~4 นาที) นับรถด้วย YOLO, เก็บ `bma_latest`/`bma_history`, สตรีม MJPEG |
-| `backend/bma/bma_archive.py` | รอบนับอัตโนมัติ: สะสมยอดต่อกล้อง, รีเซ็ตทุกชั่วโมง, เขียน CSV รายวัน/สัปดาห์/เดือน/รายถนน ที่ `BMA_DATA_DIR` (ตั้งใน `.env` ตอนนี้ `E:\data smartstreet`), ข้อมูลเปรียบเทียบ |
-| `backend/bma/bma_events.py` | ดึงรายงานสด (น้ำท่วม/อุบัติเหตุ) จาก cpudapp.bangkok.go.th ทุก 60 วินาที |
-| `backend/water/water_service.py` | ระดับน้ำ/คลอง/น้ำทะเลหนุน/ฝน จาก thaiwater.net + คาดการณ์ (ทางการ 7 วัน หรือโมเดลในเครื่อง 48 ชม.) + หาคีย์ API ใหม่อัตโนมัติ |
-| `backend/water/north_flow.py` | **น้ำเหนือ → ภาคกลาง** (แท็บ "น้ำเหนือ → ภาคกลาง" ในหน้า Water Forecast, `/api/water/north`): ปริมาณน้ำไหลผ่าน (ลบ.ม./วินาที) รายชั่วโมงของสถานีหลักกรมชลประทาน 17 สถานี ปิง วัง ยม น่าน → นครสวรรค์ (C.2) → ท้ายเขื่อนเจ้าพระยา (C.13) → สิงห์บุรี → อ่างทอง → อยุธยา (C.35) + สะแกกรัง ป่าสัก จาก ThaiWater เทียบ **ความจุลำน้ำ** (qmax) ของแต่ละสถานี (≥ 70% น้ำมาก, ≥ 100% ล้นตลิ่ง ตามเกณฑ์คลังข้อมูลน้ำ) + คาดการณ์ 4 วันด้วย flow routing: แต่ละช่วงแม่น้ำส่งการเปลี่ยนแปลงของน้ำต้นทางลงมาตามเวลาเดินทาง สัดส่วนและเวลาเดินทางปรับจากข้อมูล 14 วันล่าสุดทุกรอบ (ทดสอบย้อนหลัง ก.ย. 2569: คลาดเคลื่อน 4-6% ที่ 24 ชม., 8-12% ที่ 48 ชม.) + **ปริมาณน้ำทุก 10 นาที** (กรมชลฯ รายงานรายชั่วโมง จึงประมาณจากระดับน้ำ 10 นาทีของสถานี สสน. ใกล้เคียงภายใน 15 กม. ด้วย rating curve ที่ปรับทุก 6 ชม. ใช้เฉพาะคู่ที่ทดสอบย้อนหลัง 48 ชม. คลาดเคลื่อน ≤ 5% ตอนนี้ 11 จาก 17 จุด) ระบบดึงใหม่เองทุก 10 นาที + เขื่อนภูมิพล/สิริกิติ์/แควน้อย/ป่าสัก + คาดการณ์ระดับน้ำ 7 วันของ สสน. ที่นครสวรรค์ อยุธยา นนทบุรี → คำเตือนภาษาไทยรายสถานี ส่งต่อให้ AI สรุปสถานการณ์ (น้ำเหนือ) และ Ask AI ด้วย |
-| `backend/agents/north_impact_agent.py` | **AI อธิบายน้ำเหนือแบบเข้าใจง่าย + ผลกระทบต่อเขตในกรุงเทพฯ + ถนนเสี่ยงน้ำท่วม** (สรุปง่าย ๆ 3-4 ข้อ, คำอธิบายรายจุดทุกสถานีจากค่า 10 นาที, รายเขต; ถนน: คัดจาก `road_service` ทุกสายด้วยทำเลเขต/อำเภอริมเจ้าพระยา ขอบเมืองด้านเหนือ จุดวัดน้ำท่วม กทม. บนถนน น้ำบนถนนตอนนี้ คลองข้างถนนเต็ม ฝน แล้วเรียก AI รอบที่ 2 เลือก 5-15 สายพร้อมเหตุผล ช่วงเวลา และคำแนะนำผู้ใช้ถนน ชื่อถนนต้องอยู่ในรายการที่คัดมา · นนทบุรีไม่มีเซ็นเซอร์บนถนน จึงประเมินจากทำเลเท่านั้น) (การ์ดในแท็บ "น้ำเหนือ → ภาคกลาง", `/api/water/north/impact`, สั่งรันใหม่ `POST /api/water/north/impact/run` เฉพาะ operator): รวมคาดการณ์น้ำเหนือ + สสน. คาดระดับน้ำ 7 วันที่สะพานนวลฉวี + น้ำทะเลหนุน + สถานีนนทบุรี/ปทุมธานี/นครปฐมที่ล้น + รายเขต 50 เขต (ทำเล: ริมเจ้าพระยา / ติดนนทบุรี-ปทุมธานี / ทุ่งตะวันออก / ฝั่งตะวันตก, คลอง-แม่น้ำในเขตเทียบตลิ่ง, น้ำบนถนน, ฝน 24 ชม.) ให้คะแนนตามเกณฑ์ แล้วให้ Qwen (`LOCAL_LLM_*`) เขียนว่าเขตไหนจะได้รับผลกระทบ เมื่อไร เพราะอะไร ควรทำอะไร ตรวจทุก 10 นาที เรียก AI ใหม่เมื่อตัวเลขเปลี่ยนหรือรายงานเก่ากว่า 30 นาที (`NORTH_IMPACT_SECONDS`, `NORTH_IMPACT_MAX_AGE`) เขตต้องอยู่ใน 50 เขตของ กทม. เท่านั้น ไม่มีโมเดลใช้รายงานตามเกณฑ์แทน |
-| `backend/traffic/guidance_service.py` | คำแนะนำระบายรถรายเส้นทางหลัก 12 สาย ทุก 1 นาที จากเส้นสี Longdo (hotspots) + กล้อง กทม. + เหตุการณ์; Gemini เรียบเรียงข้อความทุก 5 นาที (`/api/traffic/guidance`) |
-| `backend/water/flood_service.py` | จุดน้ำท่วมขังถนน กทม. ~250 จุด จากเซ็นเซอร์สำนักการระบายน้ำ (`weather.bangkok.go.th/flood`) ดึงทุก 5 นาที: ระดับน้ำเหนือผิวถนนหน่วย ซม. ต่อจุด + ถนน/เขต/พิกัด/เวลาเริ่มท่วม/สูงสุด เกณฑ์ตามเว็บต้นทาง (≤5 ปกติ, 5-10 เล็กน้อย, >10 ท่วม) เก็บประวัติในหน่วยความจำเพื่อบอกแนวโน้มขึ้น/ลงเทียบ 25 นาทีก่อน และให้ Gemini เขียนบทวิเคราะห์ (ระดับความรุนแรง จุดที่ต้องจับตา คำแนะนำ แนวโน้ม) ทุก 5 นาทีเมื่อสถานการณ์เปลี่ยน มี template ภาษาไทยสำรองเมื่อไม่มี key (`/api/flood/status|stations|roads|analysis`) — เฉพาะ กทม. 50 เขต ปริมณฑลไม่มีเซ็นเซอร์สาธารณะ |
-| `backend/traffic/road_service.py` | ประเมินความเสี่ยงน้ำท่วมขัง **รายถนน** ทั้ง กทม. และปริมณฑล ทุก 2 นาที: รวมถนนทุกสายจาก `traffic_service` (ชื่อ+จุดกึ่งกลาง+% รถติด) เข้ากับเซ็นเซอร์น้ำบนถนน (`flood_service`, เฉพาะ กทม.), สถานีวัดฝน 24 ชม. ~180 จุด และสถานีระดับน้ำคลอง/แม่น้ำ ~70 จุด (`water_service`) ด้วยระยะทางจริง แล้วจัดระดับตาม **เกณฑ์ทางการ** (น้ำบนถนน: สนน. กทม. 5/10 ซม. + ปภ. 20/60/80 ซม. · ฝน 24 ชม.: กรมอุตุนิยมวิทยา 10/35/90 มม. · ระดับตลิ่ง: คลังข้อมูลน้ำแห่งชาติ 80%/100%) + Gemini เขียนบทวิเคราะห์สายที่เสี่ยงสุด · สายที่ไม่มีเซ็นเซอร์บนถนนจะทำเครื่องหมาย `measured: false` (`/api/roads/risk`) |
-| `backend/water/air_service.py` | PM2.5 / AQI รายสถานีจาก Air4Thai ทุก 10 นาที (`/api/air/stations`) |
-| `backend/vision/flood_cam_service.py` | AI ดูน้ำท่วมจากภาพกล้อง กทม. ทุกตัว: รับภาพดิบจากรอบสแกน (และกล้อง iTIC จาก `itic_frames.py`) → รวม 9 กล้องเป็นภาพตาราง 3×3 ถาม Qwen vision (`LOCAL_LLM_*`) ครั้งเดียว (~5 วิ) → ช่องที่ดูเหมือนมีน้ำถามซ้ำทีละภาพเพื่อยืนยันก่อนขึ้นแผนที่ ระดับ: ไม่ท่วม / น้ำขังเล็กน้อย / น้ำท่วมผิวจราจร / น้ำท่วมหนัก / มองไม่ชัด กล้องแห้งตรวจซ้ำทุก 10 นาที กล้องที่มีน้ำทุก 5 นาที ภาพค้าง (feed ไม่ขยับ) ไม่ถามซ้ำ ผลเก็บที่ `cache/flood_cams.json` + ภาพที่ใช้ตัดสินใน `cache/flood_cams/` (`/api/flood/cameras*`, ชั้น "กล้องเห็นน้ำท่วม (AI)" ในหน้า Traffic Map) |
-| `backend/vision/itic_frames.py` + `ts_decode.py` | ภาพจากกล้อง iTIC (หมุด CCTV บนแผนที่ จากรายการ Longdo) ให้ AI ดูน้ำท่วม: ลิงก์ JPEG ของ iTIC (`camera1.iticfoundation.org`) ใช้ไม่ได้ จึงดึง segment ล่าสุดของ HLS ทุก 5 นาที แล้วถอดเฟรมแรกใน process แยก (`ts_decode.py`) ไม่ถอดใน server เพราะ FFmpeg เคยทำ server ล่มกับ stream ที่เสีย ค่าเริ่มต้นเฉพาะกรุงเทพฯ-ปริมณฑล ~35 ตัว (`FLOOD_CAM_ITIC_PROVINCES`) |
-| `backend/water/user_reports.py` | ประชาชนแจ้งน้ำท่วม (หมุด ระดับน้ำ รูป 1 รูป ข้อความสั้น) จากหน้า "แจ้งน้ำท่วม" (`#/report`, ปุ่มกลางแถบเมนูล่างบนมือถือ และปุ่มบนสุดของเมนูซ้าย): รูปถูกย่อและบันทึกใหม่เป็น JPEG ไม่มี EXIF/GPS → Qwen vision ตรวจว่าเป็นรูปน้ำท่วมจริงและเหมาะสม → ขึ้นแผนที่ 6 ชม. ในชื่อ "ประชาชนแจ้ง ยังไม่ยืนยัน" (ไม่ผ่านถูกปฏิเสธและลบรูป, AI ไม่ตอบรอคิวลองใหม่ทุก 60 วิ) `POST /api/flood/user-reports` เป็นช่องเขียนสาธารณะช่องเดียว จำกัดขนาดและจำนวนต่อ IP ใน `access_guard.py` ส่วนการลบ (`DELETE`) เฉพาะ operator |
-| `backend/vision/helmet_service.py` | ตรวจหมวกกันน็อกทุกกล้อง กทม.: crop มอไซจากรอบสแกน → โมเดลในเครื่อง (`HELMET_DET`, ค่าปัจจุบัน `helmet_det_blur.pt`) คัดกรอง → AI agent (Gemini/Claude) ยืนยัน → ผู้ไม่สวมหมวกเก็บภาพ+CSV ที่ `BMA_DATA_DIR\helmet\` (`/api/helmet/*`) |
-| `backend/vision/wrongway_service.py` | ตรวจรถย้อนศรทุกกล้อง กทม. จากภาพนิ่ง: กรอบรถจาก yolo26x ตัวเดียวกับที่นับรถ → โมเดลจำแนกทิศ `wrongway_cls.pt` (YOLO26s-cls, `toward` เห็นหน้ารถ / `away` เห็นท้ายรถ) อ่านรถทีละคัน (ไม่มีไฟล์นี้จะใช้ `wrongway_det.pt` ตัวเก่าที่หารถไม่ค่อยเจอ) → กล้องแต่ละตัวเรียนรู้ทิศปกติต่อช่องกริด 12×9 (`cache/heading/`) → รถที่หันสวนช่องที่รู้ทิศแล้วส่ง AI agent ยืนยัน → หลักฐาน+CSV ที่ `BMA_DATA_DIR\wrongway\` (`/api/wrongway/*`) |
-| `local/pipeline/collect_wrongway_dataset.py`, `train_wrongway_det.py`, `wrongway_pipeline.bat`, `wrongway_status.bat` | dataset ทิศทางรถแบบไม่ต้อง label มือ: เก็บ burst จากทุกกล้อง (BMA ~1 เฟรม/วิ + HLS) ติดตามรถ ทิศจากการเคลื่อนที่ (รถจอดใช้แผนที่ทิศของกล้อง) → fine-tune `yolo26x.pt` เป็น `wrongway_det.pt`; `wrongway_pipeline.bat [รอบ] [นาทีห่าง] [epochs] [batch]` ทำครบทั้งสองขั้น + หน้าต่างสถานะ |
-| `local/pipeline/prep_wrongway_cls.py`, `train_wrongway_cls.py` | ตัดกรอบ `toward/away` จาก `dataset_wrongway` เป็นภาพครอป (`local/dataset_wrongway_cls/`) → เทรน `yolo26s-cls` 128 px (`--clean` ย้ายภาพที่ label น่าจะผิดไป `rejected/` แล้วเทรนซ้ำ) → `wrongway_cls.pt`; รันข้างเซิร์ฟเวอร์ได้ ใช้ GPU ~1-2 GB |
-| `backend/water/river_roads.py` + `config/chao_phraya.json` + `config/nonthaburi_areas.json` | **นนทบุรี: ถนนทุกสาย ช่วงไหนท่วมก่อน + โอกาสน้ำท่วม** (`/api/water/north/nonthaburi`): แนวกลางแม่น้ำเจ้าพระยาและเขตจังหวัด/อำเภอ/ตำบลนนทบุรีจาก OpenStreetMap (ODbL, สร้างใหม่ด้วย `local/pipeline/fetch_river_areas.py`) × ถนนทุกเส้นใน road index ของ Longdo ที่อยู่ในนนทบุรี (~160 สาย) ตัดเป็นช่วงละ ~330 ม. แต่ละช่วงมีระยะห่างจากแม่น้ำ ตำบล/อำเภอ และถนนที่ตัดผ่าน เรียงช่วงเสี่ยงที่สุด → รองลงมา · AI เรียกรอบที่ 3 อธิบายแต่ละสาย · โอกาสน้ำสูงกว่าตลิ่งรายวันที่สะพานนวลฉวี = 1 − Φ((ตลิ่ง − ระดับสูงสุดที่ สสน. คาด)/σ) โดย σ มาจากประวัติคาดการณ์ สสน. ที่ระบบเก็บเอง (`cache/hii_1132_forecasts.json`, ใช้เมื่อครบ 5 ค่าต่อช่วงล่วงหน้า) ไม่งั้นใช้การเปลี่ยนแปลงของระดับน้ำสูงสุดรายวันจริง 30 วัน · ภาพรวม 7 วัน = วันที่โอกาสสูงสุด · ถนน = โอกาส × น้ำหนักระยะ (≤200 ม. 1, ≤500 ม. 0.6, ≤1 กม. 0.3, ≤2 กม. 0.1 เป็นสมมติฐาน) ส่งต่อให้ AI อธิบายด้วย |
-| `backend/core/local_llm.py` | ไคลเอนต์ AI (OpenAI-compatible, `LOCAL_LLM_*`) ที่ทุกงานใช้ร่วมกัน จำกัด 3 คำขอพร้อมกันต่อ key และ **นับ token ทุกคำขอแยกตามโมดูลที่เรียก** (จาก `usage` ที่ gateway ส่งกลับ เก็บ 24 ชม.) ดูได้ที่ `GET /api/ai/usage?minutes=30` (เฉพาะ LAN/operator) |
-| `backend/core/access_guard.py` | ป้องกันเมื่อเปิดสาธารณะผ่าน Cloudflare Tunnel: POST ควบคุมทำได้จาก LAN/tailnet หรือ `X-Admin-Token`; `/api/chat` จำกัดต่อ IP (IP จริงจาก `CF-Connecting-IP` บนการเชื่อมต่อทาง `127.0.0.2`) |
-| `local/pipeline/backup_db.py` (`backup_db.bat`) | งานกลางคืน: ลบ `bma_history`/`samples` เกิน 90 วัน, VACUUM, สำเนา DB + CSV + .env ไป `BMA_DATA_DIR\backup\` (ลงทะเบียน Task Scheduler 03:30 แล้ว) |
-| `local/pipeline/watchdog.bat` | ping `/api/health` ทุก 1 นาที ล้ม 3 ครั้งติดจึงรัน `launch\production\restart.bat` |
-| `local/pipeline/prep_helmet_det.py`, `train_helmet_det.py`, `watch_train.*` | dataset Kaggle helmet-detection → YOLO format → fine-tune `yolo26x.pt` เป็น `helmet_det.pt` (helmet / no_helmet) + หน้าต่าง % ความคืบหน้า |
-| `local/pipeline/` (`collect_dataset.py`, `relabel_dataset.py`, `clean_dataset.py`, `train_model.py`, `pipeline_status.py`, `*.bat`) | pipeline เก็บภาพ-ทำ label (tiled 2×2 + เกณฑ์ conf รายคลาส)-เทรน YOLO (oversample เฟรมที่มีมอเตอร์ไซค์ `--moto-boost`) ให้เข้ากับกล้องไทย |
-| `backend/traffic/rsc_service.py` | สถิติอุบัติเหตุ Thai RSC รายเขต + จุดเสี่ยงรอบกล้อง BMA (`/api/rsc/*`) |
-| `backend/vision/violation_service.py` | จับผิดกฎจราจรจากกล้อง AI สด: ย้อนศร (เรียนรู้ทิศทางจราจรต่อกล้องเอง) และไม่สวมหมวกกันน็อก (โมเดล `helmet_cls.pt` ถ้ามี ไม่งั้นใช้ vision API) → `/api/ai/violations` สำเนาภาพลง `BMA_DATA_DIR\violations` |
-| `local/pipeline/collect_helmet_dataset.py`, `local/pipeline/train_helmet.py` | สร้างชุดข้อมูล crop ผู้ขี่ (label โดย vision API) แล้วเทรน YOLO11 classifier หมวก/ไม่หมวก → `helmet_cls.pt` |
-| `local/pipeline/prefetch_tiles.py` | ดาวน์โหลด tile แผนที่ไว้ใช้ออฟไลน์ (รันครั้งเดียว) |
+| เปิดหน้าแรกแล้วขึ้น `503` | ยังไม่มีหน้าเว็บ ติดตั้ง Node.js แล้วรัน `launchuild_web.bat` |
+| ขึ้นป้ายแดง "เว็บกล้อง กทม. ล่ม" | เว็บกล้องของ กทม. ไม่ส่งภาพ ไม่ใช่ปัญหาของเรา ระบบลองใหม่เองทุก 3 นาที |
+| ภาพกล้อง กทม. เป็นตอนกลางวันทั้งที่เป็นกลางคืน | เป็นภาพสุดท้ายก่อนเว็บกล้อง กทม. ล่ม รอให้เว็บกลับมา |
+| ลมบนแผนที่ไม่ขึ้น | Open-Meteo จำกัดการเรียกต่อวัน รอวันถัดไป |
+| AI ดูภาพช้ามาก | เครื่องใช้ CPU อยู่ ให้ลง PyTorch รุ่น GPU ตามขั้นติดตั้ง |
 
-### Frontend (`web/src`, React + Tailwind v4)
-| ไฟล์ | หน้าที่ |
-|---|---|
-| `App.jsx` | เลย์เอาต์หลัก (Sidebar ซ้าย + เนื้อหา), routing ด้วย hash, state กล้องที่เปิด, toast, poll เหตุการณ์ |
-| `components/Sidebar.jsx` | เมนูซ้าย (กลุ่มหน้า), ชื่อผู้ใช้, สถานะกล้อง, สลับธีม สว่าง/มืด/ตามเครื่อง |
-| `components/dashboard/ui.jsx` | ชิ้นส่วนพื้นฐาน: Card, Badge, Button, Segmented, Skeleton, EmptyState, ErrorState |
-| `components/dashboard/primitives.jsx` | ชิ้นส่วนระดับหน้า: PageHeader, StatTile, StatusBanner, Tabs, Modal, ShareBar |
-| `components/dashboard/format.js` | ฟอร์แมตเวลา/ตัวเลข/สีสถานะ |
-| `components/DashboardPage.jsx` + `dashboard/*` | แดชบอร์ดจราจร 4 แท็บ: ภาพรวมจราจร, **วิเคราะห์รายถนน** (`dashboard/RoadRiskPanel.jsx`), เหตุการณ์สด, รายงานสดจากศูนย์ |
-| `components/SidePanel.jsx`, `CameraCard.jsx`, `CityWindow.jsx`, `VideoSlot.jsx` | หน้า "กล้องของฉัน": เลือกกล้อง + ดูภาพสด HLS สูงสุด 9 ช่อง |
-| `components/BmaCountPage.jsx` + `bma/*` | นับรถจากกล้อง กทม.: ภาพรวมตอนนี้, เทียบวัน/สัปดาห์/เดือน, กล้องทุกตัว + สตรีม YOLO |
-| `components/HelmetPage.jsx`, `components/WrongWayPage.jsx` | ตรวจหมวกกันน็อก / ตรวจรถย้อนศร จากกล้อง กทม. ทุกตัว: หลักฐาน, รถที่สงสัย (สั่งตรวจซ้ำด้วยโมเดลในเครื่องหรือ AI), กล้องทุกตัว + ตรวจตอนนี้ |
-| `components/AnalyticsPage.jsx` | City Analytics: ดัชนีความแออัด ความหนาแน่นถนน คาดการณ์น้ำท่วม 1-6 ชม. จุดเสี่ยงอุบัติเหตุ ผู้เข้าชม + export CSV/JSON |
-| `components/CameraAiPage.jsx` | Camera AI & Analysis: รวมแท็บกล้องสด / AI ตรวจจับ / นับรถกล้อง กทม. |
-| `components/YoloPage.jsx` | AI ตรวจจับรถสดจากกล้องเดียว ปรับ FPS/ความมั่นใจ |
-| `components/MapPage.jsx` | แผนที่ MapLibre: เส้นจราจร, หมุดกล้อง, เหตุการณ์, เรดาร์ฝน, PM2.5, ลม, อาคาร 3D/ผังอาคาร+ชื่อสถานที่, **น้ำท่วมขังถนน กทม.** (ป้ายความลึก ซม. จากเซ็นเซอร์ สนน.) และ **ระดับน้ำแม่น้ำ/คลองปริมณฑล** (% ความจุตลิ่ง จากคลังข้อมูลน้ำแห่งชาติ ครอบคลุม กทม. นนทบุรี ปทุมธานี สมุทรปราการ นครปฐม สมุทรสาคร) |
-| `components/WaterPage.jsx` + `water/*` | คาดการณ์น้ำ: กราฟรายสถานี, ตารางสถานี, น้ำทะเลหนุน, คลอง/ถนน, ฝน, รายงานสด กทม., น้ำเหนือ → ภาคกลาง (`water/NorthFlowSection.jsx`, 2 มุมมอง: **สรุปง่าย** ค่าเริ่มต้นสำหรับคนทั่วไป `water/NorthFlowSimple.jsx` = หัวข้อ+สรุปจาก AI, เส้นทางน้ำ 6 จุด นครสวรรค์ → นนทบุรี-กทม. (เต็มลำน้ำกี่ % กำลังขึ้น/ลง จะขึ้นถึงเท่าไร), เขตที่ควรเตรียมตัว, ควรทำอะไร, แม่น้ำเหนือสายละบรรทัด, แผนที่ · **ข้อมูลละเอียด** = อธิบายศัพท์ + ตารางปริมาณน้ำทุก 10 นาที `water/NorthFlowExplain.jsx`, คำเตือน, AI ผลกระทบรายเขต กทม. `water/NorthImpactCard.jsx`, แผนที่ลูกศรทิศทางน้ำ `water/NorthFlowMap.jsx` เส้นหนาตามปริมาณน้ำ สีตามสถานะตอนนี้/คาดสูงสุด, เส้นทางน้ำ นครสวรรค์ → อยุธยา, กราฟปริมาณน้ำวัดได้ 72 ชม. + คาดการณ์ 4 วัน) |
-| `components/AiPage.jsx` | แชทถาม AI เรื่องเส้นทาง พร้อมกล้อง AI ประกอบ |
-| `lib/api.js` | ฟังก์ชันเรียก REST API ทั้งหมด |
-| `lib/store.js` | localStorage: กล้องโปรด, กล้องที่เปิด, ชื่อผู้ใช้, ธีม |
-| `index.css` | โทเค็นสี/ฟอนต์ Prompt, ธีมมืด (remap ตัวแปรสีภายใต้ `.dark`) |
+---
+
+## สำหรับนักพัฒนา
+
+- **โครงสร้างโค้ด ค่าตั้งใน `.env` ทั้งหมด และวิธีดูแลเซิร์ฟเวอร์:** [docs/DEVELOPER.md](docs/DEVELOPER.md)
+- **รันเทสต์:** `.venv\Scripts\python -m pytest tests`
+- **โครงสร้างหลัก:**
+
+```
+server.py      จุดเริ่มต้นเซิร์ฟเวอร์ (FastAPI)
+backend/       โค้ดฝั่งเซิร์ฟเวอร์ แยกตามเรื่อง: กล้อง กทม., จราจร, น้ำ, AI
+web/           หน้าเว็บ (React + Tailwind)
+config/        รายชื่อกล้อง
+launch/        สคริปต์เปิด/ปิดเซิร์ฟเวอร์ และ Cloudflare Tunnel
+local/         สคริปต์เก็บภาพและเทรนโมเดล (ใช้ในเครื่อง)
+instances/     ฐานข้อมูลและไฟล์ชั่วคราวของแต่ละเซิร์ฟเวอร์ (ไม่อยู่ใน Git)
+```
+
+ข้อมูลทั้งหมดใช้เพื่อเฝ้าระวังและช่วยตัดสินใจเท่านั้น ผลจาก AI (เช่น ตรวจหมวกหรือย้อนศร) อาจผิดได้ ควรให้คนตรวจซ้ำก่อนนำไปใช้
