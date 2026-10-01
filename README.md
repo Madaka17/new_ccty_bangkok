@@ -28,17 +28,22 @@
 
 ## 🌸 หน้าเว็บใหม่ (React + Tailwind + framer-motion)
 
-โค้ดหน้าเว็บโฉมใหม่อยู่ในโฟลเดอร์ `web/` เซิร์ฟเวอร์แต่ละตัวเสิร์ฟหน้าเว็บจาก build ของตัวเองที่ `instances\<ชื่อ>\dist` (production: `instances\production\dist`, ทดสอบ: `instances\test\dist`) ถ้ายังไม่ได้ build เซิร์ฟเวอร์จะรันแค่ API และหน้า `/` จะตอบ 503 บอกให้รัน `launch\build_web.bat`
+โค้ดหน้าเว็บอยู่ใน `web/` แต่ละเซิร์ฟเวอร์ใช้ไฟล์เว็บที่ build แยกกัน:
+
+- Production (`:8000`): `instances\production\dist`
+- Test (`:8001`): `instances\test\dist`
+
+ถ้ายังไม่มีไฟล์เว็บ เซิร์ฟเวอร์ยังเปิด API ได้ แต่หน้าแรกจะแสดงข้อผิดพลาด `503` ให้ build หน้าเว็บก่อน โดยต้องติดตั้ง Node.js ไว้ในเครื่อง
 
 ```bash
 cd web
 npm install
-npm run build -- --outDir ../instances/test/dist   # build ให้เซิร์ฟเวอร์ทดสอบ :8001 (เห็นผลทันทีเมื่อรีโหลด)
-npm run dev        # โหมดพัฒนา ที่ http://localhost:5173 (proxy /api ไป :8000)
-npm run dev:8001   # เหมือนกัน แต่ proxy /api ไปเซิร์ฟเวอร์ทดสอบ :8001
+npm run build -- --outDir ../instances/test/dist   # สร้างหน้าเว็บสำหรับ Test (:8001)
+npm run dev        # แก้หน้าเว็บและดูผลที่ http://localhost:5173 โดยใช้ API ของ :8000
+npm run dev:8001   # เหมือนกัน แต่ใช้ API ของ Test (:8001)
 ```
 
-build ไม่อยู่ใน git: สคริปต์ `start.bat` ใน `launch\production` และ `launch\test` เรียก `launch\build_web.bat` ให้ build อัตโนมัติเมื่อยังไม่มี `dist` ของตัวเอง (ต้องมี Node.js) `npm run build` เฉย ๆ จะได้ `web/dist` ซึ่งไม่มีเซิร์ฟเวอร์ตัวไหนอ่าน
+ไฟล์ที่ build แล้วไม่เก็บใน Git ตอนเปิดเซิร์ฟเวอร์ สคริปต์จะลองสร้างหน้าเว็บให้ถ้ายังไม่มี `dist` ถ้าแก้หน้าเว็บแล้วมี `dist` อยู่เดิม ให้ build ใหม่ด้วยคำสั่งด้านล่าง เพราะการ restart อย่างเดียวจะยังใช้หน้าเว็บเดิม คำสั่ง `npm run build` แบบไม่มี `--outDir` จะสร้าง `web/dist` ซึ่งเซิร์ฟเวอร์ไม่ได้ใช้
 
 ---
 
@@ -94,20 +99,16 @@ BMA_DATA_DIR=E:\data smartstreet
 
 ลำดับผู้ให้บริการ: Gemini (`GEMINI_API_KEY`) → Claude (`ANTHROPIC_API_KEY`) → โหมดออฟไลน์ (สรุปจากข้อมูลสด ไม่ต้องใช้ key)
 
-### 🌐 เปิดให้คนอื่นดูผ่าน Tailscale
+### 🌐 เปิดเว็บให้คนอื่นเข้าดู
 
-รันครั้งเดียวในเครื่องนี้ (Funnel เดิมชี้ไปพอร์ต 3000 ต้องรีเซ็ตก่อน):
+- เปิด `launch\production\start.bat` เพื่อเปิดเว็บผ่าน Tailscale Funnel ที่ลิงก์ด้านล่าง คนที่มีลิงก์สามารถเข้าดูได้
+- ถ้าต้องการใช้เฉพาะในเครื่องหรือเครือข่ายภายใน ให้เปิด `launch\production\start_local.bat` แทน
+- ถ้ากำลังเปลี่ยนจากโหมดสาธารณะเป็นโหมดส่วนตัว ให้รัน `launch\production\stop.bat` ก่อน แล้วจึงเปิด `start_local.bat`
+- `launch\production\stop.bat` จะหยุดเซิร์ฟเวอร์ Production และปิดทางเข้าผ่าน Funnel
 
-```bash
-tailscale funnel reset
-tailscale funnel --bg 8000        # เปิดสู่อินเทอร์เน็ต ทุกคนที่มีลิงก์เข้าดูได้
-# หรือเฉพาะคนใน tailnet เดียวกัน:
-tailscale serve --bg 8000
-```
+ลิงก์สาธารณะ: https://cctv-bangkok.tail95e28b.ts.net
 
-ลิงก์: https://cctv-bangkok.tail95e28b.ts.net
-
-ทางลัด: ดูหัวข้อ **🚀 วิธีเปิดใช้งาน** ด้านล่าง (สคริปต์ทั้งหมดอยู่ใน `launch/` แยกตาม Main web / localhost:8000 / localhost:8001)
+ดูวิธีเริ่มและหยุดเซิร์ฟเวอร์ได้ในหัวข้อ **🚀 วิธีเปิดใช้งาน** ด้านล่าง
 
 - API: `GET /api/traffic/summary`, `GET /api/traffic/roads?q=`, `POST /api/chat`, tiles ที่ `/api/traffic/tile/{z}/{x}/{y}.pbf` และ `/api/tiles/base/{z}/{x}/{y}.png`
 
@@ -141,30 +142,29 @@ GENERAL_RATE_PER_MIN=600
 
 ## 🚀 วิธีเปิดใช้งาน
 
-เซิร์ฟเวอร์มี 2 ตัว ใช้โค้ดชุดเดียวกันใน root แต่ข้อมูลแยกกันคนละโฟลเดอร์ใน `instances\` สคริปต์เปิด/ปิดอยู่ใน `launch\production` กับ `launch\test` ดับเบิลคลิกได้เลย (สคริปต์ `cd` กลับไป root เอง และ build หน้าเว็บให้อัตโนมัติถ้ายังไม่มี)
+มีเซิร์ฟเวอร์ 2 ตัว ใช้โค้ดชุดเดียวกัน แต่เก็บข้อมูลไว้คนละโฟลเดอร์ ทั้งสองตัวเริ่มและหยุดได้จากสคริปต์ใน `launch\production` และ `launch\test`
 
-| เซิร์ฟเวอร์ | URL | ใช้เมื่อ | สคริปต์ (`launch\...`) | ข้อมูล |
+| เซิร์ฟเวอร์ | ที่อยู่ | ใช้ทำอะไร | สคริปต์ใน `launch\` | โฟลเดอร์ข้อมูล |
 |---|---|---|---|---|
-| 🌐 **Production** | https://cctv-bangkok.tail95e28b.ts.net + http://localhost:8000 | ของจริงที่คนอื่นดูผ่าน Tailscale Funnel | `production\start.bat` · `production\restart.bat` (หลังแก้ `.env`/โค้ด) · `production\stop.bat` (ปิด Funnel และหยุดเซิร์ฟเวอร์) · `production\start_local.bat` (ในเครื่อง/LAN ไม่เปิด Funnel) | `instances\production\` |
-| 🧪 **Test** | http://localhost:8001 | ลองโค้ดใหม่ก่อน `production\restart.bat` | `test\start.bat` · `test\restart.bat` · `test\stop.bat` | `instances\test\` (ไม่แตะของจริง) |
+| 🌐 **Production** | `http://localhost:8000` และลิงก์สาธารณะ | เซิร์ฟเวอร์หลัก | `production\start.bat` เปิดลิงก์สาธารณะ · `production\start_local.bat` เปิดในเครื่อง/เครือข่าย · `production\restart.bat` เริ่มใหม่ · `production\stop.bat` หยุดและปิดลิงก์ | `instances\production\` |
+| 🧪 **Test** | `http://localhost:8001` | ทดลองการแก้ไขก่อนอัปเดต Production | `test\start.bat` เริ่ม · `test\restart.bat` เริ่มใหม่ · `test\stop.bat` หยุด | `instances\test\` |
 
-- แต่ละโฟลเดอร์ใน `instances\` มี `cache\`, `vehicle_counts.db`, ไฟล์สถานะของ AI agent (`water_agent.json`, `riskbkk_analysis.json`) และ `dist\` (หน้าเว็บที่ build แล้ว) ของตัวเอง ส่วน tile แผนที่ใช้ร่วมกันจาก `instances\production\cache`
-- `production\start.bat` กับ `production\start_local.bat` ใช้พอร์ต 8000 เดียวกัน จึงเปิดได้ทีละตัว ส่วน Test เปิดพร้อม Production ได้
-- `test\stop.bat` หยุดแค่ :8001 ไม่แตะ :8000 (`launch\kill_server.ps1` เลือกหน้าต่างตามพอร์ต)
-- Test ครั้งแรกจะคัดลอก cache เล็ก ๆ และ DB จาก `instances\production\` มาไว้ใน `instances\test\`; ลบ `instances\test\` เพื่อเริ่มใหม่สะอาด ๆ (ตัวแปร: `PORT`, `INSTANCE_DIR`, `BMA_DATA_DIR` ดู `backend/core/instance.py`)
-- Test รันงาน AI เบื้องหลังชุดเดียวกับ Production ด้วย key เดียวกัน ปิดเมื่อไม่ใช้
-- หลังแก้หน้าเว็บ: `npm run build -- --outDir ../instances/test/dist` ในโฟลเดอร์ `web` แล้วรีโหลด :8001 (หรือลบ `instances\test\dist` แล้วเปิด `test\start.bat` ใหม่)
-- พัฒนาหน้าเว็บแบบ hot-reload: `npm run dev` (proxy `/api` ไป :8000) หรือ `npm run dev:8001` (proxy ไปเซิร์ฟเวอร์ทดสอบ :8001)
+- Production กับ Test เปิดพร้อมกันได้ เพราะใช้คนละพอร์ตและฐานข้อมูล
+- Test ใช้ cache แผนที่และ API key เดียวกับ Production และรันงาน AI เบื้องหลังด้วย จึงควรปิดเมื่อไม่ใช้งาน
+- เปิด Test ครั้งแรก ระบบจะคัดลอก cache บางส่วนและฐานข้อมูลจาก Production ไปไว้ใน `instances\test\` ถ้าจะลบโฟลเดอร์นี้เพื่อเริ่มใหม่ ให้หยุด Test และสำรองข้อมูลก่อน (ข้อมูลใน Test จะถูกลบ)
+- หลังแก้หน้าเว็บ ให้ build สำหรับ Test ด้วย `npm run build -- --outDir ../instances/test/dist` จากโฟลเดอร์ `web` แล้วเปิดหรือรีโหลดหน้า `:8001`
+- เมื่อตรวจหน้าเว็บบน Test แล้ว ให้ build สำหรับ Production ด้วย `npm run build -- --outDir ../instances/production/dist`
+- ทดลองแก้หน้าเว็บโดยไม่ build ได้ด้วย `npm run dev` (ใช้ API ของ `:8000`) หรือ `npm run dev:8001` (ใช้ API ของ `:8001`)
 
 ขั้นตอน:
-1. ดับเบิลคลิก **`launch\production\start.bat`** (หรือ `launch\production\start_local.bat` ถ้าไม่เปิดสาธารณะ)
-2. ระบบจะเปิดเซิร์ฟเวอร์ FastAPI พร้อมโหลดโมเดล YOLO26x บน GPU
-3. หน้าเว็บจะเปิดขึ้นมาที่ `http://localhost:8000` โดยอัตโนมัติ
-4. เลือกหน้า **Camera AI & Analysis** จากเมนูซ้าย หรือกดไอคอนหุ่นยนต์บนหน้าต่างกล้องใดๆ เพื่อเปิดหน้าต่างวิเคราะห์การจราจรสด
+1. ดับเบิลคลิก **`launch\production\start.bat`** เพื่อเปิดลิงก์สาธารณะ หรือ **`launch\production\start_local.bat`** เพื่อใช้ในเครื่อง/เครือข่ายภายในเท่านั้น
+2. รอให้เซิร์ฟเวอร์เริ่มทำงาน แล้วเปิด `http://localhost:8000` ในเว็บเบราว์เซอร์
+3. ระบบเริ่มงาน AI โดยใช้ GPU ถ้ามีและพร้อมใช้งาน หากไม่มี GPU การประมวลผลอาจช้าลง
+4. เลือกหน้า **Camera AI & Analysis** จากเมนูซ้าย หรือกดไอคอนหุ่นยนต์บนหน้าต่างกล้องเพื่อดูผลวิเคราะห์การจราจร
 
-## 📁 โครงสร้างโฟลเดอร์ (อะไรขึ้น Tailscale / อะไรใช้แค่ในเครื่อง)
+## 📁 โครงสร้างโฟลเดอร์หลัก
 
-`tailscale funnel 8000` เปิดเฉพาะ `server.py` ดังนั้น **ทุกอย่างนอก `local/` คือชุดที่เซิร์ฟเวอร์ต้องใช้** ส่วน `local/` คือของที่ใช้แค่ในเครื่องนี้ (เทรนโมเดล, เก็บ dataset, ของเก่า) ไม่ต้องคัดลอกไปเครื่องอื่น
+โฟลเดอร์หลักมีโค้ดและการตั้งค่าของเซิร์ฟเวอร์ ส่วน `instances/` เก็บฐานข้อมูล cache และหน้าเว็บที่ build แล้ว ข้อมูลใน `instances/` ไม่เก็บใน Git จึงควรสำรองแยกต่างหาก โฟลเดอร์ `local/` ใช้เก็บสคริปต์ทำงานในเครื่อง ชุดข้อมูลฝึกโมเดล บันทึก และไฟล์เก่า
 
 ```
 <project root>\
@@ -178,12 +178,12 @@ GENERAL_RATE_PER_MIN=600
 │   └── agents/   AI วิเคราะห์: flood, riskbkk, traffy (+history), water, chat
 ├── config/                       ← 🌐 ข้อมูลกล้อง cameras_bkk.json, cameras_bma.json
 ├── launch/                       ← ▶️ ตัวรัน
-│   ├── production/      start / restart / stop / start_local   (:8000 + Tailscale Funnel)
+│   ├── production/      start / restart / stop / start_local   (:8000; start เปิด Funnel)
 │   ├── test/            start / restart / stop                 (ทดสอบ :8001)
 │   ├── enviro/, bma_watch/
 │   ├── kill_server.ps1  (ใช้ร่วม: หยุดเซิร์ฟเวอร์ตามพอร์ต)
 │   └── build_web.bat
-├── instances/                    ← 🌐 ข้อมูล runtime แยกตามเซิร์ฟเวอร์ (gitignore, สร้างเองอัตโนมัติ)
+├── instances/                    ← ฐานข้อมูลและ cache ของแต่ละเซิร์ฟเวอร์ (ไม่เก็บใน Git)
 │   ├── production/      cache/, vehicle_counts.db, *_agent.json, dist/   ← ของ :8000
 │   └── test/            cache/, vehicle_counts.db, data/, dist/          ← ของ :8001
 ├── web/  (src/ = ซอร์ส React)    ← 🌐 หน้าเว็บ (build ลง instances\<ชื่อ>\dist)
@@ -199,7 +199,7 @@ GENERAL_RATE_PER_MIN=600
 ```
 
 - ไฟล์ `.bat` ใน `local/pipeline/` ดับเบิลคลิกได้เหมือนเดิม (สคริปต์ `cd` กลับไป root เอง) ผลลัพธ์โมเดล `*_bkk.pt` / `helmet_cls.pt` ยังถูกเขียนลง root ให้เซิร์ฟเวอร์หยิบใช้
-- เซิร์ฟเวอร์เสิร์ฟไฟล์ static จาก `instances\<ชื่อ>\dist` ของตัวเองเท่านั้น (ไม่เสิร์ฟ root ทั้งโฟลเดอร์แล้ว) `.env`, `*.db`, `*.py` จึงไม่หลุดออก Tailscale
+- เซิร์ฟเวอร์ส่งให้ผู้ใช้เฉพาะหน้าเว็บใน `instances\<ชื่อ>\dist` ไม่ได้เปิดให้เข้าถึงไฟล์ทั้งโฟลเดอร์โปรเจกต์
 
 ---
 
