@@ -9,7 +9,7 @@ import BmaCameraGrid from './bma/BmaCameraGrid.jsx';
 
 const POLL_MS = 60000;
 const TABS = [
-  { id: 'overview', label: 'ภาพรวมตอนนี้' },
+  { id: 'overview', label: 'ตอนนี้' },
   { id: 'compare', label: 'เทียบวัน / สัปดาห์ / เดือน' },
   { id: 'cameras', label: 'กล้องทุกตัว' },
 ];
@@ -67,7 +67,7 @@ export default function BmaCountPage({ isActive, onToast }) {
     setStarting(true);
     try {
       await triggerBmaScan();
-      onToast?.('เริ่มสแกนกล้องทั้งหมดแล้ว ใช้เวลาประมาณ 1-2 นาที');
+      onToast?.('เริ่มนับรถทุกกล้องแล้ว ใช้เวลาประมาณ 1-2 นาที');
       const poll = setInterval(async () => {
         try {
           const st = await fetchBmaScanStatus();
@@ -83,7 +83,7 @@ export default function BmaCountPage({ isActive, onToast }) {
         }
       }, 2000);
     } catch {
-      onToast?.('เริ่มสแกนไม่สำเร็จ');
+      onToast?.('เริ่มนับรถไม่สำเร็จ');
       setStarting(false);
     }
   };
@@ -92,35 +92,35 @@ export default function BmaCountPage({ isActive, onToast }) {
   const online = analytics?.summary?.online_cameras ?? cameras.filter((c) => c.status === 'online').length;
 
   return (
-    <div className="flex flex-col gap-4 max-w-6xl mx-auto w-full">
+    <div className="flex flex-col gap-4">
       <PageHeader
-        title="นับรถจากกล้อง กทม."
+        title="นับรถจากกล้อง กทม. ทุกตัว"
         description={
           scan?.last_scan_time
-            ? `กล้อง ${cameras.length} ตัว สแกนล่าสุด ${scan.last_scan_time.slice(11, 16)} น. · รอบต่อไปอัตโนมัติทุก 4 นาที · ยอดสะสมรีเซ็ตทุก ${cycle?.cycle_minutes || 60} นาที (ครั้งถัดไป ${cycle ? `${fmtTime(cycle.next_reset)} น.` : '–'})`
-            : 'กำลังรอรอบสแกนแรก'
+            ? `กล้อง ${cameras.length} ตัว · นับล่าสุด ${scan.last_scan_time.slice(11, 16)} น. · นับใหม่เองทุก 3 นาที`
+            : 'กำลังนับรถรอบแรก'
         }
         actions={
           <>
             {online > 0 && (
               <Badge tone="green" dot>
-                ออนไลน์ {online} กล้อง
+                ใช้งานได้ {online} กล้อง
               </Badge>
             )}
             <Button size="sm" variant="primary" onClick={startScan} loading={scanning}>
-              {scanning ? `กำลังสแกน ${scan?.current_index || 0}/${scan?.total_cameras || cameras.length}` : 'สแกนตอนนี้'}
+              {scanning ? `กำลังนับ ${scan?.current_index || 0}/${scan?.total_cameras || cameras.length}` : 'นับใหม่ตอนนี้'}
             </Button>
             <a href="/api/bma/export/csv" download className="inline-flex items-center h-8 px-3 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 hover:bg-slate-50">
-              ดาวน์โหลด CSV
+              ดาวน์โหลดข้อมูล (CSV)
             </a>
           </>
         }
       />
 
       {scan?.last_scan_time && !scanning && online === 0 && cameras.length > 0 && (
-        <StatusBanner tone="yellow" label="ต้นทางไม่ส่งภาพ">
-          เซิร์ฟเวอร์กล้อง กทม. (cpudapp.bangkok.go.th) ตอบกลับเป็นภาพว่างทุกกล้องในรอบสแกนล่าสุด {scan.last_scan_time.slice(11, 16)} น.
-          ตัวนับจึงเป็น 0 ชั่วคราว ระบบยังสแกนซ้ำทุก 4 นาทีและจะกลับมาเองเมื่อต้นทางส่งภาพ · ดูข้อมูลย้อนหลังได้ที่แท็บ "เทียบวัน / สัปดาห์ / เดือน"
+        <StatusBanner tone="yellow" label="กล้อง กทม. ไม่ส่งภาพ">
+          รอบล่าสุด ({scan.last_scan_time.slice(11, 16)} น.) กล้อง กทม. ส่งภาพว่างมาทุกตัว ตัวเลขจึงเป็น 0 ชั่วคราว
+          ระบบจะลองใหม่ทุก 3 นาที · ดูข้อมูลย้อนหลังได้ที่แท็บ "เทียบวัน / สัปดาห์ / เดือน"
         </StatusBanner>
       )}
 

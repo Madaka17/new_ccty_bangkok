@@ -67,7 +67,7 @@ export default function RiskAnalysisCard({ isActive }) {
     runRiskAnalysis()
       .then(setData)
       .catch((e) => setRunError(e.message === 'forbidden'
-        ? 'สั่งวิเคราะห์ใหม่ได้เฉพาะทีมปฏิบัติการ (เครือข่ายภายใน)'
+        ? 'สั่งวิเคราะห์ใหม่ได้เฉพาะเจ้าหน้าที่'
         : 'วิเคราะห์ไม่สำเร็จ ลองใหม่อีกครั้ง'))
       .finally(() => setRunning(false));
   };
@@ -89,13 +89,13 @@ export default function RiskAnalysisCard({ isActive }) {
       <Card className="p-5" aria-labelledby="risk-ai">
         <SectionHeader
           id="risk-ai"
-          title="AI วิเคราะห์จุดเสี่ยงจราจร กทม."
-          description={`${data.source === 'local' ? data.model : 'กฎพื้นฐาน (ออฟไลน์)'} · ${fmtDateTime(data.generated_at)} · ใช้เวลา ${data.took_s} วิ · ข้อมูลจากแผนที่จุดเสี่ยงกรุงเทพมหานคร (riskbkk)`}
+          title="AI ดูจุดเสี่ยงจราจรแต่ละเขต"
+          description={`${data.source === 'local' ? 'วิเคราะห์โดย AI' : 'วิเคราะห์ตามเกณฑ์ของระบบ'} · ${fmtDateTime(data.generated_at)} · ข้อมูลจากแผนที่จุดเสี่ยงของ กทม.`}
           action={<Button size="sm" onClick={run} loading={busy}>{busy ? 'กำลังวิเคราะห์' : 'วิเคราะห์ใหม่'}</Button>}
         />
         {runError && <p role="alert" className="mt-3 text-xs text-red-700">{runError}</p>}
         {data.error && data.source === 'rules' && (
-          <p className="mt-3 text-xs text-amber-700">เชื่อมต่อโมเดล AI ไม่ได้ ใช้รายงานตามเกณฑ์แทน: {data.error}</p>
+          <p className="mt-3 text-xs text-amber-700">AI ไม่ตอบ จึงใช้ผลตามเกณฑ์ของระบบแทน</p>
         )}
         <div className="mt-4 flex flex-col gap-4">
           <StatusBanner tone="red" label="สรุป">
@@ -117,15 +117,15 @@ export default function RiskAnalysisCard({ isActive }) {
       </Card>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatTile label="อุบัติเหตุ ปี 2566–68" value={fmtNum(s.accident.cases)} sub={`บาดเจ็บ ${fmtNum(s.accident.injured)} · เสียชีวิต ${fmtNum(s.accident.dead)} (ThaiRSC)`} tone="red" />
+        <StatTile label="อุบัติเหตุ ปี 2566–68" value={fmtNum(s.accident.cases)} sub={`บาดเจ็บ ${fmtNum(s.accident.injured)} · เสียชีวิต ${fmtNum(s.accident.dead)}`} tone="red" />
         <StatTile label="จุดเสี่ยงอุบัติเหตุ 2566–68" value={fmtNum(s.counts.accident_risk)} sub="ประกาศโดย กทม." tone="yellow" />
-        <StatTile label="100 จุดเสี่ยง แก้เสร็จ" value={`${solve['ดำเนินการแล้วเสร็จ'] || 0}/100`} sub={`กำลังทำ ${solve['อยู่ระหว่างดำเนินการ'] || 0} · รอ ${solve['รอดำเนินการ'] || 0}`} tone="blue" />
-        <StatTile label="จุดฝืด (รถติดประจำ)" value={fmtNum(s.counts.friction)} sub={`ก่อสร้างอาคารใหญ่ ${fmtNum(s.counts.construction)} แห่ง`} />
+        <StatTile label="100 จุดเสี่ยงที่ กทม. แก้เสร็จแล้ว" value={`${solve['ดำเนินการแล้วเสร็จ'] || 0}/100`} sub={`กำลังแก้ ${solve['อยู่ระหว่างดำเนินการ'] || 0} · ยังไม่เริ่ม ${solve['รอดำเนินการ'] || 0}`} tone="blue" />
+        <StatTile label="จุดที่รถติดเป็นประจำ" value={fmtNum(s.counts.friction)} sub={`มีก่อสร้างอาคารใหญ่ ${fmtNum(s.counts.construction)} แห่ง`} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="p-5">
-          <SectionHeader id="risk-hotspots" title="เขตที่ควรจัดการก่อน" description="AI จัดลำดับจากตารางรายเขตด้านล่าง" />
+          <SectionHeader id="risk-hotspots" title="เขตที่ควรแก้ก่อน" description="AI เรียงจากตารางแต่ละเขตด้านล่าง" />
           <ul className="mt-3 flex flex-col gap-2">
             {(r.hotspots || []).map((h) => (
               <li key={h.district} className="rounded-lg border border-slate-200 p-3 flex gap-3">
@@ -160,7 +160,7 @@ export default function RiskAnalysisCard({ isActive }) {
       </div>
 
       <Card className="p-5">
-        <SectionHeader id="risk-districts" title="ตารางความเสี่ยงรายเขต" description="คะแนน = อุบัติเหตุ 2566–68 ×3 + จุดเสี่ยงประกาศ ×2 + 100 จุดเสี่ยง ×2 + จุดฝืด ×2 + ก่อสร้าง ×1 (เทียบกับเขตที่สูงสุด)" />
+        <SectionHeader id="risk-districts" title="ความเสี่ยงแต่ละเขต" description="คะแนนยิ่งสูง ยิ่งเสี่ยง (นับจากอุบัติเหตุ จุดเสี่ยง จุดรถติด และที่ก่อสร้าง)" />
         <div className="mt-3 overflow-x-auto scroll-soft">
           <table className="w-full text-[13px]">
             <thead>
@@ -170,8 +170,8 @@ export default function RiskAnalysisCard({ isActive }) {
                 <th className="py-2 pr-3 font-medium text-right">อุบัติเหตุ 66–68</th>
                 <th className="py-2 pr-3 font-medium text-right">เสียชีวิต</th>
                 <th className="py-2 pr-3 font-medium text-right">จุดเสี่ยง 66–68</th>
-                <th className="py-2 pr-3 font-medium text-right">100 จุดเสี่ยง (เหตุ)</th>
-                <th className="py-2 pr-3 font-medium text-right">จุดฝืด</th>
+                <th className="py-2 pr-3 font-medium text-right">100 จุดเสี่ยง</th>
+                <th className="py-2 pr-3 font-medium text-right">จุดรถติด</th>
                 <th className="py-2 font-medium text-right">ก่อสร้าง</th>
               </tr>
             </thead>
@@ -202,7 +202,7 @@ export default function RiskAnalysisCard({ isActive }) {
         <SectionHeader id="risk-actions" title="ข้อเสนอแนะจาก AI" />
         <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
           <List title="ตำรวจ / จราจร" items={r.recommendations?.police} />
-          <List title="วิศวกรรมจราจร (สจส.)" items={r.recommendations?.engineering} />
+          <List title="หน่วยงานดูแลถนนและไฟจราจร" items={r.recommendations?.engineering} />
           <List title="ประชาชน" items={r.recommendations?.public} />
         </div>
         {r.data_caveats?.length > 0 && (

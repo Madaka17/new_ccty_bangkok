@@ -4,6 +4,7 @@ import { inPageAlertsOn, setInPageAlerts } from './AlertPopups.jsx';
 import { Card, Badge, Button, Skeleton, EmptyState } from './dashboard/ui.jsx';
 import { PageHeader, StatusBanner } from './dashboard/primitives.jsx';
 import { fmtDateTime } from './dashboard/format.js';
+import { PAGE_TITLES } from './Sidebar.jsx';
 
 const POLL_MS = 30000;
 const REPORTS_SHOWN = 3;   // per district, until the district is expanded
@@ -36,13 +37,19 @@ export default function AlertsPage({ isActive, onToast }) {
   const [popups, setPopups] = useState(inPageAlertsOn);
   const [warnings, setWarnings] = useState(null);
   const [reports, setReports] = useState(null);
+  const [reportsFailed, setReportsFailed] = useState(false);   // this page's last request for the reports failed
   const [openDistrict, setOpenDistrict] = useState(null);
 
   const load = useCallback(async (endpoint) => {
     try {
       // The flood feeds are extras: the page still works when one of them is down
       fetchWeatherWarnings().then(setWarnings).catch(() => {});
-      fetchFloodReports().then(setReports).catch(() => {});
+      fetchFloodReports()
+        .then((r) => {
+          setReports(r);
+          setReportsFailed(false);
+        })
+        .catch(() => setReportsFailed(true));
       const [st, rc] = await Promise.all([fetchAlertStatus(endpoint), fetchAlertRecent(50)]);
       setStatus(st);
       setRecent(rc.items);
@@ -85,7 +92,7 @@ export default function AlertsPage({ isActive, onToast }) {
       await fn();
     } catch (e) {
       setProblem(e.message === 'forbidden'
-        ? 'เปิดรับแจ้งเตือนได้เฉพาะจากเครือข่ายทีม (LAN / Tailscale) หรือเครื่องเซิร์ฟเวอร์เท่านั้น'
+        ? 'การแจ้งเตือนผ่านเบราว์เซอร์ เปิดได้เฉพาะเครื่องของทีมงาน'
         : 'ทำรายการไม่สำเร็จ ลองใหม่อีกครั้ง');
     } finally {
       setBusy(null);
@@ -94,7 +101,7 @@ export default function AlertsPage({ isActive, onToast }) {
 
   const enable = () => run('enable', async () => {
     if ((await Notification.requestPermission()) !== 'granted') {
-      setProblem('เบราว์เซอร์ไม่อนุญาตการแจ้งเตือน เปิดสิทธิ์ Notifications ของเว็บนี้ในการตั้งค่าเบราว์เซอร์ก่อน');
+      setProblem('เบราว์เซอร์ยังไม่อนุญาตให้เว็บนี้แจ้งเตือน เปิดสิทธิ์การแจ้งเตือนในการตั้งค่าเบราว์เซอร์ก่อน');
       return;
     }
     const reg = await navigator.serviceWorker.ready;
@@ -152,19 +159,19 @@ export default function AlertsPage({ isActive, onToast }) {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Alerts"
-        description="แจ้งเตือนบนเบราว์เซอร์สำหรับทีม: น้ำท่วมถนน เขตเตือนภัย อุบัติเหตุ/ปิดถนน PM2.5 และระบบ ตรวจทุก 1 นาที"
+        title={PAGE_TITLES.alerts}
+        description="ประกาศเตือนภัย และตั้งให้เว็บเตือนเมื่อมีน้ำท่วมถนน อุบัติเหตุ ปิดถนน หรือฝุ่นสูง"
         actions={sub && <Button size="sm" onClick={test} loading={busy === 'test'}>ส่งแจ้งเตือนทดสอบ</Button>}
       />
 
       {!SUPPORTED && (
         <StatusBanner tone="yellow" label="ใช้ไม่ได้บนเบราว์เซอร์นี้">
-          ต้องเปิดผ่าน https (ลิงก์ Tailscale) หรือ localhost และใช้ Chrome, Edge, Firefox หรือ Safari
+          ต้องเปิดเว็บด้วยลิงก์ที่ขึ้นต้นด้วย https และใช้ Chrome, Edge, Firefox หรือ Safari
           (iPhone/iPad: กดแชร์ แล้ว "เพิ่มไปยังหน้าจอโฮม" ก่อน แล้วเปิดจากไอคอนนั้น)
         </StatusBanner>
       )}
       {status && !status.enabled && (
-        <StatusBanner tone="yellow" label="เซิร์ฟเวอร์ยังไม่พร้อม">ติดตั้ง pywebpush บนเซิร์ฟเวอร์ก่อน (pip install -r requirements.txt)</StatusBanner>
+        <StatusBanner tone="yellow" label="ระบบแจ้งเตือนยังไม่พร้อม">ผู้ดูแลระบบต้องติดตั้ง pywebpush บนเซิร์ฟเวอร์ก่อน</StatusBanner>
       )}
       {problem && <StatusBanner tone="red" label="ไม่สำเร็จ">{problem}</StatusBanner>}
 
@@ -174,7 +181,7 @@ export default function AlertsPage({ isActive, onToast }) {
             <p className="text-sm font-semibold text-slate-900">เครื่องนี้</p>
             <p className="text-xs text-slate-600 mt-0.5">
               {sub ? 'รับแจ้งเตือนอยู่' : 'ยังไม่ได้รับแจ้งเตือน'}
-              {status && ` · ทีมรับแจ้งเตือน ${status.subscribers} เครื่อง`}
+              {status && ` · มีเครื่องรับแจ้งเตือน ${status.subscribers} เครื่อง`}
               {status?.last_check && ` · ตรวจล่าสุด ${fmtDateTime(status.last_check)}`}
             </p>
           </div>
@@ -207,7 +214,7 @@ export default function AlertsPage({ isActive, onToast }) {
           <span>
             เด้งเตือนบนหน้าเว็บอัตโนมัติ
             <span className="block text-xs text-slate-500">
-              ระหว่างเปิดเว็บนี้อยู่ ไม่ว่าจะอยู่หน้าไหน จะมีการ์ดเตือนขึ้นมุมขวาบนเมื่อมีแจ้งเตือนใหม่ ไม่ต้องสมัครและไม่ต้องใช้ https (ไม่รวมเรื่องระบบ)
+              ขณะเปิดเว็บนี้อยู่ จะมีการ์ดเตือนขึ้นมุมขวาบนเมื่อมีเรื่องใหม่ ไม่ต้องสมัคร
             </span>
           </span>
         </label>
@@ -221,7 +228,7 @@ export default function AlertsPage({ isActive, onToast }) {
         {warnings === null ? (
           <Skeleton className="h-16" />
         ) : activeWarnings.length === 0 ? (
-          <EmptyState title="ไม่มีประกาศเตือนภัยใน 2 วันล่าสุด" description={warnings.error ? 'ดึงข้อมูลจาก tmd.go.th ไม่สำเร็จ แสดงข้อมูลรอบล่าสุดที่มี' : 'ข้อมูลจาก tmd.go.th ตรวจทุก 15 นาที'} />
+          <EmptyState title="ไม่มีประกาศเตือนภัยใน 2 วันล่าสุด" description={warnings.error ? 'อัปเดตไม่สำเร็จ แสดงข้อมูลล่าสุดที่มี' : 'ตรวจทุก 15 นาที'} />
         ) : (
           <ul className="divide-y divide-slate-100">
             {activeWarnings.map((w) => (
@@ -240,16 +247,23 @@ export default function AlertsPage({ isActive, onToast }) {
 
       <Card className="p-4">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-          <p className="text-sm font-semibold text-slate-900">ประชาชนแจ้งน้ำท่วม (6 ชม.ล่าสุด)</p>
+          <p className="text-sm font-semibold text-slate-900">คนแจ้งน้ำท่วม (6 ชม.)</p>
           {reports?.updated_at && <span className="text-xs text-slate-500">อัปเดต {fmtDateTime(reports.updated_at)}</span>}
         </div>
         <p className="text-xs text-slate-500 mb-3">
-          จาก Traffy Fondue คัดด้วยคำว่า น้ำท่วม/น้ำขัง ยังไม่ผ่านการตรวจสอบจากเขต · แจ้งเตือนเมื่อเขตเดียวกันมีตั้งแต่ 3 เรื่องใน 1 ชม.
+          จากแอป Traffy Fondue ยังไม่ได้ตรวจสอบโดยเขต · จะเตือนเมื่อเขตเดียวกันมีคนแจ้ง 3 เรื่องขึ้นไปใน 1 ชม.
         </p>
-        {reports === null ? (
+        {reports?.updated_at && (reports.error || reportsFailed) && (
+          <p role="status" className="mb-3 rounded-lg px-3 py-2 text-xs text-amber-800 bg-amber-50 border border-amber-200">
+            อัปเดตรอบล่าสุดไม่สำเร็จ ที่เห็นเป็นข้อมูลเมื่อ {fmtDateTime(reports.updated_at)}
+          </p>
+        )}
+        {reports === null && !reportsFailed ? (
           <div className="space-y-2">{[0, 1].map((i) => <Skeleton key={i} className="h-12" />)}</div>
         ) : districts.length === 0 ? (
-          <EmptyState title="ไม่มีเรื่องแจ้งน้ำท่วม" description="ยังไม่มีประชาชนแจ้งน้ำท่วมใน 6 ชั่วโมงที่ผ่านมา" />
+          reports?.updated_at
+            ? <EmptyState title="ยังไม่มีคนแจ้งน้ำท่วม" description="ใน 6 ชั่วโมงที่ผ่านมา" />
+            : <EmptyState title="ยังโหลดเรื่องจาก Traffy ไม่ได้" description="ระบบจะลองใหม่เอง" />
         ) : (
           <div className="space-y-3">
             {districts.map((d) => (
@@ -272,7 +286,7 @@ export default function AlertsPage({ isActive, onToast }) {
                 {d.items.length > REPORTS_SHOWN && (
                   <button type="button" onClick={() => setOpenDistrict(openDistrict === d.name ? null : d.name)}
                           className="cursor-pointer mt-1 text-xs text-blue-700 hover:underline">
-                    {openDistrict === d.name ? 'ย่อ' : `ดูอีก ${d.items.length - REPORTS_SHOWN} เรื่อง`}
+                    {openDistrict === d.name ? 'แสดงน้อยลง' : `ดูอีก ${d.items.length - REPORTS_SHOWN} เรื่อง`}
                   </button>
                 )}
               </section>
@@ -286,7 +300,7 @@ export default function AlertsPage({ isActive, onToast }) {
         {recent === null ? (
           <div className="space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-12" />)}</div>
         ) : recent.length === 0 ? (
-          <EmptyState title="ยังไม่มีแจ้งเตือน" description="เมื่อมีเหตุการณ์เข้าเกณฑ์ จะแสดงที่นี่และส่งไปยังเครื่องที่รับแจ้งเตือน" />
+          <EmptyState title="ยังไม่มีแจ้งเตือน" description="เมื่อมีเรื่องที่ต้องเตือน จะขึ้นที่นี่และส่งไปยังเครื่องที่เปิดรับแจ้งเตือน" />
         ) : (
           <ul className="divide-y divide-slate-100">
             {recent.map((a) => (

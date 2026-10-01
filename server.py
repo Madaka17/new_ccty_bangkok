@@ -15,7 +15,7 @@ if sys.platform == 'win32':
 
 # 1. Auto-detect and switch to .venv if running under global Python
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-from backend.core.instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
+from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 venv_python = os.path.join(BASE_DIR, ".venv", "Scripts", "python.exe")
 if os.path.exists(venv_python) and sys.prefix == sys.base_prefix and os.path.normcase(sys.executable) != os.path.normcase(venv_python):
     import subprocess
@@ -23,6 +23,7 @@ if os.path.exists(venv_python) and sys.prefix == sys.base_prefix and os.path.nor
     code = subprocess.call([venv_python] + sys.argv)
     sys.exit(code)
 
+import gzip
 import json
 import time
 from datetime import datetime
@@ -77,24 +78,30 @@ from backend.vision.count_workers import CountManager
 from backend.vision.survey import SurveyManager
 from backend.vision.incident_service import IncidentManager
 from backend.vision.violation_service import ViolationMonitor
+from backend.vision.camera_health import CameraHealth
 from backend.traffic.traffic_service import traffic, get_traffic_tile, get_osm_tile
 from backend.traffic.guidance_service import GuidanceService
 from backend.vision.helmet_service import HelmetPatrol
+from backend.vision.flood_cam_service import FloodCamWatch, STALE_MINUTES as FLOOD_CAM_STALE_MINUTES
+from backend.vision.itic_frames import IticFrames
 from backend.vision.wrongway_service import WrongWayPatrol
 from backend.water.air_service import air
 from backend.water.flood_service import flood_roads
+from backend.water.user_reports import UserReports
 from backend.water.flood_feeds import traffy_reports, tmd_warnings, hdms_floods, js100_floods
 from backend.traffic.road_service import road_risk
 from backend.agents import chat_service
-from backend.water import water_service
+from backend.water import water_service, north_flow, river_roads
 from backend.traffic import rsc_service
 from backend.bma.bma_events import bma_feed
-from backend.bma.bma_service import BmaScanner
+from backend.bma.bma_service import BmaScanner, RAW_DIR as BMA_RAW_DIR
+from backend.core import stale_stamp
 from backend.traffic import analytics_service
 from backend.core.telemetry_service import telemetry
 from backend.core import access_guard
 from backend.core.alert_service import AlertService
 from backend.agents.flood_agent import FloodAgent
+from backend.agents.north_impact_agent import NorthImpactAgent
 from backend.agents.riskbkk_agent import RiskAgent
 from backend.agents.traffy_agent import TraffyAgent
 from backend.agents.traffy_history import TraffyHistory
@@ -104,7 +111,7 @@ from backend.agents.water_agent import WaterAgent
 # ids that end up in file names: letters, digits, _ . - only (never a path)
 SAFE_ID = re.compile(r"[A-Za-z0-9_.-]{1,80}")
 
-app = FastAPI(title="BKK StreetSmart CCTV & YOLO11x Vehicle Detection")
+app = FastAPI(title="BKK StreetSmart CCTV & YOLO Vehicle Detection")
 
 # CORS: the UI is served from this same origin (and Vite dev proxies /api), so no other website may
 # read the API from a visitor's browser. ALLOWED_ORIGINS (comma separated) adds origins if ever needed.
@@ -123,15 +130,13 @@ if not os.path.exists(MODEL_PATH):
     print(f"[AI] {MODEL_PATH} not found, falling back to yolo26x.pt")
     MODEL_PATH = os.path.join(BASE_DIR, "yolo26x.pt")
 CAMERAS_FILE = os.path.join(BASE_DIR, "config", "cameras_bkk.json")
-# Legacy vanilla UI (local/legacy_ui) is only the fallback when web/dist has not been built
-LEGACY_UI = os.path.join(BASE_DIR, "local", "legacy_ui")
-STATIC_DIR = LEGACY_UI
-INDEX_HTML = os.path.join(LEGACY_UI, "index.html")
-# New React UI (web/dist) takes precedence when built
-WEB_DIST = os.path.join(BASE_DIR, "web", "dist")
-if os.path.exists(os.path.join(WEB_DIST, "index.html")):
-    STATIC_DIR = WEB_DIST
-    INDEX_HTML = os.path.join(WEB_DIST, "index.html")
+# React UI (<instance>/dist, built by launch\build_web.bat). Without a build the API still runs and "/" says how to build it.
+# Each instance serves its own build, so building the test server's UI leaves the live UI alone. WEB_DIST: another build folder.
+WEB_DIST = os.getenv("WEB_DIST") or os.path.join(DATA_DIR, "dist")
+INDEX_HTML = os.path.join(WEB_DIST, "index.html")
+WEB_BUILT = os.path.exists(INDEX_HTML)
+if not WEB_BUILT:
+    print(f"[Warning] {INDEX_HTML} not found: run launch\\build_web.bat (needs Node.js), then restart. Serving the API only.")
 
 # Load cameras (strictly verified live streams)
 cameras_data = []
@@ -144,7 +149,7 @@ if os.path.exists(CAMERAS_FILE):
     except Exception as e:
         print(f"[Warning] Failed to load cameras_bkk.json: {e}")
 
-# Initialize YOLO11x Vehicle Detector (Target: 10 FPS for smoother playback)
+# Initialize the YOLO vehicle detector (model from AI_MODEL, target 10 FPS for smoother playback)
 vehicle_log = VehicleLog(os.path.join(DATA_DIR, "vehicle_counts.db"))
 detector = VehicleDetectorYOLO11x(model_path=MODEL_PATH, target_fps=10.0, conf_threshold=0.15, vehicle_log=vehicle_log)
 # Background counting on user-selected cameras (lower fps to prioritize live camera)
@@ -164,6 +169,9 @@ analytics_service.configure(incidents=incidents)
 violations = ViolationMonitor(os.path.join(DATA_DIR, "vehicle_counts.db"), vision=incidents,
                               cameras_by_id=lambda: {c["camid"]: c for c in cameras_data})
 detector.violations = violations
+# Which live-AI cameras answer right now (the camera search marks the ones without signal)
+camera_health = CameraHealth(lambda: cameras_data)
+camera_health.start()
 
 # BMA Traffic Scanner & YOLO Vehicle Counter for all cameras
 bma_scanner = BmaScanner(detector=detector)
@@ -173,6 +181,13 @@ bma_scanner.helmet = helmet
 # Wrong-way patrol over every BMA camera: heading detector + per-camera learned lane directions -> agent -> evidence
 wrongway = WrongWayPatrol(os.path.join(DATA_DIR, "vehicle_counts.db"), vision=incidents, scanner=bma_scanner)
 bma_scanner.wrongway = wrongway
+# Flood watch over every BMA camera: frames tiled 3x3 -> Qwen vision -> water on the road? -> map layer
+flood_cams = FloodCamWatch(bma_scanner.cameras)
+bma_scanner.flood = flood_cams
+# ...and over the iTIC cameras around Bangkok (the Longdo list on the map), one frame from each HLS stream every 5 min
+itic_frames = IticFrames(flood_cams, lambda: (get_longdo_cameras() or {}).get("items", []))
+# Flood reports from the public (pin, depth, photo), checked by the same vision model before they reach the maps
+user_reports = UserReports()
 # Corridor dispersal guidance rebuilt every minute from the live Longdo lines + camera counts
 guidance = GuidanceService(traffic, incidents=incidents, bma=bma_scanner, cameras=lambda: cameras_data)
 
@@ -229,6 +244,11 @@ def health():
 @app.get("/api/cameras")
 def get_cameras():
     return {"total": len(cameras_data), "items": cameras_data}
+
+@app.get("/api/cameras/health")
+def get_cameras_health():
+    """camid -> "online" / "offline" for the live-AI cameras, checked at most every 5 min."""
+    return camera_health.get()
 
 _longdo_cams_cache = {"time": 0, "data": None}
 
@@ -301,6 +321,47 @@ def get_bma_cameras():
         cams = bma_scanner.cameras
     return {"total": len(bma_scanner.cameras), "items": cams}
 
+def _unmasked(c):
+    """Longdo masks some camera addresses (camid=X.X.X.X), and parks suspended cameras on one placeholder
+    stream (tempsus.m3u8): blank those links so the page does not try them."""
+    hls = "" if "tempsus" in (c.get("hls_url") or "") else c.get("hls_url") or ""
+    vdo = "" if "X.X.X.X" in (c.get("vdourl") or "") else c.get("vdourl") or ""
+    img = "" if "X.X.X.X" in (c.get("imgurl") or "") else c.get("imgurl") or ""
+    return dict(c, hls_url=hls, vdourl=vdo, imgurl=img, source="itic")
+
+@app.get("/api/cameras/all")
+def get_all_cameras(request: Request):
+    """Every camera for the live camera page. Ours first (cameras_bkk.json, the ones the AI knows), then the
+    rest of iTIC's list from Longdo, then the BMA cameras (source "bma"), which have no video: the page shows
+    their newest frame. Left out: Longdo cameras on the "tempsus" placeholder stream (suspended, about 80 in
+    Pattaya) and links with a masked address (camid=X.X.X.X)."""
+    items = [_unmasked(c) for c in cameras_data]
+    seen = {c.get("camid") for c in cameras_data} | {c.get("hls_url") for c in cameras_data if c.get("hls_url")}
+    for c in map(_unmasked, get_longdo_cameras().get("items") or []):
+        if not (c["hls_url"] or c["vdourl"]) or c.get("camid") in seen or c["hls_url"] in seen:
+            continue
+        seen.update(k for k in (c.get("camid"), c["hls_url"]) if k)
+        items.append(c)
+    for c in bma_scanner.cameras:
+        camid = str(c.get("camid") or "")
+        if not SAFE_ID.fullmatch(camid):
+            continue
+        district = c.get("district") or ""
+        place = [c.get("road") or "", f"เขต{district}" if district and district != "กรุงเทพมหานคร" else ""]
+        items.append({
+            "camid": f"BMA-{camid}", "bma_id": camid, "source": "bma",
+            "title": " ".join(p for p in [c.get("title") or ""] + place if p),
+            "short_title": c.get("short_title") or c.get("title") or camid,
+            "province": "กรุงเทพมหานคร", "hls_url": "", "vdourl": "", "imgurl": f"/api/bma/snapshot/{camid}?annotate=0",
+            "latitude": float(c.get("latitude") or 0), "longitude": float(c.get("longitude") or 0),
+        })
+    # About 430 KB of mostly Thai text: gzip takes it under 60 KB
+    body = json.dumps({"total": len(items), "items": items}, ensure_ascii=False).encode("utf-8")
+    if "gzip" in request.headers.get("accept-encoding", ""):
+        return Response(gzip.compress(body, 6), media_type="application/json",
+                        headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
+    return Response(body, media_type="application/json")
+
 @app.get("/api/bma/analytics")
 def get_bma_analytics():
     """Returns comprehensive data analysis for BMA cameras vehicle counts."""
@@ -336,9 +397,18 @@ async def get_bma_snapshot(camid: str, live: bool = False, annotate: bool = True
 
     if not SAFE_ID.fullmatch(camid):
         raise HTTPException(400, "bad camera id")
+    # annotate=0: the plain frame, not the one the scanner keeps with its YOLO boxes drawn on
     cache_file = os.path.join(DATA_DIR, "cache", "bma_snapshots", f"{camid}.jpg")
+    if not annotate:
+        cache_file = os.path.join(BMA_RAW_DIR, f"{camid}.jpg")
     if os.path.exists(cache_file):
-        return FileResponse(cache_file, media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
+        # the scanner's last frame; while the BMA site is down it can be hours old, so it says so on the picture
+        return Response(content=stale_stamp.stamp_file(cache_file), media_type="image/jpeg",
+                        headers={"Cache-Control": "no-cache"})
+    if not annotate:
+        # No plain frame yet (the scanner keeps one on each pass). Asking BMA here would be one request per
+        # tile of the camera wall, and BMA answers such a burst with 429 for everyone, the scanner included.
+        return Response(status_code=404)
 
     try:
         raw = await loop.run_in_executor(None, lambda: bma_scanner.session.fetch_snapshot(str(camid), timeout=4.0))
@@ -361,8 +431,7 @@ async def stream_bma_camera(camid: str, fps: float = 2.0):
         last_frame = None
         if os.path.exists(cache_file):
             try:
-                with open(cache_file, "rb") as f:
-                    last_frame = f.read()
+                last_frame = stale_stamp.stamp_file(cache_file)
                 if last_frame:
                     yield (b'--frame\r\n'
                            b'Content-Type: image/jpeg\r\n\r\n' + last_frame + b'\r\n')
@@ -731,6 +800,64 @@ def flood_stations(status: str = Query(None, pattern="^(flood|slight|normal|offl
                    limit: int = Query(400, ge=1, le=1000)):
     return flood_roads.stations(status=status, district=district, kind=kind, limit=limit)
 
+@app.get("/api/flood/cameras")
+def flood_cameras(all: bool = Query(False)):
+    """AI flood watch on every BMA camera: counts and the cameras with water on the road (all=1: every checked camera)."""
+    return flood_cams.status(include_dry=all)
+
+@app.get("/api/flood/cameras/{camid}/image")
+def flood_camera_image(camid: str):
+    """The frame the AI judged for this camera."""
+    p = flood_cams.frame_path(camid)
+    if not p:
+        raise HTTPException(404, "no image")
+    # stamped "ภาพเก่า" once the frame is older than the map's own fade (the BMA site down, a dead feed)
+    jpeg = stale_stamp.stamp_file(p, stale_minutes=FLOOD_CAM_STALE_MINUTES, frame_ts=flood_cams.frame_ts(camid))
+    return Response(content=jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-cache"})
+
+@app.post("/api/flood/cameras/check")
+def flood_cameras_check():
+    """Check every camera now instead of waiting for its turn (operator only through access_guard)."""
+    return flood_cams.check_all()
+
+@app.get("/api/flood/user-reports")
+def user_reports_recent(hours: float = Query(None, gt=0, le=48)):
+    """Published flood reports from the public in the last hours (default USER_REPORT_HOURS)."""
+    return user_reports.recent(hours)
+
+@app.post("/api/flood/user-reports")
+async def user_reports_create(request: Request):
+    """A flood report from the public: {lat, lng, depth, note?, photo? (data: URL)}. Size and rate limited in access_guard."""
+    body = bytearray()
+    async for chunk in request.stream():   # counted here too: a chunked upload has no content-length to check
+        body += chunk
+        if len(body) > access_guard.USER_REPORT_MAX_BODY:
+            raise HTTPException(413, "รูปใหญ่เกินไป")
+    try:
+        data = json.loads(body)
+    except ValueError:
+        raise HTTPException(400, "ข้อมูลไม่ถูกต้อง") from None
+    if not isinstance(data, dict):
+        raise HTTPException(400, "ข้อมูลไม่ถูกต้อง")
+    try:
+        return await asyncio.get_running_loop().run_in_executor(None, user_reports.create, data)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+
+@app.get("/api/flood/user-reports/{rid}/photo")
+def user_report_photo(rid: str):
+    p = user_reports.published_photo(rid)
+    if not p:
+        raise HTTPException(404, "no photo")
+    return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=3600"})
+
+@app.delete("/api/flood/user-reports/{rid}")
+def user_report_delete(rid: str):
+    """Take a report off the maps (operator only through access_guard)."""
+    if not user_reports.delete(rid):
+        raise HTTPException(400, "bad id")
+    return {"deleted": rid}
+
 @app.get("/api/flood/analysis")
 def flood_analysis():
     """AI read of the current flooding: severity, what is happening, spots to watch, what to do."""
@@ -870,6 +997,23 @@ def water_forecast(station: int = Query(..., ge=1)):
     except Exception as e:
         return JSONResponse(status_code=503, content={"error": str(e)})
 
+@app.get("/api/water/north")
+def water_north():
+    """Northern rivers to the Central Plain: RID gauges' discharge now, the routed 4-day outlook down to
+    Ayutthaya, upstream dams and the warnings they add up to."""
+    try:
+        return north_flow.get_outlook()
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"error": str(e)})
+
+@app.get("/api/water/north/nonthaburi")
+def water_north_nonthaburi():
+    """Nonthaburi roads beside the Chao Phraya and the chance the river tops its bank next to them in 7 days."""
+    try:
+        return river_roads.get(traffic)
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"error": str(e)})
+
 @app.get("/api/water/bma_events")
 def water_bma_events(kind: str = Query(None), hours: int = Query(24, ge=1, le=168), limit: int = Query(60, ge=1, le=200)):
     """Live BMA traffic-centre reports (flooded roads, accidents, closures), polled every minute."""
@@ -974,7 +1118,7 @@ def chat_endpoint(payload: dict = Body(...)):
                     ("helmet", lambda: {"status": helmet.status(), "recent": helmet.recent(verdict="no_helmet", limit=5)["items"]}),
                     ("wrongway", lambda: {"status": wrongway.status(), "recent": wrongway.recent(verdict="wrong_way", limit=5)["items"]}),
                     ("violations", lambda: violations.recent(hours=24, limit=1)),
-                    ("analytics", analytics_service.get_summary)):
+                    ("analytics", analytics_service.get_summary), ("north_flow", north_flow.brief)):
         try:
             extra[key] = fn()
         except Exception as e:
@@ -983,7 +1127,7 @@ def chat_endpoint(payload: dict = Body(...)):
 
 # ---------------------------------------------------------------- Flood analyst agent (local model)
 flood_agent = FloodAgent(DATA_DIR, {
-    "flood": flood_roads.status, "water": water_service.get_summary,
+    "flood": flood_roads.status, "water": water_service.get_summary, "north_flow": north_flow.brief,
     "forecast": lambda: analytics_service.get_summary().get("flood"),
     "traffy": traffy_reports.status, "tmd": tmd_warnings.status,
     "road_risk": lambda: road_risk.status(limit=2000),
@@ -1004,6 +1148,15 @@ def flood_agent_run(payload: dict = Body(None)):
 # ---------------------------------------------------------------- Water Forecast analyst (local model)
 water_agent = WaterAgent(DATA_DIR, flood_agent)
 
+@app.get("/api/ai/usage")
+def ai_usage(request: Request, minutes: int = Query(30, ge=1, le=1440)):
+    """Requests and tokens sent to the AI model (LOCAL_LLM_*) per calling module over the last `minutes`.
+    Operator only: it shows which jobs run and how often."""
+    if not access_guard.is_trusted(request):
+        return JSONResponse(status_code=403, content={"error": "operator only"})
+    from backend.core import local_llm
+    return local_llm.usage(minutes)
+
 @app.get("/api/water/agent")
 def water_agent_status():
     """AI flood outlook / three waters / measures / public guide for the Water Forecast page."""
@@ -1013,6 +1166,24 @@ def water_agent_status():
 def water_agent_run():
     """Re-run it now (operator only through access_guard)."""
     return water_agent.run(force=True)
+
+# ---------------------------------------------------------------- Northern water -> Bangkok districts (local model)
+north_impact = NorthImpactAgent(DATA_DIR, {
+    "north": north_flow.get_outlook, "water_map": water_service.get_map, "roads": flood_roads.status,
+    "rain": water_service.rain_stations, "tide": lambda: water_service.get_summary().get("tide"),
+    "road_risk": lambda: road_risk.status(limit=2000)["items"],
+    "nonthaburi": lambda: river_roads.get(traffic),
+})
+
+@app.get("/api/water/north/impact")
+def water_north_impact():
+    """AI read of the northern water: plain summary, each gauge, the Bangkok districts and the roads at risk."""
+    return north_impact.status()
+
+@app.post("/api/water/north/impact/run")
+def water_north_impact_run():
+    """Re-run it now (operator only through access_guard)."""
+    return north_impact.run(force=True)
 
 # ---------------------------------------------------------------- BMA traffic-risk analyst (local model)
 risk_agent = RiskAgent(DATA_DIR, os.path.join(BASE_DIR, "web", "public", "riskbkk"))
@@ -1110,8 +1281,19 @@ def alerts_test(payload: dict = Body(None)):
 # Static files for web frontend
 @app.get("/")
 def read_root():
+    if not WEB_BUILT:
+        return Response("Web UI not built: run launch\\build_web.bat (needs Node.js), then restart the server.\n",
+                        status_code=503, media_type="text/plain")
     # never cache the shell so a rebuilt bundle is picked up on the next reload
     return FileResponse(INDEX_HTML, headers={"Cache-Control": "no-cache"})
+
+@app.get("/sw.js")
+def service_worker():
+    # no-cache like the shell: Cloudflare would otherwise keep a .js without Cache-Control for hours after a deploy
+    path = os.path.join(WEB_DIST, "sw.js")
+    if not os.path.exists(path):
+        return Response(status_code=404)
+    return FileResponse(path, media_type="text/javascript", headers={"Cache-Control": "no-cache"})
 
 @app.get("/robots.txt")
 def robots_txt():
@@ -1120,18 +1302,21 @@ def robots_txt():
 
 @app.get("/cameras_bkk.json")
 def read_cameras_json():
-    # the React app fetches this directly; serve the live root copy, not the stale one bundled in web/dist
+    # the React app fetches this directly (vite dev proxies it here too); config/cameras_bkk.json is the only copy
     return FileResponse(CAMERAS_FILE, media_type="application/json", headers={"Cache-Control": "no-cache"})
 
-if os.path.isdir(WEB_DIST):
+if WEB_BUILT:
     app.mount("/assets", StaticFiles(directory=os.path.join(WEB_DIST, "assets")), name="assets")
-# Only the UI folder is exposed (never the project root: .env, *.db, *.py, cameras_bma.json ...)
-app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+    # Only the UI folder is exposed (never the project root: .env, *.db, *.py, cameras_bma.json ...)
+    app.mount("/", StaticFiles(directory=WEB_DIST, html=True), name="static")
 
 traffic.start()
 guidance.start()
 air.start()
 flood_roads.start()
+flood_cams.start()
+itic_frames.start()
+user_reports.start()
 traffy_reports.start()
 tmd_warnings.start()
 hdms_floods.start()
@@ -1141,6 +1326,7 @@ telemetry.purge_future()
 road_risk.traffic, road_risk.flood, road_risk.water = traffic, flood_roads, water_service
 road_risk.start()
 water_service.warm()
+north_flow.start()
 rsc_service.warm(bma_scanner.cameras)
 bma_feed.start()
 flood_agent.start()
@@ -1148,6 +1334,7 @@ risk_agent.start()
 traffy_agent.start()
 traffy_history.start()
 water_agent.start()
+north_impact.start()
 alerts.start()
 
 def start_browser_when_ready(url="http://localhost:8000"):
@@ -1173,8 +1360,8 @@ if __name__ == "__main__":
     if os.getenv("OPEN_BROWSER") == "1":
         start_browser_when_ready(f"http://localhost:{PORT}")
     print("=" * 60)
-    print("  BKK StreetSmart CCTV & YOLO11x Vehicle Detection Server")
-    print("  Model: YOLO11x | Processing Rate: 5 FPS")
+    print("  BKK StreetSmart CCTV & YOLO Vehicle Detection Server")
+    print(f"  Model: {detector.model_name} | Processing Rate: {detector.target_fps:g} FPS")
     print("  Detected Classes: รถยนต์ (Cars), มอไซ (Motorcycles), รถบรรทุก (Trucks)")
     print(f"  Running at http://localhost:{PORT}" + (f"  [TEST instance, data in {DATA_DIR}]" if IS_STAGE else ""))
     print("=" * 60)

@@ -15,7 +15,7 @@ const ON_EVENT = 'alerts-inpage';
 
 const TOPIC = {
   flood: { label: 'น้ำท่วมถนน', tone: 'blue', page: 'water' },
-  zone: { label: 'เขตเตือนภัย', tone: 'red', page: 'water' },
+  zone: { label: 'เขตเสี่ยงน้ำท่วม', tone: 'red', page: 'water' },
   incident: { label: 'อุบัติเหตุ/ปิดถนน', tone: 'yellow', page: 'dashboard' },
   air: { label: 'PM2.5', tone: 'neutral', page: 'map' },
 };

@@ -10,6 +10,11 @@ from . import db as dbmod
 _lock = threading.Lock()
 _tokens = {}  # token -> {"username":..., "role":..., "display_name":...}
 
+# A visitor who has not logged in browses as this read-only guest, so the dashboard opens without a
+# password (it is embedded in BKK StreetSmart). require_auth lets the guest through; require_role
+# still needs a real account, so only admin/operator can send alerts, simulate quakes or change settings.
+GUEST = {"username": "guest", "role": "guest", "display_name": "ผู้เยี่ยมชม"}
+
 
 def login(username, password):
     conn = dbmod.get_conn()
@@ -37,7 +42,8 @@ def current_user():
     auth = request.headers.get("Authorization", "")
     token = auth[7:] if auth.startswith("Bearer ") else request.args.get("token")
     if not token:
-        return None
+        return GUEST
+    # An unknown token (e.g. from before a server restart) still answers 401, so the page drops it
     return user_for_token(token)
 
 

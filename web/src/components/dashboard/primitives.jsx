@@ -1,14 +1,24 @@
 // Page-level building blocks shared by every page (header, KPI tile, status banner, tabs, modal, share bar).
 // Same visual language as ui.jsx: white cards, slate text, blue-600 for the one accent.
-import { useEffect } from 'react';
+import { createContext, useContext, useEffect } from 'react';
 import { Card, Badge, Skeleton, Truncate, FOCUS } from './ui.jsx';
+
+const Nested = createContext(false);
+
+// Wraps a page shown as a tab of another page: its PageHeader becomes a section heading (h2)
+// under the parent's h1 instead of a second page title.
+export function SubPage({ children }) {
+  return <Nested.Provider value>{children}</Nested.Provider>;
+}
 
 // One title, one line of context, actions on the right
 export function PageHeader({ title, description, actions, children }) {
+  const nested = useContext(Nested);
+  const H = nested ? 'h2' : 'h1';
   return (
-    <header className="flex flex-wrap items-end justify-between gap-3 pt-1">
+    <header className={`flex flex-wrap items-end justify-between gap-3 ${nested ? '' : 'pt-1'}`}>
       <div className="min-w-0">
-        <h1 className="text-xl font-semibold text-slate-900 leading-7">{title}</h1>
+        <H className={`${nested ? 'text-[17px] leading-6' : 'text-xl leading-7'} font-semibold text-slate-900`}>{title}</H>
         {description && <p className="text-[13px] text-slate-600 mt-0.5 leading-5">{description}</p>}
         {children}
       </div>
@@ -18,10 +28,10 @@ export function PageHeader({ title, description, actions, children }) {
 }
 
 // KPI tile: label, big number, one-line note, optional badge
-export function StatTile({ label, value, sub, badge, loading, tone }) {
+export function StatTile({ label, value, sub, badge, loading, tone, className = '' }) {
   const valueTone = { red: 'text-red-700', yellow: 'text-amber-700', green: 'text-emerald-700', blue: 'text-blue-700' }[tone] || 'text-slate-900';
   return (
-    <Card as="div" className="p-4">
+    <Card as="div" className={`p-4 ${className}`}>
       <div className="min-w-0">
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-slate-600 truncate">{label}</p>

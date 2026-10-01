@@ -9,6 +9,7 @@ from . import sources_emsc
 from . import sources_geofon
 from . import world_quakes
 from . import world_faults
+from . import quake_brief
 from . import node_simulator
 from .simulator import Simulator, run_forever
 from .ws import register_ws, broadcast
@@ -17,6 +18,21 @@ from .routes import auth_routes, situation, warning, stations, analysis, compare
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")
 
 _stop_event = threading.Event()
+
+
+class _StripPrefix:
+    """Serves the app under /enviro as well as at /. The public address is bkksmartstreet.com/enviro/ (also framed
+    by BKK's Earthquake page), and Cloudflare Tunnel passes the /enviro prefix on instead of stripping it."""
+
+    def __init__(self, app, prefix):
+        self.app, self.prefix = app, prefix
+
+    def __call__(self, environ, start_response):
+        path = environ.get("PATH_INFO", "")
+        if path == self.prefix or path.startswith(self.prefix + "/"):
+            environ["SCRIPT_NAME"] = environ.get("SCRIPT_NAME", "") + self.prefix
+            environ["PATH_INFO"] = path[len(self.prefix):] or "/"
+        return self.app(environ, start_response)
 
 
 def create_app():
@@ -37,6 +53,7 @@ def create_app():
     app.register_blueprint(nodes.bp)
 
     register_ws(app, lambda: app.config["SIMULATOR"])
+    app.wsgi_app = _StripPrefix(app.wsgi_app, "/enviro")
 
     @app.get("/")
     def index():
@@ -60,6 +77,9 @@ def create_app():
 
     world_quakes_thread = threading.Thread(target=world_quakes.run_forever, args=(_stop_event,), daemon=True)
     world_quakes_thread.start()
+
+    # AI earthquake brief ("AI วิเคราะห์แผ่นดินไหว" tab), rewritten from world_quakes' data
+    threading.Thread(target=quake_brief.run_forever, args=(_stop_event,), daemon=True).start()
 
     # The 7 simulated real-shaped nodes on the "สถานีตรวจวัด" page (see
     # node_simulator.py + db.SIMULATED_REAL_NODES) -- apply_fn is passed in

@@ -49,16 +49,16 @@ export default function BmaComparison({ data, period, onPeriod, cycle, files, lo
   return (
     <div className="flex flex-col gap-4">
       {cycle && (
-        <StatusBanner tone="blue" label={`รอบนับทุก ${cycle.cycle_minutes} นาที`}>
-          เริ่มรอบ {fmtTime(cycle.cycle_started)} น. · รีเซ็ตถัดไป <b>{fmtTime(cycle.next_reset)} น.</b> (<CountdownText ts={cycle.next_reset} />) · สะสมรอบนี้ <b>{fmtNum(cycle.cycle?.total)}</b> คัน จาก {cycle.cycle?.scans || 0} รอบสแกน · บันทึกแล้ว {cycle.cycles_archived} รอบ
-          {cycle.last_error && <span className="text-red-700"> · บันทึกล่าสุดล้มเหลว: {cycle.last_error}</span>}
+        <StatusBanner tone="blue" label={`เก็บยอดทุก ${cycle.cycle_minutes} นาที`}>
+          ยอดรอบนี้ <b>{fmtNum(cycle.cycle?.total)}</b> คัน (เริ่ม {fmtTime(cycle.cycle_started)} น.) · เก็บยอดครั้งถัดไป <b>{fmtTime(cycle.next_reset)} น.</b> (<CountdownText ts={cycle.next_reset} />)
+          {cycle.last_error && <span className="text-red-700"> · เก็บยอดครั้งล่าสุดไม่สำเร็จ</span>}
         </StatusBanner>
       )}
 
       <Card className="p-5">
         <SectionHeader
-          title={data?.title || 'เปรียบเทียบปริมาณจราจร'}
-          description="ตัวเลข = รถที่เห็นในภาพสแนปช็อต รวมทุกรอบสแกนในช่วงนั้น ใช้เทียบความหนาแน่นช่วงต่อช่วง"
+          title={data?.title || 'เทียบจำนวนรถ'}
+          description="ตัวเลขคือรถที่กล้องเห็นรวมทุกรอบในช่วงนั้น ใช้ดูว่ารถมากขึ้นหรือน้อยลง"
           action={<Segmented label="ช่วงเวลา" value={period} onChange={onPeriod} options={PERIODS} />}
         />
         <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -81,10 +81,10 @@ export default function BmaComparison({ data, period, onPeriod, cycle, files, lo
             <p className="text-[13px] text-slate-600 dark:text-slate-300">
               {shown ? (
                 <>
-                  <b className="text-slate-900 dark:text-slate-100">{shown.label}</b> · {fmtNum(shown.total)} คัน · รถยนต์ {fmtNum(shown.cars)} · มอเตอร์ไซค์ {fmtNum(shown.motorcycles)} · บรรทุก {fmtNum(shown.trucks)} · {shown.cycles} รอบ
+                  <b className="text-slate-900 dark:text-slate-100">{shown.label}</b> · {fmtNum(shown.total)} คัน · รถยนต์ {fmtNum(shown.cars)} · มอเตอร์ไซค์ {fmtNum(shown.motorcycles)} · บรรทุก {fmtNum(shown.trucks)}
                 </>
               ) : (
-                'ยังไม่มีรอบที่บันทึก'
+                'ยังไม่มีข้อมูลที่เก็บไว้'
               )}
             </p>
 
@@ -100,7 +100,7 @@ export default function BmaComparison({ data, period, onPeriod, cycle, files, lo
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                   }`}
                 >
-                  แยกแท่งรายประเภท
+                  แยกตามประเภทรถ
                 </button>
                 <button
                   type="button"
@@ -111,7 +111,7 @@ export default function BmaComparison({ data, period, onPeriod, cycle, files, lo
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                   }`}
                 >
-                  ซ้อนทับ (ยอดรวม)
+                  ยอดรวม
                 </button>
               </div>
 
@@ -169,7 +169,7 @@ export default function BmaComparison({ data, period, onPeriod, cycle, files, lo
             <Skeleton className="mt-3 h-56 w-full" />
           ) : !chart.length ? (
             <div className="mt-3">
-              <EmptyState title="ยังไม่มีข้อมูลเปรียบเทียบ" description="ระบบจะบันทึกรอบแรกเมื่อถึงเวลารีเซ็ตรอบถัดไป" />
+              <EmptyState title="ยังไม่มีข้อมูลให้เทียบ" description="ระบบจะเก็บยอดแรกเมื่อครบรอบ" />
             </div>
           ) : chartMode === 'grouped' ? (
             /* GROUPED BARS: 3 separate bars side by side per date */
@@ -301,7 +301,7 @@ export default function BmaComparison({ data, period, onPeriod, cycle, files, lo
             <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800">
               <div className="flex items-center justify-between mb-2.5">
                 <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                  ตารางเปรียบเทียบสัดส่วนและจำนวนรถแยกรายประเภท:
+                  จำนวนรถแต่ละประเภท
                 </span>
                 <span className="text-[11px] text-slate-500">หน่วย: คัน</span>
               </div>
@@ -314,7 +314,7 @@ export default function BmaComparison({ data, period, onPeriod, cycle, files, lo
                       <th className="py-2.5 px-3 text-right font-medium text-blue-600 dark:text-blue-400">🚙 รถยนต์</th>
                       <th className="py-2.5 px-3 text-right font-medium text-amber-600 dark:text-amber-400">🛵 มอเตอร์ไซค์</th>
                       <th className="py-2.5 px-3 text-right font-medium text-slate-600 dark:text-slate-300">🚚 บรรทุก/บัส</th>
-                      <th className="py-2.5 px-3 text-right font-medium text-slate-500">รอบสแกน</th>
+                      <th className="py-2.5 px-3 text-right font-medium text-slate-500">จำนวนรอบที่นับ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-cream-100 dark:divide-slate-800 bg-white dark:bg-slate-900/60">

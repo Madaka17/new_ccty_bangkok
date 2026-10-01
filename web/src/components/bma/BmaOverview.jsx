@@ -5,8 +5,8 @@ import { useMemo } from 'react';
 import { getBmaSnapshotUrl } from '../../lib/api.js';
 
 export const LEVEL = {
-  heavy: { label: 'หนาแน่น', tone: 'red' },
-  moderate: { label: 'ปานกลาง', tone: 'yellow' },
+  heavy: { label: 'ติดขัด', tone: 'red' },
+  moderate: { label: 'ชะลอตัว', tone: 'yellow' },
   free: { label: 'คล่องตัว', tone: 'green' },
 };
 export const levelOf = (lv) => LEVEL[lv] || LEVEL.free;
@@ -26,7 +26,7 @@ export default function BmaOverview({ analytics, cameras, loading, onOpenCamera,
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <StatTile label="กล้องออนไลน์" value={s ? `${fmtNum(online)} / ${fmtNum(s.total_cameras)}` : '–'} sub={s ? `ออฟไลน์ ${fmtNum(s.offline_cameras)} ตัว` : ''} loading={loading} badge={online > 0 ? <Badge tone="green" dot>LIVE</Badge> : null} />
+        <StatTile label="กล้องที่ใช้งานได้" value={s ? `${fmtNum(online)} / ${fmtNum(s.total_cameras)}` : '–'} sub={s ? `ไม่มีภาพ ${fmtNum(s.offline_cameras)} ตัว` : ''} loading={loading} badge={online > 0 ? <Badge tone="green" dot>สด</Badge> : null} />
         <StatTile label="รถที่เห็นตอนนี้ (ทุกกล้อง)" value={s ? `${fmtNum(total)} คัน` : '–'} sub={s ? `เฉลี่ย ${s.avg_per_camera ?? 0} คัน/กล้อง` : ''} loading={loading} tone="blue" />
         <StatTile label="รถยนต์" value={s ? fmtNum(cars) : '–'} sub={s ? `${s.cars_pct ?? 0}% ของทั้งหมด` : ''} loading={loading} />
         <StatTile label="มอเตอร์ไซค์" value={s ? fmtNum(motos) : '–'} sub={s ? `${s.motorcycles_pct ?? 0}% ของทั้งหมด` : ''} loading={loading} />
@@ -35,7 +35,7 @@ export default function BmaOverview({ analytics, cameras, loading, onOpenCamera,
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="p-5">
-          <SectionHeader title="สัดส่วนประเภทรถ" description="รวมจากภาพล่าสุดของทุกกล้องที่ออนไลน์" />
+          <SectionHeader title="รถแต่ละประเภท" description="รวมจากภาพล่าสุดของทุกกล้อง" />
           <div className="mt-4">
             {loading ? (
               <Skeleton className="h-16 w-full" />
@@ -52,7 +52,7 @@ export default function BmaOverview({ analytics, cameras, loading, onOpenCamera,
           </div>
         </Card>
         <Card className="p-5">
-          <SectionHeader title="สภาพจราจรหน้ากล้อง" description="จำนวนจุดกล้องแยกตามความหนาแน่น (0-4 คัน = คล่องตัว, 5-12 = ปานกลาง, 13+ = หนาแน่น)" />
+          <SectionHeader title="รถหน้ากล้องมากแค่ไหน" description="นับจากรถในภาพ: 0-4 คัน = คล่องตัว, 5-12 คัน = ชะลอตัว, 13 คันขึ้นไป = ติดขัด" />
           <div className="mt-4">
             {loading ? (
               <Skeleton className="h-16 w-full" />
@@ -61,8 +61,8 @@ export default function BmaOverview({ analytics, cameras, loading, onOpenCamera,
                 unit=" จุด"
                 parts={[
                   { label: 'คล่องตัว', value: cg.free_count || 0, color: 'bg-emerald-600' },
-                  { label: 'ปานกลาง', value: cg.moderate_count || 0, color: 'bg-amber-500' },
-                  { label: 'หนาแน่น', value: cg.heavy_count || 0, color: 'bg-red-600' },
+                  { label: 'ชะลอตัว', value: cg.moderate_count || 0, color: 'bg-amber-500' },
+                  { label: 'ติดขัด', value: cg.heavy_count || 0, color: 'bg-red-600' },
                 ]}
               />
             )}
@@ -71,7 +71,7 @@ export default function BmaOverview({ analytics, cameras, loading, onOpenCamera,
       </div>
 
       <Card className="p-5">
-        <SectionHeader title="จุดที่รถหนาแน่นที่สุดตอนนี้" description="15 กล้องที่เห็นรถมากที่สุดในภาพล่าสุด · แตะเพื่อดูภาพและสตรีมสด" />
+        <SectionHeader title="จุดที่รถเยอะที่สุดตอนนี้" description="15 กล้องที่เห็นรถมากที่สุด · แตะเพื่อดูภาพสด" />
         <ol className="mt-3 divide-y divide-slate-100">
           {loading ? (
             [...Array(5)].map((_, i) => (
@@ -81,7 +81,7 @@ export default function BmaOverview({ analytics, cameras, loading, onOpenCamera,
             ))
           ) : !analytics?.top_congested?.length ? (
             <li className="py-2">
-              <EmptyState title="ยังไม่มีข้อมูล รอรอบสแกนแรก" />
+              <EmptyState title="ยังไม่มีข้อมูล กำลังนับรถรอบแรก" />
             </li>
           ) : (
             analytics.top_congested.map((cam, i) => {
@@ -135,8 +135,8 @@ export default function BmaOverview({ analytics, cameras, loading, onOpenCamera,
                       {fmtNum(d.total)} <span className="text-xs font-normal text-slate-500">คัน</span>
                     </p>
                     <p className="text-[11px] text-slate-500">
-                      {d.cameras} กล้อง · เฉลี่ย {d.avg_vehicles}
-                      {d.heavy_count ? ` · หนาแน่น ${d.heavy_count}` : ''}
+                      {d.cameras} กล้อง · เฉลี่ย {d.avg_vehicles} คัน/กล้อง
+                      {d.heavy_count ? ` · ติดขัด ${d.heavy_count} จุด` : ''}
                     </p>
                   </button>
                 ))}

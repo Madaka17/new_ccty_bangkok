@@ -44,7 +44,7 @@ from backend.vision.violation_service import HELMET_PROMPT, CROP_MARGIN
 OUT_DIR = os.path.join(LOCAL_DIR, 'dataset_helmet')
 SRC_DIR = os.path.join(LOCAL_DIR, 'dataset', 'images')
 # Snapshots bma_service refreshes every ~4 min while server.py runs; each file is one camera
-BMA_SNAP_DIR = os.path.join(BASE_DIR, 'cache', 'bma_snapshots')
+BMA_SNAP_DIR = os.path.join(BASE_DIR, 'instances', 'production', 'cache', 'bma_snapshots')
 DONE_FILE = os.path.join(OUT_DIR, 'labelled.json')
 VAL_SHARE = 0.15
 MOTO_CLASSES = (1, 3)

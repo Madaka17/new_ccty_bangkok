@@ -24,6 +24,27 @@ Open **http://localhost:5050**. Demo accounts (password `enviro2026` for all):
 The port defaults to 5050 (5000 collides with macOS AirPlay Receiver on most
 Macs). Override with `PORT=8080 python3 main.py`.
 
+On the public server, start it with `launch\enviro\start.bat` (or
+`restart.bat` / `stop.bat`) instead. It is public at https://bkksmartstreet.com/enviro/,
+next to BKK StreetSmart on the same address (whose "Earthquake" page shows it in a frame),
+through Cloudflare Tunnel (`launch\cloudflare`). The tunnel passes the /enviro prefix on, so
+`server/app.py` strips it; ENVIRO still works at / too (http://localhost:5050/). Before
+each start it replaces the demo passwords above and the PROTO-01 node key with
+random ones, and writes them to `data/accounts.txt` (not in git).
+
+Visitors who have not logged in see the dashboard read-only as a guest
+(`server/auth.py: GUEST`). Sending alerts, simulating quakes and changing
+settings still need an admin or operator login ("เข้าสู่ระบบ" in the rail).
+
+The "AI วิเคราะห์แผ่นดินไหว" tab (`server/quake_brief.py`, `/api/world/brief`) is rewritten when the
+events change, and at least every 15 minutes. It uses the last 7 days of real quakes: M4.5+ worldwide and
+the events near Thailand. The server computes the facts: nearest plate boundary (PB2002, downloaded once to
+`data/pb2002_boundaries.json`), nearest GEM active fault, and predicted MMI for every provincial capital,
+with +1 MMI on Bangkok's soft clay. An AI model then writes the Thai text from those facts only. The model
+is the OpenAI-compatible `LOCAL_LLM_URL` / `LOCAL_LLM_MODEL` / `LOCAL_LLM_API_KEY` / `LOCAL_LLM_EXTRA`, read
+from the environment or from BKK StreetSmart's `.env` one folder up. With no model set, a Thai template
+writes the text.
+
 Delete `data/enviro.db` to reset all state (events, audit log, users) back to
 the seeded starting point.
 
@@ -232,6 +253,7 @@ server/
   sources_emsc.py        live EMSC public feed poller
   geo.py                 haversine distance
   ws.py                  WebSocket broadcast + /ws endpoint
+  quake_brief.py         "AI วิเคราะห์แผ่นดินไหว": facts from the live feeds + the AI's Thai text
   routes/                one blueprint per menu (situation/warning/stations/…)
 frontend/index.html      single-page dashboard (fetch + WebSocket client)
 backups/                 real SQLite backups land here

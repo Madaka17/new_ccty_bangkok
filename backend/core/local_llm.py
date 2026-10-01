@@ -13,21 +13,85 @@ fact already, and with thinking on the model spends its whole token budget reaso
     LOCAL_LLM_TIMEOUT     seconds per request                   240
     LOCAL_LLM_EXTRA       extra request fields as JSON; vLLM Qwen ignores reasoning_effort and turns
                           thinking off with {"chat_template_kwargs": {"enable_thinking": false}}
+    LOCAL_LLM_MAX_PARALLEL  requests in flight at once per endpoint + key   3
+
+The gateway behind LOCAL_LLM_URL allows 3 requests in flight per key (LiteLLM max_parallel_requests) and
+answers 429 to a 4th. The flood watch, the helmet patrol, the agents and the chat bot all share that key,
+so every Client waits for one of MAX_PARALLEL slots per endpoint + key, and retries a 429 twice.
 
 The flood agent uses `default`. The chat bot uses `chat`, which reads the same names with a CHAT_LLM_
 prefix and falls back to the LOCAL_LLM_ value for any it does not set, so the chat can point at another
 endpoint (a hosted API, a LiteLLM proxy) while the flood agent stays on the local model. With the server
 off or the model not loaded, both fall back to their Thai rule-based answers.
+
+Every request is counted by the module that made it, with the prompt and reply tokens the server reports
+(`usage` in the OpenAI-compatible reply; image tokens are part of the prompt). usage() sums any window of
+the last USAGE_KEEP_H hours for /api/ai/usage.
 """
 import json
 import os
 import re
+import sys
+import threading
+import time
+from collections import deque
 
 import requests
 
 # Thai text runs about 2.2 characters per token on the Qwen tokenizer (measured on the chat context)
 CHARS_PER_TOKEN = 2.2
 _THINK = re.compile(r"<think>.*?</think>", re.S)
+MAX_PARALLEL = int(os.getenv("LOCAL_LLM_MAX_PARALLEL", "3"))
+RETRY_429 = (2, 5)   # seconds to wait before each retry of a 429
+_slots = {}          # (url, api_key) -> BoundedSemaphore shared by every Client on that endpoint + key
+_slots_lock = threading.Lock()
+
+
+def _slot(url, api_key):
+    with _slots_lock:
+        return _slots.setdefault((url, api_key), threading.BoundedSemaphore(MAX_PARALLEL))
+
+
+USAGE_KEEP_H = 24
+_usage = deque()     # (time, caller module, model, prompt tokens, reply tokens, seconds, ok)
+_usage_lock = threading.Lock()
+_started = time.time()
+
+
+def _record(caller, model, prompt, reply, seconds, ok):
+    now = time.time()
+    with _usage_lock:
+        _usage.append((now, caller, model, prompt, reply, seconds, ok))
+        while _usage and _usage[0][0] < now - USAGE_KEEP_H * 3600:
+            _usage.popleft()
+
+
+def usage(minutes=30):
+    """Requests and tokens per calling module over the last `minutes` (as far back as the server has run)."""
+    now = time.time()
+    since = now - minutes * 60
+    with _usage_lock:
+        rows = [u for u in _usage if u[0] >= since]
+    by = {}
+    for _, caller, model, prompt, reply, seconds, ok in rows:
+        d = by.setdefault(caller, {"caller": caller, "model": model, "calls": 0, "errors": 0, "prompt_tokens": 0,
+                                   "reply_tokens": 0, "seconds": 0.0})
+        d["calls"] += 1
+        d["errors"] += 0 if ok else 1
+        d["prompt_tokens"] += prompt
+        d["reply_tokens"] += reply
+        d["seconds"] += seconds
+    callers = sorted(by.values(), key=lambda d: -(d["prompt_tokens"] + d["reply_tokens"]))
+    for d in callers:
+        d["total_tokens"] = d["prompt_tokens"] + d["reply_tokens"]
+        d["avg_tokens"] = round(d["total_tokens"] / max(1, d["calls"] - d["errors"]))
+        d["seconds"] = round(d["seconds"], 1)
+    covered = min(minutes * 60, now - _started)
+    total = sum(d["total_tokens"] for d in callers)
+    return {"minutes": minutes, "covered_minutes": round(covered / 60, 1), "calls": sum(d["calls"] for d in callers),
+            "prompt_tokens": sum(d["prompt_tokens"] for d in callers), "reply_tokens": sum(d["reply_tokens"] for d in callers),
+            "total_tokens": total, "tokens_per_hour": round(total * 3600 / covered) if covered >= 300 else None,
+            "callers": callers}
 
 
 class ContextTooLong(Exception):
@@ -68,11 +132,30 @@ class Client:
             body["response_format"] = {"type": "json_schema",
                                        "json_schema": {"name": "reply", "strict": True, "schema": json_schema}}
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-        resp = requests.post(f"{self.url}/chat/completions", json=body, headers=headers, timeout=timeout or self.timeout)
+        timeout = timeout or self.timeout
+        caller = sys._getframe(1).f_globals.get("__name__", "?")
+        started = time.time()
+        slot = _slot(self.url, self.api_key)
+        if not slot.acquire(timeout=timeout):
+            raise RuntimeError(f"no free slot on the AI endpoint in {timeout}s ({MAX_PARALLEL} in flight)")
+        try:
+            for wait in (*RETRY_429, None):
+                resp = requests.post(f"{self.url}/chat/completions", json=body, headers=headers, timeout=timeout)
+                if resp.status_code != 429 or wait is None:
+                    break
+                time.sleep(wait)
+        finally:
+            slot.release()
+        if not resp.ok:
+            _record(caller, self.model, 0, 0, time.time() - started, False)
         if resp.status_code == 400 and "context" in resp.text:
             raise ContextTooLong(resp.text[:200])
         resp.raise_for_status()
-        choice = resp.json()["choices"][0]
+        data = resp.json()
+        used = data.get("usage") or {}
+        _record(caller, self.model, int(used.get("prompt_tokens") or 0), int(used.get("completion_tokens") or 0),
+                time.time() - started, True)
+        choice = data["choices"][0]
         text = _THINK.sub("", choice["message"].get("content") or "").strip()
         if not text:
             raise RuntimeError(f"empty reply (finish_reason={choice.get('finish_reason')})")

@@ -116,12 +116,12 @@ export default function ForecastChart({ stations, stationId, onPickStation, anch
     <Card aria-labelledby="water-forecast-title" className="p-5 scroll-mt-4" ref={anchorRef}>
       <SectionHeader
         id="water-forecast-title"
-        title="แนวโน้มระดับน้ำรายสถานี"
-        description="เส้นทึบ = ค่าที่วัดได้ 48 ชม. ล่าสุด · เส้นประ = คาดการณ์ · หน่วย ม.รทก. (เมตรเหนือระดับน้ำทะเลปานกลาง)"
+        title="ระดับน้ำขึ้นหรือลง: ดูทีละจุด"
+        description="เส้นทึบ = ที่วัดได้จริง · เส้นประ = คาดการณ์ · หน่วยเมตร วัดจากระดับน้ำทะเล"
         action={
           <div className="flex flex-wrap items-center gap-2">
             <label htmlFor="water-station" className="sr-only">
-              เลือกสถานี
+              เลือกจุดวัด
             </label>
             <select
               id="water-station"
@@ -131,29 +131,29 @@ export default function ForecastChart({ stations, stationId, onPickStation, anch
             >
               {stations.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.official_forecast ? '[7 วัน] ' : ''}
+                  {s.official_forecast ? '[คาดการณ์ 7 วัน] ' : ''}
                   {s.name} · {s.province}
                 </option>
               ))}
             </select>
-            <Segmented label="ช่วงคาดการณ์" value={range} onChange={setRange} options={hasOfficial ? [['48h', '48 ชม.'], ['7d', '7 วัน']] : [['48h', '48 ชม.']]} />
+            <Segmented label="ดูล่วงหน้า" value={range} onChange={setRange} options={hasOfficial ? [['48h', '48 ชม.'], ['7d', '7 วัน']] : [['48h', '48 ชม.']]} />
           </div>
         }
       />
 
       {/* Headline numbers */}
       <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Stat label={shown?.future ? `คาดการณ์ ${fmtWhen(shown.t)}` : shown ? `วัดล่าสุด ${fmtWhen(shown.t)}` : 'ระดับล่าสุด'} value={fmtM(shown?.v)} loading={loading && !data} />
+        <Stat label={shown?.future ? `คาดว่า ${fmtWhen(shown.t)}` : shown ? `วัดได้ ${fmtWhen(shown.t)}` : 'ระดับน้ำล่าสุด'} value={fmtM(shown?.v)} loading={loading && !data} />
         <Stat
           label="ระดับตลิ่ง"
           value={fmtM(bank)}
-          sub={bank != null && shown?.v != null ? (shown.v >= bank ? `ล้นตลิ่ง ${(shown.v - bank).toFixed(2)} ม.` : `ต่ำกว่าตลิ่ง ${(bank - shown.v).toFixed(2)} ม.`) : ''}
+          sub={bank != null && shown?.v != null ? (shown.v >= bank ? `ล้นตลิ่ง ${Math.round((shown.v - bank) * 100)} ซม.` : `ต่ำกว่าตลิ่ง ${Math.round((bank - shown.v) * 100)} ซม.`) : ''}
           tone={bank != null && shown?.v != null && shown.v >= bank ? 'red' : undefined}
           loading={loading && !data}
         />
-        <Stat label={next ? (next.kind === 'high' ? 'น้ำขึ้นสูงสุดถัดไป' : 'น้ำลงต่ำสุดถัดไป') : 'จุดสูง/ต่ำถัดไป'} value={fmtM(next?.v)} sub={next ? fmtWhen(next.t) : ''} loading={loading && !data} />
+        <Stat label={next ? (next.kind === 'high' ? 'น้ำขึ้นสูงสุดครั้งหน้า' : 'น้ำลงต่ำสุดครั้งหน้า') : 'น้ำขึ้น/ลงครั้งหน้า'} value={fmtM(next?.v)} sub={next ? fmtWhen(next.t) : ''} loading={loading && !data} />
         <Stat
-          label={chart?.isOfficial ? 'สูงสุดใน 7 วัน (สสน.)' : 'สูงสุดใน 48 ชม. (ประเมิน)'}
+          label={chart?.isOfficial ? 'สูงสุดใน 7 วัน' : 'สูงสุดใน 48 ชม. (ประมาณ)'}
           value={fmtM(peak?.v)}
           sub={peak ? fmtWhen(peak.t) : ''}
           tone={bank != null && peak?.v != null && peak.v >= bank ? 'red' : undefined}
@@ -163,11 +163,11 @@ export default function ForecastChart({ stations, stationId, onPickStation, anch
 
       <div className="mt-4">
         {error && !data ? (
-          <ErrorState message="โหลดข้อมูลคาดการณ์ไม่สำเร็จ" />
+          <ErrorState message="โหลดข้อมูลไม่สำเร็จ" />
         ) : !data && loading ? (
           <Skeleton className="h-56 w-full" />
         ) : !chart ? (
-          <EmptyState title="สถานีนี้ยังไม่มีข้อมูลย้อนหลัง" description="ลองเลือกสถานีอื่น" />
+          <EmptyState title="จุดวัดนี้ยังไม่มีข้อมูลย้อนหลัง" description="ลองเลือกจุดวัดอื่น" />
         ) : (
           <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto select-none" onMouseMove={onMove} onMouseLeave={() => setHover(null)} role="img" aria-label="กราฟระดับน้ำที่วัดได้และคาดการณ์">
             {chart.ticks.map((v) => (
@@ -187,7 +187,7 @@ export default function ForecastChart({ stations, stationId, onPickStation, anch
               </g>
             ))}
             {/* future shading */}
-            <rect x={chart.x(chart.now)} y={PAD.t} width={Math.max(0, W - PAD.r - chart.x(chart.now))} height={H - PAD.t - PAD.b} fill="#f8fafc" />
+            <rect x={chart.x(chart.now)} y={PAD.t} width={Math.max(0, W - PAD.r - chart.x(chart.now))} height={H - PAD.t - PAD.b} className="fill-slate-50" />
             {chart.levels.bank != null && (
               <g>
                 <line x1={PAD.l} x2={W - PAD.r} y1={chart.y(chart.levels.bank)} y2={chart.y(chart.levels.bank)} stroke={BANK} strokeWidth="1.5" strokeDasharray="6 4" />
@@ -200,7 +200,7 @@ export default function ForecastChart({ stations, stationId, onPickStation, anch
               <g>
                 <line x1={PAD.l} x2={W - PAD.r} y1={chart.y(chart.levels.warning)} y2={chart.y(chart.levels.warning)} stroke={WARN} strokeWidth="1" strokeDasharray="2 4" />
                 <text x={PAD.l + 4} y={chart.y(chart.levels.warning) - 4} fontSize="10" fill={WARN}>
-                  เฝ้าระวัง {chart.levels.warning.toFixed(2)}
+                  ระดับเฝ้าระวัง {chart.levels.warning.toFixed(2)}
                 </text>
               </g>
             )}
@@ -227,8 +227,8 @@ export default function ForecastChart({ stations, stationId, onPickStation, anch
           items={[
             { label: 'วัดได้จริง', color: OBS },
             chart?.isOfficial
-              ? { label: 'คาดการณ์ สสน. 7 วัน', color: OBS, dash: '5 4' }
-              : { label: data?.estimate_model === 'recession' ? 'ประเมินการลดระดับหลังฝน 48 ชม.' : 'ประเมินจากน้ำขึ้นน้ำลง + แนวโน้ม 48 ชม.', color: EST, dash: '5 4' },
+              ? { label: 'คาดการณ์ 7 วัน (สสน.)', color: OBS, dash: '5 4' }
+              : { label: 'ประมาณการ 48 ชม.', color: EST, dash: '5 4' },
             { label: 'ระดับตลิ่ง', color: BANK, dash: '6 4' },
             ...(chart?.levels?.warning != null ? [{ label: 'ระดับเฝ้าระวัง', color: WARN, dash: '2 4' }] : []),
           ]}
@@ -236,24 +236,24 @@ export default function ForecastChart({ stations, stationId, onPickStation, anch
         {data && (
           <div className="flex items-center gap-2">
             {data.source === 'hii' ? (
-              <Badge tone="blue">คาดการณ์ทางการ สสน.</Badge>
+              <Badge tone="blue">คาดการณ์ทางการ</Badge>
             ) : data.source === 'local' ? (
-              <Badge>โมเดลประเมินในเครื่อง{data.estimate_rmse != null ? ` · ค่าคลาดเคลื่อน ±${data.estimate_rmse.toFixed(2)} ม.` : ''}</Badge>
+              <Badge>ระบบนี้ประมาณเอง{data.estimate_rmse != null ? ` · อาจคลาดเคลื่อน ±${Math.round(data.estimate_rmse * 100)} ซม.` : ''}</Badge>
             ) : (
               <Badge>ไม่มีข้อมูลคาดการณ์</Badge>
             )}
-            {data.stale && <Badge tone="yellow">ข้อมูลเก่า</Badge>}
+            {data.stale && <Badge tone="yellow">ข้อมูลยังไม่อัปเดต</Badge>}
           </div>
         )}
       </div>
       {station && (
         <p className="mt-2 text-xs text-slate-500">
-          {station.river || 'สถานีโทรมาตร'} · {station.district ? `${station.district} ` : ''}
+          {station.river || 'จุดวัดน้ำ'} · {station.district ? `${station.district} ` : ''}
           {station.province}
           {data?.source === 'local' &&
             (data.estimate_model === 'recession'
-              ? ' · สถานีนี้ไม่ขึ้นกับน้ำทะเล ค่าประเมินสมมติว่าไม่มีฝนตกเพิ่มและระดับค่อย ๆ ลดกลับสู่ระดับก่อนฝน'
-              : ' · ค่าประเมินใช้ข้อมูลย้อนหลัง 3 วันของสถานีนี้เอง ไม่รวมฝนที่ตกใหม่หรือการเปิด-ปิดประตูระบายน้ำ')}
+              ? ' · การประมาณคิดว่าไม่มีฝนตกเพิ่ม'
+              : ' · การประมาณยังไม่รวมฝนที่จะตกใหม่')}
         </p>
       )}
     </Card>

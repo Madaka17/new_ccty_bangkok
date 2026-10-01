@@ -7,7 +7,8 @@ roads to avoid, a 1-6 h outlook and what the public and the operator team should
 back as JSON by REPORT_SCHEMA.
 
     road sensors      BMA drainage sensors: water on the road surface, rising / falling (flood_service)
-    rivers / canals   gauges near or over the bank, main stations, tide (water_service)
+    rivers / canals   gauges near or over the bank, main stations, tide (water_service), and the northern
+                      water on its way down the Chao Phraya (north_flow; for water_agent only)
     rain outlook      per-zone rain / storm forecast, watch level and the 1-6 h risk score (analytics_service)
     citizen reports   Traffy Fondue flood complaints by district (flood_feeds)
     weather warnings  TMD heavy-rain / storm warnings (flood_feeds)
@@ -73,6 +74,8 @@ SYSTEM_PROMPT = """คุณคือนักวิเคราะห์สถ�
 - critical: ถนนท่วมเกิน 60 ซม. (ห้ามขับผ่าน) หลายจุด หรือหลายเขตพร้อมกันและฝนยังตกต่อ
 
 รูปแบบรายงาน (ภาษาไทย กระชับ ข้อความล้วน ไม่ใช้ Markdown)
+- เขียนให้คนทั่วไปอ่านแล้วเข้าใจทันที ประโยคสั้น ห้ามใส่ชื่อแหล่งข้อมูลแบบ get_... รหัสสถานี หรือคำภาษาอังกฤษในข้อความ
+  ใช้คำว่า "เครื่องวัดน้ำบนถนน" แทน "เซ็นเซอร์" และ "คนแจ้งผ่าน Traffy" แทน "ประชาชนแจ้งเหตุ"
 - headline ไม่เกิน 1 ประโยค summary 2-4 ประโยค
 - districts เรียงจากเสี่ยงมากไปน้อย สูงสุด 8 เขต ใส่เฉพาะเขตที่ระดับ watch ขึ้นไป
   name เป็นชื่อเขตหรืออำเภอล้วน ไม่มีคำว่า "เขต" นำหน้า (เช่น ประเวศ ลาดกระบัง)
@@ -85,6 +88,7 @@ SYSTEM_PROMPT = """คุณคือนักวิเคราะห์สถ�
 - weather_summary 2-3 ประโยค สรุปพยากรณ์อากาศจาก get_rain_outlook และ get_weather_warnings: โซนที่ฝนหนักสุดใน 6 และ 24 ชม.
   (ปริมาณ มม. และโอกาสฝน %) ช่วงเวลาฝนหนักสุด/พายุฝนฟ้าคะนอง ลมกระโชก ประกาศกรมอุตุฯ ที่มีผลกับ กทม. และแนวโน้มฝน 3 วัน
 - actions.public 2-4 ข้อสำหรับประชาชน actions.operators 2-4 ข้อสำหรับทีมปฏิบัติการ (เช่น เปิดกล้องจุดไหน ส่งทีมสูบน้ำเขตไหน)
+- data_gaps: เขียนสั้น ๆ เป็นภาษาง่ายว่าข้อมูลอะไรยังขาด เช่น "เรื่องที่คนแจ้งโหลดไม่ครบ" ห้ามใส่ข้อความ error หรือชื่อฟังก์ชัน
 - ถ้าผู้ใช้ถามคำถามเฉพาะ ให้ตอบใน answer ถ้าไม่มีคำถามให้ answer เป็นสตริงว่าง"""
 
 _LEVEL_ENUM = {"type": "string", "enum": list(LEVELS)}
@@ -240,6 +244,7 @@ class FloodAgent:
                                "critical": s.get("critical")} for s in w.get("official_stations") or []],
             "tide": (w.get("tide") or [])[:4],
             "dams": ntw.get("dams") or [],
+            "north_flow": self._call("north_flow"),
             "errors": w.get("errors") or {},
         }
 
@@ -348,12 +353,13 @@ class FloodAgent:
 
     def facts(self):
         """The same facts, compacted, for other agents (water_agent) that read the same sources.
-        Tide and dams stay in: the three-waters analysis needs them even though this agent's own prompt drops them."""
+        Tide, dams and the northern water stay in: the three-waters analysis needs them even though this
+        agent's own prompt drops them."""
         facts = self._all_facts()
         compact = self._compact(facts)
         river = facts.get("get_rivers_canals") or {}
         if isinstance(compact.get("get_rivers_canals"), dict):
-            compact["get_rivers_canals"].update({k: river[k] for k in ("tide", "dams") if river.get(k)})
+            compact["get_rivers_canals"].update({k: river[k] for k in ("tide", "dams", "north_flow") if river.get(k)})
         return compact, self._signature(facts)
 
     @staticmethod
@@ -381,7 +387,7 @@ class FloodAgent:
         """Shorter facts for a small local context window: top rows only, no prose fields the model can skip."""
         cut = {"wet": 12, "districts": 8, "alert_stations": 10, "zones": 8, "by_district": 8, "latest": 4,
                "roads": 10, "events": 5, "reports": 10, "active": 3, "provinces": 5, "heavy_rain_observed_24h": 6}
-        drop = {"risk_model", "tide", "dams", "errors", "thresholds_cm", "feed_time", "updated_at", "stale"}
+        drop = {"risk_model", "tide", "dams", "north_flow", "errors", "thresholds_cm", "feed_time", "updated_at", "stale"}
 
         def trim(v):
             if isinstance(v, dict):

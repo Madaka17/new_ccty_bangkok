@@ -4,20 +4,23 @@ import { useEffect, useState } from 'react';
 import { fetchVisitorStats } from '../lib/api.js';
 import { Card, Badge, SectionHeader, Skeleton, EmptyState, ErrorState } from './dashboard/ui.jsx';
 import { PageHeader, StatTile, ShareBar } from './dashboard/primitives.jsx';
-import { fmtNum } from './dashboard/format.js';
+import { fmtDay, fmtNum } from './dashboard/format.js';
 import HourlyViewsCard from './dashboard/HourlyViewsCard.jsx';
+import { PAGE_TITLES } from './Sidebar.jsx';
 
-const TOPIC_LABEL = { traffic: 'Traffic', flood: 'Flood', road_status: 'Road Status', accidents: 'Accidents' };
+const TOPIC_LABEL = { traffic: 'จราจร', flood: 'น้ำท่วม', road_status: 'สภาพถนน', accidents: 'อุบัติเหตุ' };
 const TOPIC_COLOR = { traffic: 'bg-blue-600', flood: 'bg-cyan-500', road_status: 'bg-amber-500', accidents: 'bg-red-600' };
 const VISITOR_POLL_MS = 5000;
+// The fifth tile (everyone so far): a row of its own under the other four, beside them from xl up
+const TOTAL_SPAN = 'col-span-2 lg:col-span-4 xl:col-span-1';
 const PAGE_LABEL = {
-  dashboard: 'Traffic Dashboard', analytics: 'City Analytics', cameras: 'กล้อง CCTV', map: 'Traffic Map',
-  water: 'น้ำท่วม', yolo: 'Camera AI', 'bma-count': 'นับรถกล้อง กทม.', helmet: 'Helmet Check',
-  wrongway: 'Wrong-Way Check', ai: 'AI ผู้ช่วย', safety: 'Accidents & Risk', visitors: 'Visitors', alerts: 'Alerts',
+  ...PAGE_TITLES, analytics: 'สถิติเมือง (หน้าเก่า)', 'bma-count': 'นับรถทุกกล้อง กทม.', helmet: 'คนไม่สวมหมวกกันน็อก', wrongway: 'รถขับย้อนศร',
 };
 const SUB_LABEL = {
-  overview: 'ภาพรวม', trend: 'แนวโน้ม', flood: 'น้ำท่วม', roads: 'ถนน', incidents: 'เหตุการณ์', 'bma-reports': 'รายงาน กทม.',
+  overview: 'ภาพรวม', trend: 'แนวโน้ม', flood: 'น้ำท่วม', roads: 'ถนนน้ำท่วม', incidents: 'อุบัติเหตุและรถเสีย', 'bma-reports': 'ข่าวจากศูนย์ กทม.',
   safety: 'ความปลอดภัย', traffic: 'จราจร', density: 'ความหนาแน่น', accidents: 'อุบัติเหตุ', riskbkk: 'จุดเสี่ยง กทม.', visitors: 'ผู้เข้าใช้งาน',
+  'road-risk': 'ถนนแต่ละสาย', situation: 'ระดับน้ำตอนนี้', north: 'น้ำเหนือ', watch: 'เขตเสี่ยงน้ำท่วม', shelter: 'จุดพักพิง', reports: 'เรื่องที่คนแจ้ง',
+  agent: 'AI สรุปสถานการณ์', analysis: 'AI คาดการณ์รายโซน',
 };
 const hh = (h) => `${String(h).padStart(2, '0')}:00`;
 function pageLabel(view) {
@@ -77,9 +80,9 @@ function VisitorSection({ isActive }) {
     return stale
       ? <ErrorState message="โหลดข้อมูลผู้เข้าใช้งานไม่สำเร็จ" />
       : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[0, 1, 2, 3].map((i) => (
-            <Card key={i} as="div" className="p-4"><Skeleton className="h-7 w-24" /><Skeleton className="h-3 w-32 mt-2" /></Card>
+        <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <Card key={i} as="div" className={`p-4 ${i === 4 ? TOTAL_SPAN : ''}`}><Skeleton className="h-7 w-24" /><Skeleton className="h-3 w-32 mt-2" /></Card>
           ))}
         </div>
       );
@@ -102,35 +105,40 @@ function VisitorSection({ isActive }) {
         <span className="text-slate-500 tabular-nums">· ล่าสุด {new Date(lastOk).toLocaleTimeString('th-TH')}</span>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatTile label="กำลังใช้งานอยู่ตอนนี้" value={`${fmtNum(d.online)} คน`} sub="เปิดเว็บอยู่ใน 90 วินาทีล่าสุด" tone="green" badge={<Badge tone="green" dot>Live</Badge>} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+        <StatTile label="กำลังใช้งานอยู่ตอนนี้" value={`${fmtNum(d.online)} คน`} sub="เปิดเว็บอยู่ตอนนี้" tone="green" badge={<Badge tone="green" dot>สด</Badge>} />
         <StatTile label="ผู้ใช้วันนี้" value={`${fmtNum(d.dau)} คน`} sub={`เมื่อวานเวลาเดียวกัน ${fmtNum(prev)} (${delta >= 0 ? '+' : ''}${fmtNum(delta)})`} tone="blue" />
         <StatTile label="ยอดเปิดดูวันนี้" value={`${fmtNum(d.views_today)} ครั้ง`} sub={`ชั่วโมงนี้ ${fmtNum(thisHour)} ครั้ง`} />
         <StatTile label="ช่วงคนใช้มากสุด" value={d.peak_hours[0] ? hh(d.peak_hours[0].hour) : '–'} sub={d.peak_hours.length ? `สถิติ ${d.peak_window_days} วันล่าสุด` : 'ยังไม่มีข้อมูล'} tone="yellow" />
+        <StatTile
+          className={TOTAL_SPAN}
+          label="ผู้เข้าชมทั้งหมด"
+          value={`${fmtNum(d.visitors_total)} คน`}
+          sub={d.counting_since ? `นับตั้งแต่ ${fmtDay(d.counting_since * 1000)}` : 'ยังไม่มีข้อมูล'}
+        />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="flex flex-col gap-4">
-          <Card className="p-5">
-            <SectionHeader id="online-now" title="ตอนนี้กำลังดูหน้าไหน" description="ผู้ใช้ที่ออนไลน์อยู่ แยกตามหน้าที่เปิด" />
-            <RankList rows={onlineRows} unit="คน" empty="ยังไม่มีผู้ใช้ออนไลน์" />
-          </Card>
-          <Card className="p-5">
-            <SectionHeader id="topic-share" title="หน้ายอดนิยมวันนี้" description="นับทุกครั้งที่เปิดหน้าหรือเปลี่ยนแท็บ" />
-            {d.views_today ? (
-              <div className="mt-3">
-                <ShareBar parts={d.by_topic.filter((t) => t.views).map((t) => ({ label: TOPIC_LABEL[t.topic], value: t.views, color: TOPIC_COLOR[t.topic] }))} />
-              </div>
-            ) : null}
-            <RankList rows={viewRows} unit="ครั้ง" empty="ยังไม่มีการเปิดดูวันนี้" />
-          </Card>
-        </div>
-        <HourlyViewsCard
-          hours={d.hours_today || d.hours}
-          currentHour={d.current_hour}
-          peakHours={d.peak_hours}
-          dauSeries={d.dau_series}
-        />
+      <HourlyViewsCard
+        hours={d.hours_today || d.hours}
+        currentHour={d.current_hour}
+        peakHours={d.peak_hours}
+        dauSeries={d.dau_series}
+      />
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        <Card className="p-5">
+          <SectionHeader id="online-now" title="ตอนนี้กำลังดูหน้าไหน" description="คนที่เปิดเว็บอยู่ แยกตามหน้าที่ดู" />
+          <RankList rows={onlineRows} unit="คน" empty="ตอนนี้ยังไม่มีคนเปิดเว็บ" />
+        </Card>
+        <Card className="p-5">
+          <SectionHeader id="topic-share" title="หน้ายอดนิยมวันนี้" description="นับทุกครั้งที่เปิดหน้าหรือเปลี่ยนแท็บ" />
+          {d.views_today ? (
+            <div className="mt-3">
+              <ShareBar parts={d.by_topic.filter((t) => t.views).map((t) => ({ label: TOPIC_LABEL[t.topic], value: t.views, color: TOPIC_COLOR[t.topic] }))} />
+            </div>
+          ) : null}
+          <RankList rows={viewRows} unit="ครั้ง" empty="ยังไม่มีการเปิดดูวันนี้" />
+        </Card>
       </div>
     </div>
   );
@@ -139,7 +147,7 @@ function VisitorSection({ isActive }) {
 export default function VisitorsPage({ isActive }) {
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Visitors" description="ผู้เข้าใช้งานเว็บ: ออนไลน์ตอนนี้ ผู้ใช้และยอดเปิดดูวันนี้ หน้ายอดนิยม และช่วงเวลาที่คนใช้มากสุด" />
+      <PageHeader title={PAGE_TITLES.visitors} description="มีคนใช้เว็บกี่คน ดูหน้าไหน และช่วงเวลาที่คนใช้มากที่สุด" />
       <VisitorSection isActive={isActive} />
     </div>
   );

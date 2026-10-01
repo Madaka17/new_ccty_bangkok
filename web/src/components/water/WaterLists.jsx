@@ -4,11 +4,11 @@ import { agoText, fmtTime } from '../dashboard/format.js';
 
 export const LEVEL = {
   overflow: { label: 'ล้นตลิ่ง', tone: 'red', bar: 'bg-red-600' },
-  high: { label: 'ใกล้ล้น', tone: 'yellow', bar: 'bg-amber-500' },
+  high: { label: 'ใกล้ล้นตลิ่ง', tone: 'yellow', bar: 'bg-amber-500' },
   normal: { label: 'ปกติ', tone: 'green', bar: 'bg-emerald-600' },
   low: { label: 'น้ำน้อย', tone: 'neutral', bar: 'bg-slate-400' },
-  flooding: { label: 'ท่วมขัง', tone: 'red', bar: 'bg-red-600' },
-  slight: { label: 'ท่วมเล็กน้อย', tone: 'yellow', bar: 'bg-amber-500' },
+  flooding: { label: 'น้ำท่วม', tone: 'red', bar: 'bg-red-600' },
+  slight: { label: 'น้ำท่วมเล็กน้อย', tone: 'yellow', bar: 'bg-amber-500' },
 };
 
 const fmtM = (v, d = 2) => (v == null ? '–' : v.toFixed(d));
@@ -16,7 +16,7 @@ const fmtM = (v, d = 2) => (v == null ? '–' : v.toFixed(d));
 function TrendArrow({ delta }) {
   if (delta == null || Math.abs(delta) < 0.01) return <span className="text-slate-400">→</span>;
   // A metre or more between two 10-minute readings is a sensor glitch, not a trend
-  if (Math.abs(delta) >= 1) return <span className="text-slate-400" title="ค่าวัดกระโดดผิดปกติ">ผิดปกติ</span>;
+  if (Math.abs(delta) >= 1) return <span className="text-slate-400" title="ค่าที่วัดได้เปลี่ยนเร็วผิดปกติ อาจวัดผิด">ผิดปกติ</span>;
   return delta > 0 ? <span className="text-red-600">↑ {delta.toFixed(2)}</span> : <span className="text-emerald-600">↓ {Math.abs(delta).toFixed(2)}</span>;
 }
 
@@ -28,9 +28,9 @@ export function RiverStations({ rows, selectedId, onSelect, loading }) {
     <Card aria-labelledby="water-river-title" className="p-5">
       <SectionHeader
         id="water-river-title"
-        title="สถานีวัดระดับน้ำ แม่น้ำ-คลองหลัก"
-        description="สสน. โทรมาตรอัตโนมัติ · แตะแถวเพื่อดูกราฟคาดการณ์ของสถานีนั้น"
-        action={<Segmented label="กรองสถานี" value={filter} onChange={setFilter} options={[['all', 'ทั้งหมด'], ['bkk', 'กทม.'], ['risk', 'เสี่ยง']]} />}
+        title="จุดวัดน้ำ แม่น้ำและคลองหลัก"
+        description="แตะแถวเพื่อดูกราฟของจุดนั้น"
+        action={<Segmented label="กรองจุดวัด" value={filter} onChange={setFilter} options={[['all', 'ทั้งหมด'], ['bkk', 'กทม.'], ['risk', 'เสี่ยง']]} />}
       />
       <div className="mt-3 overflow-x-auto">
         {loading ? (
@@ -40,16 +40,16 @@ export function RiverStations({ rows, selectedId, onSelect, loading }) {
             ))}
           </div>
         ) : !shown.length ? (
-          <EmptyState title="ไม่มีสถานีในเงื่อนไขนี้" />
+          <EmptyState title="ไม่มีจุดวัดในกลุ่มนี้" />
         ) : (
           <table className="w-full text-sm min-w-[560px]">
             <thead>
               <tr className="text-xs text-slate-500 border-b border-slate-200">
-                <th className="text-left font-medium py-2 pr-2">สถานี</th>
+                <th className="text-left font-medium py-2 pr-2">จุดวัด</th>
                 <th className="text-left font-medium py-2 pr-2">สถานะ</th>
-                <th className="text-right font-medium py-2 pr-2">ระดับ (ม.รทก.)</th>
-                <th className="text-right font-medium py-2 pr-2">ห่างตลิ่ง</th>
-                <th className="text-right font-medium py-2 pr-2">แนวโน้ม</th>
+                <th className="text-right font-medium py-2 pr-2" title="เมตร วัดจากระดับน้ำทะเล">ระดับน้ำ (ม.)</th>
+                <th className="text-right font-medium py-2 pr-2" title="ลบ = ต่ำกว่าตลิ่ง, บวก = ล้นตลิ่ง (ม.)">เทียบตลิ่ง</th>
+                <th className="text-right font-medium py-2 pr-2">ขึ้น/ลง</th>
                 <th className="text-right font-medium py-2">วัดเมื่อ</th>
               </tr>
             </thead>
@@ -74,7 +74,7 @@ export function RiverStations({ rows, selectedId, onSelect, loading }) {
                       <Badge tone={lv.tone} dot>
                         {lv.label}
                       </Badge>
-                      {r.official_forecast && <Badge tone="blue" className="ml-1">7 วัน</Badge>}
+                      {r.official_forecast && <Badge tone="blue" className="ml-1">คาดการณ์ 7 วัน</Badge>}
                     </td>
                     <td className="py-2 pr-2 text-right tabular-nums text-slate-900">{fmtM(r.msl)}</td>
                     <td className={`py-2 pr-2 text-right tabular-nums ${r.level === 'overflow' ? 'text-red-700 font-medium' : 'text-slate-700'}`}>
@@ -91,7 +91,7 @@ export function RiverStations({ rows, selectedId, onSelect, loading }) {
           </table>
         )}
       </div>
-      <p className="mt-2 text-xs text-slate-500">แนวโน้ม = เทียบกับค่าวัดก่อนหน้า (ม.) · สถานีที่มีป้าย “7 วัน” มีคาดการณ์ทางการจาก สสน.</p>
+      <p className="mt-2 text-xs text-slate-500">ขึ้น/ลง = เทียบกับครั้งก่อน (เมตร) · ป้าย “คาดการณ์ 7 วัน” = มีคาดการณ์ทางการ</p>
     </Card>
   );
 }
@@ -100,7 +100,7 @@ export function RiverStations({ rows, selectedId, onSelect, loading }) {
 export function TideCard({ rows, loading }) {
   return (
     <Card aria-labelledby="water-tide-title" className="p-5">
-      <SectionHeader id="water-tide-title" title="น้ำทะเลหนุนวันนี้" description="คาดการณ์ระดับน้ำขึ้น-ลง ปากแม่น้ำเจ้าพระยาและท่าจีน (กรมอุทกศาสตร์ ผ่าน สสน.)" />
+      <SectionHeader id="water-tide-title" title="น้ำทะเลหนุนวันนี้" description="น้ำขึ้นน้ำลงที่ปากแม่น้ำ ช่วงน้ำขึ้นสูง บ้านริมน้ำเสี่ยงน้ำท่วมมากขึ้น" />
       <div className="mt-3 space-y-3">
         {loading ? (
           [...Array(3)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)
@@ -166,18 +166,17 @@ export function CanalCard({ canals, counts, total, roads, loading }) {
       <SectionHeader
         id="water-canal-title"
         title="คลองและถนนในกรุงเทพฯ"
-        description="เซ็นเซอร์สำนักการระบายน้ำ กทม. (อัปเดตทุก 5 นาที) · คลอง = ระยะจากผิวน้ำถึงตลิ่งที่ต่ำกว่า, ถนน = ความลึกน้ำท่วมขัง (ซม.)"
+        description="คลอง = น้ำต่ำกว่าตลิ่งกี่ ซม. · ถนน = น้ำท่วมลึกกี่ ซม. · อัปเดตทุก 5 นาที"
         action={<Segmented label="ประเภท" value={tab} onChange={setTab} options={[['canal', `คลอง ${total || ''}`], ['road', `ถนน ${roads ? roads.flooding + roads.slight + roads.normal : ''}`]]} />}
       />
       {tab === 'canal' ? (
         <p className="mt-2 text-xs text-slate-600">
-          ล้นตลิ่ง <b className="text-red-700">{counts?.overflow ?? 0}</b> · ใกล้ล้น (≤ 20 ซม.) <b className="text-amber-700">{counts?.high ?? 0}</b> · ปกติ <b className="text-emerald-700">{counts?.normal ?? 0}</b>
-          {counts?.offline ? ` · ขาดข้อมูล ${counts.offline}` : ''}
-          {!loading && ` · แสดง${risky.length ? 'คลองที่น้ำสูงและ' : ''}คลองที่น้ำสูงสุด ${canalList.length} แห่ง`}
+          ล้นตลิ่ง <b className="text-red-700">{counts?.overflow ?? 0}</b> · ใกล้ล้น (ต่ำกว่าตลิ่งไม่ถึง 20 ซม.) <b className="text-amber-700">{counts?.high ?? 0}</b> · ปกติ <b className="text-emerald-700">{counts?.normal ?? 0}</b>
+          {counts?.offline ? ` · ไม่มีข้อมูล ${counts.offline}` : ''}
         </p>
       ) : (
         <p className="mt-2 text-xs text-slate-600">
-          ท่วมขัง <b className="text-red-700">{roads?.flooding ?? 0}</b> · ท่วมเล็กน้อย <b className="text-amber-700">{roads?.slight ?? 0}</b> · แห้ง <b className="text-emerald-700">{roads?.normal ?? 0}</b> จุด
+          น้ำท่วม <b className="text-red-700">{roads?.flooding ?? 0}</b> · ท่วมเล็กน้อย <b className="text-amber-700">{roads?.slight ?? 0}</b> · ไม่ท่วม <b className="text-emerald-700">{roads?.normal ?? 0}</b> จุด
         </p>
       )}
       <label htmlFor="canal-q" className="sr-only">ค้นหาคลองหรือถนน</label>
@@ -199,7 +198,7 @@ export function CanalCard({ canals, counts, total, roads, loading }) {
           ))
         ) : !list.length ? (
           <li className="py-2">
-            <EmptyState title={q ? 'ไม่พบที่ตรงกับคำค้น' : tab === 'canal' ? 'ไม่มีข้อมูลคลอง' : 'ไม่มีถนนที่มีน้ำท่วมขังจากเซ็นเซอร์ตอนนี้'} description={tab === 'road' && roads?.worst ? `จุดวัดล่าสุด ${roads.worst.name} (${roads.worst.district}) ${agoText(roads.worst.ts)}` : undefined} />
+            <EmptyState title={q ? 'ไม่พบที่ตรงกับคำค้น' : tab === 'canal' ? 'ไม่มีข้อมูลคลอง' : 'ตอนนี้ไม่มีถนนน้ำท่วม'} description={undefined} />
           </li>
         ) : (
           list.map((c) => {
@@ -217,8 +216,7 @@ export function CanalCard({ canals, counts, total, roads, loading }) {
                   )}
                   <p className="text-xs text-slate-500">
                     {c.province && c.province !== 'กรุงเทพมหานคร' ? `${c.district} ${c.province}` : `เขต${c.district}`} · {agoText(c.ts)}
-                    {tab === 'canal' && c.msl != null && ` · ${fmtM(c.msl)} ม.รทก.`}
-                    {tab === 'canal' && c.control === 'critical' && <span className="text-slate-600"> · เกินระดับควบคุม สนน.</span>}
+                    {tab === 'canal' && c.control === 'critical' && <span className="text-slate-600"> · สูงกว่าระดับที่ กทม. ตั้งไว้</span>}
                   </p>
                 </div>
                 <div className="w-24 hidden sm:block">
@@ -243,7 +241,7 @@ export function RainCard({ rows, loading }) {
   const observed = (rows || []).filter((r) => r.kind === 'observed').sort((a, b) => (b.mm || 0) - (a.mm || 0));
   return (
     <Card aria-labelledby="water-rain-title" className="p-5">
-      <SectionHeader id="water-rain-title" title="ฝนในกรุงเทพฯ และปริมณฑล" description="เตือนฝนหนักล่วงหน้า 24 ชม. และจุดที่ฝนสะสมสูงในรอบ 24 ชม. (สสน.)" />
+      <SectionHeader id="water-rain-title" title="ฝนในกรุงเทพฯ และปริมณฑล" description="เตือนฝนหนักใน 24 ชม. ข้างหน้า และจุดที่ฝนตกมากใน 24 ชม. ที่ผ่านมา" />
       <div className="mt-3 space-y-2">
         {loading ? (
           <Skeleton className="h-16 w-full" />
@@ -252,12 +250,12 @@ export function RainCard({ rows, loading }) {
             {forecast.length ? (
               forecast.map((r, i) => (
                 <div key={`f${i}`} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  <b>เตือน {r.text}</b> {r.province}
+                  <b>เตือน{r.text}</b> {r.province}
                   {r.district ? ` (${r.district})` : ''} · คาดฝน {fmtM(r.mm, 0)} มม. {r.ts ? `ภายใน ${fmtTime(r.ts)} น.` : ''}
                 </div>
               ))
             ) : (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">ไม่มีประกาศเตือนฝนตกหนักล่วงหน้าในเขตกรุงเทพฯ และปริมณฑล</div>
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">ไม่มีเตือนฝนตกหนักในกรุงเทพฯ และปริมณฑล</div>
             )}
             {observed.length > 0 && (
               <ul className="divide-y divide-slate-100">
@@ -280,7 +278,7 @@ export function RainCard({ rows, loading }) {
 export function UpstreamCard({ rows, onPick, loading }) {
   return (
     <Card aria-labelledby="water-upstream-title" className="p-5">
-      <SectionHeader id="water-upstream-title" title="สถานีต้นน้ำที่กำหนดระดับน้ำกรุงเทพฯ" description="สถานีหลักบนเจ้าพระยา-ป่าสัก ที่ สสน. ออกคาดการณ์ 7 วัน" />
+      <SectionHeader id="water-upstream-title" title="จุดวัดน้ำเหนือกรุงเทพฯ" description="จุดวัดหลักบนแม่น้ำเจ้าพระยาและป่าสัก ที่มีคาดการณ์ 7 วัน" />
       <ul className="mt-3 divide-y divide-slate-100">
         {loading
           ? [...Array(3)].map((_, i) => (
@@ -296,7 +294,7 @@ export function UpstreamCard({ rows, onPick, loading }) {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-slate-900">{s.name}</p>
                     <p className="text-xs text-slate-500">
-                      {s.province} · เฝ้าระวัง {fmtM(s.warning)} · วิกฤต {fmtM(s.critical)} ม.รทก.
+                      {s.province} · ระดับเฝ้าระวัง {fmtM(s.warning)} ม. · ระดับวิกฤต {fmtM(s.critical)} ม.
                     </p>
                   </div>
                   <span className="text-sm tabular-nums font-semibold text-slate-900">{fmtM(s.msl)}</span>
@@ -334,13 +332,13 @@ export function NtwRainCard({ ntw, loading }) {
       <SectionHeader
         id="water-ntw-rain-title"
         title="ฝนที่ตกจริงใน 24 ชม. กรุงเทพฯ และปริมณฑล"
-        description={ntw ? `สถานีวัดฝน ${ntw.rain_total} จุด · คลังข้อมูลน้ำแห่งชาติ (nationalthaiwater.onwr.go.th)` : 'คลังข้อมูลน้ำแห่งชาติ'}
+        description={ntw ? `จากจุดวัดฝน ${ntw.rain_total} จุด` : 'กำลังโหลด'}
       />
       <div className="mt-3 space-y-2">
         {loading ? (
           <Skeleton className="h-16 w-full" />
         ) : !ntw ? (
-          <EmptyState title="เชื่อมต่อคลังข้อมูลน้ำแห่งชาติไม่สำเร็จ" />
+          <EmptyState title="โหลดข้อมูลฝนไม่สำเร็จ" />
         ) : (
           <>
             {storms.map((s, i) => (
@@ -361,12 +359,12 @@ export function NtwRainCard({ ntw, loading }) {
               ))
             ) : (
               <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                ไม่มีเตือนฝนตกหนักล่วงหน้า 3 วันในเขตกรุงเทพฯ และปริมณฑล
+                ไม่มีเตือนฝนตกหนักใน 3 วันข้างหน้า ในกรุงเทพฯ และปริมณฑล
               </div>
             )}
             {counts && (
               <p className="text-xs text-slate-500">
-                หนัก {counts.heavy + counts.extreme} · ปานกลาง {counts.moderate} · เล็กน้อย {counts.light} · ไม่มีฝน {counts.none} สถานี
+                ฝนหนัก {counts.heavy + counts.extreme} · ปานกลาง {counts.moderate} · เล็กน้อย {counts.light} · ไม่มีฝน {counts.none} จุด
               </p>
             )}
             <ul className="divide-y divide-slate-100">
@@ -407,7 +405,7 @@ const fmtMcm = (v) => (v == null ? '–' : Math.round(v).toLocaleString('th-TH')
 export function DamCard({ rows, loading }) {
   return (
     <Card aria-labelledby="water-dam-title" className="p-5">
-      <SectionHeader id="water-dam-title" title="เขื่อนต้นน้ำเจ้าพระยา-ป่าสัก" description="ปริมาณกักเก็บ น้ำไหลเข้า และการระบาย (ล้าน ลบ.ม./วัน) · คลังข้อมูลน้ำแห่งชาติ" />
+      <SectionHeader id="water-dam-title" title="เขื่อนใหญ่เหนือกรุงเทพฯ" description="น้ำในเขื่อน น้ำไหลเข้า และน้ำที่ปล่อยออก (ล้าน ลบ.ม. ต่อวัน)" />
       <ul className="mt-3 divide-y divide-slate-100">
         {loading
           ? [...Array(4)].map((_, i) => (
@@ -423,7 +421,7 @@ export function DamCard({ rows, loading }) {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-slate-900">เขื่อน{d.name}</p>
                       <p className="text-xs text-slate-500 tabular-nums">
-                        เก็บ {fmtMcm(d.storage)} / {fmtMcm(d.max_storage)} ล้าน ลบ.ม. · เข้า {fmtM(d.inflow, 1)} · ระบาย {fmtM(d.released, 1)}
+                        มีน้ำ {fmtMcm(d.storage)} จาก {fmtMcm(d.max_storage)} ล้าน ลบ.ม. · ไหลเข้า {fmtM(d.inflow, 1)} · ปล่อยออก {fmtM(d.released, 1)}
                       </p>
                     </div>
                     <span className="text-sm tabular-nums font-semibold text-slate-900">{fmtM(d.storage_pct, 0)}%</span>

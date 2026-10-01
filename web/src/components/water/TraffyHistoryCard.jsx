@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { fetchTraffyHistory } from '../../lib/api.js';
 import { Card, Badge, SectionHeader, Skeleton, EmptyState, Segmented } from '../dashboard/ui.jsx';
 import { StatTile } from '../dashboard/primitives.jsx';
-import { fmtNum, fmtDateTime } from '../dashboard/format.js';
+import { fmtNum } from '../dashboard/format.js';
 
 const POLL_MS = 300000;
 const NOW = 'bg-blue-600';
@@ -82,8 +82,8 @@ export default function TraffyHistoryCard({ isActive }) {
   const header = (
     <SectionHeader
       id="traffy-history"
-      title="เทียบเรื่องแจ้งน้ำท่วม วันต่อวัน / รายสัปดาห์"
-      description={`Traffy Fondue · เทียบกับช่วงเวลาเดียวกันของวันหรือสัปดาห์ก่อน${data?.since ? ` · เริ่มเก็บข้อมูล ${fmtDateTime(data.since)}` : ''}`}
+      title="คนแจ้งน้ำท่วมมากขึ้นหรือน้อยลง"
+      description="เทียบกับเวลาเดียวกันของเมื่อวานหรือสัปดาห์ก่อน"
       action={<Segmented label="มุมมอง" value={view} onChange={setView} options={[['day', 'วันต่อวัน'], ['week', 'รายสัปดาห์']]} />}
     />
   );
@@ -105,8 +105,8 @@ export default function TraffyHistoryCard({ isActive }) {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <StatTile label="วันนี้" value={`${fmtNum(d.today)} เรื่อง`} sub={`ถึง ${String(data.now_hour).padStart(2, '0')}:59 น.`} tone="blue" />
             <StatTile label="เมื่อวานเวลาเดียวกัน" value={`${fmtNum(d.yesterday_same_time)} เรื่อง`} sub={`ทั้งวัน ${fmtNum(d.yesterday_total)} เรื่อง`} />
-            <StatTile label="เปลี่ยนแปลง" value={dc.text} sub="วันนี้เทียบเมื่อวาน" tone={dc.tone} />
-            <StatTile label="น้ำหัวเข่าขึ้นไป" value={`${fmtNum(d.today_deep)} เรื่อง`} sub={`เมื่อวานเวลาเดียวกัน ${fmtNum(d.yesterday_deep)}`} tone={d.today_deep > d.yesterday_deep ? 'red' : 'green'} />
+            <StatTile label="มากขึ้น/น้อยลง" value={dc.text} sub="วันนี้เทียบเมื่อวาน" tone={dc.tone} />
+            <StatTile label="น้ำถึงเข่าขึ้นไป" value={`${fmtNum(d.today_deep)} เรื่อง`} sub={`เมื่อวานเวลาเดียวกัน ${fmtNum(d.yesterday_deep)}`} tone={d.today_deep > d.yesterday_deep ? 'red' : 'green'} />
           </div>
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
@@ -128,7 +128,7 @@ export default function TraffyHistoryCard({ isActive }) {
                     <th className="py-1 font-medium">เขต</th>
                     <th className="py-1 font-medium text-right">วันนี้</th>
                     <th className="py-1 font-medium text-right">เมื่อวาน</th>
-                    <th className="py-1 font-medium text-right">เปลี่ยนแปลง</th>
+                    <th className="py-1 font-medium text-right">ต่างกัน</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -155,7 +155,7 @@ export default function TraffyHistoryCard({ isActive }) {
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             <StatTile label="สัปดาห์นี้" value={`${fmtNum(w.this_week)} เรื่อง`} sub="ตั้งแต่วันจันทร์" tone="blue" />
             <StatTile label="สัปดาห์ก่อนช่วงเดียวกัน" value={`${fmtNum(w.last_week_same_time)} เรื่อง`} sub={`ทั้งสัปดาห์ ${fmtNum(w.last_week_total)} เรื่อง`} />
-            <StatTile label="เปลี่ยนแปลง" value={wc.text} sub="สัปดาห์นี้เทียบสัปดาห์ก่อน" tone={wc.tone} />
+            <StatTile label="มากขึ้น/น้อยลง" value={wc.text} sub="สัปดาห์นี้เทียบสัปดาห์ก่อน" tone={wc.tone} />
           </div>
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2 mb-2">

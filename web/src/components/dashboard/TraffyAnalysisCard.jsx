@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchTraffyAnalysis, runTraffyAnalysis } from '../../lib/api.js';
 import { Card, Badge, Button, SectionHeader, Skeleton, EmptyState } from './ui.jsx';
-import { fmtDateTime, fmtNum, agoText } from './format.js';
+import { fmtNum, agoText } from './format.js';
 
 const POLL_MS = 60000;
 const LEVEL_TONE = { สูง: 'red', ปานกลาง: 'yellow', ต่ำ: 'green' };
@@ -83,8 +83,8 @@ export default function TraffyAnalysisCard({ isActive }) {
   const header = (
     <SectionHeader
       id="traffy-ai"
-      title="AI วิเคราะห์เรื่องที่ประชาชนแจ้งน้ำท่วม"
-      description="Traffy Fondue 6 ชม.ล่าสุด · Qwen อ่านข้อความทุกเรื่อง สรุปเขตที่ต้องจับตา ปัญหาที่พบ และเรื่องที่ควรส่งทีมก่อน"
+      title="AI สรุปเรื่องน้ำท่วมที่คนแจ้ง"
+      description="AI อ่านทุกเรื่องที่คนแจ้งใน 6 ชม. แล้วสรุปว่าเขตไหนน่าห่วง ปัญหาที่เจอบ่อย และเรื่องที่ควรช่วยก่อน"
       action={<Button size="sm" loading={running || data?.running} onClick={run}>วิเคราะห์ใหม่</Button>}
     />
   );
@@ -106,9 +106,9 @@ export default function TraffyAnalysisCard({ isActive }) {
     <Card className="p-5">
       {header}
       <p className="text-xs text-slate-500 mt-1">
-        {data.source === 'local' ? `${data.model} · ` : 'กฎพื้นฐาน (ออฟไลน์) · '}
-        {fmtDateTime(data.generated_at)} ({agoText(data.generated_at)}) · วิเคราะห์อัตโนมัติทุก {Math.round((data.interval_s || 600) / 60)} นาที
-        {data.error && <span className="text-amber-700"> · AI ไม่ตอบ ใช้กฎพื้นฐานแทน</span>}
+        {data.source === 'local' ? 'สรุปโดย AI · ' : 'สรุปตามเกณฑ์ของระบบ · '}
+        {agoText(data.generated_at)} · สรุปใหม่เองทุก {Math.round((data.interval_s || 600) / 60)} นาที
+        {data.error && <span className="text-amber-700"> · AI ไม่ตอบ จึงใช้เกณฑ์ของระบบแทน</span>}
       </p>
       {runError && <p className="text-xs text-red-700 mt-1" role="alert">{runError}</p>}
 
@@ -121,13 +121,13 @@ export default function TraffyAnalysisCard({ isActive }) {
         <div className="grid grid-cols-1 md:grid-cols-[1fr_1.4fr] gap-4">
           <div>
             <p className="text-xs font-semibold text-slate-700 mb-1">
-              เรื่องแจ้งรายชั่วโมง <span className="font-normal text-slate-500">· รวม {fmtNum(st.total)} เรื่อง</span>
+              จำนวนเรื่องแต่ละชั่วโมง <span className="font-normal text-slate-500">· รวม {fmtNum(st.total)} เรื่อง</span>
             </p>
             <HourBars byHour={st.by_hour} />
             {r.trend && <p className="text-xs text-slate-600 mt-1.5">{r.trend}</p>}
           </div>
           <div>
-            <p className="text-xs font-semibold text-slate-700 mb-1">ระดับน้ำที่แจ้ง</p>
+            <p className="text-xs font-semibold text-slate-700 mb-1">น้ำสูงแค่ไหน (ตามที่คนแจ้ง)</p>
             <DepthBar depths={st.depths} total={st.total} />
             {st.states && (
               <p className="text-xs text-slate-600 mt-2">
@@ -151,7 +151,7 @@ export default function TraffyAnalysisCard({ isActive }) {
                       {h.zone && <Badge>{h.zone}</Badge>}
                     </div>
                     <p className="text-xs text-slate-500 mt-0.5 tabular-nums">
-                      {h.reports} เรื่อง · หัวเข่าขึ้นไป {h.deep_reports} · รอรับเรื่อง {h.waiting}
+                      {h.reports} เรื่อง · น้ำถึงเข่าขึ้นไป {h.deep_reports} · ยังไม่มีคนรับเรื่อง {h.waiting}
                     </p>
                     <p className="text-[13px] text-slate-700 mt-0.5">{h.issues}</p>
                   </div>
@@ -163,7 +163,7 @@ export default function TraffyAnalysisCard({ isActive }) {
 
         {r.themes?.length > 0 && (
           <div>
-            <p className="text-xs font-semibold text-slate-700 mb-1">ปัญหาที่ประชาชนแจ้งซ้ำ</p>
+            <p className="text-xs font-semibold text-slate-700 mb-1">ปัญหาที่คนแจ้งบ่อย</p>
             <ul className="space-y-1.5">
               {r.themes.map((t, i) => (
                 <li key={i} className="text-[13px] text-slate-700">
@@ -176,7 +176,7 @@ export default function TraffyAnalysisCard({ isActive }) {
 
         {r.urgent?.length > 0 && (
           <div>
-            <p className="text-xs font-semibold text-slate-700 mb-1">เรื่องที่ควรส่งทีมก่อน</p>
+            <p className="text-xs font-semibold text-slate-700 mb-1">เรื่องที่ควรช่วยก่อน</p>
             <ul className="divide-y divide-slate-100">
               {r.urgent.map((u) => (
                 <li key={u.id} className="py-2">
@@ -197,7 +197,7 @@ export default function TraffyAnalysisCard({ isActive }) {
 
         {r.actions?.length > 0 && (
           <div>
-            <p className="text-xs font-semibold text-slate-700 mb-1">สำหรับทีมปฏิบัติการ</p>
+            <p className="text-xs font-semibold text-slate-700 mb-1">สำหรับเจ้าหน้าที่</p>
             <ul className="list-disc pl-5 space-y-0.5 text-[13px] text-slate-700">
               {r.actions.map((a, i) => <li key={i}>{a}</li>)}
             </ul>

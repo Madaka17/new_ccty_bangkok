@@ -2,15 +2,15 @@
 Helmet patrol over every BMA camera: capture each motorcycle, ask a vision agent whether the rider
 wears a helmet, keep the evidence of every rider without one on the data drive.
 
-Flow (per camera, once per BMA scan cycle ~4 min, or on demand via check_now):
+Flow (per camera, once per BMA scan cycle, every 3 min by BMA_SCAN_INTERVAL, or on demand via check_now):
     snapshot -> YOLO boxes (shared with BmaScanner) -> motorcycle boxes tall enough to see a head
     -> crop (+margin, upscaled) saved to cache/helmet/<id>.jpg ("captures")
     -> optional local YOLO26x helmet detector (helmet_det.pt from train_helmet_det.py):
          helmet only  -> verdict "helmet" with no API call
          no_helmet    -> the agent confirms it
          nothing seen -> the agent decides
-    -> helmet agent (Gemini vision by default, else Claude; HELMET_AGENT=qwen for the Qwen vision model
-       behind LOCAL_LLM_*): JSON {riders, no_helmet, confidence, note_th}
+    -> helmet agent (the Qwen vision model behind LOCAL_LLM_* by default; HELMET_AGENT=cloud for Gemini
+       vision, else Claude): JSON {riders, no_helmet, confidence, note_th}
        (no provider at all: the crop is kept as 'unclear')
     -> verdict no_helmet (confidence >= HELMET_MIN_CONF): full frame with a red box + the crop are
        written to <HELMET_ARCHIVE_DIR>/<YYYY-MM-DD>/<camid>_<HHMMSS>.jpg (+ _crop.jpg) and one row
@@ -38,7 +38,7 @@ import numpy as np
 from backend.core import local_llm
 
 from backend.core.instance import BASE_DIR  # project root
-from backend.core.instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
+from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "helmet")
 ARCHIVE_DIR = os.getenv("HELMET_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", r"D:\Data"), "helmet"))
 LOCAL_DET_PATH = os.getenv("HELMET_DET", os.path.join(BASE_DIR, "helmet_det.pt"))
@@ -47,8 +47,9 @@ if not os.path.isabs(LOCAL_DET_PATH):
 # Fast non-thinking model on purpose: a 300-px crop needs no reasoning, and the thinking models
 # (gemini-3.6-flash) take 15-40 s per call and hit 504 under load. Falls back to GEMINI_VISION_MODEL.
 HELMET_MODEL = os.getenv("HELMET_AGENT_MODEL", os.getenv("GEMINI_VISION_MODEL", "gemini-3.1-flash-lite"))
-# qwen = the OpenAI-compatible vision model behind LOCAL_LLM_* (Qwen 3.8 27B reads images); cloud = Gemini / Claude
-HELMET_AGENT = os.getenv("HELMET_AGENT", "cloud").strip().lower()
+# qwen = the OpenAI-compatible vision model behind LOCAL_LLM_* (Qwen 3.8 27B reads images); cloud = Gemini / Claude.
+# Qwen by default: Gemini's free tier hit its per-minute limit and left most captures "unclear"
+HELMET_AGENT = os.getenv("HELMET_AGENT", "qwen").strip().lower()
 AGENT_TIMEOUT_MS = 40000
 
 MOTO_CLASS = 3                    # COCO motorcycle
@@ -310,8 +311,8 @@ class HelmetPatrol:
 
     def _agent_reason(self, now):
         if self.agent_error and now - self.agent_error["ts"] < self.agent_error.get("for", AGENT_BACKOFF_S):
-            return "AI agent หยุดชั่วคราว: " + self.agent_error["message"]
-        return "เกินงบเรียก AI ต่อชั่วโมง"
+            return "AI ตรวจซ้ำพักชั่วคราว: " + self.agent_error["message"]
+        return "ใช้ AI ตรวจซ้ำครบโควตาชั่วโมงนี้แล้ว"
 
     def _worker(self):
         while True:
@@ -352,12 +353,12 @@ class HelmetPatrol:
             return
         if agent == "auto" and local and local[0] == "helmet":
             self._update(hid, verdict="helmet", source="local", riders=1, no_helmet=0, confidence=round(local[1], 2),
-                         note=f"โมเดลในเครื่องเห็นหมวกกันน็อก ({local[1]:.0%})")
+                         note=f"AI ของระบบเห็นหมวกกันน็อก (มั่นใจ {local[1]:.0%})")
             self.last_check = int(now)
             return
         provider = self.provider()
         if not provider or (agent == "auto" and not self._budget_ok(now)):
-            reason = self._agent_reason(now) if provider else "ไม่มี AI agent ตรวจ (ตั้ง LOCAL_LLM_MODEL, GEMINI_API_KEY หรือ ANTHROPIC_API_KEY)"
+            reason = self._agent_reason(now) if provider else "ไม่มี AI ตรวจซ้ำ"
             self._settle_without_agent(hid, camid, cam, crop, marked, local, reason, provider or "none")
             return
         jpeg = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 90])[1].tobytes()
@@ -369,15 +370,15 @@ class HelmetPatrol:
         except Exception as e:  # noqa: BLE001
             msg = str(e)
             if "429" in msg or "RATE_LIMIT" in msg:
-                self.agent_error = {"ts": now, "message": "ชนลิมิตต่อนาทีของ API", "for": RATE_BACKOFF_S}
+                self.agent_error = {"ts": now, "message": "เรียกใช้ถี่เกินไป", "for": RATE_BACKOFF_S}
                 print(f"[Helmet] cloud agent rate-limited, pausing {RATE_BACKOFF_S}s")
             elif any(k in msg for k in ("402", "401", "400", "RESOURCE_EXHAUSTED", "credits", "API key")):
-                short = "เครดิต/โควตา API หมด" if ("402" in msg or "credits" in msg or "RESOURCE_EXHAUSTED" in msg) else msg[:120]
+                short = "โควตา AI หมด" if ("402" in msg or "credits" in msg or "RESOURCE_EXHAUSTED" in msg) else "ตั้งค่า AI ไม่ถูกต้อง"
                 self.agent_error = {"ts": now, "message": short, "for": AGENT_BACKOFF_S}
                 print(f"[Helmet] cloud agent paused {AGENT_BACKOFF_S}s: {msg[:160]}")
             else:
                 print(f"[Helmet] cloud agent error: {msg[:160]}")
-            self._settle_without_agent(hid, camid, cam, crop, marked, local, "AI agent ไม่ตอบ: " + msg[:100], provider)
+            self._settle_without_agent(hid, camid, cam, crop, marked, local, "AI ตรวจซ้ำไม่ตอบ", provider)
             return
         self.agent_error = None
         self._apply_verdict(hid, camid, cam, crop, marked, text, provider)
@@ -469,19 +470,19 @@ class HelmetPatrol:
     def _settle_local(self, hid, camid, cam, crop, marked, local):
         """Verdict from the local helmet detector alone (reanalyse with agent=local): no API call at all."""
         if not local:
-            self._update(hid, verdict="unclear", source="local", note="โมเดลในเครื่องไม่เห็นหัวผู้ขับขี่ชัดพอจะตัดสิน")
+            self._update(hid, verdict="unclear", source="local", note="AI ของระบบเห็นหัวผู้ขับขี่ไม่ชัด ตัดสินไม่ได้")
         elif local[0] == "no_helmet":
             self._finish_no_helmet(hid, camid, cam, crop, marked, 1, 1, local[1],
-                                   f"โมเดลในเครื่องไม่เห็นหมวกกันน็อก ({local[1]:.0%})", "local")
+                                   f"AI ของระบบไม่เห็นหมวกกันน็อก (มั่นใจ {local[1]:.0%})", "local")
         else:
             self._update(hid, verdict="helmet", source="local", riders=1, no_helmet=0, confidence=round(local[1], 2),
-                         note=f"โมเดลในเครื่องเห็นหมวกกันน็อก ({local[1]:.0%})")
+                         note=f"AI ของระบบเห็นหมวกกันน็อก (มั่นใจ {local[1]:.0%})")
 
     def _settle_without_agent(self, hid, camid, cam, crop, marked, local, reason, provider):
         """Agent unavailable: trust the local detector when it flagged no helmet, else leave it unclear."""
         if local and local[0] == "no_helmet":
             self._finish_no_helmet(hid, camid, cam, crop, marked, 1, 1, local[1],
-                                   f"โมเดลในเครื่องไม่เห็นหมวกกันน็อก ({local[1]:.0%}) · {reason}", "local")
+                                   f"AI ของระบบไม่เห็นหมวกกันน็อก (มั่นใจ {local[1]:.0%}) · {reason}", "local")
         else:
             self._update(hid, verdict="unclear", source=provider, note=reason)
 

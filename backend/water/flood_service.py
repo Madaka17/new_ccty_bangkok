@@ -15,8 +15,9 @@ The thresholds are the ones the BMA map itself draws with:
      no reading   ขัดข้อง                 sensor offline / stale
 
 Each poll is also kept in a short in-memory history per station, so the dashboard can say whether
-the water is still rising, and an AI analyst (Gemini, else a Thai template) turns the numbers into
-a readable situation report: severity, what is happening, which spots matter and what to do.
+the water is still rising, and an AI analyst (the Qwen model behind LOCAL_LLM_*, else Gemini, else a
+Thai template) turns the numbers into a readable situation report every AI_INTERVAL: severity, what is
+happening, which spots matter and what to do.
 
 Served by /api/flood/*.
 
@@ -40,8 +41,9 @@ except Exception:  # pragma: no cover - the analyst falls back to a Thai templat
     genai = None
     genai_types = None
 
+from backend.core import local_llm
 from backend.core.instance import BASE_DIR  # project root
-from backend.core.instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
+from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 CACHE_FILE = os.path.join(DATA_DIR, "cache", "flood_roads.json")
 SOURCE_URL = "https://weather.bangkok.go.th/Flood/PageMap/GetData?id=0"
 SOURCE_PAGE = "https://weather.bangkok.go.th/flood"
@@ -56,10 +58,26 @@ SLIGHT_CM = 5.0             # > this = slight flooding
 FLOOD_CM = 10.0             # > this = flooding
 
 AI_MODEL = os.getenv("FLOOD_AI_MODEL", os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"))
-AI_INTERVAL = int(os.getenv("FLOOD_AI_SECONDS", "300"))   # seconds between Gemini rewrites
+AI_INTERVAL = int(os.getenv("FLOOD_AI_SECONDS", "360"))   # seconds between AI situation reports
 HISTORY_KEEP = 36            # readings per station (~3 hours at one per 5 minutes)
 TREND_WINDOW_S = 1500        # compare against the reading ~25 minutes back
 TREND_CM = 2.0               # change below this is "steady"
+
+# The report's shape, for the local model's structured output (same fields the prompt asks for)
+AI_SCHEMA = {
+    "type": "object", "additionalProperties": False,
+    "required": ["severity", "headline", "detail", "hotspots", "advice", "outlook"],
+    "properties": {
+        "severity": {"type": "string", "enum": ["normal", "watch", "alert"]},
+        "headline": {"type": "string"},
+        "detail": {"type": "string"},
+        "hotspots": {"type": "array", "items": {"type": "object", "additionalProperties": False,
+                                                 "required": ["where", "note"],
+                                                 "properties": {"where": {"type": "string"}, "note": {"type": "string"}}}},
+        "advice": {"type": "array", "items": {"type": "string"}},
+        "outlook": {"type": "string"},
+    },
+}
 
 STATUS_TH = {"flood": "น้ำท่วม", "slight": "น้ำท่วมเล็กน้อย", "normal": "ปกติ", "offline": "เครื่องวัดขัดข้อง"}
 TREND_TH = {"rising": "กำลังเพิ่มขึ้น", "falling": "กำลังลดลง", "steady": "ทรงตัว"}
@@ -230,10 +248,6 @@ class FloodRoads:
             self.feed_time = newest
             self.error = None
         self._save_cache()
-        try:
-            self._analyse()
-        except Exception as e:  # noqa: BLE001 - the report must never break the poll
-            print(f"[Flood] analysis failed: {e}")
         return len(items)
 
     def _loop(self):
@@ -246,8 +260,20 @@ class FloodRoads:
                 print(f"[Flood] refresh failed: {e}")
             time.sleep(POLL_SECONDS)
 
+    def _ai_loop(self):
+        """A fresh situation report every AI_INTERVAL (start to start), on its own clock from the poll."""
+        while True:
+            t0 = time.time()
+            if self.items:
+                try:
+                    self._analyse(force=True)
+                except Exception as e:  # noqa: BLE001 - the report must never kill the thread
+                    print(f"[Flood] analysis failed: {e}")
+            time.sleep(max(5.0, AI_INTERVAL - (time.time() - t0)) if self.items else 10.0)
+
     def start(self):
         threading.Thread(target=self._loop, daemon=True, name="flood-roads").start()
+        threading.Thread(target=self._ai_loop, daemon=True, name="flood-roads-ai").start()
 
     # ------------------------------------------------------------ AI analysis
     def _client(self):
@@ -316,21 +342,30 @@ class FloodRoads:
             "outlook": "", "source": "template",
         }
 
+    def _ask(self, prompt):
+        """(reply, source): the Qwen model behind LOCAL_LLM_* when it is set, else Gemini; ({}, None) with neither."""
+        if local_llm.default.enabled():
+            text = local_llm.default.chat([{"role": "user", "content": prompt}], max_tokens=1200, temperature=0.2,
+                                          json_schema=AI_SCHEMA)
+            return json.loads(text[text.find("{"):text.rfind("}") + 1]), local_llm.default.model
+        client = self._client()
+        if client is None:
+            return {}, None
+        resp = client.models.generate_content(
+            model=AI_MODEL, contents=prompt,
+            config=genai_types.GenerateContentConfig(temperature=0.2, max_output_tokens=1200,
+                                                     response_mime_type="application/json"))
+        return json.loads(resp.text or "{}"), AI_MODEL
+
     def _analyse(self, force=False):
-        """Write the situation report. One Gemini call at most every AI_INTERVAL, and only when the
-        picture actually changed; otherwise the previous report stands."""
+        """Write the situation report (_ai_loop forces one every AI_INTERVAL). Without force, an unchanged
+        picture younger than AI_INTERVAL keeps the previous report."""
         f = self._facts()
         sig = json.dumps([f["counts"], [(p["where"], p["level_cm"], p["trend"]) for p in f["points"]]],
                          ensure_ascii=False)
         now = time.time()
         base = self._template(f)
         if not force and sig == self._ai_sig and self.analysis and now - self._ai_at < AI_INTERVAL:
-            return self.analysis
-        client = self._client()
-        if client is None:
-            with self.lock:
-                self.analysis = {**base, "facts": f, "updated_at": int(now)}
-            self._ai_sig, self._ai_at = sig, now
             return self.analysis
         prompt = (
             "คุณคือนักวิเคราะห์สถานการณ์น้ำท่วมขังของศูนย์ควบคุมจราจรกรุงเทพมหานคร "
@@ -355,11 +390,7 @@ class FloodRoads:
         )
         out = dict(base)
         try:
-            resp = client.models.generate_content(
-                model=AI_MODEL, contents=prompt,
-                config=genai_types.GenerateContentConfig(temperature=0.2, max_output_tokens=1200,
-                                                         response_mime_type="application/json"))
-            d = json.loads(resp.text or "{}")
+            d, source = self._ask(prompt)
             if isinstance(d, dict) and d.get("headline"):
                 out = {
                     "severity": d.get("severity") if d.get("severity") in ("normal", "watch", "alert") else base["severity"],
@@ -369,10 +400,10 @@ class FloodRoads:
                                  for h in (d.get("hotspots") or []) if isinstance(h, dict) and h.get("where")][:5],
                     "advice": [str(a).strip() for a in (d.get("advice") or []) if str(a).strip()][:4],
                     "outlook": str(d.get("outlook") or "").strip(),
-                    "source": AI_MODEL,
+                    "source": source,
                 }
         except Exception as e:  # noqa: BLE001
-            print(f"[Flood] Gemini analysis failed, using template: {str(e)[:140]}")
+            print(f"[Flood] AI analysis failed, using template: {str(e)[:140]}")
         with self.lock:
             self.analysis = {**out, "facts": f, "updated_at": int(now)}
         self._ai_sig, self._ai_at = sig, now
@@ -442,7 +473,8 @@ class FloodRoads:
                 by_road[name] = {"road": name, "district": it["district"], "level_cm": it["level_cm"],
                                  "status": it["status"], "status_th": it["status_th"], "at": it["short_name"],
                                  "lat": it["lat"], "lng": it["lng"], "ts": it["ts"], "ts_th": it["ts_th"],
-                                 "started": it["started"], "max_cm": it["max_cm"], "points": 0}
+                                 "started": it["started"], "max_cm": it["max_cm"], "trend": it.get("trend"),
+                                 "trend_th": it.get("trend_th"), "delta_cm": it.get("delta_cm"), "points": 0}
             by_road[name]["points"] += 1
         out = sorted(by_road.values(), key=lambda r: -(r["level_cm"] or 0))
         return {"updated_at": self.updated_at, "feed_time": self.feed_time, "total": len(out), "items": out[:limit]}

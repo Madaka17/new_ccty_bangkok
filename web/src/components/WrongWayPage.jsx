@@ -14,7 +14,7 @@ const TABS = [
   { id: 'cameras', label: 'กล้องทุกตัว' },
 ];
 const VERDICT_TONE = { wrong_way: 'red', ok: 'green', pending: 'blue', unclear: 'neutral', error: 'yellow' };
-const LEVEL = { online: { tone: 'green', label: 'ออนไลน์' }, offline: { tone: 'neutral', label: 'ออฟไลน์' }, unknown: { tone: 'neutral', label: 'รอสแกน' } };
+const LEVEL = { online: { tone: 'green', label: 'ใช้งานได้' }, offline: { tone: 'neutral', label: 'ไม่มีภาพ' }, unknown: { tone: 'neutral', label: 'รอตรวจ' } };
 // image-space direction of each heading for the arrow overlay (toward = down the frame)
 const ARROW = { toward: [0, 1], away: [0, -1], left: [-1, 0], right: [1, 0] };
 
@@ -90,7 +90,7 @@ export default function WrongWayPage({ isActive, onToast }) {
       const r = await reanalyseWrongWay(item.id, agent);
       if (r.ok) {
         setOpen(r.item);
-        onToast?.(`${r.item.verdict_th}${r.item.confidence != null ? ` (${Math.round(r.item.confidence * 100)}%)` : ''} · ${r.item.source}`);
+        onToast?.(`${r.item.verdict_th}${r.item.confidence != null ? ` (มั่นใจ ${Math.round(r.item.confidence * 100)}%)` : ''} · ${r.item.source === 'local' ? 'AI ของระบบ' : 'AI ตรวจซ้ำ'}`);
         load();
       } else onToast?.(r.error);
     } catch {
@@ -120,7 +120,7 @@ export default function WrongWayPage({ isActive, onToast }) {
     setBulk(agent);
     try {
       const r = await reanalyseWrongWayPending(agent, agent === 'local' ? 300 : 60);
-      onToast?.(r.queued ? `ส่งภาพที่ยังไม่ชัด ${r.queued} ภาพให้ ${agent === 'local' ? detector : status?.agent_model || 'AI'} ตรวจใหม่` : 'ไม่มีภาพค้างตรวจ');
+      onToast?.(r.queued ? `ส่งภาพที่ยังไม่ชัด ${r.queued} ภาพให้ ${agent === 'local' ? 'AI ของระบบ' : 'AI ตรวจซ้ำ'} ตรวจใหม่` : 'ไม่มีภาพค้างตรวจ');
       setTimeout(load, agent === 'local' ? 3000 : 8000);
     } catch {
       onToast?.('สั่งตรวจไม่สำเร็จ');
@@ -143,8 +143,8 @@ export default function WrongWayPage({ isActive, onToast }) {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title="ตรวจรถย้อนศรจากกล้อง กทม."
-        description="ทุกรอบสแกน (~4 นาที) YOLO26x หารถ แล้วโมเดลจำแนกทิศที่เทรนเองอ่านว่ารถแต่ละคันหันหน้าหรือหันท้ายเข้ากล้อง กล้องแต่ละตัวเรียนรู้เองว่าช่องทางไหนปกติวิ่งทางใด รถที่หันสวนช่องทางจะถูกส่งให้ AI agent ยืนยัน แล้วเก็บหลักฐานลง Drive E: อัตโนมัติ"
+        title="รถขับย้อนศร (กล้อง กทม.)"
+        description="ทุก ~3 นาที AI ดูว่ารถแต่ละคันวิ่งสวนทางปกติของช่องทางหรือไม่ ถ้าใช่จะเก็บภาพไว้เป็นหลักฐาน · กล้องแต่ละตัวต้องเรียนรู้ทางวิ่งปกติก่อน · ผลจาก AI ต้องให้เจ้าหน้าที่ตรวจซ้ำก่อนใช้งาน"
         actions={
           <div className="flex items-center gap-2">
             <select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700">
@@ -159,26 +159,26 @@ export default function WrongWayPage({ isActive, onToast }) {
       />
 
       {noModel && (
-        <StatusBanner tone="yellow" label="ยังไม่มีโมเดลทิศทางรถ">
+        <StatusBanner tone="yellow" label="AI ดูทิศทางรถยังไม่พร้อม (สำหรับผู้ดูแลระบบ)">
           ไม่พบ <code>wrongway_det.pt</code> ที่ root — รัน <code>local\pipeline\wrongway_pipeline.bat</code> (เก็บภาพทั้งวัน + เทรน) แล้วรีสตาร์ต server
         </StatusBanner>
       )}
       {!noModel && agentOff && (
-        <StatusBanner tone="neutral" label="ไม่มี AI agent ยืนยัน">
-          ใช้ผลจากโมเดลในเครื่องอย่างเดียว ตั้ง <code>GEMINI_API_KEY</code> ใน .env เพื่อให้ AI ตรวจซ้ำก่อนบันทึก
+        <StatusBanner tone="neutral" label="ไม่มี AI ตรวจซ้ำ">
+          ใช้ผลจาก AI ของระบบอย่างเดียว (ผู้ดูแลระบบ: ตั้ง <code>GEMINI_API_KEY</code> ใน .env เพื่อให้ AI ตรวจซ้ำ)
         </StatusBanner>
       )}
       {status && !status.archive_ok && (
-        <StatusBanner tone="red" label="ไม่พบไดรฟ์เก็บหลักฐาน">
-          {status.archive_dir} เข้าไม่ได้ ระบบยังตรวจต่อแต่จะไม่มีไฟล์ภาพลงไดรฟ์
+        <StatusBanner tone="red" label="เก็บภาพหลักฐานไม่ได้">
+          เปิดที่เก็บไฟล์ {status.archive_dir} ไม่ได้ ระบบยังตรวจต่อ แต่จะไม่มีไฟล์ภาพเก็บไว้
         </StatusBanner>
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatTile label="รถย้อนศรวันนี้" value={fmtNum(t.wrong_way)} tone="red" sub={`สะสมทั้งหมด ${fmtNum(status?.total_wrong_way)} คัน`} loading={!status} />
         <StatTile label="รถที่สงสัยวันนี้" value={fmtNum(t.captures)} sub={`รอตรวจ ${fmtNum(t.pending ?? 0)} · ไม่ใช่ ${fmtNum(t.ok ?? 0)} · ไม่ชัด ${fmtNum(t.unclear ?? 0)}`} loading={!status} />
-        <StatTile label="กล้องที่รู้ทิศทางแล้ว" value={fmtNum(status?.cameras_learned)} sub={`จากที่เห็น ${fmtNum(status?.cameras_seen)} กล้อง · ต้องมี ${status?.min_votes ?? '-'} คัน/ช่อง`} loading={!status} />
-        <StatTile label="ตรวจล่าสุด" value={status?.last_check ? fmtTime(status.last_check) : '–'} sub={status ? `คิวรอ ${status.queue} · โมเดล ${detector || 'ไม่มี'} + ${status.agent_model || 'ไม่มี agent'}` : ''} loading={!status} />
+        <StatTile label="กล้องที่รู้ทิศทางแล้ว" value={fmtNum(status?.cameras_learned)} sub={`จาก ${fmtNum(status?.cameras_seen)} กล้องที่เห็นรถ`} loading={!status} />
+        <StatTile label="ตรวจล่าสุด" value={status?.last_check ? fmtTime(status.last_check) : '–'} sub={status ? `รอตรวจ ${status.queue} ภาพ` : ''} loading={!status} />
       </div>
 
       <Tabs
@@ -195,15 +195,15 @@ export default function WrongWayPage({ isActive, onToast }) {
       {tab === 'captures' && (
         <>
           <div className="flex flex-wrap items-center gap-2 -mt-1">
-            <span className="text-xs text-slate-500">ตรวจภาพที่ยังไม่ชัดอีกครั้งด้วย:</span>
+            <span className="text-xs text-slate-500">ให้ตรวจภาพที่ยังไม่ชัดอีกครั้งด้วย:</span>
             <Button size="sm" variant="primary" onClick={() => judgePending('local')} loading={bulk === 'local'} disabled={!detector || !!bulk}>
-              {detector || 'โมเดลในเครื่อง'} (ฟรี ทันที)
+              AI ของระบบ (เร็ว)
             </Button>
             <Button size="sm" onClick={() => judgePending('cloud')} loading={bulk === 'cloud'} disabled={agentOff || !!status?.agent_error || !!bulk}>
-              {status?.agent_model || 'AI agent'}
+              AI ตรวจซ้ำ (ละเอียดกว่า)
             </Button>
           </div>
-          <EvidenceGrid items={captures} onOpen={setOpen} compact empty="ยังไม่มีรถที่สงสัย กล้องต้องเรียนรู้ทิศทางก่อน (ดูแท็บกล้อง) หรือกด 'ตรวจตอนนี้'" />
+          <EvidenceGrid items={captures} onOpen={setOpen} compact empty="ยังไม่มีรถที่สงสัย กล้องต้องเรียนรู้ทางวิ่งปกติก่อน (ดูแท็บกล้องทุกตัว) หรือกด 'ตรวจตอนนี้'" />
         </>
       )}
 
@@ -218,16 +218,16 @@ export default function WrongWayPage({ isActive, onToast }) {
             />
             <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
               <input type="checkbox" checked={onlyLearned} onChange={(e) => setOnlyLearned(e.target.checked)} className="accent-blue-600" />
-              เฉพาะกล้องที่รู้ทิศทางแล้ว
+              เฉพาะกล้องที่รู้ทางวิ่งปกติแล้ว
             </label>
-            <span className="ml-auto text-xs text-slate-500">{camList.length} จาก {cameras?.length ?? 0} กล้อง · เรียงตามย้อนศร / สงสัย / ช่องที่รู้ทิศ</span>
+            <span className="ml-auto text-xs text-slate-500">{camList.length} จาก {cameras?.length ?? 0} กล้อง</span>
           </div>
           {!cameras ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
               {[1, 2, 3, 4, 5, 6].map((n) => <Skeleton key={n} className="h-24" />)}
             </div>
           ) : camList.length === 0 ? (
-            <EmptyState title="ไม่มีกล้องตรงเงื่อนไข" description="กล้องเรียนรู้ทิศทางจากรถที่ผ่านทุกรอบสแกน ต้องรอสักพักหลังรีสตาร์ต หรือปิดตัวกรอง" />
+            <EmptyState title="ไม่มีกล้องตรงเงื่อนไข" description="กล้องต้องดูรถวิ่งผ่านสักพักก่อนจึงรู้ทางวิ่งปกติ ลองปิดตัวกรอง" />
           ) : (
             <ul className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
               {camList.slice(0, 150).map((c) => {
@@ -241,7 +241,7 @@ export default function WrongWayPage({ isActive, onToast }) {
                       <Truncate text={c.title} className="text-sm font-medium text-slate-900" />
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-600 mt-0.5">
                         <Badge tone={lv.tone}>{lv.label}</Badge>
-                        <span className="tabular-nums" title="ช่องบนภาพที่รู้ทิศทางแล้ว / ช่องที่มีรถผ่าน">รู้ทิศ {c.known}/{c.active} ช่อง</span>
+                        <span className="tabular-nums" title="ช่องบนภาพที่รู้ทางวิ่งปกติแล้ว / ช่องที่มีรถผ่าน">รู้ทางวิ่ง {c.known}/{c.active} ช่อง</span>
                         <span className="tabular-nums">สงสัยวันนี้ {c.captures}</span>
                         {c.wrong_way > 0 && <span className="tabular-nums font-medium text-red-700">ย้อนศร {c.wrong_way}</span>}
                       </div>
@@ -272,20 +272,20 @@ export default function WrongWayPage({ isActive, onToast }) {
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <Badge tone={VERDICT_TONE[open.verdict]} dot={open.verdict === 'wrong_way'}>{open.verdict_th}</Badge>
               <span className="text-slate-700">รถหัน: {open.heading_th} · ช่องทางปกติ: {open.expected_th}</span>
-              {open.confidence != null && <span className="text-slate-500 tabular-nums">ความมั่นใจ {Math.round(open.confidence * 100)}%</span>}
-              {open.source && <span className="text-slate-500">ตรวจโดย {open.source === 'local' ? detector || 'โมเดลในเครื่อง' : open.source === 'person' ? 'ผู้ดูแล' : open.source}</span>}
+              {open.confidence != null && <span className="text-slate-500 tabular-nums">AI มั่นใจ {Math.round(open.confidence * 100)}%</span>}
+              {open.source && <span className="text-slate-500">ตรวจโดย {open.source === 'local' ? 'AI ของระบบ' : open.source === 'person' ? 'เจ้าหน้าที่' : 'AI ตรวจซ้ำ'}</span>}
             </div>
             {open.note && <p className="text-sm text-slate-700">{open.note}</p>}
             <p className="text-xs text-slate-500">
               บนภาพ: กรอบแดง = รถที่สงสัย, ลูกศรเขียวใหญ่ = ทิศปกติของช่องทางนั้น, ลูกศรเล็กสีฟ้า = ทิศทางที่กล้องเรียนรู้ในแต่ละช่อง
             </p>
             <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200">
-              <span className="text-xs text-slate-500">วิเคราะห์ใหม่ด้วย:</span>
+              <span className="text-xs text-slate-500">ตรวจใหม่ด้วย:</span>
               <Button size="sm" variant="primary" onClick={() => judge(open, 'local')} loading={judging === 'local'} disabled={!detector || !!judging}>
-                {detector || 'โมเดลในเครื่อง'}
+                AI ของระบบ
               </Button>
               <Button size="sm" onClick={() => judge(open, 'cloud')} loading={judging === 'cloud'} disabled={agentOff || !!judging}>
-                {status?.agent_model || 'Gemini'}{status?.agent_error ? ' (หยุดชั่วคราว)' : ''}
+                AI ตรวจซ้ำ{status?.agent_error ? ' (พักอยู่)' : ''}
               </Button>
               {open.verdict !== 'ok' && (
                 <Button size="sm" onClick={() => dismiss(open)} loading={judging === 'dismiss'} disabled={!!judging} className="ml-auto">
@@ -293,7 +293,7 @@ export default function WrongWayPage({ isActive, onToast }) {
                 </Button>
               )}
             </div>
-            {open.archive && <p className="text-xs text-slate-500 break-all">ไฟล์หลักฐาน: {open.archive}</p>}
+            {open.archive && <p className="text-xs text-slate-500 break-all">ที่เก็บภาพหลักฐาน: {open.archive}</p>}
           </div>
         )}
       </Modal>

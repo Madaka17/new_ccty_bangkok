@@ -128,7 +128,7 @@ export function matchCameraFloodRisk(cam, riskStations) {
     district: closest.district,
     storagePct: Math.round(closest.storagePct || 0),
     distanceKm: Math.round(minDistance * 10) / 10,
-    badgeText: isOverflow ? '🌊 ล้นตลิ่ง' : '⚠️ เฝ้าระวังสูง',
+    badgeText: isOverflow ? '🌊 น้ำล้นตลิ่ง' : '⚠️ น้ำสูง เฝ้าระวัง',
     label: isOverflow
       ? `เสี่ยงน้ำล้นตลิ่ง (${closest.name} ${Math.round(closest.storagePct || 0)}%)`
       : `เฝ้าระวังระดับน้ำสูง (${closest.name} ${Math.round(closest.storagePct || 0)}%)`,

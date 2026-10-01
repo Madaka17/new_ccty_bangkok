@@ -478,7 +478,10 @@ class VehicleDetectorYOLO11x:
         self.incidents = None
         self.violations = None
 
-        print(f"[AI] Initializing YOLO11x ({model_path}) with target {target_fps} FPS...")
+        # Display name for the page and logs: yolo26x.pt -> YOLO26x, yolo26x_bkk.pt -> YOLO26x_bkk
+        stem = os.path.splitext(os.path.basename(model_path))[0]
+        self.model_name = 'YOLO' + stem[4:] if stem.lower().startswith('yolo') else stem
+        print(f"[AI] Initializing {self.model_name} ({model_path}) with target {target_fps} FPS...")
         self.model = YOLO(model_path)
         if torch.cuda.is_available():
             try:
@@ -516,6 +519,9 @@ class VehicleDetectorYOLO11x:
         self.latest_jpeg = None
         self.latest_stats = {
             'active': False,
+            'model': self.model_name,
+            # 'offline' while the camera's stream cannot be opened (the worker keeps retrying)
+            'stream_error': '',
             'camid': '',
             'title': '',
             'province': '',
@@ -769,6 +775,12 @@ class VehicleDetectorYOLO11x:
             self.latest_jpeg = None
             self.is_running = True
             self._reset_passed_locked()
+            # Report the new camera at once, so the page does not show the previous camera's counts as this one's
+            info = self.current_cam_info
+            self.latest_stats.update(active=False, stream_error='', camid=info.get('camid', ''),
+                                     title=info.get('short_title', info.get('title', '')), province=info.get('province', ''),
+                                     fps=0.0, latency_ms=0.0, cars=0, motorcycles=0, trucks=0, total=0,
+                                     moving_pct=100, level='free', traffic_level='ไม่มีข้อมูล')
             self.thread = threading.Thread(
                 target=self._process_loop,
                 args=(stream_url, self.current_cam_info, self.stop_event),
@@ -811,6 +823,9 @@ class VehicleDetectorYOLO11x:
                                 pass
                             cap = None
                         fail_count += 1
+                        with self.lock:
+                            if not stop_event.is_set():
+                                self.latest_stats.update(active=False, stream_error='offline')
                         backoff = min(30.0, 5.0 * (1.5 ** min(fail_count, 4)))
                         print(f"[AI Worker] Could not open stream: {stream_url}. Retrying in {backoff:.0f}s (attempt #{fail_count})...")
                         stop_event.wait(backoff)
@@ -840,7 +855,7 @@ class VehicleDetectorYOLO11x:
                 if self.night_mode:
                     frame = self.enhance_low_light(frame)
 
-                # Run YOLO11x inference
+                # Run YOLO inference
                 t_infer_start = time.time()
                 result = self.infer(frame, tiled=self.TILED_LIVE)
                 infer_latency_ms = (time.time() - t_infer_start) * 1000.0
@@ -874,6 +889,7 @@ class VehicleDetectorYOLO11x:
                             self.latest_stats['passed_' + k] += v
                         self.latest_stats['passed_total'] += sum(new_vehicles.values())
                     self.latest_stats['active'] = True
+                    self.latest_stats['stream_error'] = ''
                     self.latest_stats['camid'] = cam_info.get('camid', '')
                     self.latest_stats['title'] = cam_info.get('short_title', cam_info.get('title', ''))
                     self.latest_stats['province'] = cam_info.get('province', '')

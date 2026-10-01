@@ -12,16 +12,16 @@ export const STATUS = {
 export const ROAD_LEVEL = { โล่ง: 'green', ปานกลาง: 'yellow', ติดขัด: 'red' };
 // Camera AI level -> status key + label
 export const AI_LEVEL = {
-  free: { key: 'green', label: 'โล่ง' },
-  moderate: { key: 'yellow', label: 'ปานกลาง' },
+  free: { key: 'green', label: 'คล่องตัว' },
+  moderate: { key: 'yellow', label: 'ชะลอตัว' },
   heavy: { key: 'red', label: 'ติดขัด' },
 };
 
 export function flowLevel(flow) {
-  if (flow == null) return { key: 'neutral', label: 'รอข้อมูล', hint: 'กำลังประมวลผลเส้นทางจราจร' };
-  if (flow >= 75) return { key: 'green', label: 'คล่องตัว', hint: 'การจราจรไหลลื่น เดินทางได้ตามปกติ' };
-  if (flow >= 45) return { key: 'yellow', label: 'ปานกลาง', hint: 'มีจุดชะลอตัวบางช่วง เผื่อเวลาเดินทาง' };
-  return { key: 'red', label: 'หนาแน่น', hint: 'รถสะสมหลายจุด ตรวจสอบเส้นทางเลี่ยงก่อนออกเดินทาง' };
+  if (flow == null) return { key: 'neutral', label: 'รอข้อมูล', hint: 'กำลังโหลดข้อมูลรถติด' };
+  if (flow >= 75) return { key: 'green', label: 'คล่องตัว', hint: 'รถวิ่งได้ดี เดินทางได้ตามปกติ' };
+  if (flow >= 45) return { key: 'yellow', label: 'ชะลอตัว', hint: 'รถติดบางช่วง เผื่อเวลาเดินทาง' };
+  return { key: 'red', label: 'ติดขัด', hint: 'รถติดหลายจุด ดูทางเลี่ยงก่อนออกเดินทาง' };
 }
 
 const THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];

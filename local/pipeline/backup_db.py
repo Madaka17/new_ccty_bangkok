@@ -29,7 +29,7 @@ try:
 except ImportError:
     pass
 
-DB = os.path.join(BASE_DIR, 'vehicle_counts.db')
+DB = os.path.join(BASE_DIR, 'instances', 'production', 'vehicle_counts.db')   # the production server's database
 DATA_DIR = os.getenv('BMA_DATA_DIR', r'D:\Data')
 BACKUP_DIR = os.getenv('BACKUP_DIR', os.path.join(DATA_DIR, 'backup'))
 # table -> epoch column. The no-helmet log, violations and incidents are kept forever (evidence).

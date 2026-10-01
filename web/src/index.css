@@ -90,8 +90,25 @@ body {
 }
 .live-dot { animation: glow 2.4s ease-in-out infinite; }
 
+/* Traffic meter (FlowOverview): a light that sweeps along the lit part of the bar, then rests. The bar clips it,
+   and the steps are percentages of its own width, so it never leaves the bar and follows the window width. */
+@keyframes meter-sheen {
+  0% { transform: translateX(-100%); }
+  68%, 100% { transform: translateX(250%); }
+}
+.meter-sheen {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  animation: meter-sheen 3.8s linear infinite;
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .live-dot { animation: none; }
+  .meter-sheen { display: none; }
   * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
 

@@ -15,12 +15,12 @@ const POLL_MS = 60000;
 const REPORTS_SHOWN = 3;   // per district, until the district is expanded
 const NO_DISTRICT = 'ไม่ระบุเขต';
 const SOURCES = {
-  longdo: { label: 'iTIC / FM91', tone: 'blue', hint: 'รายงานบน Longdo Traffic' },
-  traffy: { label: 'ประชาชน (Traffy)', tone: 'neutral', hint: 'Traffy Fondue' },
-  hdms: { label: 'กรมทางหลวง', tone: 'yellow', hint: 'HDMS กรมทางหลวง' },
-  js100: { label: 'JS100', tone: 'blue', hint: 'ข่าวจราจร JS100' },
+  longdo: { label: 'ข่าวจราจร', tone: 'blue', hint: 'ข่าวน้ำท่วมจาก iTIC / FM91' },
+  traffy: { label: 'คนแจ้ง (Traffy)', tone: 'neutral', hint: 'แจ้งผ่านแอป Traffy Fondue' },
+  hdms: { label: 'กรมทางหลวง', tone: 'yellow', hint: 'เจ้าหน้าที่กรมทางหลวงแจ้ง' },
+  js100: { label: 'จส.100', tone: 'blue', hint: 'ข่าวจราจรจากวิทยุ จส.100' },
 };
-const STATE_TONE = { รอรับเรื่อง: 'red', กำลังดำเนินการ: 'yellow', 'ส่งต่อ(ใหม่)': 'yellow', เสร็จสิ้น: 'green', ยังมีน้ำท่วม: 'red', สิ้นสุดแล้ว: 'green' };
+const STATE_TONE = { รอรับเรื่อง: 'red', กำลังดำเนินการ: 'yellow', 'ส่งต่อ(ใหม่)': 'yellow', เสร็จสิ้น: 'green', ยังมีน้ำท่วม: 'red', น้ำลดแล้ว: 'green' };
 const SELECT = 'h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700';
 const agoTh = (ts) => {
   const m = Math.round((Date.now() / 1000 - ts) / 60);
@@ -50,7 +50,7 @@ function mergeReports(traffy, longdo, hdms, js100) {
   for (const f of longdo?.items || []) {
     rows.push({
       id: f.id, source: 'longdo', ts: f.ts, title: f.place || f.title, text: f.description,
-      district: districtOf(`${f.description || ''} ${f.place || ''}`), state: f.active ? 'ยังมีน้ำท่วม' : 'สิ้นสุดแล้ว',
+      district: districtOf(`${f.description || ''} ${f.place || ''}`), state: f.active ? 'ยังมีน้ำท่วม' : 'น้ำลดแล้ว',
       by: f.credit || null, url: f.lat && f.lng ? `https://www.google.com/maps?q=${f.lat},${f.lng}` : null, urlLabel: 'ดูแผนที่',
     });
   }
@@ -66,8 +66,9 @@ function mergeReports(traffy, longdo, hdms, js100) {
       id: h.id, source: 'hdms', ts: h.ts, title: h.place || h.title,
       text: [h.title, h.closure, h.lane_closure ? 'ปิดช่องจราจร' : null, h.relief].filter(Boolean).join(' · '),
       district: !h.amphoe ? NO_DISTRICT : h.province === 'กรุงเทพมหานคร' ? `เขต${h.amphoe}` : `อ.${h.amphoe}`,
-      depth: h.depth_cm ? ` ${h.depth_cm} ซม.` : null, state: h.active ? 'ยังมีน้ำท่วม' : 'สิ้นสุดแล้ว',
+      depth: h.depth_cm ? ` ${h.depth_cm} ซม.` : null, state: h.active ? 'ยังมีน้ำท่วม' : 'น้ำลดแล้ว',
       url: h.lat && h.lng ? `https://www.google.com/maps?q=${h.lat},${h.lng}` : null, urlLabel: 'ดูแผนที่',
+      photo: h.photos?.[0]?.thumb, photoUrl: h.photos?.[0]?.url, photoCount: h.photos?.length || 0,
     });
   }
   for (const j of js100?.items || []) {
@@ -76,7 +77,7 @@ function mergeReports(traffy, longdo, hdms, js100) {
   return rows.sort((a, b) => (b.ts || 0) - (a.ts || 0));
 }
 
-function ReportList({ rows, loading, updatedAt }) {
+function ReportList({ rows, loading, updatedAt, traffyDown, traffyOldAt }) {
   const [query, setQuery] = useState('');
   const [district, setDistrict] = useState('');
   const [state, setState] = useState('');
@@ -107,8 +108,8 @@ function ReportList({ rows, loading, updatedAt }) {
     <Card className="p-5">
       <SectionHeader
         id="flood-reports"
-        title="การแจ้งน้ำท่วม"
-        description="จุดที่มีรายงานน้ำท่วมบนแผนที่ (iTIC / FM91 ผ่าน Longdo Traffic), ทางหลวงน้ำท่วมจากกรมทางหลวง (HDMS), ข่าวจราจร JS100 48 ชม.ล่าสุด และเรื่องที่ประชาชนแจ้งผ่าน Traffy Fondue 6 ชม.ล่าสุด · กรุงเทพฯ และปริมณฑล · ยังไม่ผ่านการตรวจสอบจากเขต"
+        title="เรื่องน้ำท่วมที่คนแจ้ง"
+        description="จากแอป Traffy Fondue (6 ชม.) ข่าวจราจร (iTIC / FM91 / จส.100) และกรมทางหลวง · กรุงเทพฯ และปริมณฑล · ยังไม่ได้ตรวจสอบโดยเขต"
       />
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <label htmlFor="report-q" className="sr-only">ค้นหาข้อความ</label>
@@ -136,13 +137,23 @@ function ReportList({ rows, loading, updatedAt }) {
       <p className="text-xs text-slate-500 mt-2">
         แสดง {fmtNum(shown)} จาก {fmtNum(rows.length)} เรื่อง · {groups.length} เขต{updatedAt ? ` · อัปเดต ${agoTh(updatedAt)}` : ''}
       </p>
+      {!loading && traffyDown && rows.length > 0 && (
+        <p role="status" className="mt-2 rounded-lg px-3 py-2 text-xs text-amber-800 bg-amber-50 border border-amber-200">
+          ยังโหลดเรื่องจาก Traffy ไม่ได้ ระบบจะลองใหม่เอง ตอนนี้แสดงเฉพาะเรื่องจากแหล่งอื่น
+        </p>
+      )}
+      {!loading && traffyOldAt && (
+        <p role="status" className="mt-2 rounded-lg px-3 py-2 text-xs text-amber-800 bg-amber-50 border border-amber-200">
+          อัปเดตเรื่องจาก Traffy รอบล่าสุดไม่สำเร็จ ที่เห็นเป็นเรื่องที่โหลดไว้ {agoTh(traffyOldAt)}
+        </p>
+      )}
 
       {loading ? (
         <div className="mt-3 space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-14" />)}</div>
       ) : groups.length === 0 ? (
         <EmptyState
-          title={rows.length ? 'ไม่พบเรื่องที่ตรงกับตัวกรอง' : 'ไม่มีการแจ้งน้ำท่วม'}
-          description={rows.length ? 'ลองเปลี่ยนคำค้นหรือเลือกทุกเขต' : 'ยังไม่มีรายงานน้ำท่วมในช่วงนี้'}
+          title={rows.length ? 'ไม่พบเรื่องที่ค้นหา' : traffyDown ? 'ยังโหลดเรื่องจาก Traffy ไม่ได้' : 'ยังไม่มีคนแจ้งน้ำท่วม'}
+          description={rows.length ? 'ลองเปลี่ยนคำค้นหรือเลือกทุกเขต' : traffyDown ? 'ระบบจะลองใหม่เอง' : 'ช่วงนี้ยังไม่มีเรื่องน้ำท่วม'}
         />
       ) : (
         <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -152,7 +163,12 @@ function ReportList({ rows, loading, updatedAt }) {
               <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
                 {(open === g.name ? g.list : g.list.slice(0, REPORTS_SHOWN)).map((r) => (
                   <li key={r.id} className="p-2.5 flex gap-3">
-                    {r.photo && <img src={r.photo} alt="" loading="lazy" className="w-16 h-16 rounded-md object-cover shrink-0" />}
+                    {r.photo && (r.photoUrl ? (
+                      <a href={r.photoUrl} target="_blank" rel="noopener noreferrer" className="relative shrink-0" aria-label={`ดูรูปเต็ม${r.photoCount > 1 ? ` (${r.photoCount} รูป)` : ''}`}>
+                        <img src={r.photo} alt="" loading="lazy" referrerPolicy="no-referrer" className="w-16 h-16 rounded-md object-cover" />
+                        {r.photoCount > 1 && <span className="absolute bottom-0.5 right-0.5 rounded bg-black/60 px-1 text-[10px] font-medium text-white">{r.photoCount}</span>}
+                      </a>
+                    ) : <img src={r.photo} alt="" loading="lazy" className="w-16 h-16 rounded-md object-cover shrink-0" />)}
                     <div className="min-w-0 flex-1">
                       {r.title && <p className="text-sm font-medium text-slate-900 leading-5">{r.title}</p>}
                       {r.text && <p className={`leading-5 line-clamp-2 ${r.title ? 'text-xs text-slate-600' : 'text-sm text-slate-900'}`}>{r.text}</p>}
@@ -170,7 +186,7 @@ function ReportList({ rows, loading, updatedAt }) {
               </ul>
               {g.list.length > REPORTS_SHOWN && (
                 <button type="button" onClick={() => setOpen(open === g.name ? null : g.name)} className="cursor-pointer mt-1 text-xs text-blue-700 hover:underline">
-                  {open === g.name ? 'ย่อ' : `ดูอีก ${g.list.length - REPORTS_SHOWN} เรื่อง`}
+                  {open === g.name ? 'แสดงน้อยลง' : `ดูอีก ${g.list.length - REPORTS_SHOWN} เรื่อง`}
                 </button>
               )}
             </section>
@@ -183,13 +199,22 @@ function ReportList({ rows, loading, updatedAt }) {
 
 export default function CitizenReportsSection({ isActive }) {
   const [traffy, setTraffy] = useState(null);
+  const [traffyFailed, setTraffyFailed] = useState(false);   // this page's last request for Traffy failed
   const [longdo, setLongdo] = useState(null);
   const [hdms, setHdms] = useState(null);
   const [js100, setJs100] = useState(null);
 
   const load = useCallback(() => {
     // one feed failing must not hide the other: a failure counts as an empty list
-    fetchFloodReports().then(setTraffy).catch(() => setTraffy((x) => x || { items: [] }));
+    fetchFloodReports()
+      .then((r) => {
+        setTraffy(r);
+        setTraffyFailed(false);
+      })
+      .catch(() => {
+        setTraffy((x) => x || { items: [] });
+        setTraffyFailed(true);
+      });
     fetchLongdoFloods().then(setLongdo).catch(() => setLongdo((x) => x || { items: [] }));
     fetchHdmsFloods().then(setHdms).catch(() => setHdms((x) => x || { items: [] }));
     fetchJs100Floods().then(setJs100).catch(() => setJs100((x) => x || { items: [] }));
@@ -204,10 +229,14 @@ export default function CitizenReportsSection({ isActive }) {
 
   const rows = useMemo(() => mergeReports(traffy, longdo, hdms, js100), [traffy, longdo, hdms, js100]);
   const updatedAt = Math.max(traffy?.updated_at || 0, longdo?.updated_at || 0, hdms?.updated_at || 0, js100?.updated_at || 0) || null;
+  // Traffy has never answered (server just started, or the API is down): its empty list is not "no reports"
+  const traffyDown = traffy !== null && !traffy.updated_at;
+  // Traffy answered before but the latest update failed (on the server, or this page's request): old reports on show
+  const traffyOldAt = traffy?.updated_at && (traffy.error || traffyFailed) ? traffy.updated_at : null;
 
   return (
     <div className="flex flex-col gap-4">
-      <ReportList rows={rows} loading={traffy === null || longdo === null || hdms === null || js100 === null} updatedAt={updatedAt} />
+      <ReportList rows={rows} loading={traffy === null || longdo === null || hdms === null || js100 === null} updatedAt={updatedAt} traffyDown={traffyDown} traffyOldAt={traffyOldAt} />
       <TraffyAnalysisCard isActive={isActive} />
       <TraffyHistoryCard isActive={isActive} />
     </div>

@@ -21,7 +21,7 @@ export function SectionHeader({ id, title, description, action, className = '' }
         </h3>
         {description && <p className="text-[13px] text-slate-600 mt-0.5 leading-5">{description}</p>}
       </div>
-      {action && <div className="shrink-0">{action}</div>}
+      {action && <div className="shrink-0 max-w-full">{action}</div>}
     </div>
   );
 }
@@ -81,7 +81,7 @@ export function Spinner({ className = 'w-4 h-4' }) {
 // Tab-like control; `options` is [[value, label], ...]
 export function Segmented({ options, value, onChange, label }) {
   return (
-    <div role="tablist" aria-label={label} className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5">
+    <div role="tablist" aria-label={label} className="inline-flex max-w-full overflow-x-auto rounded-lg border border-slate-200 bg-slate-100 p-0.5">
       {options.map(([k, text]) => {
         const on = value === k;
         return (
@@ -91,7 +91,7 @@ export function Segmented({ options, value, onChange, label }) {
             role="tab"
             aria-selected={on}
             onClick={() => onChange(k)}
-            className={`cursor-pointer rounded-md px-3 h-7 text-xs font-medium transition-colors duration-150 ${FOCUS} ${
+            className={`cursor-pointer shrink-0 whitespace-nowrap rounded-md px-3 h-7 text-xs font-medium transition-colors duration-150 ${FOCUS} ${
               on ? 'bg-white text-slate-900 border border-slate-200' : 'text-slate-600 hover:text-slate-900 border border-transparent'
             }`}
           >

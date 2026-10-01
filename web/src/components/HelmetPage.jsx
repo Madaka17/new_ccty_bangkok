@@ -7,11 +7,11 @@ import { fmtNum, fmtTime, fmtDateTime } from './dashboard/format.js';
 const POLL_MS = 30000;
 const TABS = [
   { id: 'violations', label: 'ไม่สวมหมวกกันน็อก' },
-  { id: 'captures', label: 'มอไซที่จับภาพได้' },
+  { id: 'captures', label: 'มอเตอร์ไซค์ที่ถ่ายได้' },
   { id: 'cameras', label: 'กล้องทุกตัว' },
 ];
 const VERDICT_TONE = { no_helmet: 'red', helmet: 'green', pending: 'blue', unclear: 'neutral', error: 'yellow' };
-const LEVEL = { online: { tone: 'green', label: 'ออนไลน์' }, offline: { tone: 'neutral', label: 'ออฟไลน์' }, unknown: { tone: 'neutral', label: 'รอสแกน' } };
+const LEVEL = { online: { tone: 'green', label: 'ใช้งานได้' }, offline: { tone: 'neutral', label: 'ไม่มีภาพ' }, unknown: { tone: 'neutral', label: 'รอตรวจ' } };
 
 // Helmet patrol over all 574 BMA cameras: every motorcycle the scanner sees is cropped, a vision
 // agent decides helmet / no helmet, and each no-helmet case is archived on the data drive.
@@ -78,7 +78,7 @@ export default function HelmetPage({ isActive, onToast }) {
       const r = await reanalyseHelmet(item.id, agent);
       if (r.ok) {
         setOpen(r.item);
-        onToast?.(`${r.item.verdict_th}${r.item.confidence != null ? ` (${Math.round(r.item.confidence * 100)}%)` : ''} · ${r.item.source}`);
+        onToast?.(`${r.item.verdict_th}${r.item.confidence != null ? ` (มั่นใจ ${Math.round(r.item.confidence * 100)}%)` : ''} · ${r.item.source === 'local' ? 'AI ของระบบ' : 'AI ตรวจซ้ำ'}`);
         load();
       } else onToast?.(r.error);
     } catch {
@@ -92,7 +92,7 @@ export default function HelmetPage({ isActive, onToast }) {
     setBulk(agent);
     try {
       const r = await reanalyseHelmetPending(agent, agent === 'local' ? 300 : 60);
-      const who = agent === 'local' ? localModel : status?.agent_model || 'AI';
+      const who = agent === 'local' ? 'AI ของระบบ' : 'AI ตรวจซ้ำ';
       const eta = agent === 'local' ? 'ผลจะขึ้นในไม่กี่วินาที' : 'ผลจะทยอยขึ้นใน 1-3 นาที';
       onToast?.(r.queued ? `ส่งภาพที่ยังไม่ชัด ${r.queued} ภาพให้ ${who} ตรวจใหม่ ${eta}` : 'ไม่มีภาพค้างตรวจ');
       setTimeout(load, agent === 'local' ? 3000 : 8000);
@@ -116,8 +116,8 @@ export default function HelmetPage({ isActive, onToast }) {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title="ตรวจหมวกกันน็อกจากกล้อง กทม."
-        description="ทุกรอบสแกน (~4 นาที) ระบบตัดภาพมอไซทุกคันที่เห็นหัวชัดพอ ให้โมเดลตรวจหมวกที่เทรนเอง (YOLO26x) คัดกรองก่อน แล้ว AI agent ยืนยัน ถ้าไม่สวมจะบันทึกภาพเต็ม + ภาพขยายลง Drive E: อัตโนมัติ"
+        title="คนไม่สวมหมวกกันน็อก (กล้อง กทม.)"
+        description="ทุก ~3 นาที AI ดูมอเตอร์ไซค์ในภาพกล้อง กทม. ถ้าเห็นคนไม่สวมหมวกจะเก็บภาพไว้เป็นหลักฐาน · ผลจาก AI ต้องให้เจ้าหน้าที่ตรวจซ้ำก่อนใช้งาน"
         actions={
           <div className="flex items-center gap-2">
             <select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700">
@@ -132,21 +132,21 @@ export default function HelmetPage({ isActive, onToast }) {
       />
 
       {agentOff && (
-        <StatusBanner tone="yellow" label="AI agent ปิดอยู่">
+        <StatusBanner tone="yellow" label="AI ตรวจซ้ำยังไม่พร้อม (สำหรับผู้ดูแลระบบ)">
           ตั้ง <code>GEMINI_API_KEY</code> (หรือ <code>ANTHROPIC_API_KEY</code>) ใน .env หรือวางโมเดล <code>helmet_det.pt</code> ที่ root แล้วรีสตาร์ต server
         </StatusBanner>
       )}
       {status && !status.archive_ok && (
-        <StatusBanner tone="red" label="ไม่พบไดรฟ์เก็บหลักฐาน">
-          {status.archive_dir} เข้าไม่ได้ ระบบยังตรวจต่อแต่จะไม่มีไฟล์ภาพลงไดรฟ์
+        <StatusBanner tone="red" label="เก็บภาพหลักฐานไม่ได้">
+          เปิดที่เก็บไฟล์ {status.archive_dir} ไม่ได้ ระบบยังตรวจต่อ แต่จะไม่มีไฟล์ภาพเก็บไว้
         </StatusBanner>
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatTile label="มอไซที่จับภาพวันนี้" value={fmtNum(t.captures)} sub={`รอตรวจ ${fmtNum(t.pending ?? 0)} คัน`} loading={!status} />
+        <StatTile label="มอเตอร์ไซค์ที่ถ่ายได้วันนี้" value={fmtNum(t.captures)} sub={`รอตรวจ ${fmtNum(t.pending ?? 0)} คัน`} loading={!status} />
         <StatTile label="ไม่สวมหมวกวันนี้" value={fmtNum(t.no_helmet)} tone="red" sub={`สะสมทั้งหมด ${fmtNum(status?.total_no_helmet)} คัน`} loading={!status} />
         <StatTile label="สวมหมวก" value={fmtNum(t.helmet)} tone="green" sub={`มองไม่ชัด ${fmtNum(t.unclear ?? 0)}`} loading={!status} />
-        <StatTile label="ตรวจล่าสุด" value={status?.last_check ? fmtTime(status.last_check) : '–'} sub={status ? `คิวรอ ${status.queue} · โมเดล ${localModel || 'ไม่มี'} + ${status.agent_model || 'ไม่มี agent'}` : ''} loading={!status} />
+        <StatTile label="ตรวจล่าสุด" value={status?.last_check ? fmtTime(status.last_check) : '–'} sub={status ? `รอตรวจ ${status.queue} ภาพ` : ''} loading={!status} />
       </div>
 
       <Tabs
@@ -163,15 +163,15 @@ export default function HelmetPage({ isActive, onToast }) {
       {tab === 'captures' && (
         <>
           <div className="flex flex-wrap items-center gap-2 -mt-1">
-            <span className="text-xs text-slate-500">ตรวจภาพที่ยังไม่ชัดอีกครั้งด้วย:</span>
+            <span className="text-xs text-slate-500">ให้ตรวจภาพที่ยังไม่ชัดอีกครั้งด้วย:</span>
             <Button size="sm" variant="primary" onClick={() => judgePending('local')} loading={bulk === 'local'} disabled={!localModel || !!bulk}>
-              {localModel || 'โมเดลในเครื่อง'} (ฟรี ทันที)
+              AI ของระบบ (เร็ว)
             </Button>
             <Button size="sm" onClick={() => judgePending('cloud')} loading={bulk === 'cloud'} disabled={!status?.agent || status.agent === 'off' || !!status?.agent_error || !!bulk}>
-              {status?.agent_model || 'AI agent'}
+              AI ตรวจซ้ำ (ละเอียดกว่า)
             </Button>
           </div>
-          <EvidenceGrid items={captures} onOpen={setOpen} compact empty="ยังไม่มีภาพมอไซที่จับได้ รอรอบสแกนถัดไปหรือกด 'ตรวจตอนนี้' ที่แท็บกล้อง" />
+          <EvidenceGrid items={captures} onOpen={setOpen} compact empty="ยังไม่มีภาพมอเตอร์ไซค์ รอรอบถัดไป หรือกด 'ตรวจตอนนี้' ที่แท็บกล้องทุกตัว" />
         </>
       )}
 
@@ -186,16 +186,16 @@ export default function HelmetPage({ isActive, onToast }) {
             />
             <label className="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
               <input type="checkbox" checked={onlyMoto} onChange={(e) => setOnlyMoto(e.target.checked)} className="accent-blue-600" />
-              เฉพาะกล้องที่เห็นมอไซ
+              เฉพาะกล้องที่เห็นมอเตอร์ไซค์
             </label>
-            <span className="ml-auto text-xs text-slate-500">{camList.length} จาก {cameras?.length ?? 0} กล้อง · เรียงตามไม่สวมหมวก / จับภาพ / มอไซตอนนี้</span>
+            <span className="ml-auto text-xs text-slate-500">{camList.length} จาก {cameras?.length ?? 0} กล้อง</span>
           </div>
           {!cameras ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
               {[1, 2, 3, 4, 5, 6].map((n) => <Skeleton key={n} className="h-24" />)}
             </div>
           ) : camList.length === 0 ? (
-            <EmptyState title="ไม่มีกล้องตรงเงื่อนไข" description="ลองปิดตัวกรอง 'เฉพาะกล้องที่เห็นมอไซ'" />
+            <EmptyState title="ไม่มีกล้องตรงเงื่อนไข" description="ลองปิดตัวกรอง 'เฉพาะกล้องที่เห็นมอเตอร์ไซค์'" />
           ) : (
             <ul className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
               {camList.slice(0, 150).map((c) => {
@@ -209,8 +209,8 @@ export default function HelmetPage({ isActive, onToast }) {
                       <Truncate text={c.title} className="text-sm font-medium text-slate-900" />
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-600 mt-0.5">
                         <Badge tone={lv.tone}>{lv.label}</Badge>
-                        <span className="tabular-nums">มอไซตอนนี้ {c.motorcycles}</span>
-                        <span className="tabular-nums">จับภาพวันนี้ {c.captures}</span>
+                        <span className="tabular-nums">มอเตอร์ไซค์ตอนนี้ {c.motorcycles}</span>
+                        <span className="tabular-nums">ถ่ายได้วันนี้ {c.captures}</span>
                         {c.no_helmet > 0 && <span className="tabular-nums font-medium text-red-700">ไม่สวมหมวก {c.no_helmet}</span>}
                       </div>
                       {c.district && <span className="block text-xs text-slate-500 truncate">{c.district}</span>}
@@ -232,25 +232,25 @@ export default function HelmetPage({ isActive, onToast }) {
           <div className="flex flex-col gap-3">
             <div className="grid grid-cols-1 md:grid-cols-[1fr_260px] gap-3">
               <img src={open.frame} alt="ภาพเต็มจากกล้อง" className="w-full rounded-lg border border-slate-200 bg-slate-900" />
-              <img src={open.crop} alt="ภาพขยายมอไซ" className="w-full rounded-lg border border-slate-200 bg-slate-900" />
+              <img src={open.crop} alt="ภาพขยายมอเตอร์ไซค์" className="w-full rounded-lg border border-slate-200 bg-slate-900" />
             </div>
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <Badge tone={VERDICT_TONE[open.verdict]} dot={open.verdict === 'no_helmet'}>{open.verdict_th}</Badge>
               {open.riders != null && <span className="text-slate-700">ผู้ขับขี่/ซ้อน {open.riders} คน · ไม่สวม {open.no_helmet ?? 0} คน</span>}
-              {open.confidence != null && <span className="text-slate-500 tabular-nums">ความมั่นใจ {Math.round(open.confidence * 100)}%</span>}
-              {open.source && <span className="text-slate-500">ตรวจโดย {open.source === 'local' ? localModel || 'โมเดลในเครื่อง' : open.source}</span>}
+              {open.confidence != null && <span className="text-slate-500 tabular-nums">AI มั่นใจ {Math.round(open.confidence * 100)}%</span>}
+              {open.source && <span className="text-slate-500">ตรวจโดย {open.source === 'local' ? 'AI ของระบบ' : 'AI ตรวจซ้ำ'}</span>}
             </div>
             {open.note && <p className="text-sm text-slate-700">{open.note}</p>}
             <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200">
-              <span className="text-xs text-slate-500">วิเคราะห์ใหม่ด้วย:</span>
+              <span className="text-xs text-slate-500">ตรวจใหม่ด้วย:</span>
               <Button size="sm" variant="primary" onClick={() => judge(open, 'local')} loading={judging === 'local'} disabled={!localModel || !!judging}>
-                {localModel || 'โมเดลในเครื่อง'}
+                AI ของระบบ
               </Button>
               <Button size="sm" onClick={() => judge(open, 'cloud')} loading={judging === 'cloud'} disabled={!status?.agent || status.agent === 'off' || !!judging}>
-                {status?.agent_model || 'Gemini'}{status?.agent_error ? ' (หยุดชั่วคราว)' : ''}
+                AI ตรวจซ้ำ{status?.agent_error ? ' (พักอยู่)' : ''}
               </Button>
             </div>
-            {open.archive && <p className="text-xs text-slate-500 break-all">ไฟล์หลักฐาน: {open.archive}</p>}
+            {open.archive && <p className="text-xs text-slate-500 break-all">ที่เก็บภาพหลักฐาน: {open.archive}</p>}
           </div>
         )}
       </Modal>

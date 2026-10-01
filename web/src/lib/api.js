@@ -11,6 +11,20 @@ export async function fetchCameras() {
   return data.items || [];
 }
 
+// Every camera for the live camera page: ours, the rest of iTIC's (via Longdo) and the BMA ones (source 'bma')
+export async function fetchAllCameras() {
+  const res = await fetch('/api/cameras/all');
+  if (!res.ok) throw new Error('all_cameras');
+  return (await res.json()).items || [];
+}
+
+// { checked_at, items: { camid: 'online' | 'offline' } } for the live-AI cameras
+export async function fetchCameraHealth() {
+  const res = await fetch('/api/cameras/health');
+  if (!res.ok) throw new Error('camera_health');
+  return res.json();
+}
+
 export async function fetchLongdoCameras() {
   try {
     const res = await fetch('/api/cameras/longdo');
@@ -211,6 +225,31 @@ export async function fetchWeatherNow(lat, lng) {
 export async function fetchFloodReports() {
   const res = await fetch('/api/flood/reports');
   if (!res.ok) throw new Error('flood_reports');
+  return res.json();
+}
+
+// Flood reports from the public (user_reports.py): the published ones of the last hours
+export async function fetchUserReports() {
+  const res = await fetch('/api/flood/user-reports');
+  if (!res.ok) throw new Error('user_reports');
+  return res.json();
+}
+
+// Send one: { lat, lng, depth, note?, photo? (data: URL) } -> { id, status: published | pending | rejected, message }
+export async function postUserReport(body) {
+  const res = await fetch('/api/flood/user-reports', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const byStatus = { 413: 'รูปใหญ่เกินไป', 429: 'แจ้งถี่เกินไป ลองใหม่ภายหลัง' };
+    throw new Error(byStatus[res.status] || data.detail || 'ส่งไม่สำเร็จ ลองใหม่อีกครั้ง');
+  }
+  return data;
+}
+
+// AI flood watch on every BMA camera (flood_cam_service.py): counts + the cameras with water (all: every checked one)
+export async function fetchFloodCameras({ all = false } = {}) {
+  const res = await fetch(`/api/flood/cameras${all ? '?all=1' : ''}`);
+  if (!res.ok) throw new Error('flood_cameras');
   return res.json();
 }
 
@@ -432,6 +471,34 @@ export async function fetchWaterForecast(stationId) {
   return res.json();
 }
 
+// Northern rivers to the Central Plain: RID discharge, routed 4-day outlook, dams, warnings (north_flow.py)
+export async function fetchWaterNorth() {
+  const res = await fetch('/api/water/north');
+  if (!res.ok) throw new Error('water_north');
+  return res.json();
+}
+
+// AI read of which Bangkok districts the northern water reaches, when and why (north_impact_agent.py)
+export async function fetchNorthImpact() {
+  const res = await fetch('/api/water/north/impact');
+  if (!res.ok) throw new Error('north_impact');
+  return res.json();
+}
+
+export async function runNorthImpact() {
+  const res = await fetch('/api/water/north/impact/run', { method: 'POST' });
+  if (res.status === 403) throw new Error('forbidden');
+  if (!res.ok) throw new Error('north_impact_run');
+  return res.json();
+}
+
+// Nonthaburi roads beside the Chao Phraya and the chance the river tops its bank next to them (river_roads.py)
+export async function fetchNorthNonthaburi() {
+  const res = await fetch('/api/water/north/nonthaburi');
+  if (!res.ok) throw new Error('north_nonthaburi');
+  return res.json();
+}
+
 export async function fetchBMAEvents({ kind, hours = 24, limit = 60 } = {}) {
   const params = new URLSearchParams({ hours, limit });
   if (kind) params.set('kind', kind);
@@ -465,9 +532,10 @@ export async function triggerBmaScan() {
   return res.json();
 }
 
-export function getBmaSnapshotUrl(camid, live = false, t = null) {
+export function getBmaSnapshotUrl(camid, live = false, t = null, annotate = true) {
   const params = new URLSearchParams();
   if (live) params.set('live', '1');
+  if (!annotate) params.set('annotate', '0');   // the plain frame, without running YOLO on it
   if (t) params.set('t', String(t));
   const qs = params.toString();
   return `/api/bma/snapshot/${encodeURIComponent(camid)}${qs ? `?${qs}` : ''}`;

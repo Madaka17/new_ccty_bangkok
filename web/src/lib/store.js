@@ -97,14 +97,14 @@ export const PROVINCE_TONE = {
 
 // Traffic level of a camera (from the AI count / survey), shown as a pill on camera cards and video slots
 export const CAM_LEVEL = {
-  free: { text: 'ถนนโล่ง', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200', dot: '#059669' },
-  moderate: { text: 'รถปานกลาง', cls: 'bg-amber-50 text-amber-700 border border-amber-200', dot: '#d97706' },
-  heavy: { text: 'รถติดขัด', cls: 'bg-red-50 text-red-700 border border-red-200', dot: '#dc2626' },
+  free: { text: 'คล่องตัว', cls: 'bg-emerald-50 text-emerald-700 border border-emerald-200', dot: '#059669' },
+  moderate: { text: 'ชะลอตัว', cls: 'bg-amber-50 text-amber-700 border border-amber-200', dot: '#d97706' },
+  heavy: { text: 'ติดขัด', cls: 'bg-red-50 text-red-700 border border-red-200', dot: '#dc2626' },
 };
 
 export function camStatusText(st) {
   if (!st?.ts) return null;
   const m = Math.round((Date.now() / 1000 - st.ts) / 60);
   const ago = m < 1 ? 'เมื่อสักครู่' : m < 60 ? `${m} นาทีก่อน` : `${Math.round(m / 60)} ชม.ก่อน`;
-  return `${st.source === 'count' ? 'นับต่อเนื่อง' : 'AI สุ่มดู'} · รถผ่าน ${st.rate_per_min} คัน/นาที · ในภาพ ${Math.round(st.visible)} คัน · ${ago}`;
+  return `รถผ่าน ${st.rate_per_min} คัน/นาที · เห็นในภาพ ${Math.round(st.visible)} คัน · ${ago}`;
 }

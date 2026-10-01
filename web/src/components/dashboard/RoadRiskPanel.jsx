@@ -76,8 +76,8 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
       <Card className="p-5">
         <SectionHeader
           id="road-risk"
-          title="ความเสี่ยงน้ำท่วมขังรายถนน"
-          description={`${fmtNum(data.total)} สายในกรุงเทพฯ และปริมณฑล · จัดระดับตามเกณฑ์ สนน. กทม. + ปภ. (น้ำบนถนน), กรมอุตุนิยมวิทยา (ฝน 24 ชม.) และคลังข้อมูลน้ำแห่งชาติ (ระดับตลิ่ง)`}
+          title="ถนนแต่ละสาย: น้ำท่วมไหม ขับผ่านได้ไหม"
+          description={`${fmtNum(data.total)} สายในกรุงเทพฯ และปริมณฑล · แบ่งระดับตามเกณฑ์ของ กทม. ปภ. และกรมอุตุฯ`}
           action={
             <div className="flex items-center gap-2">
               {data.updated_at && <Badge tone={c.closed || c.avoid ? 'red' : c.passable ? 'yellow' : 'green'} dot>{fmtTime(data.updated_at)} น.</Badge>}
@@ -86,16 +86,16 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
           }
         />
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mt-4">
-          <StatTile label="ห้ามขับผ่าน" value={fmtNum(c.closed || 0)} tone={c.closed ? 'red' : undefined} sub="ปภ.: น้ำเกิน 60 ซม." />
-          <StatTile label="ควรเลี่ยงเส้นทาง" value={fmtNum(c.avoid || 0)} tone={c.avoid ? 'red' : undefined} sub="ปภ.: น้ำ 20-60 ซม." />
-          <StatTile label="ท่วม รถผ่านได้" value={fmtNum(c.passable || 0)} tone={c.passable ? 'yellow' : undefined} sub="สนน.: เกิน 10 ซม." />
-          <StatTile label="เฝ้าระวัง" value={fmtNum(c.watch || 0)} sub="น้ำ 5-10 ซม. หรือฝน/คลองสูง" />
-          <StatTile label="ปกติ" value={fmtNum(c.none || 0)} tone="green" sub="ไม่เข้าเกณฑ์ใด" />
+          <StatTile label="ห้ามขับผ่าน" value={fmtNum(c.closed || 0)} tone={c.closed ? 'red' : undefined} sub="น้ำสูงเกิน 60 ซม." />
+          <StatTile label="ควรเลี่ยงเส้นทาง" value={fmtNum(c.avoid || 0)} tone={c.avoid ? 'red' : undefined} sub="น้ำสูง 20-60 ซม." />
+          <StatTile label="ท่วม รถผ่านได้" value={fmtNum(c.passable || 0)} tone={c.passable ? 'yellow' : undefined} sub="น้ำสูง 10-20 ซม." />
+          <StatTile label="เฝ้าระวัง" value={fmtNum(c.watch || 0)} sub="น้ำ 5-10 ซม. หรือฝนหนัก คลองเต็ม" />
+          <StatTile label="ปกติ" value={fmtNum(c.none || 0)} tone="green" sub="ไม่มีน้ำท่วม" />
         </div>
         {data.error && (
-          <div className="mt-3"><StatusBanner tone="yellow" label="สร้างข้อมูลรอบล่าสุดไม่สำเร็จ">{data.error}</StatusBanner></div>
+          <div className="mt-3"><StatusBanner tone="yellow" label="อัปเดตรอบล่าสุดไม่สำเร็จ">แสดงข้อมูลรอบก่อนหน้า</StatusBanner></div>
         )}
-        {failed && !data.error && <p className="mt-3 text-xs text-amber-700">รีเฟรชรอบล่าสุดไม่สำเร็จ แสดงค่าก่อนหน้า</p>}
+        {failed && !data.error && <p className="mt-3 text-xs text-amber-700">อัปเดตรอบล่าสุดไม่สำเร็จ แสดงข้อมูลรอบก่อนหน้า</p>}
       </Card>
 
       {provinces.length > 0 && (
@@ -127,7 +127,7 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
         <SectionHeader
           id="road-table"
           title={province ? `ถนนในจังหวัด${province}` : 'ถนนทุกสาย'}
-          description="เรียงตามระดับตามเกณฑ์ · ทุกคอลัมน์คือค่าที่วัดได้จริงพร้อมชั้นตามเกณฑ์ของหน่วยงานเจ้าของข้อมูล"
+          description="เรียงจากสายที่น่าห่วงที่สุด · กดชื่อถนนเพื่อดูกล้อง"
           action={<Segmented label="กรองระดับ" options={LEVELS} value={level} onChange={(v) => { setLevel(v); setLimit(PAGE); }} />}
         />
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -141,7 +141,7 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
         </div>
 
         {rows.length === 0 ? (
-          <div className="mt-3"><EmptyState title="ไม่พบถนนที่ตรงกับเงื่อนไข" description="ลองเปลี่ยนคำค้น ระดับความเสี่ยง หรือล้างตัวกรองจังหวัด" /></div>
+          <div className="mt-3"><EmptyState title="ไม่พบถนนที่ค้นหา" description="ลองเปลี่ยนคำค้น ระดับ หรือล้างตัวกรองจังหวัด" /></div>
         ) : (
           <>
             <p className="mt-2 text-xs text-slate-500">แสดง {fmtNum(Math.min(limit, rows.length))} จาก {fmtNum(rows.length)} สาย</p>
@@ -155,7 +155,7 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
                     <th className="py-2 pr-3 font-medium text-right">ฝน 24 ชม.</th>
                     <th className="py-2 pr-3 font-medium text-right">คลอง/แม่น้ำ</th>
                     <th className="py-2 pr-3 font-medium text-right">รถติด</th>
-                    <th className="py-2 font-medium text-right">ระดับตามเกณฑ์</th>
+                    <th className="py-2 font-medium text-right">ขับผ่านได้ไหม</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -182,10 +182,10 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
                             <>
                               <span className={`tabular-nums ${CLS_WEIGHT(r.water_class)} ${CLS_TEXT[r.water_class || 0]}`}>{r.flood_cm} ซม.</span>
                               <span className="block text-[11px] text-slate-500" title={r.water_source || ''}>{r.water_label}</span>
-                              {r.flood_trend && <span className="block text-[11px] text-slate-500">{TREND_MARK[r.flood_trend]} {r.wet_sensors}/{r.sensors} จุด</span>}
+                              {r.flood_trend && <span className="block text-[11px] text-slate-500">{TREND_MARK[r.flood_trend]} เปียก {r.wet_sensors} จาก {r.sensors} จุดวัด</span>}
                             </>
                           ) : (
-                            <span className="text-[11px] text-slate-400" title="ถนนสายนี้ไม่มีเซ็นเซอร์วัดน้ำบนผิวถนน จึงระบุไม่ได้ว่าท่วมหรือไม่">ไม่มีเซ็นเซอร์</span>
+                            <span className="text-[11px] text-slate-400" title="ถนนสายนี้ไม่มีเครื่องวัดน้ำบนถนน จึงบอกไม่ได้ว่าท่วมหรือไม่">ไม่มีเครื่องวัด</span>
                           )}
                         </td>
                         <td className="py-2 pr-3 text-right whitespace-nowrap">
@@ -193,7 +193,6 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
                             <>
                               <span className={`tabular-nums ${CLS_WEIGHT(r.rain_class)} ${CLS_TEXT[r.rain_class || 0]}`}>{r.rain_24h} มม.</span>
                               <span className="block text-[11px] text-slate-500" title={r.rain_source || ''}>{r.rain_label}</span>
-                              <span className="block text-[11px] text-slate-400">ห่าง {r.rain_km} กม.</span>
                             </>
                           ) : <span className="text-slate-400">–</span>}
                         </td>
@@ -213,7 +212,7 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
                         <td className="py-2 text-right whitespace-nowrap">
                           <Badge tone={rk.tone} dot={r.level !== 'none'}>{r.level_th}</Badge>
                           <span className="block text-[11px] text-slate-400 mt-0.5">
-                            {r.basis === 'sensor' ? 'วัดบนถนนจริง' : r.basis === 'both' ? 'เซ็นเซอร์ + รอบข้าง' : r.basis === 'inferred' ? 'ประเมินจากรอบข้าง' : '–'}
+                            {r.basis === 'sensor' ? 'วัดจากถนนจริง' : r.basis === 'both' ? 'วัดจริงและดูรอบ ๆ' : r.basis === 'inferred' ? 'ประเมินจากรอบ ๆ' : '–'}
                           </span>
                         </td>
                       </tr>
@@ -233,9 +232,12 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
       </Card>
 
       {data.standards && (
-        <Card className="p-5">
-          <SectionHeader id="road-standards" title="เกณฑ์ที่ใช้จัดระดับ" description="ทุกชั้นมาจากประกาศของหน่วยงานเจ้าของข้อมูล ไม่ได้ตั้งเอง" />
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <details className="group rounded-xl border border-slate-200 bg-white">
+          <summary className={`cursor-pointer list-none px-5 py-3 text-sm font-semibold text-slate-900 flex items-center gap-2 ${FOCUS}`}>
+            <span className="transition-transform group-open:rotate-90" aria-hidden="true">▸</span>
+            เกณฑ์ที่ใช้แบ่งระดับ (มาจากประกาศของหน่วยงานรัฐ)
+          </summary>
+          <div className="px-5 pb-5 grid grid-cols-1 md:grid-cols-3 gap-4">
             {[['น้ำบนผิวถนน', data.standards.water, 'upto_cm', 'ซม.'],
               ['ฝนสะสม 24 ชม.', data.standards.rain, 'upto_mm', 'มม.'],
               ['ระดับคลอง/แม่น้ำ', data.standards.gauge, 'upto_pct', '%']].map(([title, bands, key, unit]) => (
@@ -258,7 +260,7 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
               </div>
             ))}
           </div>
-        </Card>
+        </details>
       )}
     </div>
   );

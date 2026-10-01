@@ -2,6 +2,51 @@ import { useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js';
 import { motion } from 'framer-motion';
 import { PROVINCE_TONE, CAM_LEVEL, camStatusText } from '../lib/store.js';
+import { getBmaSnapshotUrl } from '../lib/api.js';
+
+const BMA_REFRESH_MS = 3000;
+
+// BMA cameras have no video: show the scanner's last frame at once, then a fresh one every few seconds.
+// The next frame loads off screen and replaces the shown one only when complete, so the picture never blanks.
+function BmaFrames({ cam, onOffline }) {
+ const [src, setSrc] = useState(() => getBmaSnapshotUrl(cam.bma_id, false, null, false));
+ const offline = useRef(onOffline);
+ offline.current = onOffline;
+ useEffect(() => {
+ let alive = true;
+ let fails = 0;
+ let timer;
+ const next = () => {
+ const img = new Image();
+ img.onload = () => {
+ if (!alive) return;
+ fails = 0;
+ setSrc(img.src);
+ timer = setTimeout(next, BMA_REFRESH_MS);
+      };
+ img.onerror = () => {
+ if (!alive) return;
+ if (++fails >= 3) offline.current();
+ else timer = setTimeout(next, BMA_REFRESH_MS);
+      };
+ img.src = getBmaSnapshotUrl(cam.bma_id, true, Date.now(), false);
+    };
+ next();
+ return () => {
+ alive = false;
+ clearTimeout(timer);
+    };
+  }, [cam.bma_id]);
+ return (
+    <img
+ src={src}
+ alt=""
+ onLoad={(e) => (e.currentTarget.style.visibility = 'visible')}
+ onError={(e) => (e.currentTarget.style.visibility = 'hidden')}
+ className="absolute inset-0 w-full h-full object-cover"
+    />
+  );
+}
 
 export default function VideoSlot({ cam, status: aiStatus, incident, onClose, onOpenAI }) {
  const videoRef = useRef(null);
@@ -10,6 +55,10 @@ export default function VideoSlot({ cam, status: aiStatus, incident, onClose, on
 
  useEffect(() => {
  const video = videoRef.current;
+ if (cam?.source === 'bma') {
+ setStatus('frames');
+ return;
+    }
  if (!cam?.hls_url && cam?.vdourl) {
  setStatus('mjpeg');
  return;
@@ -63,7 +112,7 @@ export default function VideoSlot({ cam, status: aiStatus, incident, onClose, on
  return () => {
  if (hls) hls.destroy();
     };
-  }, [cam?.hls_url, attempt]);
+  }, [cam?.hls_url, cam?.source, attempt]);
 
  useEffect(() => {
  if (status === 'offline') {
@@ -102,9 +151,12 @@ export default function VideoSlot({ cam, status: aiStatus, incident, onClose, on
             สด
           </span>
         )}
-        <button type="button" onClick={onOpenAI} title="เปิดผู้ช่วย AI กับกล้องนี้" className="cursor-pointer h-7 px-2 rounded-md text-[11px] text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors duration-200">
-          AI
-        </button>
+        {status === 'frames' && <span className="hidden sm:inline text-[11px] text-slate-500">รูปทุก {BMA_REFRESH_MS / 1000} วิ</span>}
+        {onOpenAI && (
+          <button type="button" onClick={onOpenAI} title="ให้ AI นับรถจากกล้องนี้" className="cursor-pointer h-7 px-2 rounded-md text-[11px] text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors duration-200">
+            AI
+          </button>
+        )}
         <button type="button" onClick={fullscreen} title="ขยายเต็มจอ" className="cursor-pointer h-7 px-2 rounded-md text-[11px] text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors duration-200">
           เต็มจอ
         </button>
@@ -118,12 +170,13 @@ export default function VideoSlot({ cam, status: aiStatus, incident, onClose, on
         {status === 'mjpeg' && (
           <img src={`${cam.vdourl}${cam.vdourl.includes('?') ? '&' : '?'}t=${attempt}`} alt="" onError={() => setStatus('offline')} className="absolute inset-0 w-full h-full object-cover" />
         )}
+        {status === 'frames' && <BmaFrames cam={cam} onOffline={() => setStatus('offline')} />}
 
         {(status === 'live' || status === 'mjpeg') && (
           <div className="absolute bottom-2 left-2 flex items-center gap-1.5">
             {incident ? (
               <span className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold bg-red-600 text-white " title={incident.description || ''}>
-                {incident.kind === 'breakdown' ? 'รถเสียกีดขวาง' : 'อุบัติเหตุ'}
+                {incident.kind === 'breakdown' ? 'รถเสียขวางถนน' : 'อุบัติเหตุ'}
               </span>
             ) : level ? (
               <span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium  ${level.cls}`} title={camStatusText(aiStatus)}>
@@ -132,7 +185,7 @@ export default function VideoSlot({ cam, status: aiStatus, incident, onClose, on
                 <span className="opacity-70 font-normal">· {aiStatus.rate_per_min} คัน/นาที</span>
               </span>
             ) : (
-              <span className="rounded-lg px-2.5 py-1 text-xs bg-white text-slate-500 border border-slate-200">รอ AI วัด</span>
+              <span className="rounded-lg px-2.5 py-1 text-xs bg-white text-slate-500 border border-slate-200">AI ยังไม่ได้ดู</span>
             )}
           </div>
         )}
@@ -147,7 +200,7 @@ export default function VideoSlot({ cam, status: aiStatus, incident, onClose, on
         {status === 'offline' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center px-4 bg-slate-50">
             <p className="font-medium text-ink-900">ไม่มีสัญญาณภาพ</p>
-            <p className="text-xs text-ink-600">กล้องออฟไลน์ กำลังนำออกจากจอ...</p>
+            <p className="text-xs text-ink-600">กล้องนี้ไม่มีภาพ กำลังนำออกจากจอ...</p>
             <div className="flex items-center gap-2 mt-1">
               <button
  type="button"

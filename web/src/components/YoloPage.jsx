@@ -18,7 +18,8 @@ const levelTone = (level) => LEVEL_TONE[level] || LEVEL_TONE.free;
 export default function YoloPage({ active, cameras, favorites, camid, incidents, onPickCamera, onToast, onAsk }) {
  const [stats, setStats] = useState(EMPTY);
  const [streamSrc, setStreamSrc] = useState('');
- const [feedState, setFeedState] = useState('loading'); // loading | live | error
+ const [feedState, setFeedState] = useState('loading'); // loading | live | offline | error
+ const [model, setModel] = useState('AI');
  const [showOptions, setShowOptions] = useState(false);
  const [fps, setFps] = useState(10);
  const [conf, setConf] = useState(20);
@@ -57,9 +58,13 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
     const id = setInterval(async () => {
       try {
         const s = await fetchAIStats();
-        setStats(s);
+        if (s.model) setModel(s.model);
         if (typeof s.night_mode === 'boolean') setNightMode(s.night_mode);
-        if (s.active && s.camid === camid) setFeedState('live');
+        // Until the server reports this camera, the numbers still belong to the previous one
+        if (s.camid !== camid) return;
+        setStats(s);
+        if (s.active) setFeedState('live');
+        else if (s.stream_error) setFeedState('offline');
       } catch {
         setFeedState('error');
       }
@@ -79,7 +84,7 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
     setNightMode(next);
     try {
       await setAINightMode(next);
-      onToast?.(next ? '🌙 เปิดโหมดกลางคืน (เร่งแสงสว่าง)' : '☀️ ปิดโหมดกลางคืน');
+      onToast?.(next ? '🌙 ทำภาพให้สว่างขึ้นแล้ว' : '☀️ กลับเป็นภาพปกติ');
     } catch {}
   };
 
@@ -125,7 +130,7 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
  ctx.fillText(`รถยนต์ ${stats.cars || 0}  ·  มอเตอร์ไซค์ ${stats.motorcycles || 0}  ·  รถบรรทุก ${stats.trucks || 0}  ·  ${level.text}  ·  ${new Date().toLocaleString('th-TH')}`, pad, y + 60);
  const a = document.createElement('a');
  a.href = canvas.toDataURL('image/jpeg', 0.92);
- a.download = `yolo11x-${cam?.camid || 'view'}-${Date.now()}.jpg`;
+ a.download = `${model.toLowerCase()}-${cam?.camid || 'view'}-${Date.now()}.jpg`;
  a.click();
  onToast('บันทึกภาพวิวของคุณเรียบร้อย');
   };
@@ -137,10 +142,10 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
 
  return (
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
-      <section className="glass rounded-xl p-5 sm:p-6" aria-label="AI ตรวจจับรถ YOLO11x">
+      <section className="glass rounded-xl p-5 sm:p-6" aria-label="AI นับรถสด">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold text-slate-900 leading-7">AI ตรวจจับรถสด</h1>
-          <p className="text-[13px] text-slate-600 mt-0.5">YOLO11x นับรถยนต์ มอเตอร์ไซค์ รถบรรทุก จากภาพกล้องที่เลือก ประมาณ 5 ภาพต่อวินาที</p>
+          <h2 className="text-[17px] font-semibold text-slate-900 leading-6">AI นับรถสด</h2>
+          <p className="text-[13px] text-slate-600 mt-0.5">AI นับรถยนต์ มอเตอร์ไซค์ และรถบรรทุก จากภาพสดของกล้องที่เลือก</p>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -160,7 +165,7 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
             <img
               ref={imgRef}
               src={streamSrc}
-              alt="ภาพสดจากกล้องพร้อมผลตรวจจับรถ"
+              alt="ภาพสดจากกล้อง พร้อมกรอบรถที่ AI เห็น"
               onError={() => setFeedState('error')}
               style={nightMode ? { filter: 'brightness(1.16) contrast(1.08)' } : undefined}
               className={`w-full h-full object-contain bg-cream-100 transition-all duration-300 ${feedState === 'live' ? 'opacity-100' : 'opacity-0'}`}
@@ -171,12 +176,17 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
               {feedState === 'loading' ? (
                 <>
                   <span className="w-9 h-9 rounded-full border-4 border-slate-200 border-t-blue-600 animate-spin" />
-                  YOLO11x กำลังมองดูถนนให้คุณ...
+                  AI กำลังดูถนนให้คุณ...
+                </>
+              ) : feedState === 'offline' ? (
+                <>
+                  <p className="font-medium text-ink-900">กล้องนี้ไม่มีสัญญาณตอนนี้</p>
+                  <p className="text-xs text-center px-6">ระบบจะลองต่อใหม่เอง หรือเลือกกล้องอื่นก่อน</p>
                 </>
               ) : (
                 <>
-                  <p className="font-medium text-ink-900">AI ยังไม่ทำงาน</p>
-                  <p className="text-xs">เปิด launch/localhost_8000/start.bat แล้วลองใหม่อีกครั้งนะ</p>
+                  <p className="font-medium text-ink-900">AI ยังไม่พร้อม</p>
+                  <p className="text-xs">ลองใหม่อีกครั้งในอีกสักครู่</p>
                 </>
               )}
             </div>
@@ -185,8 +195,8 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
           {incident && (
             <div role="alert" className="absolute top-3 left-3 right-3 rounded-lg bg-red-600 text-white px-4 py-2.5 flex items-start gap-3">
               <div className="min-w-0">
-                <p className="font-semibold text-sm">{incident.kind === 'breakdown' ? 'รถเสีย / จอดกีดขวางเลน' : 'อุบัติเหตุ'} · AI ตรวจพบ</p>
-                <p className="text-xs opacity-90 line-clamp-2">{incident.description || `รถจอดนิ่ง ${incident.stopped_s} วินาทีขณะรถคันอื่นวิ่ง`}</p>
+                <p className="font-semibold text-sm">{incident.kind === 'breakdown' ? 'รถเสียขวางถนน' : 'อุบัติเหตุ'} · AI เห็น</p>
+                <p className="text-xs opacity-90 line-clamp-2">{incident.description || `มีรถจอดนิ่งนาน ${incident.stopped_s} วินาที ขณะคันอื่นยังวิ่ง`}</p>
               </div>
             </div>
           )}
@@ -204,12 +214,12 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
                 ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-md shadow-amber-500/20'
                 : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50'
             }`}
-            title="เร่งความสว่างและคอนทราสต์ของภาพในเวลากลางคืน ช่วยให้มองเห็นถนนและรถในเงามืดได้ชัดเจนขึ้น"
+            title="ทำภาพให้สว่างขึ้น ช่วยให้เห็นรถในที่มืดตอนกลางคืน"
           >
-            <span>{nightMode ? '🌙 โหมดกลางคืน: เปิด' : '🌙 โหมดกลางคืน (เร่งแสงสว่าง)'}</span>
+            <span>{nightMode ? '🌙 ภาพสว่างขึ้น: เปิดอยู่' : '🌙 ทำภาพให้สว่างขึ้น (กลางคืน)'}</span>
           </button>
           <button type="button" onClick={() => onAsk(cam?.short_title || '')} className="cursor-pointer inline-flex items-center gap-2 rounded-lg bg-white text-slate-800 border border-slate-300 px-4 py-2.5 text-sm hover:bg-slate-50 transition-colors duration-200">
-            ถามผู้ช่วยเรื่องถนนนี้
+            ถาม AI เรื่องถนนนี้
           </button>
           <div className="relative">
             <button type="button" onClick={() => setShowOptions((v) => !v)} aria-expanded={showOptions} className="cursor-pointer inline-flex items-center gap-2 rounded-lg bg-white border border-slate-300 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors duration-200">
@@ -218,23 +228,23 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
             <AnimatePresence>
               {showOptions && (
                 <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} className="absolute left-0 bottom-full mb-2 z-10 glass-strong rounded-xl p-4 w-80">
-                  <p className="text-xs text-ink-600 mb-2">ความเร็วประมวลผล (FPS)</p>
+                  <p className="text-xs text-ink-600 mb-2">AI ดูภาพกี่ภาพต่อวินาที</p>
                   <div className="flex gap-1.5">
                     {[5, 10, 15, 20].map((v) => (
                       <button key={v} type="button" onClick={() => applyFps(v)} aria-pressed={fps === v} className={`cursor-pointer flex-1 rounded-lg py-1.5 text-sm font-medium transition-colors duration-200 ${fps === v ? 'bg-lavender-600 text-white ' : 'bg-lavender-50 text-lavender-700 hover:bg-lavender-100'}`}>
-                        {v} FPS
+                        {v} ภาพ
                       </button>
                     ))}
                   </div>
                   <label htmlFor="yolo-conf" className="block text-xs text-ink-600 mt-4 mb-1">
-                    ความมั่นใจขั้นต่ำ <span className="text-ink-900">{conf}%</span>
+                    นับเฉพาะรถที่ AI มั่นใจอย่างน้อย <span className="text-ink-900">{conf}%</span>
                   </label>
                   <input id="yolo-conf" type="range" min="10" max="90" step="5" value={conf} onChange={(e) => applyConf(Number(e.target.value))} className="w-full accent-lavender-600" />
                   
                   <div className="pt-3 mt-3 border-t border-slate-200 flex items-center justify-between">
                     <div>
-                      <p className="text-xs font-medium text-slate-800">โหมดเร่งแสงกลางคืน (Night Boost)</p>
-                      <p className="text-[11px] text-slate-500">ดึงแสงในเงามืดด้วย CLAHE + Gamma</p>
+                      <p className="text-xs font-medium text-slate-800">ทำภาพให้สว่างขึ้นตอนกลางคืน</p>
+                      <p className="text-[11px] text-slate-500">ช่วยให้เห็นรถในที่มืดชัดขึ้น</p>
                     </div>
                     <button
                       type="button"
@@ -247,7 +257,7 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
                   </div>
 
                   <p className="text-[11px] text-ink-400 mt-3">
-                    หน่วง {stats.latency_ms || 0} ms · {stats.fps || 0} FPS
+                    ภาพช้ากว่าจริง {stats.latency_ms || 0} มิลลิวินาที · ดูได้ {stats.fps || 0} ภาพต่อวินาที
                   </p>
                 </motion.div>
               )}
@@ -264,7 +274,7 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
         </div>
         <div className={`rounded-xl px-5 py-4 ${level.cls}`}>
           <p className="text-xs opacity-80">หน้ากล้องตอนนี้</p>
-          <p className="text-lg font-semibold">{incident ? (incident.kind === 'breakdown' ? 'มีรถเสียกีดขวาง' : 'เกิดอุบัติเหตุ') : feedState === 'live' ? level.text : 'กำลังดูถนนให้อยู่...'}</p>
+          <p className="text-lg font-semibold">{incident ? (incident.kind === 'breakdown' ? 'มีรถเสียขวางถนน' : 'เกิดอุบัติเหตุ') : feedState === 'live' ? level.text : feedState === 'offline' ? 'กล้องไม่มีสัญญาณ' : 'กำลังดูถนนให้อยู่...'}</p>
           {feedState === 'live' && <p className="text-sm mt-0.5">{level.hint}</p>}
         </div>
         {favList.length > 0 && (
@@ -281,7 +291,7 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
         )}
       </aside>
 
-      {/* Manual-vs-AI accuracy check: full width under the stream */}
+      {/* Count-by-eye vs AI accuracy check: full width under the stream */}
       <div className="lg:col-span-2">
         <AccuracyPanel active={active} stats={stats} camTitle={cam?.short_title} onToast={onToast} />
       </div>

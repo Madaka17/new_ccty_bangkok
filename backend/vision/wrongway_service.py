@@ -38,7 +38,7 @@ import cv2
 import numpy as np
 
 from backend.core.instance import BASE_DIR  # project root
-from backend.core.instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
+from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "wrongway")
 FIELD_DIR = os.path.join(DATA_DIR, "cache", "heading")
 ARCHIVE_DIR = os.getenv("WRONGWAY_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", r"D:\Data"), "wrongway"))
@@ -490,8 +490,8 @@ class WrongWayPatrol:
 
     def _agent_reason(self, now):
         if self.agent_error and now - self.agent_error["ts"] < self.agent_error.get("for", AGENT_BACKOFF_S):
-            return "AI agent หยุดชั่วคราว: " + self.agent_error["message"]
-        return "เกินงบเรียก AI ต่อชั่วโมง"
+            return "AI ตรวจซ้ำพักชั่วคราว: " + self.agent_error["message"]
+        return "ใช้ AI ตรวจซ้ำครบโควตาชั่วโมงนี้แล้ว"
 
     def _worker(self):
         while True:
@@ -524,11 +524,11 @@ class WrongWayPatrol:
         now = time.time()
         row = self._row(wid) or {}
         det_conf = float(row.get("det_conf") or 0)
-        local_note = (f"โมเดลในเครื่องเห็นรถ{HEADING_TH.get(row.get('heading'), '')} "
-                      f"แต่ช่องทางนี้ปกติ{HEADING_TH.get(row.get('expected'), '')} ({det_conf:.0%})")
+        local_note = (f"AI ของระบบเห็นรถ{HEADING_TH.get(row.get('heading'), '')} "
+                      f"แต่ช่องทางนี้ปกติ{HEADING_TH.get(row.get('expected'), '')} (มั่นใจ {det_conf:.0%})")
         provider = self.provider()
         if agent == "local" or not provider or (agent == "auto" and not self._budget_ok(now)):
-            reason = "" if agent == "local" else (" · " + (self._agent_reason(now) if provider else "ไม่มี AI agent ยืนยัน"))
+            reason = "" if agent == "local" else (" · " + (self._agent_reason(now) if provider else "ไม่มี AI ตรวจซ้ำ"))
             self._settle_local(wid, camid, cam, crop, marked, det_conf, local_note + reason)
             self.last_check = int(now)
             return
@@ -542,12 +542,12 @@ class WrongWayPatrol:
         except Exception as e:  # noqa: BLE001
             msg = str(e)
             if "429" in msg or "RATE_LIMIT" in msg:
-                self.agent_error = {"ts": now, "message": "ชนลิมิตต่อนาทีของ API", "for": RATE_BACKOFF_S}
+                self.agent_error = {"ts": now, "message": "เรียกใช้ถี่เกินไป", "for": RATE_BACKOFF_S}
             elif any(k in msg for k in ("402", "401", "400", "RESOURCE_EXHAUSTED", "credits", "API key")):
-                short = "เครดิต/โควตา API หมด" if ("402" in msg or "credits" in msg or "RESOURCE_EXHAUSTED" in msg) else msg[:120]
+                short = "โควตา AI หมด" if ("402" in msg or "credits" in msg or "RESOURCE_EXHAUSTED" in msg) else "ตั้งค่า AI ไม่ถูกต้อง"
                 self.agent_error = {"ts": now, "message": short, "for": AGENT_BACKOFF_S}
             print(f"[WrongWay] cloud agent error: {msg[:160]}")
-            self._settle_local(wid, camid, cam, crop, marked, det_conf, local_note + " · AI agent ไม่ตอบ: " + msg[:100])
+            self._settle_local(wid, camid, cam, crop, marked, det_conf, local_note + " · AI ตรวจซ้ำไม่ตอบ")
             return
         self.agent_error = None
         self.last_check = int(now)

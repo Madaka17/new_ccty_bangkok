@@ -1,0 +1,18 @@
+# Cloudflare Tunnel "bkk-streetsmart": https://bkksmartstreet.com -> the servers on this machine.
+# Run by the cloudflared Windows service (install_service.ps1), which starts at boot on its own: the server
+# start / stop scripts do not touch it. The credentials file is the tunnel's secret and is not in git.
+# After editing this file: Restart-Service cloudflared (as administrator).
+tunnel: a9928534-a0be-43c1-95f2-9800bd6442f5
+credentials-file: C:\Users\user\.cloudflared\a9928534-a0be-43c1-95f2-9800bd6442f5.json
+
+ingress:
+  # ENVIRO at /enviro/ (also framed by BKK's Earthquake page); ENVIRO strips the prefix itself
+  # (ENVIRO/server/app.py: _StripPrefix). Must come before the BKK rule below.
+  - hostname: bkksmartstreet.com
+    path: ^/enviro(/|$)
+    service: http://127.0.0.1:5050
+  # BKK StreetSmart. 127.0.0.2, not 127.0.0.1: backend/core/access_guard.py reads the visitor's IP from
+  # CF-Connecting-IP only on connections to that address
+  - hostname: bkksmartstreet.com
+    service: http://127.0.0.2:8000
+  - service: http_status:404

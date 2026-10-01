@@ -426,7 +426,7 @@ def render_dashboard(is_watch=False, interval=1):
 
     active_procs = [f"{k} (PID {v})" for k, v in procs.items() if k != 'server.py']
     lines.append(f"  โปรเซสที่รันอยู่: {', '.join(active_procs) if active_procs else 'ไม่มีสคริปต์ pipeline ทำงานอยู่'}")
-    lines.append(f"  🌐 ลิงก์ออนไลน์:  https://cctv-bangkok.tail95e28b.ts.net (Tailscale Funnel)")
+    lines.append(f"  🌐 ลิงก์ออนไลน์:  https://bkksmartstreet.com (Cloudflare Tunnel)")
 
     # Section 4: Live Activity Log
     if pipeline_meta['logs']:
