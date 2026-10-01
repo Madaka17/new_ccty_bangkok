@@ -1,6 +1,6 @@
 """Slim the BMA risk-map (cpudapp.bangkok.go.th/riskbkk) traffic layers for the Traffic Map.
 
-Reads the raw ArcGIS GeoJSON downloads in cache/riskbkk/ (and the Thai RSC accident cases 2566-2568
+Reads the raw ArcGIS GeoJSON downloads in instances/production/cache/riskbkk/ (and the Thai RSC accident cases 2566-2568
 through rsc_service) and writes one small GeoJSON per map
 layer to web/public/riskbkk/, keeping only a title and a few "label: value" lines per point.
 
@@ -10,7 +10,7 @@ import json
 import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-SRC = os.path.join(ROOT, 'cache', 'riskbkk')
+SRC = os.path.join(ROOT, 'instances', 'production', 'cache', 'riskbkk')
 OUT = os.path.join(ROOT, 'web', 'public', 'riskbkk')
 
 

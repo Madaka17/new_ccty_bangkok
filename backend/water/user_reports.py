@@ -27,7 +27,7 @@ from contextlib import contextmanager
 from PIL import Image, ImageOps
 
 from backend.core import local_llm
-from backend.core.instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
+from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 from backend.water.flood_feeds import hide_contacts
 
 DB_PATH = os.path.join(DATA_DIR, "vehicle_counts.db")

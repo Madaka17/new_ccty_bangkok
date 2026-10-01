@@ -16,7 +16,7 @@ from PIL import Image, ImageDraw, ImageFont
 from backend.bma.bma_archive import CycleArchiver
 
 from backend.core.instance import BASE_DIR  # project root
-from backend.core.instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
+from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "bma_snapshots")
 os.makedirs(CACHE_DIR, exist_ok=True)
 # The same frames without the YOLO boxes, for pages that show the plain camera (the live camera wall)

@@ -51,8 +51,8 @@ local/archive/
 local/dataset*/
 local/runs/
 local/logs/
-# Test server instance (launch/localhost_8001): own cache, DB, data
-local/stage/
+# Server instances: runtime data of production (:8000) and test (:8001): cache, DB, agent state, web UI build
+instances/
 weights/
 
 # SQLite databases (live data, backed up by local/pipeline/backup_db.py)

@@ -1,11 +1,17 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0..\.."
-title BKK StreetSmart - Public (Tailscale Funnel)
+title BKK StreetSmart - PRODUCTION (localhost:8000 + Tailscale Funnel)
 set OPENCV_FFMPEG_LOGLEVEL=-8
 
+rem Production: port 8000, data in instances\production (cache, database, agent state, web UI build).
+rem The test server (launch\test, port 8001) keeps its own copy in instances\test.
+set "PORT=8000"
+set "INSTANCE_DIR=%CD%\instances\production"
+
 echo ======================================================================
-echo   BKK StreetSmart CCTV + YOLO26x AI Server  (Public via Tailscale)
+echo   BKK StreetSmart - PRODUCTION  (Public via Tailscale Funnel)
+echo   data: instances\production\
 echo ======================================================================
 echo.
 
@@ -20,7 +26,7 @@ if %ERRORLEVEL% EQU 0 (
 
 where tailscale >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] tailscale.exe not found in PATH. Install Tailscale first.
+    echo [ERROR] tailscale.exe not found in PATH. Install Tailscale first, or use start_local.bat.
     pause
     exit /b 1
 )

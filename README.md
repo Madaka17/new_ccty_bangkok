@@ -28,17 +28,17 @@
 
 ## 🌸 หน้าเว็บใหม่ (React + Tailwind + framer-motion)
 
-โค้ดหน้าเว็บโฉมใหม่อยู่ในโฟลเดอร์ `web/` เมื่อ build แล้ว `server.py` จะเสิร์ฟหน้าใหม่จาก `web/dist` โดยอัตโนมัติ (ถ้ายังไม่ได้ build เซิร์ฟเวอร์จะรันแค่ API และหน้า `/` จะตอบ 503 บอกให้รัน `launch\build_web.bat`)
+โค้ดหน้าเว็บโฉมใหม่อยู่ในโฟลเดอร์ `web/` เซิร์ฟเวอร์แต่ละตัวเสิร์ฟหน้าเว็บจาก build ของตัวเองที่ `instances\<ชื่อ>\dist` (production: `instances\production\dist`, ทดสอบ: `instances\test\dist`) ถ้ายังไม่ได้ build เซิร์ฟเวอร์จะรันแค่ API และหน้า `/` จะตอบ 503 บอกให้รัน `launch\build_web.bat`
 
 ```bash
 cd web
 npm install
-npm run build      # สร้าง web/dist แล้วเปิด launch\localhost_8000\start.bat ตามปกติ
+npm run build -- --outDir ../instances/test/dist   # build ให้เซิร์ฟเวอร์ทดสอบ :8001 (เห็นผลทันทีเมื่อรีโหลด)
 npm run dev        # โหมดพัฒนา ที่ http://localhost:5173 (proxy /api ไป :8000)
 npm run dev:8001   # เหมือนกัน แต่ proxy /api ไปเซิร์ฟเวอร์ทดสอบ :8001
 ```
 
-`web/dist` ไม่อยู่ใน git แล้ว: สคริปต์ `start.bat` ใน `launch/` เรียก `launch\build_web.bat` ให้ build อัตโนมัติเมื่อยังไม่มี `web\dist` (ต้องมี Node.js) หลังแก้โค้ดหน้าเว็บให้รัน `launch\build_web.bat force` หรือ `npm run build`
+build ไม่อยู่ใน git: สคริปต์ `start.bat` ใน `launch\production` และ `launch\test` เรียก `launch\build_web.bat` ให้ build อัตโนมัติเมื่อยังไม่มี `dist` ของตัวเอง (ต้องมี Node.js) `npm run build` เฉย ๆ จะได้ `web/dist` ซึ่งไม่มีเซิร์ฟเวอร์ตัวไหนอ่าน
 
 ---
 
@@ -46,7 +46,7 @@ npm run dev:8001   # เหมือนกัน แต่ proxy /api ไปเ�
 
 หน้าเว็บมี 8 หน้า (เมนูซ้าย): **Traffic Dashboard**, **City Analytics**, **Camera AI & Analysis**, **Traffic Map**, **Helmet Check**, **Wrong-Way Check**, **Water Forecast**, **Ask AI (Routes)**
 
-- **เส้นจราจร (เขียว/เหลือง/แดง)** ดึงจาก Longdo Traffic vector tiles (`msv.longdo.com/maps/traffic`) ผ่านเซิร์ฟเวอร์ของเราที่แคชไว้ในโฟลเดอร์ `cache/` ถ้าเน็ตหลุดจะแสดงข้อมูลล่าสุดที่บันทึกไว้
+- **เส้นจราจร (เขียว/เหลือง/แดง)** ดึงจาก Longdo Traffic vector tiles (`msv.longdo.com/maps/traffic`) ผ่านเซิร์ฟเวอร์ของเราที่แคชไว้ในโฟลเดอร์ `instances\production\cache\` ถ้าเน็ตหลุดจะแสดงข้อมูลล่าสุดที่บันทึกไว้
 - **แผนที่ออฟไลน์**: แผนที่พื้นฐาน (OpenStreetMap) จะถูกเก็บลงเครื่องอัตโนมัติเมื่อเปิดดู หรือดาวน์โหลดล่วงหน้าทั้งกรุงเทพฯ ด้วย
 
 ```bash
@@ -141,22 +141,23 @@ GENERAL_RATE_PER_MIN=600
 
 ## 🚀 วิธีเปิดใช้งาน
 
-สคริปต์เปิด/ปิดเซิร์ฟเวอร์อยู่ใน `launch/` แยกเป็น 3 โหมด ดับเบิลคลิกได้เลย (สคริปต์ `cd` กลับไป root เอง และ build `web\dist` ให้อัตโนมัติถ้ายังไม่มี)
+เซิร์ฟเวอร์มี 2 ตัว ใช้โค้ดชุดเดียวกันใน root แต่ข้อมูลแยกกันคนละโฟลเดอร์ใน `instances\` สคริปต์เปิด/ปิดอยู่ใน `launch\production` กับ `launch\test` ดับเบิลคลิกได้เลย (สคริปต์ `cd` กลับไป root เอง และ build หน้าเว็บให้อัตโนมัติถ้ายังไม่มี)
 
-| โหมด | URL | ใช้เมื่อ | สคริปต์ (`launch\...`) | ข้อมูล |
+| เซิร์ฟเวอร์ | URL | ใช้เมื่อ | สคริปต์ (`launch\...`) | ข้อมูล |
 |---|---|---|---|---|
-| 🌐 **Main web** (สาธารณะ) | https://cctv-bangkok.tail95e28b.ts.net (+ http://localhost:8000) | เปิดให้คนอื่นดูผ่าน Tailscale Funnel | `main_web\start.bat` · `main_web\restart.bat` (หลังแก้ `.env`/โค้ด) · `main_web\stop.bat` (ปิด Funnel, เซิร์ฟเวอร์ยังรัน) | root (`cache/`, `vehicle_counts.db`) |
-| 💻 **localhost:8000** (ในเครื่อง) | http://localhost:8000 | ใช้งานจริงในเครื่อง/LAN ไม่เปิดออกอินเทอร์เน็ต | `localhost_8000\start.bat` · `localhost_8000\stop.bat` | root (ชุดเดียวกับ Main web) |
-| 🧪 **localhost:8001** (ทดสอบ) | http://localhost:8001 | ลองโค้ดใหม่ก่อน `main_web\restart.bat` | `localhost_8001\start.bat` · `localhost_8001\stop.bat` | `local\stage\` ของตัวเอง (ไม่แตะของจริง) |
+| 🌐 **Production** | https://cctv-bangkok.tail95e28b.ts.net + http://localhost:8000 | ของจริงที่คนอื่นดูผ่าน Tailscale Funnel | `production\start.bat` · `production\restart.bat` (หลังแก้ `.env`/โค้ด) · `production\stop.bat` (ปิด Funnel และหยุดเซิร์ฟเวอร์) · `production\start_local.bat` (ในเครื่อง/LAN ไม่เปิด Funnel) | `instances\production\` |
+| 🧪 **Test** | http://localhost:8001 | ลองโค้ดใหม่ก่อน `production\restart.bat` | `test\start.bat` · `test\restart.bat` · `test\stop.bat` | `instances\test\` (ไม่แตะของจริง) |
 
-- Main web กับ localhost:8000 ใช้พอร์ต 8000 เดียวกัน จึงเปิดได้ทีละตัว ส่วน localhost:8001 เปิดพร้อมกับตัวใดตัวหนึ่งได้
-- localhost:8001 ครั้งแรกจะคัดลอก cache เล็ก ๆ และ DB มาไว้ใน `local\stage\`; ลบโฟลเดอร์นี้เพื่อเริ่มใหม่สะอาด ๆ (ตัวแปร: `PORT`, `INSTANCE_DIR`, `BMA_DATA_DIR` ดู `backend/core/instance.py`)
-- localhost:8001 เสิร์ฟหน้าเว็บจาก build ของตัวเองที่ `local\stage\dist` (ตัวแปร `WEB_DIST`) การ build ให้ :8001 จึงไม่เปลี่ยนหน้าเว็บของเซิร์ฟเวอร์จริง หลังแก้หน้าเว็บให้ลบ `local\stage\dist` แล้วเปิด `localhost_8001\start.bat` ใหม่ (หรือ `npm run build -- --outDir ..\local\stage\dist` ในโฟลเดอร์ `web`)
-- `launch\build_web.bat force` build หน้าเว็บใหม่หลังแก้โค้ดใน `web/`
+- แต่ละโฟลเดอร์ใน `instances\` มี `cache\`, `vehicle_counts.db`, ไฟล์สถานะของ AI agent (`water_agent.json`, `riskbkk_analysis.json`) และ `dist\` (หน้าเว็บที่ build แล้ว) ของตัวเอง ส่วน tile แผนที่ใช้ร่วมกันจาก `instances\production\cache`
+- `production\start.bat` กับ `production\start_local.bat` ใช้พอร์ต 8000 เดียวกัน จึงเปิดได้ทีละตัว ส่วน Test เปิดพร้อม Production ได้
+- `test\stop.bat` หยุดแค่ :8001 ไม่แตะ :8000 (`launch\kill_server.ps1` เลือกหน้าต่างตามพอร์ต)
+- Test ครั้งแรกจะคัดลอก cache เล็ก ๆ และ DB จาก `instances\production\` มาไว้ใน `instances\test\`; ลบ `instances\test\` เพื่อเริ่มใหม่สะอาด ๆ (ตัวแปร: `PORT`, `INSTANCE_DIR`, `BMA_DATA_DIR` ดู `backend/core/instance.py`)
+- Test รันงาน AI เบื้องหลังชุดเดียวกับ Production ด้วย key เดียวกัน ปิดเมื่อไม่ใช้
+- หลังแก้หน้าเว็บ: `npm run build -- --outDir ../instances/test/dist` ในโฟลเดอร์ `web` แล้วรีโหลด :8001 (หรือลบ `instances\test\dist` แล้วเปิด `test\start.bat` ใหม่)
 - พัฒนาหน้าเว็บแบบ hot-reload: `npm run dev` (proxy `/api` ไป :8000) หรือ `npm run dev:8001` (proxy ไปเซิร์ฟเวอร์ทดสอบ :8001)
 
 ขั้นตอน:
-1. ดับเบิลคลิก **`launch\localhost_8000\start.bat`** (หรือ `launch\main_web\start.bat` ถ้าจะเปิดสาธารณะ)
+1. ดับเบิลคลิก **`launch\production\start.bat`** (หรือ `launch\production\start_local.bat` ถ้าไม่เปิดสาธารณะ)
 2. ระบบจะเปิดเซิร์ฟเวอร์ FastAPI พร้อมโหลดโมเดล YOLO26x บน GPU
 3. หน้าเว็บจะเปิดขึ้นมาที่ `http://localhost:8000` โดยอัตโนมัติ
 4. เลือกหน้า **Camera AI & Analysis** จากเมนูซ้าย หรือกดไอคอนหุ่นยนต์บนหน้าต่างกล้องใดๆ เพื่อเปิดหน้าต่างวิเคราะห์การจราจรสด
@@ -176,27 +177,29 @@ GENERAL_RATE_PER_MIN=600
 │   ├── water/    water, flood, flood_feeds, weather_now, air
 │   └── agents/   AI วิเคราะห์: flood, riskbkk, traffy (+history), water, chat
 ├── config/                       ← 🌐 ข้อมูลกล้อง cameras_bkk.json, cameras_bma.json
-├── launch/                       ← ▶️ ตัวรัน แยกตามโหมด
-│   ├── main_web/        start / restart / stop   (Tailscale Funnel → :8000)
-│   ├── localhost_8000/  start / stop             (ในเครื่อง :8000)
-│   ├── localhost_8001/  start / stop             (ทดสอบ :8001, ข้อมูลใน local\stage)
+├── launch/                       ← ▶️ ตัวรัน
+│   ├── production/      start / restart / stop / start_local   (:8000 + Tailscale Funnel)
+│   ├── test/            start / restart / stop                 (ทดสอบ :8001)
+│   ├── enviro/, bma_watch/
+│   ├── kill_server.ps1  (ใช้ร่วม: หยุดเซิร์ฟเวอร์ตามพอร์ต)
 │   └── build_web.bat
-├── web/  (src/ = ซอร์ส React, dist/ = ที่เซิร์ฟจริง)  ← 🌐 หน้าเว็บ (build ด้วย npm run build)
+├── instances/                    ← 🌐 ข้อมูล runtime แยกตามเซิร์ฟเวอร์ (gitignore, สร้างเองอัตโนมัติ)
+│   ├── production/      cache/, vehicle_counts.db, *_agent.json, dist/   ← ของ :8000
+│   └── test/            cache/, vehicle_counts.db, data/, dist/          ← ของ :8001
+├── web/  (src/ = ซอร์ส React)    ← 🌐 หน้าเว็บ (build ลง instances\<ชื่อ>\dist)
 ├── tests/                        ← pytest
 ├── requirements.txt, .env        ← config (.env ห้าม commit)
-├── yolo26x.pt (+ yolo26l/m), *_bkk.pt, helmet_*.pt, wrongway_*.pt ← 🌐 โมเดล (gitignore, ต้องคัดลอกเอง)
-├── cache/, vehicle_counts.db, count_cameras.json    ← 🌐 ข้อมูล runtime ของ :8000 (สร้างเองอัตโนมัติ)
+├── yolo26x.pt (+ yolo26l/m), *_bkk.pt, helmet_*.pt, wrongway_*.pt ← 🌐 โมเดล ใช้ร่วมทั้งสองเซิร์ฟเวอร์ (gitignore, ต้องคัดลอกเอง)
 │
 └── local/                                            ← 💻 ใช้ในเครื่องเท่านั้น
     ├── pipeline/   สคริปต์เก็บภาพ/label/เทรน + .bat/.sh ทั้งหมด (pipeline.bat, collect.bat, status.bat, watch_training.bat ...)
-    ├── stage/      ข้อมูลของเซิร์ฟเวอร์ทดสอบ :8001 (gitignore)
     ├── dataset/, dataset_helmet/, runs/, logs/         ข้อมูลเทรนและผลลัพธ์ (gitignore)
     ├── scratch/    ไฟล์ทดลอง
     └── archive/    ของเก่า/สำรอง
 ```
 
 - ไฟล์ `.bat` ใน `local/pipeline/` ดับเบิลคลิกได้เหมือนเดิม (สคริปต์ `cd` กลับไป root เอง) ผลลัพธ์โมเดล `*_bkk.pt` / `helmet_cls.pt` ยังถูกเขียนลง root ให้เซิร์ฟเวอร์หยิบใช้
-- เซิร์ฟเวอร์เสิร์ฟไฟล์ static จาก `web/dist` เท่านั้น (ไม่เสิร์ฟ root ทั้งโฟลเดอร์แล้ว) `.env`, `*.db`, `*.py` จึงไม่หลุดออก Tailscale
+- เซิร์ฟเวอร์เสิร์ฟไฟล์ static จาก `instances\<ชื่อ>\dist` ของตัวเองเท่านั้น (ไม่เสิร์ฟ root ทั้งโฟลเดอร์แล้ว) `.env`, `*.db`, `*.py` จึงไม่หลุดออก Tailscale
 
 ---
 
@@ -215,8 +218,8 @@ GENERAL_RATE_PER_MIN=600
 ### Backend (Python, FastAPI)
 | ไฟล์ | หน้าที่ |
 |---|---|
-| `backend/core/instance.py` | พอร์ตและโฟลเดอร์ข้อมูลของ instance นี้ (`PORT`, `INSTANCE_DIR`): ทุก service ดึง path ของ `cache/` และ `vehicle_counts.db` จากที่นี่ ให้เซิร์ฟเวอร์จริง (:8000) กับเซิร์ฟเวอร์ทดสอบ (:8001, `launch/localhost_8001`) รันพร้อมกันได้โดยไม่เขียนทับกัน |
-| `server.py` | จุดเริ่มต้น: โหลดกล้อง, สร้าง detector/scanner/services, ประกาศ REST API ทั้งหมด, เสิร์ฟ `web/dist` |
+| `backend/core/instance.py` | พอร์ตและโฟลเดอร์ข้อมูลของ instance นี้ (`PORT`, `INSTANCE_DIR`): ทุก service ดึง path ของ `cache/`, `vehicle_counts.db` และ `dist/` จากที่นี่ (`instances/production` หรือ `instances/test`) ให้เซิร์ฟเวอร์จริง (:8000, `launch/production`) กับเซิร์ฟเวอร์ทดสอบ (:8001, `launch/test`) รันพร้อมกันได้โดยไม่เขียนทับกัน |
+| `server.py` | จุดเริ่มต้น: โหลดกล้อง, สร้าง detector/scanner/services, ประกาศ REST API ทั้งหมด, เสิร์ฟหน้าเว็บจาก `<instance>/dist` |
 | `backend/vision/yolo_detector.py` | YOLO26x + ByteTrack บนสตรีมกล้องเดียว (หน้า AI ตรวจจับรถสด), นับรถผ่าน, ประเมินระดับจราจร, ตรวจรถจอดนิ่ง/ชน |
 | `backend/vision/count_workers.py` | นับรถต่อเนื่องหลายกล้องในพื้นหลัง (แดชบอร์ด "จำนวนรถที่ผ่านกล้อง AI") |
 | `backend/vision/survey.py` | วนสำรวจทุกกล้องสั้น ๆ เพื่อให้ป้ายระดับ โล่ง/ปานกลาง/ติดขัด ในหน้ากล้อง |
@@ -245,7 +248,7 @@ GENERAL_RATE_PER_MIN=600
 | `backend/core/local_llm.py` | ไคลเอนต์ AI (OpenAI-compatible, `LOCAL_LLM_*`) ที่ทุกงานใช้ร่วมกัน จำกัด 3 คำขอพร้อมกันต่อ key และ **นับ token ทุกคำขอแยกตามโมดูลที่เรียก** (จาก `usage` ที่ gateway ส่งกลับ เก็บ 24 ชม.) ดูได้ที่ `GET /api/ai/usage?minutes=30` (เฉพาะ LAN/operator) |
 | `backend/core/access_guard.py` | ป้องกันเมื่อเปิด Funnel สาธารณะ: POST ควบคุมทำได้จาก LAN/tailnet หรือ `X-Admin-Token`; `/api/chat` จำกัดต่อ IP |
 | `local/pipeline/backup_db.py` (`backup_db.bat`) | งานกลางคืน: ลบ `bma_history`/`samples` เกิน 90 วัน, VACUUM, สำเนา DB + CSV + .env ไป `BMA_DATA_DIR\backup\` (ลงทะเบียน Task Scheduler 03:30 แล้ว) |
-| `local/pipeline/watchdog.bat` | ping `/api/health` ทุก 1 นาที ล้ม 3 ครั้งติดจึงรัน `launch\main_web\restart.bat` |
+| `local/pipeline/watchdog.bat` | ping `/api/health` ทุก 1 นาที ล้ม 3 ครั้งติดจึงรัน `launch\production\restart.bat` |
 | `local/pipeline/prep_helmet_det.py`, `train_helmet_det.py`, `watch_train.*` | dataset Kaggle helmet-detection → YOLO format → fine-tune `yolo26x.pt` เป็น `helmet_det.pt` (helmet / no_helmet) + หน้าต่าง % ความคืบหน้า |
 | `local/pipeline/` (`collect_dataset.py`, `relabel_dataset.py`, `clean_dataset.py`, `train_model.py`, `pipeline_status.py`, `*.bat`) | pipeline เก็บภาพ-ทำ label (tiled 2×2 + เกณฑ์ conf รายคลาส)-เทรน YOLO (oversample เฟรมที่มีมอเตอร์ไซค์ `--moto-boost`) ให้เข้ากับกล้องไทย |
 | `backend/traffic/rsc_service.py` | สถิติอุบัติเหตุ Thai RSC รายเขต + จุดเสี่ยงรอบกล้อง BMA (`/api/rsc/*`) |

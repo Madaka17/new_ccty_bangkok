@@ -30,7 +30,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 from backend.core.instance import BASE_DIR  # project root
-from backend.core.instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
+from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "rsc")
 SUMMARY_CACHE_FILE = os.path.join(CACHE_DIR, "summary.json")
 DB_PATH = os.path.join(DATA_DIR, "vehicle_counts.db")

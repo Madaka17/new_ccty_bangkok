@@ -19,11 +19,12 @@ import urllib.request
 import mapbox_vector_tile
 
 from backend.core.instance import BASE_DIR  # project root
-from backend.core.instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
+from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
+from backend.core.instance import PRODUCTION_DIR
 CACHE_DIR = os.path.join(DATA_DIR, "cache")
-# Map tiles are shared by every instance (test server included): they are big (the offline OSM
-# set is thousands of files), keyed by z/x/y so two writers never clash, and identical for both.
-TILE_CACHE_DIR = os.path.join(BASE_DIR, "cache")
+# Map tiles are shared by every instance (test server included), kept in the production cache: they
+# are big (the offline OSM set is thousands of files), keyed by z/x/y so two writers never clash, and identical for both.
+TILE_CACHE_DIR = os.path.join(PRODUCTION_DIR, "cache")
 TRAFFIC_TILE_DIR = os.path.join(TILE_CACHE_DIR, "traffic_tiles")
 BASE_TILE_DIR = os.path.join(TILE_CACHE_DIR, "longdo_base")
 OSM_TILE_DIR = os.path.join(TILE_CACHE_DIR, "osm")

@@ -31,7 +31,7 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-rem Mounted next to BKK StreetSmart (launch\main_web), which serves "/" on the same address
+rem Mounted next to BKK StreetSmart launch\production, which serves "/" on the same address
 echo [*] Enabling Tailscale Funnel at /enviro ...
 tailscale funnel --bg --set-path=/enviro 5050
 echo.

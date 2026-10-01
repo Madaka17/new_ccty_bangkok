@@ -41,7 +41,7 @@ import numpy as np
 
 from backend.bma.bma_service import CACHE_DIR as SNAPSHOT_DIR   # the scanner's last annotated frame per camera
 from backend.core import local_llm
-from backend.core.instance import DATA_DIR   # cache root: project root, or local/stage for the test server
+from backend.core.instance import DATA_DIR   # cache root: instances/production, or instances/test for the test server
 from backend.vision.helmet_service import _fingerprint, _same_scene
 
 STATE_FILE = os.path.join(DATA_DIR, "cache", "flood_cams.json")

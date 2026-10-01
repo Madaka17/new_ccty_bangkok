@@ -1,7 +1,7 @@
 ﻿# Watches the BMA traffic site (cpudapp.bangkok.go.th/bmatraffic), the source of every BMA camera image and event.
 # Every check prints one status line. When the site goes down or comes back, a Windows notification pops up and the
 # console beeps. While the site stays down, the notification repeats every -RemindMinutes. Also warns when BMA is back
-# but the local server's snapshot cache has not refreshed. Started by bma_watch.cmd; runs until the window is closed.
+# but the production server's snapshot cache has not refreshed. Started by bma_watch.cmd; runs until the window is closed.
 param(
     [int]$IntervalSeconds = 10,
     [int]$RemindMinutes = 30,
@@ -15,7 +15,7 @@ $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path "$PSScriptRoot\..\..").Path
 $UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 $CamIds = @('7', '11', '12')        # tried in turn; one good image is enough
-$CacheDir = Join-Path $Root 'cache\bma_snapshots'
+$CacheDir = Join-Path $Root 'instances\production\cache\bma_snapshots'
 $LogFile = Join-Path $Root 'local\logs\bma_watch.log'
 
 function Write-Log([string]$line) {
@@ -152,7 +152,7 @@ while ($true) {
 
     # BMA has been back long enough for a scan cycle, but the server has not saved a new image
     if ($res.Ok -and -not $staleWarned -and $age -ge $StaleMinutes -and ($now - $changedAt).TotalMinutes -ge $StaleMinutes) {
-        Send-Alert 'เซิร์ฟเวอร์ไม่อัปเดตภาพ BMA' "BMA ใช้ได้แล้ว แต่ภาพในแคชเก่า $(Format-Age $age). ลองรัน launch\main_web\restart.bat" $true
+        Send-Alert 'เซิร์ฟเวอร์ไม่อัปเดตภาพ BMA' "BMA ใช้ได้แล้ว แต่ภาพในแคชเก่า $(Format-Age $age). ลองรัน launch\production\restart.bat" $true
         $staleWarned = $true
     }
 

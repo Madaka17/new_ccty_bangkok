@@ -15,7 +15,7 @@ if sys.platform == 'win32':
 
 # 1. Auto-detect and switch to .venv if running under global Python
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-from backend.core.instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
+from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 venv_python = os.path.join(BASE_DIR, ".venv", "Scripts", "python.exe")
 if os.path.exists(venv_python) and sys.prefix == sys.base_prefix and os.path.normcase(sys.executable) != os.path.normcase(venv_python):
     import subprocess
@@ -130,9 +130,9 @@ if not os.path.exists(MODEL_PATH):
     print(f"[AI] {MODEL_PATH} not found, falling back to yolo26x.pt")
     MODEL_PATH = os.path.join(BASE_DIR, "yolo26x.pt")
 CAMERAS_FILE = os.path.join(BASE_DIR, "config", "cameras_bkk.json")
-# React UI (web/dist, built by launch\build_web.bat). Without a build the API still runs and "/" says how to build it.
-# WEB_DIST: another build folder (the test server on :8001 serves its own, so building it leaves the live UI alone)
-WEB_DIST = os.getenv("WEB_DIST") or os.path.join(BASE_DIR, "web", "dist")
+# React UI (<instance>/dist, built by launch\build_web.bat). Without a build the API still runs and "/" says how to build it.
+# Each instance serves its own build, so building the test server's UI leaves the live UI alone. WEB_DIST: another build folder.
+WEB_DIST = os.getenv("WEB_DIST") or os.path.join(DATA_DIR, "dist")
 INDEX_HTML = os.path.join(WEB_DIST, "index.html")
 WEB_BUILT = os.path.exists(INDEX_HTML)
 if not WEB_BUILT:
