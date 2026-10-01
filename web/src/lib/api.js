@@ -11,6 +11,13 @@ export async function fetchCameras() {
   return data.items || [];
 }
 
+// Every camera for the live camera page: ours, the rest of iTIC's (via Longdo) and the BMA ones (source 'bma')
+export async function fetchAllCameras() {
+  const res = await fetch('/api/cameras/all');
+  if (!res.ok) throw new Error('all_cameras');
+  return (await res.json()).items || [];
+}
+
 // { checked_at, items: { camid: 'online' | 'offline' } } for the live-AI cameras
 export async function fetchCameraHealth() {
   const res = await fetch('/api/cameras/health');
@@ -525,9 +532,10 @@ export async function triggerBmaScan() {
   return res.json();
 }
 
-export function getBmaSnapshotUrl(camid, live = false, t = null) {
+export function getBmaSnapshotUrl(camid, live = false, t = null, annotate = true) {
   const params = new URLSearchParams();
   if (live) params.set('live', '1');
+  if (!annotate) params.set('annotate', '0');   // the plain frame, without running YOLO on it
   if (t) params.set('t', String(t));
   const qs = params.toString();
   return `/api/bma/snapshot/${encodeURIComponent(camid)}${qs ? `?${qs}` : ''}`;

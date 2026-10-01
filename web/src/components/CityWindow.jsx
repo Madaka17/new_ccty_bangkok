@@ -7,7 +7,7 @@ function gridClass(n) {
  return 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3';
 }
 
-export default function CityWindow({ cameras, camStatus = {}, incidents, onClose, onOpenAI }) {
+export default function CityWindow({ cameras, camStatus = {}, incidents, onClose, onOpenAI, aiIds }) {
  if (cameras.length === 0) {
  return (
       <motion.div
@@ -33,7 +33,7 @@ export default function CityWindow({ cameras, camStatus = {}, incidents, onClose
  status={camStatus[cam.camid]}
  incident={(incidents?.camera || []).find((i) => i.camid === cam.camid)}
  onClose={() => onClose(cam.camid)}
- onOpenAI={() => onOpenAI(cam.camid)}
+ onOpenAI={!aiIds || aiIds.has(cam.camid) ? () => onOpenAI(cam.camid) : null}
           />
         ))}
       </AnimatePresence>

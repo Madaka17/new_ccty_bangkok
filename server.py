@@ -23,6 +23,7 @@ if os.path.exists(venv_python) and sys.prefix == sys.base_prefix and os.path.nor
     code = subprocess.call([venv_python] + sys.argv)
     sys.exit(code)
 
+import gzip
 import json
 import time
 from datetime import datetime
@@ -93,7 +94,7 @@ from backend.agents import chat_service
 from backend.water import water_service, north_flow, river_roads
 from backend.traffic import rsc_service
 from backend.bma.bma_events import bma_feed
-from backend.bma.bma_service import BmaScanner
+from backend.bma.bma_service import BmaScanner, RAW_DIR as BMA_RAW_DIR
 from backend.core import stale_stamp
 from backend.traffic import analytics_service
 from backend.core.telemetry_service import telemetry
@@ -320,6 +321,47 @@ def get_bma_cameras():
         cams = bma_scanner.cameras
     return {"total": len(bma_scanner.cameras), "items": cams}
 
+def _unmasked(c):
+    """Longdo masks some camera addresses (camid=X.X.X.X), and parks suspended cameras on one placeholder
+    stream (tempsus.m3u8): blank those links so the page does not try them."""
+    hls = "" if "tempsus" in (c.get("hls_url") or "") else c.get("hls_url") or ""
+    vdo = "" if "X.X.X.X" in (c.get("vdourl") or "") else c.get("vdourl") or ""
+    img = "" if "X.X.X.X" in (c.get("imgurl") or "") else c.get("imgurl") or ""
+    return dict(c, hls_url=hls, vdourl=vdo, imgurl=img, source="itic")
+
+@app.get("/api/cameras/all")
+def get_all_cameras(request: Request):
+    """Every camera for the live camera page. Ours first (cameras_bkk.json, the ones the AI knows), then the
+    rest of iTIC's list from Longdo, then the BMA cameras (source "bma"), which have no video: the page shows
+    their newest frame. Left out: Longdo cameras on the "tempsus" placeholder stream (suspended, about 80 in
+    Pattaya) and links with a masked address (camid=X.X.X.X)."""
+    items = [_unmasked(c) for c in cameras_data]
+    seen = {c.get("camid") for c in cameras_data} | {c.get("hls_url") for c in cameras_data if c.get("hls_url")}
+    for c in map(_unmasked, get_longdo_cameras().get("items") or []):
+        if not (c["hls_url"] or c["vdourl"]) or c.get("camid") in seen or c["hls_url"] in seen:
+            continue
+        seen.update(k for k in (c.get("camid"), c["hls_url"]) if k)
+        items.append(c)
+    for c in bma_scanner.cameras:
+        camid = str(c.get("camid") or "")
+        if not SAFE_ID.fullmatch(camid):
+            continue
+        district = c.get("district") or ""
+        place = [c.get("road") or "", f"เขต{district}" if district and district != "กรุงเทพมหานคร" else ""]
+        items.append({
+            "camid": f"BMA-{camid}", "bma_id": camid, "source": "bma",
+            "title": " ".join(p for p in [c.get("title") or ""] + place if p),
+            "short_title": c.get("short_title") or c.get("title") or camid,
+            "province": "กรุงเทพมหานคร", "hls_url": "", "vdourl": "", "imgurl": f"/api/bma/snapshot/{camid}?annotate=0",
+            "latitude": float(c.get("latitude") or 0), "longitude": float(c.get("longitude") or 0),
+        })
+    # About 430 KB of mostly Thai text: gzip takes it under 60 KB
+    body = json.dumps({"total": len(items), "items": items}, ensure_ascii=False).encode("utf-8")
+    if "gzip" in request.headers.get("accept-encoding", ""):
+        return Response(gzip.compress(body, 6), media_type="application/json",
+                        headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
+    return Response(body, media_type="application/json")
+
 @app.get("/api/bma/analytics")
 def get_bma_analytics():
     """Returns comprehensive data analysis for BMA cameras vehicle counts."""
@@ -355,11 +397,18 @@ async def get_bma_snapshot(camid: str, live: bool = False, annotate: bool = True
 
     if not SAFE_ID.fullmatch(camid):
         raise HTTPException(400, "bad camera id")
+    # annotate=0: the plain frame, not the one the scanner keeps with its YOLO boxes drawn on
     cache_file = os.path.join(DATA_DIR, "cache", "bma_snapshots", f"{camid}.jpg")
+    if not annotate:
+        cache_file = os.path.join(BMA_RAW_DIR, f"{camid}.jpg")
     if os.path.exists(cache_file):
         # the scanner's last frame; while the BMA site is down it can be hours old, so it says so on the picture
         return Response(content=stale_stamp.stamp_file(cache_file), media_type="image/jpeg",
                         headers={"Cache-Control": "no-cache"})
+    if not annotate:
+        # No plain frame yet (the scanner keeps one on each pass). Asking BMA here would be one request per
+        # tile of the camera wall, and BMA answers such a burst with 429 for everyone, the scanner included.
+        return Response(status_code=404)
 
     try:
         raw = await loop.run_in_executor(None, lambda: bma_scanner.session.fetch_snapshot(str(camid), timeout=4.0))

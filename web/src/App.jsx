@@ -7,7 +7,7 @@ import BottomNav from './components/BottomNav.jsx';
 import NavIcon from './components/NavIcons.jsx';
 import BotFace from './components/BotFace.jsx';
 import AlertPopups from './components/AlertPopups.jsx';
-import { fetchCameras, fetchAIStats, fetchIncidents, fetchSurveyRanking, fetchRoadCameras } from './lib/api.js';
+import { fetchCameras, fetchAllCameras, fetchAIStats, fetchIncidents, fetchSurveyRanking, fetchRoadCameras } from './lib/api.js';
 import { useActiveCameras, useFavorites } from './lib/store.js';
 import { trackView, startHeartbeat } from './lib/telemetry.js';
 
@@ -35,7 +35,7 @@ function lazyPage(load) {
     )
   );
 }
-const SidePanel = lazyPage(() => import('./components/SidePanel.jsx'));
+const CameraWall = lazyPage(() => import('./components/CameraWall.jsx'));
 const CityWindow = lazyPage(() => import('./components/CityWindow.jsx'));
 const AiPage = lazyPage(() => import('./components/AiPage.jsx'));
 const MapPage = lazyPage(() => import('./components/MapPage.jsx'));
@@ -81,20 +81,33 @@ export default function App() {
  const [toast, setToast] = useState('');
  const [incidents, setIncidents] = useState(null);
  const [camStatus, setCamStatus] = useState({}); // camid -> latest AI measurement (level, rate, ...)
+ // Every camera (ours, iTIC, BMA) for the live camera page; the other pages keep ours only
+ const [allCameras, setAllCameras] = useState(null);
+ const [allFailed, setAllFailed] = useState(false);   // then the page shows ours only
 
  useEffect(() => {
  fetchCameras().then(setCameras).catch(() => setCameras([]));
   }, []);
 
-  // Automatically remove stale / non-existent camera IDs from active slots
+  // Loaded when the camera page opens, or at once when cameras are already open (from an earlier visit)
  useEffect(() => {
- if (!cameras.length || !active.length) return;
- const validSet = new Set(cameras.map((c) => c.camid));
+ if (allCameras || allFailed || !(page === 'cameras' || active.length)) return;
+ fetchAllCameras()
+      .then((items) => (items.length ? setAllCameras(items) : setAllFailed(true)))
+      .catch(() => setAllFailed(true));
+  }, [allCameras, allFailed, page, active.length]);
+ const liveCameras = allCameras || cameras;
+ const aiIds = useMemo(() => new Set(cameras.map((c) => c.camid)), [cameras]);   // the cameras the AI page knows
+
+  // Automatically remove stale / non-existent camera IDs from active slots, once the full list is in
+ useEffect(() => {
+ if (!allCameras?.length || !active.length) return;
+ const validSet = new Set(allCameras.map((c) => c.camid));
  const dead = active.filter((id) => !validSet.has(id));
  if (dead.length > 0) {
  dead.forEach((id) => remove(id));
     }
-  }, [cameras, active, remove]);
+  }, [allCameras, active, remove]);
 
   // Visitor telemetry: one view per page, heartbeat while open
  useEffect(() => {
@@ -242,7 +255,7 @@ export default function App() {
     [navigate]
   );
 
- const activeCams = useMemo(() => active.map((id) => cameras.find((c) => c.camid === id)).filter(Boolean), [active, cameras]);
+ const activeCams = useMemo(() => active.map((id) => liveCameras.find((c) => c.camid === id)).filter(Boolean), [active, liveCameras]);
 
  const openFloodReport = useCallback(() => navigate('report'), [navigate]);
 
@@ -304,29 +317,38 @@ export default function App() {
 
             {page === 'cameras' && (
               <>
-                <PageHeader title={PAGE_TITLES.cameras} description="ติ๊กเลือกกล้องจากรายการ แล้วดูภาพสดได้พร้อมกันสูงสุด 9 กล้อง" />
-                <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-4">
-                  <div className="h-[46vh] lg:h-[calc(100vh-13rem)] lg:sticky lg:top-4">
-                    <SidePanel
-                      cameras={cameras}
-                      camStatus={camStatus}
-                      favorites={favorites}
-                      active={active}
-                      filter={filter}
-                      onFilter={handleFilter}
-                      query={query}
-                      onQuery={setQuery}
-                      userPos={userPos}
-                      onToggleActive={toggle}
-                      onToggleFav={toggleFav}
-                      onOpenAI={openAI}
-                      onClearAll={clear}
-                    />
-                  </div>
-                  <section aria-label="ภาพสดจากกล้องที่เลือก" className="min-h-[360px]">
-                    <CityWindow cameras={activeCams} camStatus={camStatus} incidents={incidents} onClose={remove} onOpenAI={openAI} />
+                <PageHeader title={PAGE_TITLES.cameras} description="กล้องทุกตัว แยกกล้อง iTIC กับกล้อง กทม. แตะกล้องเพื่อดูภาพใหญ่" />
+                {/* cameras opened from the map, a road row or "เปิดค้างไว้ด้านบน", large, above the wall */}
+                {activeCams.length > 0 && (
+                  <section aria-label="ภาพสดจากกล้องที่เลือก" className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <h2 className="text-[15px] font-semibold text-slate-900">
+                        กล้องที่เปิดค้างไว้ <span className="text-sm font-normal text-slate-500">{activeCams.length} กล้อง</span>
+                      </h2>
+                      <button type="button" onClick={clear} className="cursor-pointer rounded-lg px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 hover:text-red-700 transition-colors duration-200">
+                        ปิดทุกกล้อง
+                      </button>
+                    </div>
+                    <CityWindow cameras={activeCams} camStatus={camStatus} incidents={incidents} onClose={remove} onOpenAI={openAI} aiIds={aiIds} />
                   </section>
-                </div>
+                )}
+                <CameraWall
+                  cameras={liveCameras}
+                  loading={!allCameras && !allFailed}
+                  camStatus={camStatus}
+                  incidents={incidents}
+                  favorites={favorites}
+                  active={active}
+                  filter={filter}
+                  onFilter={handleFilter}
+                  query={query}
+                  onQuery={setQuery}
+                  userPos={userPos}
+                  onToggleActive={toggle}
+                  onToggleFav={toggleFav}
+                  onOpenAI={openAI}
+                  aiIds={aiIds}
+                />
               </>
             )}
 

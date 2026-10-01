@@ -19,6 +19,25 @@ from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: project root, or local/stage for the test server
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "bma_snapshots")
 os.makedirs(CACHE_DIR, exist_ok=True)
+# The same frames without the YOLO boxes, for pages that show the plain camera (the live camera wall)
+RAW_DIR = os.path.join(CACHE_DIR, "raw")
+os.makedirs(RAW_DIR, exist_ok=True)
+
+
+def save_raw_frame(camid, jpeg):
+    """Keep a camera's newest plain frame: written whole, then swapped in, so a reader never gets half.
+    Best effort: while a page reads the old one Windows refuses the swap, and the next frame tries again."""
+    path = os.path.join(RAW_DIR, f"{camid}.jpg")
+    tmp = f"{path}.{threading.get_ident()}.tmp"
+    try:
+        with open(tmp, "wb") as f:
+            f.write(jpeg)
+        os.replace(tmp, path)
+    except OSError:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 DB_PATH = os.path.join(DATA_DIR, "vehicle_counts.db")
 CAMERAS_FILE = os.path.join(BASE_DIR, "config", "cameras_bma.json")
 
@@ -449,6 +468,7 @@ class BmaScanner:
                         level='free', status='offline', latency_ms=0.0, detections=[]
                     )
                     return
+                save_raw_frame(camid, raw_bytes)
                 if self.flood is not None:
                     try:
                         self.flood.observe(cam, img)
@@ -777,6 +797,8 @@ class BmaScanner:
         if not cam:
             return None, None
         raw = self.session.fetch_snapshot(str(camid), timeout=7.0)
+        if raw:
+            save_raw_frame(camid, raw)
         if raw and annotate:
             jpeg_bytes, stats = self.process_image_and_detect(cam, raw)
             if jpeg_bytes:
