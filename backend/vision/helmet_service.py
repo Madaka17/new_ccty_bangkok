@@ -7,7 +7,7 @@ Flow (per camera, once per BMA scan cycle, every 3 min by BMA_SCAN_INTERVAL, or 
     -> crop (+margin, upscaled) saved to cache/helmet/<id>.jpg ("captures")
     -> optional local YOLO26x helmet detector (helmet_det.pt from train_helmet_det.py):
          helmet only  -> verdict "helmet" with no API call
-         no_helmet    -> the agent confirms it
+         no_helmet    -> the agent confirms it (agent over budget or not answering: pending, asked again later)
          nothing seen -> the agent decides
     -> helmet agent (the Qwen vision model behind LOCAL_LLM_* by default; HELMET_AGENT=cloud for Gemini
        vision, else Claude): JSON {riders, no_helmet, confidence, note_th}
@@ -65,6 +65,7 @@ LOCAL_DET_CONF = 0.5
 WORKERS = int(os.getenv("HELMET_PATROL_WORKERS", "4"))   # cloud calls are network-bound (10-60 s each on the free tier)
 AGENT_BACKOFF_S = 600             # after a 402/401 (credits / key) from the agent: no calls for this long
 RATE_BACKOFF_S = 60               # after a 429 (per-minute rate limit): short pause
+PENDING_RETRY_S = 300             # how often pending captures are offered to the agent again
 FALLBACK_MODEL = os.getenv("GEMINI_VISION_FALLBACK", "gemini-3.1-flash-lite")   # used when the main model returns 503
 CACHE_KEEP_H = 48
 VERDICT_TH = {"pending": "รอตรวจ", "helmet": "สวมหมวก", "no_helmet": "ไม่สวมหมวกกันน็อก", "unclear": "มองไม่ชัด", "error": "ตรวจไม่สำเร็จ"}
@@ -432,23 +433,29 @@ class HelmetPatrol:
         marked = cv2.imdecode(np.fromfile(frame_p, np.uint8), cv2.IMREAD_COLOR) if os.path.exists(frame_p) else crop
         try:
             self._analyse(hid, camid, cam, crop, marked, agent=agent)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001 - e.g. an answer that is not JSON: not retried as pending
+            self._update(hid, verdict="error", note=str(e)[:200])
             return {"ok": False, "error": str(e)[:200]}
         return {"ok": True, "item": self._row(hid)}
 
     def _resume_pending(self):
+        """Every PENDING_RETRY_S, ask the agent again about pending captures (left by a restart, or flagged by
+        the local detector while the agent was over budget or not answering), newest first, within budget."""
         time.sleep(20)   # let the cloud client / local model come up first
-        with self.lock:
-            conn = self._db()
-            ids = [r["id"] for r in conn.execute(
-                "SELECT id FROM helmet_checks WHERE verdict = 'pending' AND ts >= ? ORDER BY ts DESC LIMIT 60",
-                (int(time.time() - 6 * 3600),))]
-            conn.close()
-        ids = [h for h in ids if os.path.exists(self.crop_path(h))]
-        if ids:
-            print(f"[Helmet] resuming {len(ids)} captures left pending by the restart")
-        for hid in ids:
-            self.reanalyse(hid, "cloud")
+        while True:
+            if self.provider() and self._budget_ok(time.time()):
+                with self.lock:
+                    conn = self._db()
+                    ids = [r["id"] for r in conn.execute(
+                        "SELECT id FROM helmet_checks WHERE verdict = 'pending' AND ts >= ? ORDER BY ts DESC LIMIT 60",
+                        (int(time.time() - CACHE_KEEP_H * 3600),))]
+                    conn.close()
+                for hid in ids:
+                    if not self._budget_ok(time.time()):
+                        break
+                    if os.path.exists(self.crop_path(hid)):
+                        self.reanalyse(hid, "auto")
+            time.sleep(PENDING_RETRY_S)
 
     def reanalyse_pending(self, agent="cloud", limit=40, hours=24):
         """Re-run captures without a firm verdict (unclear / error / pending) through the cloud agent or the local detector, sequentially."""
@@ -479,10 +486,10 @@ class HelmetPatrol:
                          note=f"AI ของระบบเห็นหมวกกันน็อก (มั่นใจ {local[1]:.0%})")
 
     def _settle_without_agent(self, hid, camid, cam, crop, marked, local, reason, provider):
-        """Agent unavailable: trust the local detector when it flagged no helmet, else leave it unclear."""
+        """Agent unavailable: a crop the local detector flagged as no helmet stays pending for the agent
+        (_resume_pending asks again; the detector alone is wrong too often to log a violation), else unclear."""
         if local and local[0] == "no_helmet":
-            self._finish_no_helmet(hid, camid, cam, crop, marked, 1, 1, local[1],
-                                   f"AI ของระบบไม่เห็นหมวกกันน็อก (มั่นใจ {local[1]:.0%}) · {reason}", "local")
+            self._update(hid, verdict="pending", note=f"AI ของระบบไม่เห็นหมวกกันน็อก (มั่นใจ {local[1]:.0%}) · รอ AI ตรวจซ้ำ ({reason})")
         else:
             self._update(hid, verdict="unclear", source=provider, note=reason)
 

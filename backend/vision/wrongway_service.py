@@ -14,9 +14,11 @@ vehicles):
     -> a cell is "known" once it has HEADING_MIN_VOTES votes with HEADING_MIN_AGREE agreement
     -> a vehicle whose heading is the exact opposite of its known cell (toward<->away, left<->right),
        not straddling a cell of its own heading, is a candidate
-    -> the frame with a red box + a green arrow for the lane's normal direction goes to the vision
-       agent (Gemini, else Claude): JSON {wrong_way, confidence, note_th}
-    -> verdict wrong_way: frame + crop to <WRONGWAY_ARCHIVE_DIR>/<YYYY-MM-DD>/ and one row in wrongway.csv
+    -> the frame with a red box (no lane arrow, no word of the local guess) goes to the vision agent
+       (Gemini, else Claude): JSON {wrong_way, confidence, note_th}; while the agent is over budget,
+       rate limited or not answering, the check stays pending and is asked again every PENDING_RETRY_S
+    -> verdict wrong_way: frame (red box + green arrow for the lane's normal direction, for people)
+       + crop to <WRONGWAY_ARCHIVE_DIR>/<YYYY-MM-DD>/ and one row in wrongway.csv
 
 Everything is in the `wrongway_checks` table of vehicle_counts.db and served by /api/wrongway/*.
 Budget: WRONGWAY_MAX_PER_HOUR agent calls, WRONGWAY_PER_CAM candidates per camera per cycle, one
@@ -77,18 +79,23 @@ AGENT_MIN_CONF = 0.7
 WORKERS = int(os.getenv("WRONGWAY_WORKERS", "3"))
 AGENT_BACKOFF_S = 600
 RATE_BACKOFF_S = 60
+PENDING_RETRY_S = 300
 CACHE_KEEP_H = 48
 CROP_MARGIN = 0.5
 CROP_MIN_SIDE = 320
 VERDICT_TH = {"pending": "รอตรวจ", "wrong_way": "ขับย้อนศร", "ok": "ไม่ย้อนศร", "unclear": "มองไม่ชัด", "error": "ตรวจไม่สำเร็จ"}
 
+# The agent gets the frame with the red box only and no hint of what the local classifier thought: with the
+# lane arrow and the classifier's claim in front of it, it agreed 602 times out of 603 (Sep 29-Oct 1 2026).
 AGENT_PROMPT = (
     "You are the wrong-way-driving agent of the Bangkok traffic control room. You receive one frame from a "
-    "low-resolution street CCTV camera. One vehicle is marked with a RED box. A GREEN arrow next to it shows "
-    "the normal direction of travel for that lane, learned from the vehicles this camera usually sees there. "
-    "Decide whether the boxed vehicle is driving AGAINST the traffic direction of its lane (ย้อนศร). Use the "
-    "vehicle's orientation (which way its front faces), the other vehicles in the same lane, road markings and "
-    "arrows painted on the road. Answer ONLY with JSON: "
+    "low-resolution street CCTV camera. One vehicle is marked with a RED box. An automatic system flagged it, "
+    "and that system is wrong most of the time: most flagged vehicles drive normally. "
+    "Decide yourself whether the boxed vehicle is driving AGAINST the traffic direction of its own lane (ย้อนศร). "
+    "First find which way its front faces. Then find which way the other vehicles in the SAME lane face, and "
+    "the road markings and arrows painted on that lane. Bangkok drives on the left: on a two-way road the lanes "
+    "next to each other go in opposite directions, so a vehicle that faces the same way as the vehicles in its "
+    "own lane is NOT wrong_way. Answer ONLY with JSON: "
     '{"wrong_way": <true|false>, "confidence": <0..1>, "moving": <true|false|null>, "note_th": "<one short Thai sentence>"}. '
     "Rules: a parked vehicle, a vehicle turning or crossing at an intersection, a vehicle on the opposite "
     "carriageway of a divided road, or a motorcycle on the sidewalk are NOT wrong_way. If the image is too small, "
@@ -312,6 +319,11 @@ class WrongWayPatrol:
     def frame_path(wid):
         return os.path.join(CACHE_DIR, f"{_safe_id(wid)}_frame.jpg")
 
+    @staticmethod
+    def boxed_path(wid):
+        """The frame with the red box only: what the cloud agent sees."""
+        return os.path.join(CACHE_DIR, f"{_safe_id(wid)}_box.jpg")
+
     def provider(self):
         v = self.vision
         return getattr(v, "provider", None) if v and getattr(v, "client", None) else None
@@ -420,19 +432,20 @@ class WrongWayPatrol:
         ids = []
         for n, (conf, group, head, known, box) in enumerate(cands[:PER_CAM]):
             wid = f"{_safe(camid)}-{int(now)}-{n}"
-            crop, marked = self._evidence(frame, box, known)
+            crop, marked, boxed = self._evidence(frame, box, known)
             _write_jpeg(self.crop_path(wid), crop)
             _write_jpeg(self.frame_path(wid), marked, 88)
+            _write_jpeg(self.boxed_path(wid), boxed, 88)
             self._insert((wid, int(now), camid, cam.get("title") or cam.get("short_title") or camid, cam.get("district"),
                           json.dumps(list(box)), HEADINGS[head], HEADINGS[known], round(conf, 3),
                           "pending", None, None, None, None))
-            self._queue.put((wid, camid, cam, crop, marked))
+            self._queue.put((wid, camid, cam, crop, marked, boxed))
             ids.append(wid)
         self._last_boxes[camid] = [c[4] for c in cands[:PER_CAM]]
         return ids
 
     def _evidence(self, frame, box, expected):
-        """(crop upscaled, frame with red box + green arrow of the lane's normal direction)."""
+        """(crop upscaled, frame with red box + green arrow of the lane's normal direction, frame with the red box only)."""
         h, w = frame.shape[:2]
         x1, y1, x2, y2 = box
         mx, my = int((x2 - x1) * CROP_MARGIN), int((y2 - y1) * CROP_MARGIN)
@@ -446,6 +459,7 @@ class WrongWayPatrol:
         s = marked.shape[1] / w
         X1, Y1, X2, Y2 = int(x1 * s), int(y1 * s), int(x2 * s), int(y2 * s)
         cv2.rectangle(marked, (X1, Y1), (X2, Y2), (0, 0, 255), 2)
+        boxed = marked.copy()
         # arrow: 1.2 box heights long, drawn beside the box so it hides nothing
         L = max(24, int((Y2 - Y1) * 1.2))
         dx, dy = [(0, 1), (0, -1), (-1, 0), (1, 0)][expected]
@@ -454,7 +468,7 @@ class WrongWayPatrol:
         p0 = (int(ax - dx * L / 2), int(ay - dy * L / 2))
         p1 = (int(ax + dx * L / 2), int(ay + dy * L / 2))
         cv2.arrowedLine(marked, p0, p1, (0, 220, 0), 3, tipLength=0.35)
-        return crop, marked
+        return crop, marked, boxed
 
     def check_now(self, camid):
         """Fresh snapshot of one camera, judged regardless of cooldown."""
@@ -495,9 +509,9 @@ class WrongWayPatrol:
 
     def _worker(self):
         while True:
-            wid, camid, cam, crop, marked = self._queue.get()
+            wid, camid, cam, crop, marked, boxed = self._queue.get()
             try:
-                self._analyse(wid, camid, cam, crop, marked)
+                self._analyse(wid, camid, cam, crop, marked, boxed=boxed)
             except Exception as e:  # noqa: BLE001
                 print(f"[WrongWay] check failed {wid}: {e}")
                 self._update(wid, verdict="error", note=str(e)[:200])
@@ -519,23 +533,26 @@ class WrongWayPatrol:
         r["crop"], r["frame"] = f"/api/wrongway/{r['id']}/crop", f"/api/wrongway/{r['id']}/frame"
         return r
 
-    def _analyse(self, wid, camid, cam, crop, marked, agent="auto"):
-        """agent: auto (cloud when budget allows, else local verdict) | cloud (force) | local (detector only)."""
+    def _analyse(self, wid, camid, cam, crop, marked, agent="auto", boxed=None):
+        """agent: auto (cloud when budget allows, else stays pending) | cloud (force) | local (detector only).
+        The local classifier alone is wrong too often to call a vehicle wrong_way: without the cloud agent the
+        check stays pending and _resume_pending asks again later."""
         now = time.time()
         row = self._row(wid) or {}
         det_conf = float(row.get("det_conf") or 0)
         local_note = (f"AI ของระบบเห็นรถ{HEADING_TH.get(row.get('heading'), '')} "
                       f"แต่ช่องทางนี้ปกติ{HEADING_TH.get(row.get('expected'), '')} (มั่นใจ {det_conf:.0%})")
-        provider = self.provider()
-        if agent == "local" or not provider or (agent == "auto" and not self._budget_ok(now)):
-            reason = "" if agent == "local" else (" · " + (self._agent_reason(now) if provider else "ไม่มี AI ตรวจซ้ำ"))
-            self._settle_local(wid, camid, cam, crop, marked, det_conf, local_note + reason)
+        if agent == "local":
+            self._settle_local(wid, camid, cam, crop, marked, det_conf, local_note)
             self.last_check = int(now)
             return
-        jpeg = cv2.imencode(".jpg", marked, [cv2.IMWRITE_JPEG_QUALITY, 90])[1].tobytes()
-        context = (f"Camera: {cam.get('title') or camid}, Bangkok. The boxed vehicle faces '{row.get('heading')}' "
-                   f"while this lane normally goes '{row.get('expected')}' (local detector {det_conf:.0%}). "
-                   "Directions are in image space: toward = down the image towards the camera, away = up.")
+        provider = self.provider()
+        if not provider or (agent == "auto" and not self._budget_ok(now)):
+            reason = self._agent_reason(now) if provider else "ไม่มี AI ตรวจซ้ำ"
+            self._update(wid, verdict="pending", note=f"{local_note} · รอ AI ตรวจซ้ำ ({reason})")
+            return
+        jpeg = cv2.imencode(".jpg", marked if boxed is None else boxed, [cv2.IMWRITE_JPEG_QUALITY, 90])[1].tobytes()
+        context = f"Camera: {cam.get('title') or camid}, Bangkok."
         self._calls.append(now)
         try:
             text = self._ask(jpeg, context)
@@ -547,7 +564,7 @@ class WrongWayPatrol:
                 short = "โควตา AI หมด" if ("402" in msg or "credits" in msg or "RESOURCE_EXHAUSTED" in msg) else "ตั้งค่า AI ไม่ถูกต้อง"
                 self.agent_error = {"ts": now, "message": short, "for": AGENT_BACKOFF_S}
             print(f"[WrongWay] cloud agent error: {msg[:160]}")
-            self._settle_local(wid, camid, cam, crop, marked, det_conf, local_note + " · AI ตรวจซ้ำไม่ตอบ")
+            self._update(wid, verdict="pending", note=f"{local_note} · รอ AI ตรวจซ้ำ (AI ไม่ตอบ)")
             return
         self.agent_error = None
         self.last_check = int(now)
@@ -654,22 +671,33 @@ class WrongWayPatrol:
             or {"camid": camid, "title": row["title"], "district": row["district"]}
         marked = cv2.imdecode(np.fromfile(frame_p, np.uint8), cv2.IMREAD_COLOR)
         crop = cv2.imdecode(np.fromfile(crop_p, np.uint8), cv2.IMREAD_COLOR) if os.path.exists(crop_p) else marked
+        box_p = self.boxed_path(wid)
+        boxed = cv2.imdecode(np.fromfile(box_p, np.uint8), cv2.IMREAD_COLOR) if os.path.exists(box_p) else None
         try:
-            self._analyse(wid, camid, cam, crop, marked, agent=agent)
-        except Exception as e:  # noqa: BLE001
+            self._analyse(wid, camid, cam, crop, marked, agent=agent, boxed=boxed)
+        except Exception as e:  # noqa: BLE001 - e.g. an answer that is not JSON: not retried as pending
+            self._update(wid, verdict="error", note=str(e)[:200])
             return {"ok": False, "error": str(e)[:200]}
         return {"ok": True, "item": self._row(wid)}
 
     def _resume_pending(self):
+        """Every PENDING_RETRY_S, ask the cloud agent again about the checks it could not take (budget, rate
+        limit, no answer), newest first, while the hourly budget lasts."""
         time.sleep(20)
-        with self.lock:
-            conn = self._db()
-            ids = [r["id"] for r in conn.execute(
-                "SELECT id FROM wrongway_checks WHERE verdict = 'pending' AND ts >= ? ORDER BY ts DESC LIMIT 60",
-                (int(time.time() - 6 * 3600),))]
-            conn.close()
-        for wid in [w for w in ids if os.path.exists(self.frame_path(w))]:
-            self.reanalyse(wid, "cloud" if self.provider() else "local")
+        while True:
+            if self.provider() and self._budget_ok(time.time()):
+                with self.lock:
+                    conn = self._db()
+                    ids = [r["id"] for r in conn.execute(
+                        "SELECT id FROM wrongway_checks WHERE verdict = 'pending' AND ts >= ? ORDER BY ts DESC LIMIT 60",
+                        (int(time.time() - CACHE_KEEP_H * 3600),))]
+                    conn.close()
+                for wid in ids:
+                    if not self._budget_ok(time.time()):
+                        break
+                    if os.path.exists(self.frame_path(wid)):
+                        self.reanalyse(wid, "auto")
+            time.sleep(PENDING_RETRY_S)
 
     def reanalyse_pending(self, agent="cloud", limit=40, hours=24):
         with self.lock:
