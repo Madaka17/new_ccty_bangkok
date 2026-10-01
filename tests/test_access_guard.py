@@ -8,8 +8,9 @@ from backend.core import access_guard
 from backend.core.access_guard import _is_trusted_ip, _Window, client_ip
 
 
-def _req(peer, **headers):
-    return SimpleNamespace(client=SimpleNamespace(host=peer), headers={k.replace("_", "-"): v for k, v in headers.items()})
+def _req(peer, server="127.0.0.1", **headers):
+    return SimpleNamespace(client=SimpleNamespace(host=peer), scope={"server": (server, 8000)},
+                           headers={k.replace("_", "-"): v for k, v in headers.items()})
 
 
 def test_trusted_networks():
@@ -30,6 +31,23 @@ def test_proxy_uses_forwarded_client():
 def test_spoofed_forwarded_entry_is_not_trusted():
     # The local proxy appends the real client to whatever the client sent, so only the last entry is real
     assert client_ip(_req("127.0.0.1", x_forwarded_for="127.0.0.1, 203.0.113.5")) == "203.0.113.5"
+
+
+def test_cloudflare_tunnel_uses_cf_connecting_ip():
+    # cloudflared connects to 127.0.0.2; Cloudflare puts the visitor's address in CF-Connecting-IP
+    r = _req("127.0.0.1", server="127.0.0.2", cf_connecting_ip="203.0.113.7", x_forwarded_for="127.0.0.1")
+    assert client_ip(r) == "203.0.113.7"
+
+
+def test_cloudflare_tunnel_without_header_is_not_trusted():
+    ip = client_ip(_req("127.0.0.1", server="127.0.0.2"))
+    assert not _is_trusted_ip(ip)
+
+
+def test_funnel_ignores_spoofed_cf_connecting_ip():
+    # Tailscale Funnel connects to 127.0.0.1 and passes on any CF-Connecting-IP the visitor sent
+    r = _req("127.0.0.1", cf_connecting_ip="127.0.0.1", x_forwarded_for="203.0.113.5")
+    assert client_ip(r) == "203.0.113.5"
 
 
 def test_window_limits_per_key():

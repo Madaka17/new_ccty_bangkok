@@ -20,6 +20,21 @@ FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 _stop_event = threading.Event()
 
 
+class _StripPrefix:
+    """Serves the app under /enviro as well as at /. Tailscale Funnel strips /enviro before it gets here,
+    Cloudflare Tunnel (cctv.bkksmartstreet.com/enviro/ framed by BKK's Earthquake page) does not."""
+
+    def __init__(self, app, prefix):
+        self.app, self.prefix = app, prefix
+
+    def __call__(self, environ, start_response):
+        path = environ.get("PATH_INFO", "")
+        if path == self.prefix or path.startswith(self.prefix + "/"):
+            environ["SCRIPT_NAME"] = environ.get("SCRIPT_NAME", "") + self.prefix
+            environ["PATH_INFO"] = path[len(self.prefix):] or "/"
+        return self.app(environ, start_response)
+
+
 def create_app():
     dbmod.init_db()
 
@@ -38,6 +53,7 @@ def create_app():
     app.register_blueprint(nodes.bp)
 
     register_ws(app, lambda: app.config["SIMULATOR"])
+    app.wsgi_app = _StripPrefix(app.wsgi_app, "/enviro")
 
     @app.get("/")
     def index():

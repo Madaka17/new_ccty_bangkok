@@ -101,12 +101,20 @@ BMA_DATA_DIR=E:\data smartstreet
 
 ### 🌐 เปิดเว็บให้คนอื่นเข้าดู
 
-- เปิด `launch\production\start.bat` เพื่อเปิดเว็บผ่าน Tailscale Funnel ที่ลิงก์ด้านล่าง คนที่มีลิงก์สามารถเข้าดูได้
-- ถ้าต้องการใช้เฉพาะในเครื่องหรือเครือข่ายภายใน ให้เปิด `launch\production\start_local.bat` แทน
-- ถ้ากำลังเปลี่ยนจากโหมดสาธารณะเป็นโหมดส่วนตัว ให้รัน `launch\production\stop.bat` ก่อน แล้วจึงเปิด `start_local.bat`
-- `launch\production\stop.bat` จะหยุดเซิร์ฟเวอร์ Production และปิดทางเข้าผ่าน Funnel
+ลิงก์สาธารณะ:
 
-ลิงก์สาธารณะ: https://cctv-bangkok.tail95e28b.ts.net
+| เว็บ | Cloudflare (หลัก) | Tailscale Funnel (ลิงก์เดิม เปิดคู่กันไปก่อน) |
+|---|---|---|
+| BKK StreetSmart | https://cctv.bkksmartstreet.com | https://cctv-bangkok.tail95e28b.ts.net |
+| ENVIRO | https://enviro.bkksmartstreet.com | https://cctv-bangkok.tail95e28b.ts.net/enviro/ |
+
+- **Cloudflare Tunnel** รันเป็น Windows service ชื่อ `cloudflared` เปิดเองตอนบูต ไม่ขึ้นกับสคริปต์ start/stop ตั้งค่าอยู่ที่ `launch\cloudflare\config.yml` (tunnel `bkk-streetsmart`) ไฟล์ลับของ tunnel อยู่ที่ `C:\Users\user\.cloudflared\` ไม่เก็บใน Git
+  - หลังแก้ `config.yml`: `Restart-Service cloudflared` (ต้องเปิด PowerShell แบบ admin)
+  - ติดตั้งใหม่หรือซ่อม service: `launch\cloudflare\install_service.ps1` (แบบ admin)
+  - BKK ต้องชี้ไปที่ `http://127.0.0.2:8000` ไม่ใช่ `127.0.0.1` เพราะ `access_guard.py` อ่าน IP จริงของผู้เข้าชมจาก `CF-Connecting-IP` เฉพาะการเชื่อมต่อที่เข้ามาทาง `127.0.0.2`
+- `launch\production\start.bat` เปิด Tailscale Funnel ให้ด้วยถ้ามี tailscale ในเครื่อง ถ้าไม่มีก็ข้ามไป เว็บยังเข้าได้ทาง Cloudflare
+- ถ้าต้องการใช้เฉพาะในเครื่องหรือเครือข่ายภายใน ให้เปิด `launch\production\start_local.bat` แทน (Cloudflare Tunnel ยังเปิดอยู่ ถ้าไม่ให้คนนอกเข้าต้องหยุด service `cloudflared` ด้วย)
+- `launch\production\stop.bat` จะหยุดเซิร์ฟเวอร์ Production และปิด Funnel ระหว่างนั้นลิงก์ Cloudflare จะขึ้นหน้า error ของ Cloudflare
 
 ดูวิธีเริ่มและหยุดเซิร์ฟเวอร์ได้ในหัวข้อ **🚀 วิธีเปิดใช้งาน** ด้านล่าง
 
@@ -116,7 +124,7 @@ BMA_DATA_DIR=E:\data smartstreet
 
 เปิดใช้อัตโนมัติ ไม่ต้องตั้งค่าเพิ่ม:
 
-- **endpoint ควบคุม** (POST/PUT/DELETE เช่น เปลี่ยนกล้อง, ตั้ง FPS, สแกน BMA, ลบผลตรวจ) ใช้ได้เฉพาะ localhost / LAN / tailnet หรือส่ง header `X-Admin-Token` ให้ตรงกับ `ADMIN_TOKEN` ใน `.env` — คนนอกได้ `403`
+- **endpoint ควบคุม** (POST/PUT/DELETE เช่น เปลี่ยนกล้อง, ตั้ง FPS, สแกน BMA, ลบผลตรวจ) ใช้ได้เฉพาะ localhost / LAN / tailnet (ผู้เข้าชมผ่าน Cloudflare นับเป็นคนนอกเสมอ) หรือส่ง header `X-Admin-Token` ให้ตรงกับ `ADMIN_TOKEN` ใน `.env` — คนนอกได้ `403`
 - **`/api/chat`** (ใช้ key Gemini/Claude) จำกัดต่อ IP ค่าเริ่มต้น 6 ครั้ง/นาที, 60 ครั้ง/วัน, body ไม่เกิน 8000 bytes — เกินได้ `429` / `413`
 - request ทั่วไปจากคนนอกจำกัด 600 ครั้ง/นาที ต่อ IP
 
@@ -180,6 +188,7 @@ GENERAL_RATE_PER_MIN=600
 ├── launch/                       ← ▶️ ตัวรัน
 │   ├── production/      start / restart / stop / start_local   (:8000; start เปิด Funnel)
 │   ├── test/            start / restart / stop                 (ทดสอบ :8001)
+│   ├── cloudflare/      config.yml + install_service.ps1        (Cloudflare Tunnel → cctv. / enviro.bkksmartstreet.com)
 │   ├── enviro/, bma_watch/
 │   ├── kill_server.ps1  (ใช้ร่วม: หยุดเซิร์ฟเวอร์ตามพอร์ต)
 │   └── build_web.bat

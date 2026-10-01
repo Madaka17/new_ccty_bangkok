@@ -1287,6 +1287,14 @@ def read_root():
     # never cache the shell so a rebuilt bundle is picked up on the next reload
     return FileResponse(INDEX_HTML, headers={"Cache-Control": "no-cache"})
 
+@app.get("/sw.js")
+def service_worker():
+    # no-cache like the shell: Cloudflare would otherwise keep a .js without Cache-Control for hours after a deploy
+    path = os.path.join(WEB_DIST, "sw.js")
+    if not os.path.exists(path):
+        return Response(status_code=404)
+    return FileResponse(path, media_type="text/javascript", headers={"Cache-Control": "no-cache"})
+
 @app.get("/robots.txt")
 def robots_txt():
     # no crawling, no indexing: the data is for people using the site, not for harvesting

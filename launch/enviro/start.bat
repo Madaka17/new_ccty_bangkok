@@ -35,7 +35,7 @@ rem Mounted next to BKK StreetSmart launch\production, which serves "/" on the s
 echo [*] Enabling Tailscale Funnel at /enviro ...
 tailscale funnel --bg --set-path=/enviro 5050
 echo.
-echo [*] Public URL: https://cctv-bangkok.tail95e28b.ts.net/enviro/
+echo [*] Public URL: https://enviro.bkksmartstreet.com  ^(Tailscale: https://cctv-bangkok.tail95e28b.ts.net/enviro/^)
 echo [*] Local  URL: http://localhost:5050
 echo [*] Close this window to stop ENVIRO. Funnel stays on until stop.bat.
 echo.

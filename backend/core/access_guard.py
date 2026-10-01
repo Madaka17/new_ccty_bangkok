@@ -22,6 +22,9 @@
 
 Tailscale serve/funnel forwards the real client address in ``X-Forwarded-For``,
 so the limiter keys on that header when the direct peer is a local proxy.
+Cloudflare Tunnel (cloudflared) connects to ``CLOUDFLARE_TUNNEL_ADDR`` (127.0.0.2) instead of 127.0.0.1,
+and only those requests are keyed on ``CF-Connecting-IP``: both proxies come from 127.0.0.1, and a
+Funnel visitor could send that header themselves.
 """
 import hmac
 import os
@@ -45,6 +48,7 @@ USER_REPORT_MAX_BODY = int(os.getenv("USER_REPORT_MAX_BODY", str(6 * 2**20)))   
 USER_REPORT_RATE_PER_HOUR = int(os.getenv("USER_REPORT_RATE_PER_HOUR", "5"))
 USER_REPORT_RATE_PER_DAY = int(os.getenv("USER_REPORT_RATE_PER_DAY", "20"))
 API_BROWSER_ONLY = os.getenv("API_BROWSER_ONLY", "1").strip() != "0"
+TUNNEL_ADDR = os.getenv("CLOUDFLARE_TUNNEL_ADDR", "127.0.0.2")   # cloudflared's origin: http://127.0.0.2:8000
 DOC_PATHS = ("/docs", "/redoc", "/openapi.json")
 BAD_PATH = re.compile(r"\\|\.\.|:")
 
@@ -129,7 +133,17 @@ def _is_trusted_ip(ip):
     return any(addr in net for net in TRUSTED_NETS)
 
 
+def _via_tunnel(request: Request) -> bool:
+    """True when the connection came in on the loopback address only cloudflared is pointed at."""
+    server = (getattr(request, "scope", None) or {}).get("server") or ("",)
+    return server[0] == TUNNEL_ADDR
+
+
 def client_ip(request: Request) -> str:
+    if _via_tunnel(request):
+        # Cloudflare sets CF-Connecting-IP to the visitor's address, replacing any the visitor sent. A tunnel
+        # request without it still comes from outside: never fall back to the loopback peer, which is trusted.
+        return request.headers.get("cf-connecting-ip", "").strip() or "cloudflare"
     peer = request.client.host if request.client else ""
     # Only trust X-Forwarded-For when the direct peer is our own proxy (tailscale serve)
     if peer in ("127.0.0.1", "::1"):
