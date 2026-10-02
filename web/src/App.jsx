@@ -317,7 +317,7 @@ export default function App() {
 
             {page === 'cameras' && (
               <>
-                <PageHeader title={PAGE_TITLES.cameras} description="กล้องทุกตัว แยกกล้อง iTIC กับกล้อง กทม. แตะกล้องเพื่อดูภาพใหญ่" />
+                <PageHeader title={PAGE_TITLES.cameras} description="กล้องทุกตัวทั่วประเทศ เลือกภาคแล้วเลือกจังหวัด แตะกล้องเพื่อดูภาพใหญ่" />
                 {/* cameras opened from the map, a road row or "เปิดค้างไว้ด้านบน", large, above the wall */}
                 {activeCams.length > 0 && (
                   <section aria-label="ภาพสดจากกล้องที่เลือก" className="flex flex-col gap-3">

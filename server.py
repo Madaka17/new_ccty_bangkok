@@ -84,6 +84,8 @@ from backend.traffic.guidance_service import GuidanceService
 from backend.vision.helmet_service import HelmetPatrol
 from backend.vision.flood_cam_service import FloodCamWatch, STALE_MINUTES as FLOOD_CAM_STALE_MINUTES
 from backend.vision.itic_frames import IticFrames
+from backend.vision.doh_cameras import doh_cameras, stream_key as doh_stream_key
+from backend.vision.world_cameras import world_cameras
 from backend.vision.wrongway_service import WrongWayPatrol
 from backend.water.air_service import air
 from backend.water.flood_service import flood_roads
@@ -95,7 +97,7 @@ from backend.water import water_service, north_flow, river_roads
 from backend.traffic import rsc_service
 from backend.bma.bma_events import bma_feed
 from backend.bma.bma_service import BmaScanner, RAW_DIR as BMA_RAW_DIR
-from backend.core import stale_stamp
+from backend.core import stale_stamp, thai_regions
 from backend.traffic import analytics_service
 from backend.core.telemetry_service import telemetry
 from backend.core import access_guard
@@ -333,9 +335,12 @@ def _unmasked(c):
 @app.get("/api/cameras/all")
 def get_all_cameras(request: Request):
     """Every camera for the live camera page. Ours first (cameras_bkk.json, the ones the AI knows), then the
-    rest of iTIC's list from Longdo, then the BMA cameras (source "bma"), which have no video: the page shows
-    their newest frame. Left out: Longdo cameras on the "tempsus" placeholder stream (suspended, about 80 in
-    Pattaya) and links with a masked address (camid=X.X.X.X)."""
+    rest of iTIC's list from Longdo, then the Department of Highways cameras Longdo does not list (source
+    "doh"), then the BMA cameras (source "bma"), which have no video: the page shows their newest frame,
+    then the rest of the country (world_cameras.py: BMA flood centre, Pattaya, city and river cameras),
+    whose "media" says how the page shows each one. Left out: Longdo cameras on the "tempsus" placeholder stream (suspended, about 80 in Pattaya) and links
+    with a masked address (camid=X.X.X.X). Each camera carries its province and region (ภาค) for the
+    nationwide tab."""
     items = [_unmasked(c) for c in cameras_data]
     seen = {c.get("camid") for c in cameras_data} | {c.get("hls_url") for c in cameras_data if c.get("hls_url")}
     for c in map(_unmasked, get_longdo_cameras().get("items") or []):
@@ -343,6 +348,13 @@ def get_all_cameras(request: Request):
             continue
         seen.update(k for k in (c.get("camid"), c["hls_url"]) if k)
         items.append(c)
+    # The same DOH feed reaches us through iTIC's relay as well as from DOH's own hosts
+    feeds = {doh_stream_key(c.get("hls_url")) for c in items} - {""}
+    for c in doh_cameras.items():
+        if c.get("camid") in seen or doh_stream_key(c.get("hls_url")) in feeds:
+            continue
+        seen.add(c.get("camid"))
+        items.append(dict(c))
     for c in bma_scanner.cameras:
         camid = str(c.get("camid") or "")
         if not SAFE_ID.fullmatch(camid):
@@ -356,12 +368,30 @@ def get_all_cameras(request: Request):
             "province": "กรุงเทพมหานคร", "hls_url": "", "vdourl": "", "imgurl": f"/api/bma/snapshot/{camid}?annotate=0",
             "latitude": float(c.get("latitude") or 0), "longitude": float(c.get("longitude") or 0),
         })
+    items.extend(world_cameras.items())
+    for c in items:
+        # Longdo's geocode beats the province in its title, which defaults to Bangkok when the title has none
+        province = thai_regions.from_geocode(c.get("geocode")) or thai_regions.normalize(c.get("province"))
+        c["province"] = province or c.get("province") or ""
+        c["region"] = thai_regions.region_of(province)
+        if not thai_regions.in_thailand(c.get("latitude"), c.get("longitude")):
+            c["latitude"] = c["longitude"] = 0   # e.g. BMA-1712 has its latitude in both
     # About 430 KB of mostly Thai text: gzip takes it under 60 KB
     body = json.dumps({"total": len(items), "items": items}, ensure_ascii=False).encode("utf-8")
     if "gzip" in request.headers.get("accept-encoding", ""):
         return Response(gzip.compress(body, 6), media_type="application/json",
                         headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
     return Response(body, media_type="application/json")
+
+@app.get("/api/cameras/image/{camid}")
+def get_camera_image(camid: str):
+    """Newest picture of a DWR river camera, which takes two calls the browser cannot make: see world_cameras.py."""
+    if not SAFE_ID.fullmatch(camid):
+        raise HTTPException(400, "bad camera id")
+    data = world_cameras.image_bytes(camid)
+    if not data:
+        return Response(status_code=404)
+    return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "max-age=60"})
 
 @app.get("/api/bma/analytics")
 def get_bma_analytics():
@@ -1317,6 +1347,8 @@ air.start()
 flood_roads.start()
 flood_cams.start()
 itic_frames.start()
+doh_cameras.start()
+world_cameras.start()
 user_reports.start()
 traffy_reports.start()
 tmd_warnings.start()

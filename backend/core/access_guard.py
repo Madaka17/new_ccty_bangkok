@@ -64,7 +64,8 @@ SECURITY_HEADERS = {
         "media-src 'self' https: http: blob:",
         "connect-src 'self' https: http: blob: data:",
         "worker-src 'self' blob:",
-        "frame-src 'self' https://embed.windy.com",   # 'self': the Earthquake page frames ENVIRO at /enviro/
+        # 'self': the Earthquake page frames ENVIRO at /enviro/; nstcctv: Nakhon Si Thammarat's camera player
+        "frame-src 'self' https://embed.windy.com https://nstcctv.nakhoncity.org",
         "frame-ancestors 'none'",
         "object-src 'none'",
         "base-uri 'self'",
