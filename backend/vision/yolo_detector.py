@@ -16,6 +16,8 @@ from ultralytics.trackers import BYTETracker
 from ultralytics.utils import YAML, IterableSimpleNamespace
 from ultralytics.utils.checks import check_yaml
 
+from backend.core.instance import thai_font
+
 # Target classes. COCO IDs: 1: bicycle, 2: car, 3: motorcycle, 5: bus, 7: truck; 0: person is detected only
 # as an incident signal (people on the road next to a stopped vehicle) and never counted as a vehicle
 PERSON_CLASS = 0
@@ -550,16 +552,7 @@ class VehicleDetectorYOLO11x:
         self._clahe = cv2.createCLAHE(clipLimit=2.2, tileGridSize=(8, 8))
 
     def _init_fonts(self):
-        font_candidates = [
-            'C:\\Windows\\Fonts\\tahoma.ttf',
-            'C:\\Windows\\Fonts\\leelawad.ttf',
-            'C:\\Windows\\Fonts\\arial.ttf'
-        ]
-        chosen = None
-        for fc in font_candidates:
-            if os.path.exists(fc):
-                chosen = fc
-                break
+        chosen = thai_font()
 
         if chosen:
             try:

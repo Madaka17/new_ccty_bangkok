@@ -17,6 +17,7 @@ from PIL import Image, ImageDraw, ImageFont
 from backend.bma.bma_archive import CycleArchiver
 
 from backend.core.instance import BASE_DIR  # project root
+from backend.core.instance import thai_font
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "bma_snapshots")
 os.makedirs(CACHE_DIR, exist_ok=True)
@@ -638,8 +639,8 @@ class BmaScanner:
         try:
             pil_im = Image.fromarray(cv2.cvtColor(draw_img, cv2.COLOR_BGR2RGB))
             draw = ImageDraw.Draw(pil_im)
-            font_path = 'C:\\Windows\\Fonts\\tahoma.ttf'
-            if os.path.exists(font_path):
+            font_path = thai_font()
+            if font_path:
                 font = ImageFont.truetype(font_path, 13)
                 font_bold = ImageFont.truetype(font_path, 13)
             else:

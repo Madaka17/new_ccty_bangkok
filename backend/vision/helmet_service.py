@@ -37,10 +37,11 @@ import numpy as np
 
 from backend.core import local_llm
 
+from backend.core.instance import DEFAULT_BMA_DATA_DIR
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "helmet")
-ARCHIVE_DIR = os.getenv("HELMET_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", r"D:\Data"), "helmet"))
+ARCHIVE_DIR = os.getenv("HELMET_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", DEFAULT_BMA_DATA_DIR), "helmet"))
 LOCAL_DET_PATH = os.getenv("HELMET_DET", os.path.join(BASE_DIR, "helmet_det.pt"))
 if not os.path.isabs(LOCAL_DET_PATH):
     LOCAL_DET_PATH = os.path.join(BASE_DIR, LOCAL_DET_PATH)

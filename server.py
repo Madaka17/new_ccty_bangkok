@@ -16,7 +16,8 @@ if sys.platform == 'win32':
 # 1. Auto-detect and switch to .venv if running under global Python
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
-venv_python = os.path.join(BASE_DIR, ".venv", "Scripts", "python.exe")
+venv_python = (os.path.join(BASE_DIR, ".venv", "Scripts", "python.exe") if sys.platform == "win32"
+               else os.path.join(BASE_DIR, ".venv", "bin", "python"))
 if os.path.exists(venv_python) and sys.prefix == sys.base_prefix and os.path.normcase(sys.executable) != os.path.normcase(venv_python):
     import subprocess
     print(f"[Auto-Env] Switching to virtual environment (.venv)...")
@@ -47,9 +48,21 @@ def free_port_if_needed(port=8000):
         
         print(f"[Server] Port {port} is occupied. Attempting to free it...")
         import subprocess
-        res = subprocess.run(f'netstat -ano | findstr :{port}', shell=True, capture_output=True, text=True)
         my_pid = os.getpid()
         killed = False
+        if sys.platform != "win32":
+            # macOS / Linux: lsof lists the processes listening on the port
+            import signal
+            res = subprocess.run(["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"], capture_output=True, text=True)
+            for pid in (int(p) for p in res.stdout.split() if p.isdigit()):
+                if pid != my_pid:
+                    print(f"[Server] Closing old process PID {pid} on port {port}...")
+                    os.kill(pid, signal.SIGTERM)
+                    killed = True
+            if killed:
+                time.sleep(1.0)
+            return
+        res = subprocess.run(f'netstat -ano | findstr :{port}', shell=True, capture_output=True, text=True)
         for line in res.stdout.strip().splitlines():
             parts = line.strip().split()
             if len(parts) >= 5 and f":{port}" in parts[1] and parts[3] == "LISTENING":
@@ -138,7 +151,7 @@ WEB_DIST = os.getenv("WEB_DIST") or os.path.join(DATA_DIR, "dist")
 INDEX_HTML = os.path.join(WEB_DIST, "index.html")
 WEB_BUILT = os.path.exists(INDEX_HTML)
 if not WEB_BUILT:
-    print(f"[Warning] {INDEX_HTML} not found: run launch\\build_web.bat (needs Node.js), then restart. Serving the API only.")
+    print(f"[Warning] {INDEX_HTML} not found: run launch\\build_web.bat (Windows) or launch/build_web.sh (macOS) (needs Node.js), then restart. Serving the API only.")
 
 # Load cameras (strictly verified live streams)
 cameras_data = []
@@ -1313,7 +1326,7 @@ def alerts_test(payload: dict = Body(None)):
 @app.get("/")
 def read_root():
     if not WEB_BUILT:
-        return Response("Web UI not built: run launch\\build_web.bat (needs Node.js), then restart the server.\n",
+        return Response("Web UI not built: run launch\\build_web.bat (Windows) or launch/build_web.sh (macOS) (needs Node.js), then restart the server.\n",
                         status_code=503, media_type="text/plain")
     # never cache the shell so a rebuilt bundle is picked up on the next reload
     return FileResponse(INDEX_HTML, headers={"Cache-Control": "no-cache"})

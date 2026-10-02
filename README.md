@@ -57,12 +57,12 @@
 
 ### สิ่งที่ต้องมี
 
-- Windows 10/11
+- Windows 10/11 หรือ macOS
 - Python 3 (เครื่องที่รันจริงใช้ 3.14)
 - Node.js 18 ขึ้นไป (ใช้สร้างหน้าเว็บ)
-- การ์ดจอ NVIDIA ไม่บังคับ แต่ถ้าไม่มี AI ดูภาพจะช้ากว่ามาก
+- การ์ดจอ NVIDIA ไม่บังคับ แต่ถ้าไม่มี AI ดูภาพจะช้ากว่ามาก (บน Mac AI ใช้ CPU)
 
-### ติดตั้ง
+### ติดตั้ง (Windows)
 
 ```bash
 git clone https://github.com/Madaka17/new_ccty_bangkok.git
@@ -75,7 +75,16 @@ python -m venv .venv
 .venv\Scripts\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
 ```
 
-หน้าเว็บไม่ต้องสร้างเอง ตอนเปิดเซิร์ฟเวอร์ครั้งแรก `start.bat` จะสร้างให้ (ต้องติดตั้ง Node.js ไว้ก่อน)
+### ติดตั้ง (macOS)
+
+```bash
+brew install python node        # ถ้ายังไม่มี Python 3 และ Node.js
+git clone https://github.com/Madaka17/new_ccty_bangkok.git
+cd new_ccty_bangkok
+bash launch/setup.sh            # สร้าง .venv ลงแพ็กเกจ Python และแพ็กเกจหน้าเว็บ
+```
+
+หน้าเว็บไม่ต้องสร้างเอง ตอนเปิดเซิร์ฟเวอร์ครั้งแรก `start.bat` / `start.sh` จะสร้างให้ (ต้องติดตั้ง Node.js ไว้ก่อน)
 
 ### ตั้งค่า
 
@@ -86,16 +95,23 @@ GEMINI_API_KEY=        # AI แชทและตรวจภาพ (สร้�
 LOCAL_LLM_URL=         # AI Qwen สำหรับสรุปสถานการณ์และตรวจภาพ
 LOCAL_LLM_MODEL=
 LOCAL_LLM_API_KEY=
-BMA_DATA_DIR=D:\Data   # โฟลเดอร์เก็บสถิติและภาพหลักฐาน
+BMA_DATA_DIR=D:\Data   # โฟลเดอร์เก็บสถิติและภาพหลักฐาน (ไม่ใส่: Windows ใช้ D:\Data, Mac ใช้ instances/production/data)
 ```
 
 ห้าม commit ไฟล์ `.env` ขึ้น GitHub เพราะมี key ลับอยู่ในนั้น
 
 ### เปิดเว็บ
 
+**Windows**
 1. ดับเบิลคลิก `launch\production\start.bat`
 2. รอสักครู่ แล้วเปิด http://localhost:8000
 3. หยุดใช้งาน: `launch\production\stop.bat` · เริ่มใหม่: `launch\production\restart.bat`
+
+**macOS** (ใน Terminal ที่โฟลเดอร์โปรเจกต์)
+1. `bash launch/production/start.sh` (เซิร์ฟเวอร์รันอยู่ในหน้าต่าง Terminal นั้น)
+2. รอสักครู่ แล้วเปิด http://localhost:8000
+3. หยุดใช้งาน: กด Ctrl+C หรือ `bash launch/production/stop.sh` · เริ่มใหม่: `bash launch/production/restart.sh`
+4. เซิร์ฟเวอร์ทดสอบ (:8001): `bash launch/test/start.sh` · `stop.sh` · `restart.sh`
 
 ไฟล์โมเดล AI (`*.pt`) ไม่อยู่ใน GitHub เพราะใหญ่เกิน โมเดลนับรถ `yolo26x.pt` จะดาวน์โหลดให้เองตอนเปิดครั้งแรก
 ส่วนโมเดลตรวจหมวกและย้อนศร ต้องเทรนเองหรือขอไฟล์จากผู้ดูแล
@@ -106,7 +122,7 @@ BMA_DATA_DIR=D:\Data   # โฟลเดอร์เก็บสถิติแ�
 
 | อาการ | สาเหตุ / วิธีแก้ |
 |---|---|
-| เปิดหน้าแรกแล้วขึ้น `503` | ยังไม่มีหน้าเว็บ ติดตั้ง Node.js แล้วรัน `launchuild_web.bat` |
+| เปิดหน้าแรกแล้วขึ้น `503` | ยังไม่มีหน้าเว็บ ติดตั้ง Node.js แล้วรัน `launch\build_web.bat` (Windows) หรือ `bash launch/build_web.sh` (Mac) |
 | ขึ้นป้ายแดง "เว็บกล้อง กทม. ล่ม" | เว็บกล้องของ กทม. ไม่ส่งภาพ ไม่ใช่ปัญหาของเรา ระบบลองใหม่เองทุก 3 นาที |
 | ภาพกล้อง กทม. เป็นตอนกลางวันทั้งที่เป็นกลางคืน | เป็นภาพสุดท้ายก่อนเว็บกล้อง กทม. ล่ม รอให้เว็บกลับมา |
 | ลมบนแผนที่ไม่ขึ้น | Open-Meteo จำกัดการเรียกต่อวัน รอวันถัดไป |
@@ -117,7 +133,7 @@ BMA_DATA_DIR=D:\Data   # โฟลเดอร์เก็บสถิติแ�
 ## สำหรับนักพัฒนา
 
 - **โครงสร้างโค้ด ค่าตั้งใน `.env` ทั้งหมด และวิธีดูแลเซิร์ฟเวอร์:** [docs/DEVELOPER.md](docs/DEVELOPER.md)
-- **รันเทสต์:** `.venv\Scripts\python -m pytest tests`
+- **รันเทสต์:** `.venv\Scripts\python -m pytest tests` (Mac: `.venv/bin/python -m pytest tests`)
 - **โครงสร้างหลัก:**
 
 ```
