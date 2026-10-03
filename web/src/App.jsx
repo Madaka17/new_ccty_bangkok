@@ -44,7 +44,7 @@ const CameraAiPage = lazyPage(() => import('./components/CameraAiPage.jsx'));
 const SafetyPage = lazyPage(() => import('./components/SafetyPage.jsx'));
 const VisitorsPage = lazyPage(() => import('./components/VisitorsPage.jsx'));
 const WaterPage = lazyPage(() => import('./components/WaterPage.jsx'));
-const FloodPinPage = lazyPage(() => import('./components/FloodPinPage.jsx'));
+const ReportFloodPage = lazyPage(() => import('./components/ReportFloodPage.jsx'));
 const AlertsPage = lazyPage(() => import('./components/AlertsPage.jsx'));
 
 function PageLoading() {
@@ -366,7 +366,7 @@ export default function App() {
 
             {page === 'water' && <WaterPage isActive onToast={showToast} onNavigate={navigate} onAsk={askAI} onOpenRoad={openRoadCameras} />}
 
-            {page === 'report' && <FloodPinPage isActive />}
+            {page === 'report' && <ReportFloodPage isActive onNavigate={navigate} />}
 
             {page === 'yolo' && (
               <CameraAiPage tab={cameraTab} onTab={setCameraTab} cameras={cameras} favorites={favorites} camid={aiCamid} incidents={incidents} onPickCamera={setAiCamid} onToast={showToast} onAsk={askAI} />

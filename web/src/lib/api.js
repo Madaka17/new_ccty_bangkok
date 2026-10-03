@@ -235,7 +235,13 @@ export async function fetchUserReports() {
   return res.json();
 }
 
-// Send one: { lat, lng, depth, note?, photo? (data: URL) } -> { id, status: published | pending | rejected, message }
+export async function fetchReportLocations() {
+  const res = await fetch('/api/flood/report-locations');
+  if (!res.ok) throw new Error('โหลดรายชื่อจังหวัดและอำเภอไม่ได้');
+  return (await res.json()).provinces;
+}
+
+// Send one: { province, district, lat, lng, depth, note?, photo? (data: URL) } -> { id, status: published | pending | rejected, message }
 export async function postUserReport(body) {
   const res = await fetch('/api/flood/user-reports', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));

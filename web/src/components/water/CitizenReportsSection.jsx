@@ -85,7 +85,7 @@ function mergeReports(traffy, longdo, hdms, js100, web) {
   for (const r of web?.items || []) {
     rows.push({
       id: `web-${r.id}`, source: 'web', ts: r.ts, title: r.note || 'คนแจ้งน้ำท่วม', text: r.ai_level_th ? `AI ดูรูปแล้ว: ${r.ai_level_th}` : '',
-      district: NO_DISTRICT, province: r.province || NO_PROVINCE, depth: r.depth_th, photo: r.photo,
+      district: r.district ? `${r.province === BKK ? 'เขต' : 'อ.'}${r.district}` : NO_DISTRICT, province: r.province || NO_PROVINCE, depth: r.depth_th, photo: r.photo,
       url: `https://www.google.com/maps?q=${r.lat},${r.lng}`, urlLabel: 'ดูแผนที่',
     });
   }

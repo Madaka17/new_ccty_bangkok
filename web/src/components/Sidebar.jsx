@@ -35,7 +35,7 @@ export const NAV_GROUPS = [
     line: 'var(--line-4)',
     items: [
       { id: 'ai', label: 'ถาม AI', hint: 'ถาม AI เรื่องรถติด น้ำท่วม หรือเรื่องทั่วไป' },
-      { id: 'report', label: 'แจ้งน้ำท่วม', hint: 'แจ้งน้ำท่วมถึงเขต ผ่าน Traffy Fondue และดูเรื่องที่คนแจ้งใน 6 ชม.' },
+      { id: 'report', label: 'แจ้งน้ำท่วม', hint: 'แจ้งน้ำท่วมกับ BKK StreetSmart แนบรูป รายละเอียด และปักหมุดตำแหน่ง' },
       { id: 'visitors', label: 'สถิติผู้ใช้', hint: 'มีคนใช้เว็บกี่คน และดูหน้าไหนมากที่สุด' },
     ],
   },

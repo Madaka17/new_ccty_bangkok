@@ -105,7 +105,7 @@ from backend.vision.world_cameras import world_cameras
 from backend.vision.wrongway_service import WrongWayPatrol
 from backend.water.air_service import air
 from backend.water.flood_service import flood_roads
-from backend.water.user_reports import UserReports
+from backend.water.user_reports import UserReports, report_locations
 from backend.water.flood_feeds import traffy_reports, tmd_warnings, hdms_floods, js100_floods
 from backend.core.news_feed import news_feed
 from backend.water.province_flood import ProvinceFlood
@@ -939,17 +939,22 @@ def flood_cameras_check():
     """Check every camera now instead of waiting for its turn (operator only through access_guard)."""
     return flood_cams.check_all()
 
+@app.get("/api/flood/report-locations")
+def user_report_locations():
+    return {"provinces": report_locations()}
+
 @app.get("/api/flood/user-reports")
 def user_reports_recent(hours: float = Query(None, gt=0, le=48)):
     """Published flood reports from the public in the last hours (default USER_REPORT_HOURS), each with its province."""
     out = user_reports.recent(hours)
     for r in out["items"]:
-        r["province"] = province_flood.place(r["note"], "", r["lat"], r["lng"])
+        if not r.get("province"):
+            r["province"] = province_flood.place(r["note"], "", r["lat"], r["lng"])
     return out
 
 @app.post("/api/flood/user-reports")
 async def user_reports_create(request: Request):
-    """A flood report from the public: {lat, lng, depth, note?, photo? (data: URL)}. Size and rate limited in access_guard."""
+    """Own flood report: {province, district, lat, lng, depth, note?, photo? (data: URL)}. Size/rate limited."""
     body = bytearray()
     async for chunk in request.stream():   # counted here too: a chunked upload has no content-length to check
         body += chunk

@@ -98,10 +98,19 @@ export default function ReportFloodPage({ isActive, onNavigate }) {
     };
   }, [loadReports]);
 
-  // The page is for reporting where you are: ask for the location once when it opens
   useEffect(() => {
-    if (isActive) locate();
-  }, [isActive, locate]);
+    if (isActive) mapRef.current?.resize();
+  }, [isActive]);
+
+  const changePin = (point) => {
+    setPin(point);
+    setRough('');
+    if (point) mapRef.current?.flyTo({ center: [point.lng, point.lat], zoom: 15 });
+  };
+  const changeArea = (area) => {
+    setPin(null);
+    mapRef.current?.flyTo({ center: [area.lng, area.lat], zoom: 11 });
+  };
 
   // One draggable pin
   useEffect(() => {
@@ -138,8 +147,8 @@ export default function ReportFloodPage({ isActive, onNavigate }) {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title="Report Flood"
-        description="เห็นน้ำท่วมบนถนน ปักหมุด บอกระดับน้ำ แนบรูป · AI ตรวจรูปก่อนขึ้นแผนที่ · รายงานอยู่บนแผนที่ 6 ชั่วโมง"
+        title="แจ้งน้ำท่วม"
+        description="แจ้งกับ BKK StreetSmart โดยตรง เลือกจังหวัดและอำเภอ ปักหมุด บอกระดับน้ำ พร้อมแนบรูปและรายละเอียด"
       />
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4 items-start">
         <Card className="p-0 overflow-hidden">
@@ -180,7 +189,7 @@ export default function ReportFloodPage({ isActive, onNavigate }) {
               </div>
             </Card>
           ) : (
-            <ReportFloodForm key={formKey} pin={pin} locating={locating} onUseMyLocation={locate} onSent={onSent} />
+            <ReportFloodForm key={formKey} pin={pin} locating={locating} onUseMyLocation={locate} onPinChange={changePin} onAreaChange={changeArea} onSent={onSent} />
           )}
           <p className="text-[11px] text-slate-500 leading-4 px-1">
             จุดสีฟ้าจางบนแผนที่คือรายงานที่มีคนแจ้งแล้วใน 6 ชั่วโมง · ถ้ามีคนแจ้งจุดเดียวกันแล้ว ไม่ต้องแจ้งซ้ำ
