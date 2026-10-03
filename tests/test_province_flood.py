@@ -30,16 +30,22 @@ def test_gauges_drop_stale_and_station_codes():
 
 def test_levels():
     ps = {p["province"]: p for p in pf.build(snapshot([
-        gauge("สุพรรณบุรี", 5, 120),                          # over the bank and rising: critical
-        gauge("นครปฐม", 5, 110, msl="10.00", prev="10.00"),   # over the bank, steady: flood
-        gauge("ชัยนาท", 4, 80),                               # high: watch
+        *[gauge("สุพรรณบุรี", 5, 120)] * 3,                   # three of three gauges over the bank: critical
+        gauge("นครปฐม", 5, 110, msl="10.00", prev="10.00"),   # one over the bank, steady: flood
+        gauge("พิจิตร", 5, 110),                               # one over the bank and rising: still flood
+        gauge("ชัยนาท", 4, 80),                               # its only gauge high: watch
+        gauge("กาญจนบุรี", 4, 80), *[gauge("กาญจนบุรี", 3, 50)] * 9,   # one high gauge of ten: normal
         gauge("ลำปาง", 3, 50),                                # normal
-    ], [rain("เชียงราย", 95)]), highways=[{"province": "ปราจีนบุรี", "active": True, "lat": 14, "lng": 101}], now=NOW)}
+    ], [rain("เชียงราย", 95)]), highways=[{"province": "ปราจีนบุรี", "active": True, "lat": 14, "lng": 101}]
+        + [{"province": "นครนายก", "active": True, "lat": 14.2, "lng": 101.2}] * 5, now=NOW)}
     assert ps["สุพรรณบุรี"]["level"] == "critical"
     assert ps["นครปฐม"]["level"] == "flood"
+    assert ps["พิจิตร"]["level"] == "flood"
     assert ps["ชัยนาท"]["level"] == "watch"
+    assert ps["กาญจนบุรี"]["level"] == "normal"
     assert ps["เชียงราย"]["level"] == "watch"          # rain over 90 mm
     assert ps["ปราจีนบุรี"]["level"] == "flood"        # a flooded highway
+    assert ps["นครนายก"]["level"] == "critical"        # five flooded highways
     assert ps["ลำปาง"]["level"] == "normal" and ps["ลำปาง"]["summary"] == "ระดับน้ำปกติ"
     first = pf.build(snapshot([gauge("สุพรรณบุรี", 5, 120), gauge("ลำปาง", 3, 50)]), [], now=NOW)[0]
     assert first["province"] == "สุพรรณบุรี" and "น้ำล้นตลิ่ง 1 จุด" in first["summary"]
@@ -56,7 +62,7 @@ def test_reports_are_placed_and_raise_the_level():
     snap = snapshot([gauge("ลำปาง", 3, 50), gauge("สุพรรณบุรี", 3, 50)])
     snap["waterlevel"]["data"]["data"][1]["station"].update(tele_station_lat=14.47, tele_station_long=100.12)
     reports = [{"title": "น้ำท่วมหน้าตลาด", "text": "", "lat": 14.5, "lng": 100.1, "ts": NOW}] * 5   # nearest: Suphan Buri
-    reports.append({"title": "น้ำท่วม อ.เมืองลำปาง", "text": "", "lat": 14.5, "lng": 100.1, "ts": NOW})   # named
+    reports += [{"title": "น้ำท่วม อ.เมืองลำปาง", "text": "", "lat": 14.5, "lng": 100.1, "ts": NOW}] * 2   # named
     ps = {p["province"]: p for p in pf.build(snap, [], reports, now=NOW)}
     assert ps["สุพรรณบุรี"]["counts"]["reports"] == 5 and ps["สุพรรณบุรี"]["level"] == "flood"
-    assert ps["ลำปาง"]["counts"]["reports"] == 1 and ps["ลำปาง"]["level"] == "watch"
+    assert ps["ลำปาง"]["counts"]["reports"] == 2 and ps["ลำปาง"]["level"] == "watch"

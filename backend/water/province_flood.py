@@ -39,7 +39,10 @@ AI_PROVINCES = 30            # at most this many provinces go to the model, wors
 STALE_HOURS = 24             # a gauge that has not reported for this long is left out
 RISING_M = 0.02              # water up this much since the previous reading counts as rising
 HEAVY_MM, EXTREME_MM = 35, 90
-REPORTS_FLOOD = 5            # this many reports from people make a province at least "flood" (one: "watch")
+REPORTS_FLOOD = 5            # this many reports from people make a province at least "flood" (two: "watch")
+CRITICAL_OVERFLOW, CRITICAL_SHARE = 3, 0.3   # critical: at least 3 gauges over the bank and 30% of the province's
+CRITICAL_HIGHWAYS = 5        # ... or this many flooded highways still open in HDMS
+WATCH_SHARE = 0.2            # watch: one high gauge is enough only where it is a fifth of the gauges
 LEVELS = ("critical", "flood", "watch", "normal")
 LABELS = {"critical": "วิกฤต", "flood": "น้ำล้นตลิ่ง/ท่วม", "watch": "เฝ้าระวัง", "normal": "ปกติ"}
 RANK = {lv: i for i, lv in enumerate(LEVELS)}
@@ -160,12 +163,17 @@ def parse_rain(rows):
     return out
 
 
-def _level(overflow, rising_over, high, highways, rain, reports=0):
-    if overflow >= 3 or rising_over >= 1 or highways >= 3:
+def _level(gauges, overflow, rising_over, high, highways, rain, reports=0):
+    """Breadth decides, so one gauge or one ticket does not paint a province red: on 2026-10-03 the old rules
+    (one gauge over the bank and rising, or three flooded highways, = critical; one high gauge or one report =
+    watch) put 63 of 77 provinces above normal."""
+    if (overflow >= CRITICAL_OVERFLOW and overflow >= CRITICAL_SHARE * gauges) or rising_over >= 2 \
+            or highways >= CRITICAL_HIGHWAYS:
         return "critical"
     if overflow or highways or reports >= REPORTS_FLOOD:
         return "flood"
-    if high or rain.get("extreme") or rain.get("heavy", 0) >= 3 or reports:
+    if high >= 2 or (high and high >= WATCH_SHARE * gauges) or rain.get("extreme") or rain.get("heavy", 0) >= 3 \
+            or reports >= 2:
         return "watch"
     return "normal"
 
@@ -243,7 +251,7 @@ def build(snapshot, highways, reports=(), now=None):
         over = [x for x in g if x["level"] >= 5]
         high = [x for x in g if x["level"] == 4]
         r = rain.get(name, {"max_mm": 0, "place": "", "heavy": 0, "extreme": 0})
-        level = _level(len(over), sum(x["trend"] > 0 for x in over), len(high), len(hw), r, len(rep))
+        level = _level(len(g), len(over), sum(x["trend"] > 0 for x in over), len(high), len(hw), r, len(rep))
         watch = sorted(over + high, key=lambda x: -(x["pct"] or 0))
         pts = watch or g
         p = {
