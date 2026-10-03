@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchAlertStatus, fetchAlertRecent, subscribeAlerts, unsubscribeAlerts, testAlert, fetchFloodReports, fetchWeatherWarnings } from '../lib/api.js';
-import { inPageAlertsOn, setInPageAlerts } from './AlertPopups.jsx';
+import { inPageAlertsOn, setInPageAlerts, alertProvince, setAlertProvince } from './AlertPopups.jsx';
 import { Card, Badge, Button, Skeleton, EmptyState } from './dashboard/ui.jsx';
 import { PageHeader, StatusBanner } from './dashboard/primitives.jsx';
 import { fmtDateTime } from './dashboard/format.js';
@@ -36,6 +36,7 @@ export default function AlertsPage({ isActive, onToast }) {
   const [busy, setBusy] = useState(null);
   const [problem, setProblem] = useState('');
   const [popups, setPopups] = useState(inPageAlertsOn);
+  const [place, setPlace] = useState(alertProvince);   // '' = the whole country
   const [warnings, setWarnings] = useState(null);
   const [reports, setReports] = useState(null);
   const [reportsFailed, setReportsFailed] = useState(false);   // this page's last request for the reports failed
@@ -77,7 +78,13 @@ export default function AlertsPage({ isActive, onToast }) {
       if (cancelled) return;
       setSub(current);
       const st = await load(current?.endpoint);
-      if (!cancelled && st) setTopics(st.my_topics || Object.keys(st.topics));
+      if (!cancelled && st) {
+        setTopics(st.my_topics || Object.keys(st.topics));
+        if (st.my_provinces) {   // this browser is subscribed: the server holds its choice
+          setPlace(st.my_provinces[0] || '');
+          setAlertProvince(st.my_provinces[0] || '');
+        }
+      }
     })();
     const id = setInterval(() => load(), POLL_MS);
     return () => {
@@ -109,7 +116,7 @@ export default function AlertsPage({ isActive, onToast }) {
     const s = (await reg.pushManager.getSubscription())
       || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(status.public_key) }));
     try {
-      await subscribeAlerts(s.toJSON(), topics, navigator.userAgent);
+      await subscribeAlerts(s.toJSON(), topics, navigator.userAgent, place ? [place] : []);
     } catch (e) {
       await s.unsubscribe();   // do not leave a browser subscription the server never stored
       throw e;
@@ -129,7 +136,13 @@ export default function AlertsPage({ isActive, onToast }) {
 
   const saveTopics = (next) => {
     setTopics(next);
-    if (sub) run('topics', () => subscribeAlerts(sub.toJSON(), next, navigator.userAgent));
+    if (sub) run('topics', () => subscribeAlerts(sub.toJSON(), next, navigator.userAgent, place ? [place] : []));
+  };
+
+  const savePlace = (next) => {
+    setPlace(next);
+    setAlertProvince(next);
+    if (sub) run('topics', () => subscribeAlerts(sub.toJSON(), topics, navigator.userAgent, next ? [next] : []));
   };
 
   const test = () => run('test', async () => {
@@ -208,6 +221,16 @@ export default function AlertsPage({ isActive, onToast }) {
             ))}
           </div>
         </fieldset>
+
+        <label className="flex flex-wrap items-center gap-2 text-sm text-slate-800">
+          <span className="text-xs font-medium text-slate-700">เตือนเฉพาะจังหวัด</span>
+          <select value={place} onChange={(e) => savePlace(e.target.value)} disabled={busy === 'topics'}
+                  className="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-sm text-slate-800">
+            <option value="">ทั้งประเทศ (เรื่องเยอะมาก)</option>
+            {(status?.provinces || [place].filter(Boolean)).map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <span className="text-xs text-slate-500">ใช้ทั้งแจ้งเตือนในเครื่องและการ์ดเด้งบนหน้าเว็บ · ประกาศกรมอุตุฯ เตือนทุกจังหวัดเสมอ</span>
+        </label>
 
         <label className="flex items-start gap-2 text-sm text-slate-800 cursor-pointer">
           <input type="checkbox" className="accent-blue-600 mt-1" checked={popups}

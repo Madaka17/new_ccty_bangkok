@@ -731,6 +731,6 @@ async function postAlert(path, body) {
   return res.json();
 }
 
-export const subscribeAlerts = (subscription, topics, label) => postAlert('subscribe', { subscription, topics, label });
+export const subscribeAlerts = (subscription, topics, label, provinces) => postAlert('subscribe', { subscription, topics, label, provinces });
 export const unsubscribeAlerts = (endpoint) => postAlert('unsubscribe', { endpoint });
 export const testAlert = (endpoint) => postAlert('test', { endpoint });

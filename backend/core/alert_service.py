@@ -36,6 +36,8 @@ import time
 from datetime import datetime
 from collections import deque
 
+from backend.core import thai_regions
+
 try:
     from pywebpush import WebPushException, webpush
     from py_vapid import Vapid01
@@ -70,6 +72,10 @@ HISTORY_KEEP = 200
 DEBOUNCE_SECONDS = {"system": 10 * 60}
 PUSH_TTL = 3600
 SILENT_FIRST = ("prov:", "close:", "tmd:")
+BKK = "กรุงเทพมหานคร"
+# Each candidate carries the province it is in ("" when it has none, e.g. a TMD warning or a system alert).
+# A subscription with "provinces" gets only those provinces plus the ones without a province; none: everything.
+PROVINCE_NAMES = sorted({name for name, _ in thai_regions.PROVINCES.values()})
 VAPID_SUB = os.getenv("ALERT_VAPID_SUB", "mailto:admin@example.com")
 
 
@@ -146,7 +152,7 @@ class AlertService:
                 closed = cm > CLOSED_CM
                 out.append({"topic": "flood", "key": f"flood:{s.get('id') or s.get('name')}", "level": 2 if closed else 1,
                             "title": f"{'ห้ามขับผ่าน' if closed else 'ควรเลี่ยง'}: {s.get('name')}",
-                            "body": f"น้ำบนถนน {cm:.0f} ซม. · {s.get('road') or '-'} เขต{s.get('district') or '-'}"})
+                            "body": f"น้ำบนถนน {cm:.0f} ซม. · {s.get('road') or '-'} เขต{s.get('district') or '-'}", "province": BKK})
 
         by_district = {}
         for r in (self._call("traffy") or {}).get("items") or []:
@@ -158,7 +164,7 @@ class AlertService:
                 depth = f" · ระดับ{'/'.join(depths)}" if depths else ""
                 out.append({"topic": "flood", "key": f"traffy:{district}", "level": 2 if len(reps) >= TRAFFY_SEVERE else 1,
                             "title": f"คนแจ้งน้ำท่วม {len(reps)} เรื่อง: เขต{district}",
-                            "body": f"Traffy Fondue ในชั่วโมงที่ผ่านมา{depth} · {reps[0].get('text', '')[:100]}"})
+                            "body": f"Traffy Fondue ในชั่วโมงที่ผ่านมา{depth} · {reps[0].get('text', '')[:100]}", "province": BKK})
 
         water = self._call("water") or {}
         for z in water.get("weather") or []:
@@ -166,7 +172,8 @@ class AlertService:
                 storm = f" · พายุเริ่ม {z['storm_at']} น." if z.get("storm_at") else ""
                 out.append({"topic": "zone", "key": f"zone:{z.get('id')}", "level": 1,
                             "title": f"เตือนภัยสีแดง: {z.get('name')}",
-                            "body": f"{z.get('areas')} · ฝน 24 ชม. {z.get('rain_24h')} มม. ลมแรงสุด {z.get('gust_max', 0):.0f} กม./ชม.{storm}"})
+                            "body": f"{z.get('areas')} · ฝน 24 ชม. {z.get('rain_24h')} มม. ลมแรงสุด {z.get('gust_max', 0):.0f} กม./ชม.{storm}",
+                            "province": BKK})
         series = set()
         for w in (self._call("tmd") or {}).get("active") or []:    # newest issue first, every province
             if w.get("series") not in series:
@@ -178,19 +185,20 @@ class AlertService:
             if p.get("level") in ("critical", "flood"):
                 out.append({"topic": "zone", "key": f"prov:{p.get('province')}", "level": 2 if p["level"] == "critical" else 1,
                             "title": f"น้ำท่วม{'วิกฤต' if p['level'] == 'critical' else ''}: จ.{p.get('province')}",
-                            "body": (p.get("summary") or "")[:160]})
+                            "body": (p.get("summary") or "")[:160], "province": p.get("province") or ""})
         for r in (water.get("river") or []) + (water.get("canals") or []):
             if r.get("level") == "overflow":
                 pct = f" {r['storage_pct']:.0f}% ของตลิ่ง" if r.get("storage_pct") is not None else ""
                 out.append({"topic": "zone", "key": f"bank:{r.get('id') or r.get('name')}", "level": 1,
                             "title": f"ล้นตลิ่ง: {r.get('name')}",
-                            "body": f"{r.get('district') or '-'} {r.get('province') or ''}{pct}".strip()})
+                            "body": f"{r.get('district') or '-'} {r.get('province') or ''}{pct}".strip(),
+                            "province": thai_regions.normalize(r.get("province")) or ""})
         rep = self._call("agent") or {}
         if rep.get("overall_level") in ("warning", "critical") and now - (rep.get("generated_at") or 0) <= AGENT_MAX_AGE:
             names = ", ".join(d.get("name", "") for d in (rep.get("districts") or [])[:4])
             out.append({"topic": "zone", "key": "agent:overall", "level": 2 if rep["overall_level"] == "critical" else 1,
                         "title": f"AI วิเคราะห์น้ำท่วม: {rep.get('level_th') or rep['overall_level']}",
-                        "body": f"{rep.get('headline', '')}{' · เขต ' + names if names else ''}"[:180]})
+                        "body": f"{rep.get('headline', '')}{' · เขต ' + names if names else ''}"[:180], "province": BKK})
 
         inc = self._call("incidents") or {}
         for i in inc.get("camera") or []:
@@ -207,13 +215,14 @@ class AlertService:
             if i.get("kind") == "accident":
                 where = f"จ.{i['province']}" if i.get("province") else ""
                 out.append({"topic": "incident", "key": _event_key(i.get("title")), "level": 1,
-                            "title": f"อุบัติเหตุ: {i.get('title')}", "body": f"{where} {(i.get('description') or '')[:130]}".strip()})
+                            "title": f"อุบัติเหตุ: {i.get('title')}", "body": f"{where} {(i.get('description') or '')[:130]}".strip(),
+                            "province": i.get("province") or ""})
         for c in road.get("closures") or []:
             if c.get("kind") == "closed":
                 where = " ".join(x for x in (f"อ.{c['amphoe']}" if c.get("amphoe") else "", f"จ.{c['province']}" if c.get("province") else "") if x)
                 out.append({"topic": "incident", "key": f"close:{c.get('id')}", "level": 1,
                             "title": f"ถนนปิด{' (น้ำท่วม)' if c.get('reason') == 'flood' else ''}: {c.get('title')}",
-                            "body": f"{where} · {(c.get('description') or '')[:120]}".strip(" ·")})
+                            "body": f"{where} · {(c.get('description') or '')[:120]}".strip(" ·"), "province": c.get("province") or ""})
         ev = self._call("bma_events") or {}
         for e in ev.get("items") or []:
             title = e.get("title") or ""
@@ -221,14 +230,15 @@ class AlertService:
                 continue
             if e.get("kind") in BMA_EVENT_KINDS or (e.get("kind") == "roadwork" and "ปิด" in title):
                 out.append({"topic": "incident", "key": _event_key(title), "level": 1,
-                            "title": f"ศูนย์จราจร กทม.: {e.get('title')}", "body": (e.get("desc") or "")[:140]})
+                            "title": f"ศูนย์จราจร กทม.: {e.get('title')}", "body": (e.get("desc") or "")[:140], "province": BKK})
 
         air = self._call("air") or {}
         for a in air.get("items") or []:
             if a.get("level") == "very_unhealthy":
                 out.append({"topic": "air", "key": f"air:{a.get('id')}", "level": 1,
                             "title": f"ฝุ่น PM2.5 {a.get('pm25')}: {a.get('name')}",
-                            "body": f"{a.get('label')} · {a.get('area') or ''} {a.get('province') or ''}".strip()})
+                            "body": f"{a.get('label')} · {a.get('area') or ''} {a.get('province') or ''}".strip(),
+                            "province": thai_regions.normalize(a.get("province")) or ""})
 
         h = self._call("health") or {}
         scan = h.get("scan") or {}
@@ -258,7 +268,9 @@ class AlertService:
         with self.lock:
             found = {}
             for c in self.candidates(now):
-                found.setdefault(c["key"], c)    # the same event from two feeds counts once
+                first = found.setdefault(c["key"], c)    # the same event from two feeds counts once
+                if not first.get("province") and c.get("province"):
+                    first["province"] = c["province"]    # the nationwide feed knows where a Bangkok one is
             self.pending = {k: t for k, t in self.pending.items() if k in found}
             for prefix in SILENT_FIRST:
                 if prefix in self.seeded:
@@ -286,8 +298,25 @@ class AlertService:
         for topic in TOPICS:
             items = [a for a in fresh if a["topic"] == topic]
             if items:
-                self.push(topic, *self._group(topic, items))
+                self._deliver(topic, items)
         return fresh
+
+    @staticmethod
+    def _wants(sub, alert):
+        places = sub.get("provinces") or []
+        return not places or not alert.get("province") or alert["province"] in places
+
+    def _deliver(self, topic, items):
+        """Each subscription gets the alerts of the provinces it picked; the same set goes out as one push."""
+        with self.lock:
+            subs = [s for s in self.subs if topic in s.get("topics", TOPICS)]
+        groups = {}
+        for s in subs:
+            mine = [a for a in items if self._wants(s, a)]
+            if mine:
+                groups.setdefault(tuple(a["key"] for a in mine), (mine, []))[1].append(s)
+        for mine, targets in groups.values():
+            self.push(topic, *self._group(topic, mine), targets=targets)
 
     @staticmethod
     def _group(topic, items):
@@ -323,14 +352,16 @@ class AlertService:
         threading.Thread(target=self._loop, daemon=True, name="alerts").start()
 
     # ------------------------------------------------------------ push
-    def push(self, topic, title, body, only=None):
-        """Send to every subscription that wants this topic (or just the `only` endpoint). Returns sent count."""
+    def push(self, topic, title, body, only=None, targets=None):
+        """Send to `targets`, or every subscription that wants this topic (or just the `only` endpoint).
+        Returns sent count."""
         if webpush is None:
             return 0
         payload = json.dumps({"title": title, "body": body, "topic": topic, "tag": topic,
                               "url": TOPIC_URL.get(topic, "/")}, ensure_ascii=False)
-        with self.lock:
-            targets = [s for s in self.subs if (s["endpoint"] == only if only else topic in s.get("topics", TOPICS))]
+        if targets is None:
+            with self.lock:
+                targets = [s for s in self.subs if (s["endpoint"] == only if only else topic in s.get("topics", TOPICS))]
         sent, gone = 0, []
         for s in targets:
             try:
@@ -352,16 +383,17 @@ class AlertService:
         return sent
 
     # ------------------------------------------------------------ api
-    def subscribe(self, sub, topics=None, label=""):
+    def subscribe(self, sub, topics=None, label="", provinces=None):
         if not isinstance(sub, dict) or not sub.get("endpoint") or not (sub.get("keys") or {}).get("p256dh"):
             return {"ok": False, "error": "subscription ไม่ถูกต้อง"}
         topics = [t for t in (topics or TOPICS) if t in TOPICS]
+        provinces = [p for p in (provinces or []) if p in PROVINCE_NAMES]
         with self.lock:
             self.subs = [s for s in self.subs if s["endpoint"] != sub["endpoint"]]
-            self.subs.append({"endpoint": sub["endpoint"], "keys": sub["keys"], "topics": topics,
+            self.subs.append({"endpoint": sub["endpoint"], "keys": sub["keys"], "topics": topics, "provinces": provinces,
                               "label": str(label)[:120], "created": int(time.time())})
             self._save()
-        return {"ok": True, "topics": topics}
+        return {"ok": True, "topics": topics, "provinces": provinces}
 
     def unsubscribe(self, endpoint):
         with self.lock:
@@ -379,6 +411,7 @@ class AlertService:
             mine = next((s for s in self.subs if s["endpoint"] == endpoint), None) if endpoint else None
             return {"enabled": webpush is not None, "public_key": self.public_key, "topics": TOPICS,
                     "subscribers": len(self.subs), "subscribed": bool(mine), "my_topics": mine["topics"] if mine else None,
+                    "my_provinces": mine.get("provinces", []) if mine else None, "provinces": PROVINCE_NAMES,
                     "open": len(self.sent), "last_check": self.last_check, "error": self.error,
                     "check_seconds": CHECK_SECONDS}
 

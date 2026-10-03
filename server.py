@@ -1526,7 +1526,8 @@ def alerts_recent(limit: int = Query(50, ge=1, le=200)):
 
 @app.post("/api/alerts/subscribe")
 def alerts_subscribe(payload: dict = Body(...)):
-    return alerts.subscribe(payload.get("subscription"), payload.get("topics"), payload.get("label", ""))
+    return alerts.subscribe(payload.get("subscription"), payload.get("topics"), payload.get("label", ""),
+                            payload.get("provinces"))
 
 @app.post("/api/alerts/unsubscribe")
 def alerts_unsubscribe(payload: dict = Body(...)):

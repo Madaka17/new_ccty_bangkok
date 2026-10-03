@@ -6,7 +6,7 @@ from backend.core.alert_service import CLEAR_SECONDS, AlertService
 def _svc(tmp_path, monkeypatch, **sources):
     pushed = []
     svc = AlertService(str(tmp_path), sources)
-    monkeypatch.setattr(svc, "push", lambda topic, title, body, only=None: pushed.append((topic, title, body)) or 1)
+    monkeypatch.setattr(svc, "_deliver", lambda topic, items: pushed.append((topic, *svc._group(topic, items))))
     return svc, pushed
 
 
@@ -111,7 +111,7 @@ def test_subscribe_validates_and_filters_topics(tmp_path, monkeypatch):
     svc, _ = _svc(tmp_path, monkeypatch)
     assert not svc.subscribe({"endpoint": "https://push/x"})["ok"]
     r = svc.subscribe({"endpoint": "https://push/x", "keys": {"p256dh": "k", "auth": "a"}}, ["flood", "bogus"])
-    assert r == {"ok": True, "topics": ["flood"]}
+    assert r == {"ok": True, "topics": ["flood"], "provinces": []}
     svc.subscribe({"endpoint": "https://push/x", "keys": {"p256dh": "k", "auth": "a"}}, ["air"])
     st = svc.status("https://push/x")
     assert st["subscribers"] == 1 and st["my_topics"] == ["air"]
@@ -126,6 +126,23 @@ def test_push_only_to_subscribers_of_topic(tmp_path, monkeypatch):
     svc.subscribe({"endpoint": "e-flood", "keys": keys}, ["flood"])
     svc.subscribe({"endpoint": "e-all", "keys": keys})
     assert svc.push("air", "t", "b") == 1 and sent == ["e-all"]
+
+
+def test_push_follows_the_provinces_picked(tmp_path, monkeypatch):
+    svc = AlertService(str(tmp_path), {})
+    sent = []
+    monkeypatch.setattr(alert_service, "webpush", lambda info, data, **kw: sent.append((info["endpoint"], data)))
+    keys = {"p256dh": "k", "auth": "a"}
+    svc.subscribe({"endpoint": "e-bkk", "keys": keys}, ["incident"], provinces=["กรุงเทพมหานคร", "ไม่มีจังหวัดนี้"])
+    svc.subscribe({"endpoint": "e-all", "keys": keys}, ["incident"])
+    assert svc.status("e-bkk")["my_provinces"] == ["กรุงเทพมหานคร"]
+    items = [{"topic": "incident", "key": "a", "title": "ชนที่เชียงใหม่", "body": "", "province": "เชียงใหม่"},
+             {"topic": "incident", "key": "b", "title": "ชนที่บางนา", "body": "", "province": "กรุงเทพมหานคร"},
+             {"topic": "incident", "key": "c", "title": "เตือนทั้งประเทศ", "body": "", "province": ""}]
+    svc._deliver("incident", items)
+    got = {e: d for e, d in sent}
+    assert "เชียงใหม่" not in got["e-bkk"] and "บางนา" in got["e-bkk"] and "ทั้งประเทศ" in got["e-bkk"]
+    assert "เชียงใหม่" in got["e-all"] and len(sent) == 2
 
 
 def test_vapid_public_key_is_stable(tmp_path):
