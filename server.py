@@ -94,6 +94,7 @@ from backend.vision.violation_service import ViolationMonitor
 from backend.vision.camera_health import CameraHealth
 from backend.traffic.traffic_service import traffic, get_traffic_tile, get_osm_tile
 from backend.traffic.guidance_service import GuidanceService
+from backend.traffic.flood_route import FloodRouter, gather, sensor_spots
 from backend.traffic.area_traffic import area_traffic
 from backend.traffic import near_traffic, area_roads
 from backend.vision.helmet_service import HelmetPatrol
@@ -1293,10 +1294,54 @@ def telemetry_view(payload: dict = Body(...)):
 def telemetry_heartbeat(payload: dict = Body(...)):
     return {"ok": telemetry.heartbeat(payload.get("sid"), payload.get("view"))}
 
+def route_hazards():
+    """Flooded spots for the chat bot's routes, and the sources that could not be read (flood_route.gather).
+    `avoid` = keep the route out (deep enough to stop a car, or reported flooded with no depth); the rest is
+    shallow water the answer only mentions."""
+    return gather([
+        ("เซ็นเซอร์น้ำ กทม.", lambda: sensor_spots(flood_roads.status())),
+        ("กล้อง กทม. (AI)", lambda: [
+            {"lat": float(c["lat"]), "lng": float(c["lng"]), "name": c.get("title"), "source": "กล้อง กทม. (AI)",
+             "depth_text": c.get("level_th"), "avoid": c.get("level") in ("flooded", "severe")}
+            for c in flood_cams.status()["items"] if c.get("lat") and c.get("lng") and not c.get("stale")]),
+        ("ประชาชนแจ้ง", lambda: [
+            {"lat": r["lat"], "lng": r["lng"], "name": r["note"] or "ประชาชนแจ้งน้ำท่วม", "source": "ประชาชนแจ้ง",
+             "depth_cm": r["depth_cm"], "depth_text": r["depth_th"], "avoid": (r["depth_cm"] or 0) >= 20}
+            for r in user_reports.recent()["items"]]),
+        ("Longdo Traffic", lambda: [
+            {"lat": f["lat"], "lng": f["lng"], "name": f["place"] or f["title"], "source": "Longdo Traffic",
+             "avoid": "ผ่านได้" not in (f["place"] or "") + (f["description"] or "")}
+            for f in incidents.floods()["items"] if f["active"]]),
+        ("กรมทางหลวง", lambda: [
+            {"lat": h["lat"], "lng": h["lng"], "name": h.get("place") or h.get("title"), "source": "กรมทางหลวง",
+             "depth_cm": h.get("depth_cm"), "avoid": True}
+            for h in hdms_floods.status()["items"] if h.get("active") and h.get("lat") and h.get("lng")]),
+        ("ศูนย์จราจร กทม.", lambda: [
+            {"lat": e["lat"], "lng": e["lng"], "name": e.get("title") or "น้ำท่วม", "source": "ศูนย์จราจร กทม.", "avoid": True}
+            for e in bma_feed.get(kind="flood", hours=6, limit=100)["items"]
+            if e.get("lat") is not None and e.get("lng") is not None]),
+    ])
+
+def route_jams():
+    """Congested stretches of the live traffic roads, for the routes."""
+    return [{"road": r["name"], "lat": h["lat"], "lng": h["lon"], "km": h["km"]}
+            for r in traffic.get_roads(limit=5000) for h in r.get("hotspots") or []]
+
+flood_router = FloodRouter(hazards=route_hazards, jams=route_jams)
+
+def _user_location(v):
+    """{lat, lng} the browser shared, if it is a real point in Thailand; None otherwise."""
+    try:
+        lat, lng = float(v["lat"]), float(v["lng"])
+    except (TypeError, ValueError, KeyError):
+        return None
+    return {"lat": lat, "lng": lng} if 5.5 <= lat <= 20.5 and 97.3 <= lng <= 105.7 else None
+
 @app.post("/api/chat")
 def chat_endpoint(payload: dict = Body(...)):
     messages = payload.get("messages") or []
-    messages = [m for m in messages if isinstance(m, dict) and m.get("role") in ("user", "assistant")]
+    messages = [m for m in messages if isinstance(m, dict) and m.get("role") in ("user", "assistant")
+                and isinstance(m.get("content"), str)]
     if not messages:
         return JSONResponse(status_code=400, content={"error": "messages required"})
     try:
@@ -1312,12 +1357,18 @@ def chat_endpoint(payload: dict = Body(...)):
                     ("helmet", lambda: {"status": helmet.status(), "recent": helmet.recent(verdict="no_helmet", limit=5)["items"]}),
                     ("wrongway", lambda: {"status": wrongway.status(), "recent": wrongway.recent(verdict="wrong_way", limit=5)["items"]}),
                     ("violations", lambda: violations.recent(hours=24, limit=1)),
-                    ("analytics", analytics_service.get_summary), ("north_flow", north_flow.brief)):
+                    ("analytics", analytics_service.get_summary), ("north_flow", north_flow.brief),
+                    ("weather_outlook", weather_now.outlook), ("tmd", tmd_warnings.status),
+                    ("flood_agent", lambda: flood_agent.status()), ("water_agent", lambda: water_agent.status()),
+                    ("north_impact", lambda: north_impact.status()),
+                    ("areas", area_traffic.status), ("provinces", province_flood.status)):
         try:
             extra[key] = fn()
         except Exception as e:
             print(f"[Chat] {key} unavailable: {e}")
-    return chat_service.chat(traffic, messages, detector.get_stats(), water, extra)
+    extra["weather_at"] = weather_now.outlook   # forecast of a province the question names
+    return chat_service.chat(traffic, messages, detector.get_stats(), water, extra, router=flood_router,
+                             location=_user_location(payload.get("location")))
 
 # ---------------------------------------------------------------- Flood analyst agent (local model)
 flood_agent = FloodAgent(DATA_DIR, {

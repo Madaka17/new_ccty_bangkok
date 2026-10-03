@@ -94,6 +94,20 @@ def usage(minutes=30):
             "callers": callers}
 
 
+# The gateway's Qwen sometimes writes Thai marks out of order with a long Thai prompt: a tone mark before the
+# vowel above it ("น้ี" for "นี้"), the same mark twice ("ขััด"), or nikhahit + sara aa for sara am ("น้ํา").
+# These look broken in the browser, so they are put back in Unicode order before any caller sees the text.
+_TONE_FIRST = re.compile(r"([่-์])([ัิ-ฺ็])")
+_TWICE = re.compile(r"([ัิ-ฺ็-๎])\1+")
+
+
+def fix_thai(text):
+    """Thai combining marks in their proper order, each once."""
+    text = text.replace("ํา", "ำ")
+    text = _TONE_FIRST.sub(r"\2\1", text)
+    return _TWICE.sub(r"\1", text)
+
+
 class ContextTooLong(Exception):
     """The prompt does not fit the context the model is loaded with."""
 
@@ -156,7 +170,7 @@ class Client:
         _record(caller, self.model, int(used.get("prompt_tokens") or 0), int(used.get("completion_tokens") or 0),
                 time.time() - started, True)
         choice = data["choices"][0]
-        text = _THINK.sub("", choice["message"].get("content") or "").strip()
+        text = fix_thai(_THINK.sub("", choice["message"].get("content") or "").strip())
         if not text:
             raise RuntimeError(f"empty reply (finish_reason={choice.get('finish_reason')})")
         return text

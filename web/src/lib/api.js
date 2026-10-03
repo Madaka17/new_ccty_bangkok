@@ -432,11 +432,12 @@ export async function fetchRoadCameras(name, maxKm = 0.25) {
   return (await res.json()).items || [];
 }
 
-export async function sendChat(messages) {
+// `location` ({lat, lng}, optional) is where the person is, for "how do I get to ..." with no start
+export async function sendChat(messages, location = null) {
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify(location ? { messages, location } : { messages }),
   });
   if (res.status === 429) throw new Error('rate_limited');
   if (res.status === 413) throw new Error('too_long');
