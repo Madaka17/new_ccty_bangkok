@@ -1,6 +1,7 @@
-// Map of the northern water on its way to Bangkok: every RID gauge, dam and the Nonthaburi station as a
-// labelled marker, joined by arrows in the direction the water flows. Line width = discharge, colour = status
-// now or at the 4-day outlook peak. The lines join the gauges straight; the river itself is on the base map.
+// Map of the northern water on its way to Bangkok, tilted in 3D: every RID gauge, dam and the Nonthaburi station
+// as a labelled marker, joined by raised bands of water. Band height and width = discharge, colour = status now
+// or at the 4-day outlook peak, and white drops run along the top of each band the way the water flows (faster =
+// more water). The bands join the gauges straight; the river itself is on the base map.
 // The roads the AI expects to flood once the water arrives are dots, with a button that zooms to them.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
@@ -23,23 +24,29 @@ const ROAD_COLOR = { สูง: '#dc2626', ปานกลาง: '#d97706', เ
 const fmtQ = (q) => (q == null ? '–' : fmtNum(Math.round(q)));
 const inText = (h) => (h < 36 ? `~${h} ชม.` : `~${(h / 24).toFixed(1).replace('.0', '')} วัน`);
 
-// Right-pointing arrowhead as an SDF icon, so its colour can be set per layer; the line layout turns it
-// to follow each line from its first point (upstream) to its last (downstream)
-function arrowIcon() {
-  const s = 48;
-  const c = document.createElement('canvas');
-  c.width = c.height = s;
-  const g = c.getContext('2d');
-  g.fillStyle = '#000';
-  g.beginPath();
-  g.moveTo(12, 10);
-  g.lineTo(40, 24);
-  g.lineTo(12, 38);
-  g.lineTo(19, 24);
-  g.closePath();
-  g.fill();
-  return g.getImageData(0, 0, s, s);
+// Shapes are drawn in metres: metres per degree of longitude / latitude near a latitude
+const mPerDeg = (lat) => [111320 * Math.cos((lat * Math.PI) / 180), 110540];
+
+// A strip w metres wide from a to z ([lng, lat] each), as a closed polygon ring
+function strip(a, z, w) {
+  const [kx, ky] = mPerDeg((a[1] + z[1]) / 2);
+  const dx = (z[0] - a[0]) * kx;
+  const dy = (z[1] - a[1]) * ky;
+  const len = Math.hypot(dx, dy) || 1;
+  const ox = ((-dy / len) * w) / 2 / kx;
+  const oy = ((dx / len) * w) / 2 / ky;
+  return [[a[0] + ox, a[1] + oy], [z[0] + ox, z[1] + oy], [z[0] - ox, z[1] - oy], [a[0] - ox, a[1] - oy], [a[0] + ox, a[1] + oy]];
 }
+
+// A square of side `side` metres centred on p
+function square(p, side) {
+  const [kx, ky] = mPerDeg(p[1]);
+  const hx = side / 2 / kx;
+  const hy = side / 2 / ky;
+  return [[p[0] - hx, p[1] - hy], [p[0] + hx, p[1] - hy], [p[0] + hx, p[1] + hy], [p[0] - hx, p[1] + hy], [p[0] - hx, p[1] - hy]];
+}
+
+const TILT = { pitch: 55, bearing: -12 };
 
 // Every point on the map, keyed the way `edges` names them: gauge code, "dam:<name>" or "BKK"
 function buildNodes(data, view) {
@@ -75,7 +82,9 @@ function buildNodes(data, view) {
 export default function NorthFlowMap({ data, code, onSelect, isActive, texts, roads, nb }) {
   const [view, setView] = useState('now');
   const [picked, setPicked] = useState(null);
+  const [tilt, setTilt] = useState(true);   // 3D view, or flat from above
   const mapEl = useRef(null);
+  const flowsRef = useRef([]);   // one entry per band: ends, discharge, size, for the moving drops
   const mapRef = useRef(null);
   const readyRef = useRef(false);
   const pushRef = useRef(null);
@@ -110,29 +119,23 @@ export default function NorthFlowMap({ data, code, onSelect, isActive, texts, ro
 
   useEffect(() => {
     if (!mapEl.current || mapRef.current) return;
-    const map = new maplibregl.Map({ container: mapEl.current, style: baseStyle(), center: [100.2, 16.3], zoom: 6, attributionControl: { compact: true } });
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
+    const map = new maplibregl.Map({ container: mapEl.current, style: baseStyle(), center: [100.2, 16.3], zoom: 6, ...TILT, attributionControl: { compact: true } });
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-left');
     map.on('load', () => {
-      map.addImage('flow-arrow', arrowIcon(), { sdf: true, pixelRatio: 2 });
+      // the water bands, then the drops riding on top of them
       map.addSource('edges', { type: 'geojson', data: EMPTY });
-      const width = ['interpolate', ['linear'], ['coalesce', ['get', 'q'], 0], 0, 2, 500, 3.5, 1500, 6, 3000, 9];
-      map.addLayer({ id: 'edges-casing', type: 'line', source: 'edges', layout: { 'line-cap': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': ['+', width, 3], 'line-opacity': 0.85 } });
-      map.addLayer({ id: 'edges', type: 'line', source: 'edges', layout: { 'line-cap': 'round' }, paint: { 'line-color': ['get', 'color'], 'line-width': width } });
       map.addLayer({
-        id: 'edges-arrows',
-        type: 'symbol',
+        id: 'edges',
+        type: 'fill-extrusion',
         source: 'edges',
-        layout: {
-          'symbol-placement': 'line',
-          'symbol-spacing': 60,
-          'icon-image': 'flow-arrow',
-          'icon-size': ['interpolate', ['linear'], ['coalesce', ['get', 'q'], 0], 0, 0.75, 3000, 1.25],
-          'icon-allow-overlap': true,
-          'icon-ignore-placement': true,
-          'icon-rotation-alignment': 'map',
-          'icon-keep-upright': false,
-        },
-        paint: { 'icon-color': ['get', 'color'], 'icon-halo-color': '#ffffff', 'icon-halo-width': 2 },
+        paint: { 'fill-extrusion-color': ['get', 'color'], 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-base': 0, 'fill-extrusion-opacity': 0.75 },
+      });
+      map.addSource('drops', { type: 'geojson', data: EMPTY });
+      map.addLayer({
+        id: 'drops',
+        type: 'fill-extrusion',
+        source: 'drops',
+        paint: { 'fill-extrusion-color': '#e0f2fe', 'fill-extrusion-height': ['get', 'top'], 'fill-extrusion-base': ['get', 'base'], 'fill-extrusion-opacity': 0.95 },
       });
       map.addSource('river', { type: 'geojson', data: EMPTY });
       map.addLayer({ id: 'river', type: 'line', source: 'river', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#0284c7', 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 2, 13, 6], 'line-opacity': 0.8 } });
@@ -168,23 +171,77 @@ export default function NorthFlowMap({ data, code, onSelect, isActive, texts, ro
     if (isActive) setTimeout(() => mapRef.current?.resize(), 50);
   }, [isActive]);
 
-  // Lines follow the water: coloured by the gauge the water leaves, as wide as what it carries
+  useEffect(() => {
+    if (readyRef.current) mapRef.current?.easeTo({ ...(tilt ? TILT : { pitch: 0, bearing: 0 }), duration: 600 });
+  }, [tilt]);
+
+  // The drops: a few per band, sliding from the upstream end to the downstream end, then round again.
+  // `sec` is the running time; each band's speed grows with its discharge.
+  const drawDrops = useCallback((sec) => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    const features = [];
+    for (const f of flowsRef.current) {
+      if (!(f.q > 0)) continue;
+      const n = Math.max(3, Math.min(14, Math.round(f.km / 18)));
+      const speed = (6 + 24 * f.rel) / f.km;   // share of the band per second (6-30 km a second on screen)
+      const side = f.w * 0.45;
+      for (let k = 0; k < n; k++) {
+        const t = (k / n + sec * speed) % 1;
+        const p = [f.a[0] + (f.z[0] - f.a[0]) * t, f.a[1] + (f.z[1] - f.a[1]) * t];
+        features.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [square(p, side)] }, properties: { base: f.h, top: f.h + side * 0.6 } });
+      }
+    }
+    map.getSource('drops')?.setData({ type: 'FeatureCollection', features });
+  }, []);
+
+  // Run the drops while the page is open (~25 frames a second); one still frame for reduced motion
+  useEffect(() => {
+    if (!isActive) return;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      drawDrops(0);
+      return;
+    }
+    const start = performance.now();
+    let raf = 0;
+    let last = 0;
+    const frame = (now) => {
+      raf = requestAnimationFrame(frame);
+      if (now - last < 40) return;
+      last = now;
+      drawDrops((now - start) / 1000);
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, [isActive, drawDrops]);
+
+  // Bands follow the water: coloured by the gauge the water leaves, as high and wide as what it carries
+  // (scaled to the biggest discharge on the map, so the tallest band is always 60 km high)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const push = () => {
-      const features = [];
-      for (const e of data.edges || []) {
-        const a = nodes[e.from];
-        const z = nodes[e.to];
-        if (!a || !z) continue;
-        features.push({
-          type: 'Feature',
-          geometry: { type: 'LineString', coordinates: [[a.lng, a.lat], [z.lng, z.lat]] },
-          properties: { color: COLORS[a.status] || COLORS.offline, q: a.q ?? 0 },
-        });
-      }
-      map.getSource('edges')?.setData({ type: 'FeatureCollection', features });
+      const pairs = (data.edges || []).map((e) => [nodes[e.from], nodes[e.to]]).filter(([a, z]) => a && z);
+      const maxQ = Math.max(1, ...pairs.map(([a]) => a.q ?? 0));
+      flowsRef.current = pairs.map(([a, z]) => {
+        const q = a.q ?? 0;
+        const rel = q / maxQ;
+        const [kx, ky] = mPerDeg((a.lat + z.lat) / 2);
+        return {
+          a: [a.lng, a.lat],
+          z: [z.lng, z.lat],
+          q,
+          rel,
+          color: COLORS[a.status] || COLORS.offline,
+          w: 5000 + 12000 * Math.sqrt(rel),
+          h: q > 0 ? 3000 + 57000 * rel : 1200,
+          km: Math.max(1, Math.hypot((z.lng - a.lng) * kx, (z.lat - a.lat) * ky) / 1000),
+        };
+      });
+      map.getSource('edges')?.setData({
+        type: 'FeatureCollection',
+        features: flowsRef.current.map((f) => ({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [strip(f.a, f.z, f.w)] }, properties: { color: f.color, h: f.h } })),
+      });
       map.getSource('river')?.setData({
         type: 'FeatureCollection',
         features: (nb?.river_line || []).map((l) => ({ type: 'Feature', geometry: { type: 'LineString', coordinates: l.map(([la, ln]) => [ln, la]) }, properties: {} })),
@@ -229,7 +286,7 @@ export default function NorthFlowMap({ data, code, onSelect, isActive, texts, ro
         <SectionHeader
           id="north-map-title"
           title="แผนที่เส้นทางน้ำเหนือ → กรุงเทพฯ"
-          description="ลูกศรชี้ทิศทางน้ำ · เส้นยิ่งหนา น้ำยิ่งมาก · ตัวเลข = ลบ.ม./วินาที · แตะจุดเพื่อดูรายละเอียดและกราฟ"
+          description="เม็ดน้ำสีขาววิ่งไปทางที่น้ำไหล · แถบยิ่งสูง น้ำยิ่งมาก · ตัวเลข = ลบ.ม./วินาที · แตะจุดเพื่อดูรายละเอียดและกราฟ"
           action={<Segmented label="ช่วงเวลาที่แสดง" value={view} onChange={setView} options={[['now', 'ตอนนี้'], ['peak', 'คาดสูงสุด 4 วัน']]} />}
         />
       </div>
@@ -239,6 +296,9 @@ export default function NorthFlowMap({ data, code, onSelect, isActive, texts, ro
         <div className="absolute top-2.5 right-2.5 flex flex-col items-end gap-1.5">
           <button type="button" onClick={fitAll} className={`h-8 px-3 rounded-lg bg-white border border-slate-300 text-xs font-medium text-slate-800 shadow-sm hover:bg-slate-50 ${FOCUS}`}>
             ดูทั้งเส้นทาง
+          </button>
+          <button type="button" onClick={() => setTilt((v) => !v)} aria-pressed={tilt} className={`h-8 px-3 rounded-lg bg-white border border-slate-300 text-xs font-medium text-slate-800 shadow-sm hover:bg-slate-50 ${FOCUS}`}>
+            {tilt ? 'ดูแบบแบน' : 'ดูแบบ 3 มิติ'}
           </button>
           {roadPts.length > 0 && (
             <button type="button" onClick={fitRoads} className={`h-8 px-3 rounded-lg bg-white border border-slate-300 text-xs font-medium text-slate-800 shadow-sm hover:bg-slate-50 ${FOCUS}`}>
@@ -328,7 +388,7 @@ export default function NorthFlowMap({ data, code, onSelect, isActive, texts, ro
           </span>
         ))}
         <span className="ml-auto text-[11px] text-slate-500">
-          {view === 'peak' ? 'สีและตัวเลข = ค่าสูงสุดที่คาดใน 4 วัน (สถานีที่ไม่มีค่าคาดการณ์แสดงค่าปัจจุบัน)' : 'ลากเส้นตรงระหว่างสถานี ไม่ใช่แนวลำน้ำจริง'}
+          {view === 'peak' ? 'สีและตัวเลข = ค่าสูงสุดที่คาดใน 4 วัน (สถานีที่ไม่มีค่าคาดการณ์แสดงค่าปัจจุบัน)' : 'แถบน้ำลากตรงระหว่างสถานี ไม่ใช่แนวลำน้ำจริง · ลากสองนิ้วหรือคลิกขวาค้างเพื่อหมุนแผนที่'}
         </span>
       </div>
     </Card>
