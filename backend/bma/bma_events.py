@@ -1,5 +1,5 @@
 """
-Live event feed from the BMA traffic control centre (www.bmatraffic.com).
+Live event feed from the BMA traffic control centre (the BMA Traffic site, see bma_site.py).
 
 The event page is a classic ASP.NET page: a cookie-bound session, an HTML grid
 of the latest reports (mostly flooded roads during the rainy season) and a
@@ -16,10 +16,10 @@ import time
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
+from backend.bma import bma_site
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 CACHE_FILE = os.path.join(DATA_DIR, "cache", "bma_events.json")
-BMA_BASE = "http://www.bmatraffic.com/"   # cpudapp.bangkok.go.th/bmatraffic/ answers 404 since 2026-10-03
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) BKK-Traffic-CCTV/2.0"
 BKK_TZ = timezone(timedelta(hours=7))
 
@@ -104,7 +104,7 @@ class BMAEventFeed:
 
     # ------------------------------------------------------------ http
     def _fetch(self, path, timeout=30):
-        req = urllib.request.Request(BMA_BASE + path, headers={"User-Agent": USER_AGENT, "Accept-Language": "th"})
+        req = urllib.request.Request(bma_site.base() + path, headers={"User-Agent": USER_AGENT, "Accept-Language": "th"})
         with self._opener.open(req, timeout=timeout) as resp:
             return resp.read().decode("utf-8", "ignore")
 
@@ -130,8 +130,8 @@ class BMAEventFeed:
                 "desc": desc,
                 "kind": _kind(title + " " + desc),
                 "ts": _parse_thai_dt(desc),
-                "image": BMA_BASE + img.lstrip("/").replace("bmatraffic/", "", 1) if img else None,
-                "url": f"{BMA_BASE}event-detail.aspx?id={eid}",
+                "image": bma_site.base() + img.lstrip("/").replace("bmatraffic/", "", 1) if img else None,
+                "url": f"{bma_site.base()}event-detail.aspx?id={eid}",
             })
         return found
 
@@ -142,7 +142,7 @@ class BMAEventFeed:
                 "id": bid,
                 "headline": _clean(headline),
                 "detail": _clean(detail),
-                "image": BMA_BASE + img if img else None,
+                "image": bma_site.base() + img if img else None,
                 "source": _clean(refer),
             })
         return out
