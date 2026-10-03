@@ -657,7 +657,7 @@ class BmaScanner:
             # Box labels (PIL works in RGB; BOX_COLORS are BGR)
             for d in dets:
                 x1, y1 = d['box'][:2]
-                label = f"{d['name']} {int(d['conf'] * 100)}%"
+                label = f"{d['name']} {int(d['conf'] * 100)}%" if d['conf'] >= 0.5 else d['name']   # unsure: no number
                 b, g, r_ = BOX_COLORS.get(d['class'], (0, 255, 0))
                 tw = int(draw.textlength(label, font=font))
                 ty = max(0, y1 - 16)
