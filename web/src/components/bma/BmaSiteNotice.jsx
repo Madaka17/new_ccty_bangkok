@@ -11,7 +11,7 @@ export default function BmaSiteNotice({ source }) {
   const since = source.last_frame_at ? ` ตั้งแต่ ${fmtTime(source.last_frame_at)} น.` : '';
   return (
     <StatusBanner tone="red" label={source.state === 'down' ? 'เว็บกล้อง กทม. ล่ม' : 'เว็บกล้อง กทม. ส่งภาพค้าง'}>
-      เว็บ https://cpudapp.bangkok.go.th/ ไม่ส่งภาพใหม่{since} ข้อมูลรถติดและภาพจากกล้อง กทม. จึงยังไม่อัปเดต
+      เว็บ www.bmatraffic.com ไม่ส่งภาพใหม่{since} ข้อมูลรถติดและภาพจากกล้อง กทม. จึงยังไม่อัปเดต
       ระบบจะลองใหม่ทุก 3 นาที
     </StatusBanner>
   );

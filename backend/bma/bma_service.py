@@ -60,8 +60,9 @@ CLASS_THAI = {
 }
 
 
-BMA_URL = 'https://cpudapp.bangkok.go.th/bmatraffic/'
-BMA_SITE = 'cpudapp.bangkok.go.th'
+# cpudapp.bangkok.go.th/bmatraffic/ answers 404 since 2026-10-03; the same site still runs here (http only)
+BMA_URL = 'http://www.bmatraffic.com/'
+BMA_SITE = 'www.bmatraffic.com'
 # A scan cycle with fresh frames from fewer than this share of the cameras means the BMA site is down (no
 # frames) or frozen (the same picture again). On Oct 1 2026 the whole site answered 404 from 10:19 on.
 SOURCE_MIN_SHARE = 0.05

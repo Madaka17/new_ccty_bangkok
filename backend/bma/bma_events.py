@@ -1,5 +1,5 @@
 """
-Live event feed from the BMA traffic control centre (cpudapp.bangkok.go.th/bmatraffic).
+Live event feed from the BMA traffic control centre (www.bmatraffic.com).
 
 The event page is a classic ASP.NET page: a cookie-bound session, an HTML grid
 of the latest reports (mostly flooded roads during the rainy season) and a
@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 CACHE_FILE = os.path.join(DATA_DIR, "cache", "bma_events.json")
-BMA_BASE = "https://cpudapp.bangkok.go.th/bmatraffic/"
+BMA_BASE = "http://www.bmatraffic.com/"   # cpudapp.bangkok.go.th/bmatraffic/ answers 404 since 2026-10-03
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) BKK-Traffic-CCTV/2.0"
 BKK_TZ = timezone(timedelta(hours=7))
 
