@@ -106,6 +106,7 @@ from backend.water.air_service import air
 from backend.water.flood_service import flood_roads
 from backend.water.user_reports import UserReports
 from backend.water.flood_feeds import traffy_reports, tmd_warnings, hdms_floods, js100_floods
+from backend.core.news_feed import news_feed
 from backend.water.province_flood import ProvinceFlood
 from backend.traffic.road_service import road_risk
 from backend.agents import chat_service
@@ -1447,6 +1448,11 @@ alerts = AlertService(DATA_DIR, {
     "road_events": road_events, "provinces": province_flood.status,
 })
 
+@app.get("/api/news")
+def news(kind: str = Query(None, pattern="^(flood|accident)$")):
+    """Flood and road-accident headlines from Thai news outlets' own RSS feeds, newest first (news_feed.py)."""
+    return news_feed.status(kind)
+
 @app.get("/api/flood/reports")
 def flood_reports():
     """Flood complaints from Traffy Fondue in the last few hours, newest first."""
@@ -1584,6 +1590,7 @@ traffy_reports.start()
 tmd_warnings.start()
 hdms_floods.start()
 province_flood.start()
+news_feed.start()
 js100_floods.start()
 # Heartbeats stamped by a wrong clock would otherwise sit in the online count forever
 telemetry.purge_future()

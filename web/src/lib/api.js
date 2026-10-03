@@ -734,3 +734,10 @@ async function postAlert(path, body) {
 export const subscribeAlerts = (subscription, topics, label, provinces) => postAlert('subscribe', { subscription, topics, label, provinces });
 export const unsubscribeAlerts = (endpoint) => postAlert('unsubscribe', { endpoint });
 export const testAlert = (endpoint) => postAlert('test', { endpoint });
+
+// Flood and road-accident headlines from Thai news outlets (news_feed.py); kind: 'flood' | 'accident' | undefined
+export async function fetchNews(kind) {
+  const res = await fetch(kind ? `/api/news?kind=${kind}` : '/api/news');
+  if (!res.ok) throw new Error('news');
+  return res.json();
+}
