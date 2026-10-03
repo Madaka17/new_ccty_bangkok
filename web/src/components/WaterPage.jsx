@@ -16,11 +16,14 @@ import ShelterSection from './water/ShelterSection.jsx';
 import FloodRoadsCard from './water/FloodRoadsCard.jsx';
 import FloodPointsMap from './water/FloodPointsMap.jsx';
 import NorthFlowSection from './water/NorthFlowSection.jsx';
+import ProvinceFloodSection from './water/ProvinceFloodSection.jsx';
+import NationalFloodCard from './water/NationalFloodCard.jsx';
 import { RiverStations, CanalCard, NtwRainCard } from './water/WaterLists.jsx';
 
 const POLL_MS = 60000;
 const TABS = [
   { id: 'situation', label: 'ระดับน้ำตอนนี้', hint: 'น้ำในแม่น้ำและคลอง น้ำทะเลหนุน ถนนน้ำท่วม และฝน', icon: 'water' },
+  { id: 'provinces', label: 'น้ำท่วมทั่วประเทศ', hint: 'น้ำท่วมรายจังหวัด แผนที่จุดน้ำล้นตลิ่งและทางหลวงน้ำท่วม พร้อม AI วิเคราะห์', icon: 'map' },
   { id: 'north', label: 'น้ำเหนือ → ภาคกลาง', hint: 'น้ำจากภาคเหนือไหลลงมาถึงกรุงเทพฯ เมื่อไร และมากแค่ไหน', icon: 'water' },
   { id: 'roads', label: 'ถนนน้ำท่วม', hint: 'แผนที่ถนนที่น้ำท่วมตอนนี้ จากกล้อง เครื่องวัด และกรมทางหลวง', icon: 'map' },
   { id: 'watch', label: 'เขตเสี่ยงน้ำท่วม', hint: 'เขตไหนต้องระวัง และคาดการณ์ 1-6 ชม. ข้างหน้า', icon: 'alerts' },
@@ -119,6 +122,8 @@ export default function WaterPage({ isActive, onToast, onNavigate, onAsk, onOpen
         </>
       )}
 
+      {tab === 'provinces' && <ProvinceFloodSection isActive={isActive} />}
+
       {tab === 'north' && <NorthFlowSection isActive={isActive} onOpenRoad={onOpenRoad} />}
 
       {tab === 'watch' && <FloodWatchSection isActive={isActive} />}
@@ -181,6 +186,8 @@ export default function WaterPage({ isActive, onToast, onNavigate, onAsk, onOpen
               loading={loading}
             />
           </div>
+
+          <NationalFloodCard isActive={isActive} onNavigate={onNavigate} />
 
           <WaterMap isActive={isActive} onPickStation={pickStation} />
 

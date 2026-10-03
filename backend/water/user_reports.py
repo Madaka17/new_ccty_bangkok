@@ -38,8 +38,8 @@ MAX_SIDE = 1280
 NOTE_MAX = 100
 RETRY_SECONDS = 60
 AGENT_TIMEOUT = 45
-# Bangkok and the provinces around it, with room to spare: a pin outside is a mistake or a test
-LAT_RANGE, LNG_RANGE = (12.5, 15.0), (99.5, 101.8)
+# All of Thailand (the province flood tab counts reports from every province): a pin outside is a mistake or a test
+LAT_RANGE, LNG_RANGE = (5.5, 20.5), (97.3, 105.7)
 DEPTHS = {"ankle": ("ตาตุ่ม", 10), "shin": ("ครึ่งแข้ง", 25), "knee": ("เข่า", 45), "thigh": ("เลยเข่า", 60)}
 LEVEL_TH = {"none": "ไม่เห็นน้ำท่วม", "puddle": "น้ำขังเล็กน้อย", "flooded": "น้ำท่วมผิวจราจร", "severe": "น้ำท่วมหนัก"}
 _ID = re.compile(r"[0-9a-f]{12}")

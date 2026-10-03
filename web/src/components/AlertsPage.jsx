@@ -5,6 +5,7 @@ import { Card, Badge, Button, Skeleton, EmptyState } from './dashboard/ui.jsx';
 import { PageHeader, StatusBanner } from './dashboard/primitives.jsx';
 import { fmtDateTime } from './dashboard/format.js';
 import { PAGE_TITLES } from './Sidebar.jsx';
+import NationwideAlertsCard from './NationwideAlertsCard.jsx';
 
 const POLL_MS = 30000;
 const REPORTS_SHOWN = 3;   // per district, until the district is expanded
@@ -160,7 +161,7 @@ export default function AlertsPage({ isActive, onToast }) {
     <div className="space-y-4">
       <PageHeader
         title={PAGE_TITLES.alerts}
-        description="ประกาศเตือนภัย และตั้งให้เว็บเตือนเมื่อมีน้ำท่วมถนน อุบัติเหตุ ปิดถนน หรือฝุ่นสูง"
+        description="ประกาศเตือนภัยทั่วประเทศ และตั้งให้เว็บเตือนเมื่อมีน้ำท่วม อุบัติเหตุ ถนนปิด หรือฝุ่นสูง"
         actions={sub && <Button size="sm" onClick={test} loading={busy === 'test'}>ส่งแจ้งเตือนทดสอบ</Button>}
       />
 
@@ -220,6 +221,8 @@ export default function AlertsPage({ isActive, onToast }) {
         </label>
       </Card>
 
+      <NationwideAlertsCard isActive={isActive} />
+
       <Card className="p-4">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <p className="text-sm font-semibold text-slate-900">ประกาศเตือนภัยกรมอุตุนิยมวิทยา</p>
@@ -247,7 +250,7 @@ export default function AlertsPage({ isActive, onToast }) {
 
       <Card className="p-4">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-          <p className="text-sm font-semibold text-slate-900">คนแจ้งน้ำท่วม (6 ชม.)</p>
+          <p className="text-sm font-semibold text-slate-900">คนแจ้งน้ำท่วมใน กทม. (6 ชม.)</p>
           {reports?.updated_at && <span className="text-xs text-slate-500">อัปเดต {fmtDateTime(reports.updated_at)}</span>}
         </div>
         <p className="text-xs text-slate-500 mb-3">

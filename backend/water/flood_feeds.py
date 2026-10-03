@@ -211,13 +211,13 @@ def parse_hdms_photos(image_list):
     return out[:HDMS_MAX_PHOTOS]
 
 
-def parse_hdms(tickets, now=None):
-    """HDMS dashboard tickets -> floods in Bangkok and vicinity, open or closed in the last
-    ENDED_KEEP_HOURS, newest first. The reporter's name and phone are not passed on."""
+def parse_hdms(tickets, now=None, provinces=BKK_VICINITY):
+    """HDMS dashboard tickets -> floods in Bangkok and vicinity (provinces=None: every province), open or
+    closed in the last ENDED_KEEP_HOURS, newest first. The reporter's name and phone are not passed on."""
     now = now or time.time()
     out = []
     for t in tickets or []:
-        if t.get("incident_type_id") != HDMS_FLOOD_TYPE or t.get("province") not in BKK_VICINITY:
+        if t.get("incident_type_id") != HDMS_FLOOD_TYPE or (provinces and t.get("province") not in provinces):
             continue
         try:
             ts = datetime.fromisoformat(t["start_date"]).timestamp()
@@ -364,9 +364,17 @@ class HdmsFloods(_Poller):
     def fetch(self):
         today = datetime.now(BKK_TZ).date()
         url = HDMS_URL.format(start=today - timedelta(days=HDMS_DAYS), end=today)
-        items = parse_hdms(json.loads(_get(url, timeout=60)))
+        tickets = json.loads(_get(url, timeout=60))
+        items = parse_hdms(tickets)
         self._add_photos(items)
+        with self.lock:
+            self._national = parse_hdms(tickets, provinces=None)   # every province, for province_flood.py
         return items
+
+    def national(self):
+        """Flooded highways in every province from the last fetch (no photos)."""
+        with self.lock:
+            return list(self.__dict__.get("_national") or [])
 
     def _add_photos(self, items):
         """Photos from each ticket's public detail, kept per case_id: a closed ticket is asked once,

@@ -8,13 +8,18 @@ alert candidates, each with a stable key and a severity:
                over 60 cm do not drive through) - flood_service; and a burst of Traffy Fondue flood
                complaints in one district (TRAFFY_MIN within TRAFFY_WINDOW) - flood_feeds
     zone       an area forecast at the red watch level, or a river / canal gauge over its bank - water_service;
-               and a TMD heavy-rain / storm warning that names Bangkok - flood_feeds;
-               and the flood agent's overall level at warning / critical - flood_agent
-    incident   an accident / breakdown confirmed by the camera AI, a Longdo accident report, and BMA
-               traffic-centre reports of accidents, fires, fallen trees and road closures
+               every TMD heavy-rain / storm warning (any province) - flood_feeds;
+               the flood agent's overall level at warning / critical - flood_agent;
+               and a province at the "flood" or "critical" level of province_flood (one alert per province)
+    incident   an accident / breakdown confirmed by the camera AI, a Longdo accident report in any province,
+               BMA traffic-centre reports of accidents, fires, fallen trees and road closures, and closed
+               roads in any province (Longdo type 19, and flooded highways marked impassable)
     air        a PM2.5 station at the "มีผลต่อสุขภาพ" band (> 75 µg/m³) - air_service
     system     BMA scan stalled, the BMA camera site down or frozen, vision agent failing, data disk nearly
                full, and "server started"
+
+Nationwide kinds (keys starting with SILENT_FIRST) are recorded without a push the first time the service
+sees them, so turning them on does not send the dozens already open; only later ones alert.
 
 A candidate is pushed when its key is new or its severity went up. It is forgotten after it has been
 absent for CLEAR_SECONDS, so a condition that clears and comes back alerts again, while one that stays
@@ -41,7 +46,7 @@ except ImportError:  # keeps the server bootable without the push libraries
 
 TOPICS = {
     "flood": "น้ำท่วมถนน",
-    "zone": "เขตเสี่ยงน้ำท่วม / คลองล้นตลิ่ง",
+    "zone": "เขตเสี่ยงน้ำท่วม / น้ำท่วมรายจังหวัด",
     "incident": "อุบัติเหตุ/ปิดถนน",
     "air": "ฝุ่น PM2.5",
     "system": "ระบบขัดข้อง (ผู้ดูแล)",
@@ -64,6 +69,7 @@ HISTORY_KEEP = 200
 # A system condition must hold this long before it alerts (the vision API hits short rate limits all day)
 DEBOUNCE_SECONDS = {"system": 10 * 60}
 PUSH_TTL = 3600
+SILENT_FIRST = ("prov:", "close:", "tmd:")
 VAPID_SUB = os.getenv("ALERT_VAPID_SUB", "mailto:admin@example.com")
 
 
@@ -86,6 +92,7 @@ class AlertService:
         st = self._load(self.state_path, {})
         self.sent = st.get("sent", {})             # key -> {"level", "first", "seen"}
         self.history = deque(st.get("history", []), maxlen=HISTORY_KEEP)
+        self.seeded = set(st.get("seeded", []))    # SILENT_FIRST prefixes whose open items were recorded quietly
         self.pending = {}                          # key -> first seen, for debounced topics
         self.last_check = None
         self.error = None
@@ -104,7 +111,7 @@ class AlertService:
         with open(self.subs_path, "w", encoding="utf-8") as f:
             json.dump(self.subs, f, ensure_ascii=False)
         with open(self.state_path, "w", encoding="utf-8") as f:
-            json.dump({"sent": self.sent, "history": list(self.history)}, f, ensure_ascii=False)
+            json.dump({"sent": self.sent, "history": list(self.history), "seeded": sorted(self.seeded)}, f, ensure_ascii=False)
 
     def _vapid(self):
         if os.path.exists(self.key_path):
@@ -161,11 +168,17 @@ class AlertService:
                             "title": f"เตือนภัยสีแดง: {z.get('name')}",
                             "body": f"{z.get('areas')} · ฝน 24 ชม. {z.get('rain_24h')} มม. ลมแรงสุด {z.get('gust_max', 0):.0f} กม./ชม.{storm}"})
         series = set()
-        for w in (self._call("tmd") or {}).get("active") or []:    # newest issue first
-            if w.get("bkk") and w.get("series") not in series:
+        for w in (self._call("tmd") or {}).get("active") or []:    # newest issue first, every province
+            if w.get("series") not in series:
                 series.add(w.get("series"))
                 out.append({"topic": "zone", "key": f"tmd:{w.get('series')}", "level": 1,
-                            "title": f"กรมอุตุฯ เตือน: {w.get('title')}", "body": (w.get("summary") or "")[:160]})
+                            "title": f"กรมอุตุฯ เตือน{'' if w.get('bkk') else ' (ต่างจังหวัด)'}: {w.get('title')}",
+                            "body": (w.get("summary") or "")[:160]})
+        for p in (self._call("provinces") or {}).get("provinces") or []:
+            if p.get("level") in ("critical", "flood"):
+                out.append({"topic": "zone", "key": f"prov:{p.get('province')}", "level": 2 if p["level"] == "critical" else 1,
+                            "title": f"น้ำท่วม{'วิกฤต' if p['level'] == 'critical' else ''}: จ.{p.get('province')}",
+                            "body": (p.get("summary") or "")[:160]})
         for r in (water.get("river") or []) + (water.get("canals") or []):
             if r.get("level") == "overflow":
                 pct = f" {r['storage_pct']:.0f}% ของตลิ่ง" if r.get("storage_pct") is not None else ""
@@ -189,6 +202,18 @@ class AlertService:
             if i.get("kind") == "accident":
                 out.append({"topic": "incident", "key": _event_key(i.get("title")), "level": 1,
                             "title": f"อุบัติเหตุ (ข่าวจราจร): {i.get('title')}", "body": (i.get("description") or "")[:140]})
+        road = self._call("road_events") or {}
+        for i in road.get("incidents") or []:    # every province; the Bangkok ones above share their key
+            if i.get("kind") == "accident":
+                where = f"จ.{i['province']}" if i.get("province") else ""
+                out.append({"topic": "incident", "key": _event_key(i.get("title")), "level": 1,
+                            "title": f"อุบัติเหตุ: {i.get('title')}", "body": f"{where} {(i.get('description') or '')[:130]}".strip()})
+        for c in road.get("closures") or []:
+            if c.get("kind") == "closed":
+                where = " ".join(x for x in (f"อ.{c['amphoe']}" if c.get("amphoe") else "", f"จ.{c['province']}" if c.get("province") else "") if x)
+                out.append({"topic": "incident", "key": f"close:{c.get('id')}", "level": 1,
+                            "title": f"ถนนปิด{' (น้ำท่วม)' if c.get('reason') == 'flood' else ''}: {c.get('title')}",
+                            "body": f"{where} · {(c.get('description') or '')[:120]}".strip(" ·")})
         ev = self._call("bma_events") or {}
         for e in ev.get("items") or []:
             title = e.get("title") or ""
@@ -235,6 +260,14 @@ class AlertService:
             for c in self.candidates(now):
                 found.setdefault(c["key"], c)    # the same event from two feeds counts once
             self.pending = {k: t for k, t in self.pending.items() if k in found}
+            for prefix in SILENT_FIRST:
+                if prefix in self.seeded:
+                    continue
+                keys = [k for k in found if k.startswith(prefix)]
+                for k in keys:
+                    self.sent.setdefault(k, {"level": found[k]["level"], "first": int(now), "seen": int(now)})
+                if keys:
+                    self.seeded.add(prefix)
             for c in found.values():
                 wait = DEBOUNCE_SECONDS.get(c["topic"], 0)
                 if wait and c["key"] not in self.sent and now - self.pending.setdefault(c["key"], now) < wait:

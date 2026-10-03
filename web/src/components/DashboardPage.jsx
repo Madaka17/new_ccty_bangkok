@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { fetchTrafficSummary, fetchBmaAnalytics, fetchAnalytics, fetchOnlineCount, fetchFloodStatus } from '../lib/api.js';
+import { fetchTrafficSummary, fetchTrafficAreas, fetchBmaAnalytics, fetchAnalytics, fetchOnlineCount, fetchFloodStatus } from '../lib/api.js';
 import { bmaSiteDown } from './bma/BmaSiteNotice.jsx';
 import { trackView } from '../lib/telemetry.js';
 import { Button } from './dashboard/ui.jsx';
@@ -29,6 +29,7 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
   const [section, setSection] = useState('overview');
   const [summary, setSummary] = useState(null);
   const [bma, setBma] = useState(null);
+  const [areas, setAreas] = useState(null);
   const [density, setDensity] = useState(null);
   const [onlineCount, setOnlineCount] = useState(null);
   const [summaryError, setSummaryError] = useState(false);
@@ -51,7 +52,8 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
     }).catch(() => {});
     const d = fetchOnlineCount().then((n) => setOnlineCount(n)).catch(() => {});
     const e = fetchFloodStatus().then((f) => setFlood(f)).catch(() => {});
-    return Promise.allSettled([a, b, c, d, e]).finally(() => setRefreshing(false));
+    const f = fetchTrafficAreas().then(setAreas).catch(() => {});
+    return Promise.allSettled([a, b, c, d, e, f]).finally(() => setRefreshing(false));
   }, []);
 
   useEffect(() => {
@@ -196,7 +198,7 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
 
       {section === 'overview' && (
         <>
-          <FlowOverview summary={activeSummary} error={summaryError} onRetry={load} retrying={refreshing} />
+          <FlowOverview summary={activeSummary} areas={areas} error={summaryError} onRetry={load} retrying={refreshing} />
           <DensityPanel d={density} onOpenRoad={onOpenRoad} showShare={false} />
           <TrafficGuidanceCard />
         </>

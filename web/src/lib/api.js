@@ -187,15 +187,15 @@ export async function fetchFloodRoads(limit = 60) {
 
 // Flood complaints residents filed on Traffy Fondue in the last few hours (flood_feeds.py)
 // Flooded-road reports on the Longdo Traffic feed (iTIC / FM91), newest first (incident_service.floods)
-export async function fetchLongdoFloods() {
-  const res = await fetch('/api/flood/longdo');
+export async function fetchLongdoFloods({ national = false } = {}) {
+  const res = await fetch(`/api/flood/longdo${national ? '?national=1' : ''}`);
   if (!res.ok) throw new Error('longdo_floods');
   return res.json();
 }
 
 // Flooded highways in Bangkok and vicinity from the Department of Highways HDMS dashboard (flood_feeds.py)
-export async function fetchHdmsFloods() {
-  const res = await fetch('/api/flood/hdms');
+export async function fetchHdmsFloods({ national = false } = {}) {
+  const res = await fetch(`/api/flood/hdms${national ? '?national=1' : ''}`);
   if (!res.ok) throw new Error('hdms_floods');
   return res.json();
 }
@@ -511,6 +511,42 @@ export async function fetchBMAEvents({ kind, hours = 24, limit = 60 } = {}) {
 export async function fetchBmaCameras() {
   const res = await fetch('/api/bma/cameras');
   if (!res.ok) throw new Error('bma_cameras');
+  return res.json();
+}
+
+// Flooded roads and rivers over the bank in every province, for the traffic map
+export async function fetchNationalFloods() {
+  const res = await fetch('/api/flood/national-map');
+  if (!res.ok) throw new Error('national_floods');
+  return res.json();
+}
+
+// Flood situation in every province (province_flood.py), also used by the Alerts page
+export async function fetchProvinceFloods() {
+  const res = await fetch('/api/flood/provinces');
+  if (!res.ok) throw new Error('province_floods');
+  return res.json();
+}
+
+// Accidents and closed roads in every province (Longdo feed + BMA traffic centre), for the traffic map
+export async function fetchRoadEvents() {
+  const res = await fetch('/api/road/events');
+  if (!res.ok) throw new Error('road_events');
+  return res.json();
+}
+
+// Roads around a position (the card's "ใกล้ฉัน" button). Rounded to 0.01 degree (about 1 km) before it
+// leaves the browser, so the exact position never reaches the server or its logs.
+export async function fetchTrafficNear(lat, lng) {
+  const res = await fetch(`/api/traffic/near?lat=${lat.toFixed(2)}&lng=${lng.toFixed(2)}`);
+  if (!res.ok) throw new Error('traffic_near');
+  return res.json();
+}
+
+// Traffic score per province and district over the whole country (Longdo lines)
+export async function fetchTrafficAreas() {
+  const res = await fetch('/api/traffic/areas');
+  if (!res.ok) throw new Error('traffic_areas');
   return res.json();
 }
 

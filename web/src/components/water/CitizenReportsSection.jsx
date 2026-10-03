@@ -1,11 +1,12 @@
-// การแจ้งน้ำท่วม: every flood report in one list, the same reports the Water Forecast map shows as
-// "มีรายงานน้ำท่วม" (Longdo Traffic, relayed from iTIC / FM91: /api/flood/longdo) plus what people sent
-// through Traffy Fondue in the last 6 h (/api/flood/reports), flooded highways from the Department of
-// Highways HDMS (/api/flood/hdms) and JS100 radio traffic news (/api/flood/js100), with the Qwen reading
-// of the Traffy reports (TraffyAnalysisCard) below. All feeds in one list grouped by district, with
-// search and district / state filters. Tab of the Water Forecast page.
+// การแจ้งน้ำท่วม: every flood report in the country in one list: Longdo Traffic in every province (relayed
+// from iTIC / FM91: /api/flood/longdo?national=1), what people sent through Traffy Fondue in Bangkok in the
+// last 6 h (/api/flood/reports) and through this site's report form (/api/flood/user-reports), flooded
+// highways in every province from the Department of Highways HDMS (/api/flood/hdms?national=1) and JS100
+// radio traffic news (/api/flood/js100), with the Qwen reading of the Traffy reports (TraffyAnalysisCard)
+// below. Grouped by province and district, with search and province / district / state filters. Tab of the
+// Water Forecast page.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { fetchFloodReports, fetchLongdoFloods, fetchHdmsFloods, fetchJs100Floods } from '../../lib/api.js';
+import { fetchFloodReports, fetchLongdoFloods, fetchHdmsFloods, fetchJs100Floods, fetchUserReports } from '../../lib/api.js';
 import { Card, Badge, Button, SectionHeader, Skeleton, EmptyState } from '../dashboard/ui.jsx';
 import { fmtNum } from '../dashboard/format.js';
 import TraffyAnalysisCard from '../dashboard/TraffyAnalysisCard.jsx';
@@ -19,7 +20,12 @@ const SOURCES = {
   traffy: { label: 'คนแจ้ง (Traffy)', tone: 'neutral', hint: 'แจ้งผ่านแอป Traffy Fondue' },
   hdms: { label: 'กรมทางหลวง', tone: 'yellow', hint: 'เจ้าหน้าที่กรมทางหลวงแจ้ง' },
   js100: { label: 'จส.100', tone: 'blue', hint: 'ข่าวจราจรจากวิทยุ จส.100' },
+  web: { label: 'แจ้งผ่านเว็บนี้', tone: 'neutral', hint: 'คนแจ้งผ่านหน้าแจ้งน้ำท่วมของเว็บนี้' },
 };
+const BKK = 'กรุงเทพมหานคร';
+const NO_PROVINCE = 'ไม่ระบุจังหวัด';
+// "จ.ปทุมธานี" / "จังหวัดปทุมธานี" in free text
+const provinceInText = (text) => /(?:จ\.|จังหวัด)\s?([ก-๙]+)/.exec(text || '')?.[1] || '';
 const STATE_TONE = { รอรับเรื่อง: 'red', กำลังดำเนินการ: 'yellow', 'ส่งต่อ(ใหม่)': 'yellow', เสร็จสิ้น: 'green', ยังมีน้ำท่วม: 'red', น้ำลดแล้ว: 'green' };
 const SELECT = 'h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700';
 const agoTh = (ts) => {
@@ -45,25 +51,27 @@ function districtOf(text) {
 }
 
 // All feeds in one shape, newest first
-function mergeReports(traffy, longdo, hdms, js100) {
+function mergeReports(traffy, longdo, hdms, js100, web) {
   const rows = [];
   for (const f of longdo?.items || []) {
+    if (f.contributor === 'DOH Admin') continue;   // the same tickets as the HDMS feed below
     rows.push({
       id: f.id, source: 'longdo', ts: f.ts, title: f.place || f.title, text: f.description,
+      province: f.province || provinceInText(f.description) || NO_PROVINCE,
       district: districtOf(`${f.description || ''} ${f.place || ''}`), state: f.active ? 'ยังมีน้ำท่วม' : 'น้ำลดแล้ว',
       by: f.credit || null, url: f.lat && f.lng ? `https://www.google.com/maps?q=${f.lat},${f.lng}` : null, urlLabel: 'ดูแผนที่',
     });
   }
   for (const r of traffy?.items || []) {
     rows.push({
-      id: r.id, source: 'traffy', ts: r.ts, title: null, text: r.text,
+      id: r.id, source: 'traffy', ts: r.ts, title: null, text: r.text, province: BKK,
       district: r.district ? (BKK_DISTRICTS.includes(r.district) ? `เขต${r.district}` : `อ.${r.district}`) : NO_DISTRICT,
       depth: r.depth, state: r.state, photo: r.photo,
     });
   }
   for (const h of hdms?.items || []) {
     rows.push({
-      id: h.id, source: 'hdms', ts: h.ts, title: h.place || h.title,
+      id: h.id, source: 'hdms', ts: h.ts, title: h.place || h.title, province: h.province || NO_PROVINCE,
       text: [h.title, h.closure, h.lane_closure ? 'ปิดช่องจราจร' : null, h.relief].filter(Boolean).join(' · '),
       district: !h.amphoe ? NO_DISTRICT : h.province === 'กรุงเทพมหานคร' ? `เขต${h.amphoe}` : `อ.${h.amphoe}`,
       depth: h.depth_cm ? ` ${h.depth_cm} ซม.` : null, state: h.active ? 'ยังมีน้ำท่วม' : 'น้ำลดแล้ว',
@@ -72,29 +80,46 @@ function mergeReports(traffy, longdo, hdms, js100) {
     });
   }
   for (const j of js100?.items || []) {
-    rows.push({ id: j.id, source: 'js100', ts: j.ts, title: null, text: j.text, district: districtOf(j.text) });
+    rows.push({ id: j.id, source: 'js100', ts: j.ts, title: null, text: j.text, district: districtOf(j.text), province: provinceInText(j.text) || BKK });
+  }
+  for (const r of web?.items || []) {
+    rows.push({
+      id: `web-${r.id}`, source: 'web', ts: r.ts, title: r.note || 'คนแจ้งน้ำท่วม', text: r.ai_level_th ? `AI ดูรูปแล้ว: ${r.ai_level_th}` : '',
+      district: NO_DISTRICT, province: r.province || NO_PROVINCE, depth: r.depth_th, photo: r.photo,
+      url: `https://www.google.com/maps?q=${r.lat},${r.lng}`, urlLabel: 'ดูแผนที่',
+    });
   }
   return rows.sort((a, b) => (b.ts || 0) - (a.ts || 0));
 }
 
 function ReportList({ rows, loading, updatedAt, traffyDown, traffyOldAt }) {
   const [query, setQuery] = useState('');
+  const [province, setProvince] = useState('');
   const [district, setDistrict] = useState('');
   const [state, setState] = useState('');
   const [sort, setSort] = useState('latest');   // latest: district with the newest report first; most: most reports first
   const [open, setOpen] = useState(null);
 
-  const districtNames = useMemo(() => [...new Set(rows.map((r) => r.district))].sort((a, b) => a.localeCompare(b, 'th')), [rows]);
+  const provinceCounts = useMemo(() => {
+    const n = {};
+    for (const r of rows) n[r.province] = (n[r.province] || 0) + 1;
+    return Object.entries(n).sort((a, b) => b[1] - a[1]);
+  }, [rows]);
+  const districtNames = useMemo(
+    () => [...new Set(rows.filter((r) => !province || r.province === province).map((r) => r.district))].sort((a, b) => a.localeCompare(b, 'th')),
+    [rows, province],
+  );
   const states = useMemo(() => [...new Set(rows.map((r) => r.state).filter(Boolean))], [rows]);
 
   const groups = useMemo(() => {
     const q = query.trim();
     const by = {};
     for (const r of rows) {
+      if (province && r.province !== province) continue;
       if (district && r.district !== district) continue;
       if (state && r.state !== state) continue;
       if (q && !`${r.title || ''} ${r.text || ''}`.includes(q)) continue;
-      (by[r.district] ||= []).push(r);
+      (by[r.district === NO_DISTRICT ? r.province : `${r.province} · ${r.district}`] ||= []).push(r);
     }
     const out = Object.entries(by).map(([name, list]) => ({ name, list }));
     return sort === 'latest'
@@ -102,14 +127,14 @@ function ReportList({ rows, loading, updatedAt, traffyDown, traffyOldAt }) {
       : out.sort((a, b) => b.list.length - a.list.length || b.list[0].ts - a.list[0].ts);
   }, [rows, query, district, state, sort]);
   const shown = groups.reduce((n, g) => n + g.list.length, 0);
-  const filtered = query || district || state;
+  const filtered = query || province || district || state;
 
   return (
     <Card className="p-5">
       <SectionHeader
         id="flood-reports"
         title="เรื่องน้ำท่วมที่คนแจ้ง"
-        description="จากแอป Traffy Fondue (6 ชม.) ข่าวจราจร (iTIC / FM91 / จส.100) และกรมทางหลวง · กรุงเทพฯ และปริมณฑล · ยังไม่ได้ตรวจสอบโดยเขต"
+        description="ทั่วประเทศ จากข่าวจราจร (iTIC / FM91 / จส.100) กรมทางหลวง คนแจ้งผ่านเว็บนี้ และแอป Traffy Fondue (กรุงเทพฯ 6 ชม.) · ยังไม่ได้ตรวจสอบ"
       />
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <label htmlFor="report-q" className="sr-only">ค้นหาข้อความ</label>
@@ -120,8 +145,12 @@ function ReportList({ rows, loading, updatedAt, traffyDown, traffyOldAt }) {
           placeholder="ค้นหา เช่น ชื่อถนน ซอย หมู่บ้าน"
           className="h-9 flex-1 min-w-[200px] rounded-lg border border-slate-300 bg-white px-3 text-sm"
         />
-        <select aria-label="เขต" value={district} onChange={(e) => setDistrict(e.target.value)} className={SELECT}>
-          <option value="">ทุกเขต</option>
+        <select aria-label="จังหวัด" value={province} onChange={(e) => { setProvince(e.target.value); setDistrict(''); }} className={SELECT}>
+          <option value="">ทุกจังหวัด</option>
+          {provinceCounts.map(([p, n]) => <option key={p} value={p}>{p} ({n})</option>)}
+        </select>
+        <select aria-label="เขตหรืออำเภอ" value={district} onChange={(e) => setDistrict(e.target.value)} className={SELECT}>
+          <option value="">ทุกเขต/อำเภอ</option>
           {districtNames.map((d) => <option key={d} value={d}>{d}</option>)}
         </select>
         <select aria-label="เรียงลำดับ" value={sort} onChange={(e) => setSort(e.target.value)} className={SELECT}>
@@ -132,10 +161,10 @@ function ReportList({ rows, loading, updatedAt, traffyDown, traffyOldAt }) {
           <option value="">ทุกสถานะ</option>
           {states.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
-        {filtered && <Button size="sm" onClick={() => { setQuery(''); setDistrict(''); setState(''); }}>ล้าง</Button>}
+        {filtered && <Button size="sm" onClick={() => { setQuery(''); setProvince(''); setDistrict(''); setState(''); }}>ล้าง</Button>}
       </div>
       <p className="text-xs text-slate-500 mt-2">
-        แสดง {fmtNum(shown)} จาก {fmtNum(rows.length)} เรื่อง · {groups.length} เขต{updatedAt ? ` · อัปเดต ${agoTh(updatedAt)}` : ''}
+        แสดง {fmtNum(shown)} จาก {fmtNum(rows.length)} เรื่อง · {provinceCounts.length} จังหวัด · {groups.length} กลุ่ม{updatedAt ? ` · อัปเดต ${agoTh(updatedAt)}` : ''}
       </p>
       {!loading && traffyDown && rows.length > 0 && (
         <p role="status" className="mt-2 rounded-lg px-3 py-2 text-xs text-amber-800 bg-amber-50 border border-amber-200">
@@ -153,7 +182,7 @@ function ReportList({ rows, loading, updatedAt, traffyDown, traffyOldAt }) {
       ) : groups.length === 0 ? (
         <EmptyState
           title={rows.length ? 'ไม่พบเรื่องที่ค้นหา' : traffyDown ? 'ยังโหลดเรื่องจาก Traffy ไม่ได้' : 'ยังไม่มีคนแจ้งน้ำท่วม'}
-          description={rows.length ? 'ลองเปลี่ยนคำค้นหรือเลือกทุกเขต' : traffyDown ? 'ระบบจะลองใหม่เอง' : 'ช่วงนี้ยังไม่มีเรื่องน้ำท่วม'}
+          description={rows.length ? 'ลองเปลี่ยนคำค้นหรือเลือกทุกจังหวัด' : traffyDown ? 'ระบบจะลองใหม่เอง' : 'ช่วงนี้ยังไม่มีเรื่องน้ำท่วม'}
         />
       ) : (
         <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -203,6 +232,7 @@ export default function CitizenReportsSection({ isActive }) {
   const [longdo, setLongdo] = useState(null);
   const [hdms, setHdms] = useState(null);
   const [js100, setJs100] = useState(null);
+  const [web, setWeb] = useState(null);
 
   const load = useCallback(() => {
     // one feed failing must not hide the other: a failure counts as an empty list
@@ -215,8 +245,9 @@ export default function CitizenReportsSection({ isActive }) {
         setTraffy((x) => x || { items: [] });
         setTraffyFailed(true);
       });
-    fetchLongdoFloods().then(setLongdo).catch(() => setLongdo((x) => x || { items: [] }));
-    fetchHdmsFloods().then(setHdms).catch(() => setHdms((x) => x || { items: [] }));
+    fetchLongdoFloods({ national: true }).then(setLongdo).catch(() => setLongdo((x) => x || { items: [] }));
+    fetchHdmsFloods({ national: true }).then(setHdms).catch(() => setHdms((x) => x || { items: [] }));
+    fetchUserReports().then(setWeb).catch(() => setWeb((x) => x || { items: [] }));
     fetchJs100Floods().then(setJs100).catch(() => setJs100((x) => x || { items: [] }));
   }, []);
 
@@ -227,7 +258,7 @@ export default function CitizenReportsSection({ isActive }) {
     return () => clearInterval(id);
   }, [isActive, load]);
 
-  const rows = useMemo(() => mergeReports(traffy, longdo, hdms, js100), [traffy, longdo, hdms, js100]);
+  const rows = useMemo(() => mergeReports(traffy, longdo, hdms, js100, web), [traffy, longdo, hdms, js100, web]);
   const updatedAt = Math.max(traffy?.updated_at || 0, longdo?.updated_at || 0, hdms?.updated_at || 0, js100?.updated_at || 0) || null;
   // Traffy has never answered (server just started, or the API is down): its empty list is not "no reports"
   const traffyDown = traffy !== null && !traffy.updated_at;

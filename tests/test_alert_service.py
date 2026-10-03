@@ -147,14 +147,34 @@ def test_traffy_needs_a_burst_in_one_district(tmp_path, monkeypatch):
     assert svc.candidates(now=10_000) == []
 
 
-def test_tmd_alerts_once_per_event_and_only_for_bangkok(tmp_path, monkeypatch):
+def test_tmd_alerts_once_per_event_in_every_province(tmp_path, monkeypatch):
     issue = {"n": 1}
+    active = [
+        {"title": "คลื่นลมแรง ฉบับที่ 1", "series": "คลื่นลมแรง", "summary": "ภาคใต้", "bkk": False}]
     warn = lambda: {"active": [
         {"title": f"ฝนตกหนักบริเวณประเทศไทย ฉบับที่ {issue['n']}", "series": "ฝนตกหนักบริเวณประเทศไทย",
-         "summary": "ภาคกลาง รวมทั้งกรุงเทพมหานครและปริมณฑล", "bkk": True},
-        {"title": "คลื่นลมแรง ฉบับที่ 1", "series": "คลื่นลมแรง", "summary": "ภาคใต้", "bkk": False}]}
+         "summary": "ภาคกลาง รวมทั้งกรุงเทพมหานครและปริมณฑล", "bkk": True}] + active}
     svc, pushed = _svc(tmp_path, monkeypatch, tmd=warn)
-    assert [a["key"] for a in svc.check(now=1000)] == ["tmd:ฝนตกหนักบริเวณประเทศไทย"]
+    assert svc.check(now=1000) == []          # warnings already out when the service starts: recorded quietly
     issue["n"] = 2
-    assert svc.check(now=1060) == []
+    assert svc.check(now=1060) == []          # a new issue of the same event is not a new alert
+    active.append({"title": "พายุ ฉบับที่ 1", "series": "พายุ", "summary": "ภาคเหนือ", "bkk": False})
+    fresh = svc.check(now=1120)
+    assert [a["key"] for a in fresh] == ["tmd:พายุ"] and "(ต่างจังหวัด)" in fresh[0]["title"]
     assert len(pushed) == 1
+
+
+def test_province_floods_and_closed_roads(tmp_path, monkeypatch):
+    provinces = [{"province": "ปราจีนบุรี", "level": "critical", "summary": "น้ำล้นตลิ่ง 6 จุด"}]
+    closures = [{"id": "longdo-1", "kind": "closed", "reason": "flood", "title": "น้ำท่วมทางหลวง 3076 (ผ่านไม่ได้)",
+                 "province": "ปราจีนบุรี", "amphoe": "บ้านสร้าง", "description": ""},
+                {"id": "longdo-2", "kind": "diversion", "reason": "", "title": "เบี่ยงจราจร ถนนมหาไชย"}]
+    svc, pushed = _svc(tmp_path, monkeypatch, provinces=lambda: {"provinces": provinces},
+                       road_events=lambda: {"incidents": [], "closures": closures})
+    assert svc.check(now=1000) == []          # open at start: quiet
+    provinces.append({"province": "ระยอง", "level": "flood", "summary": "ทางหลวงน้ำท่วม 3 จุด"})
+    closures.append({"id": "longdo-3", "kind": "closed", "reason": "", "title": "ถนนปิด สะพานข้ามแยก",
+                     "province": "กรุงเทพมหานคร", "amphoe": "ราชเทวี", "description": "ซ่อมสะพาน"})
+    fresh = {a["key"]: a for a in svc.check(now=1060)}
+    assert set(fresh) == {"prov:ระยอง", "close:longdo-3"}   # diversions never alert
+    assert fresh["prov:ระยอง"]["level"] == 1 and "อ.ราชเทวี จ.กรุงเทพมหานคร" in fresh["close:longdo-3"]["body"]

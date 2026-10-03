@@ -6,6 +6,9 @@ Two sources:
   2. Longdo Traffic public event feed (type 3 = accident), for reported accidents city-wide.
 The same feed carries flooded roads (type 6, mostly relayed by iTIC / FM91 with a photo credit); those
 are kept apart in `floods()` for the flood pages and the flood agent.
+`road_events()` gives the traffic map the feed's accidents and closed roads in every province: type 19
+(road closed), type 18 (diversion, part of a road closed) and flooded highways the Department of Highways
+marks "ผ่านไม่ได้" (impassable).
 """
 import base64
 import json
@@ -34,6 +37,8 @@ LONGDO_FEED = "https://event.longdo.com/feed/json"
 LONGDO_ACCIDENT_TYPE = "3"
 LONGDO_BREAKDOWN_TYPE = "1"
 LONGDO_FLOOD_TYPE = "6"
+LONGDO_DIVERSION_TYPE = "18"
+LONGDO_CLOSED_TYPE = "19"
 FLOOD_RECENT_HOURS = 3          # a flood report that ended this recently still shows, as "ended"
 _CREDIT_RE = re.compile(r"\s*(?:Cr\.?|เครดิต|ที่มา)\s*[:.]?\s*(\S.*)$", re.IGNORECASE | re.DOTALL)
 # Bangkok and vicinity
@@ -81,6 +86,9 @@ class IncidentManager:
         self.longdo_updated = 0
         self.longdo_recent = []                 # Longdo events that ended within the last 24 h
         self.longdo_floods = []                 # Longdo flooded-road reports, active or ended < FLOOD_RECENT_HOURS
+        self.longdo_floods_national = []        # the same in every province, for province_flood.py
+        self.national_incidents = []            # active Longdo accidents and breakdowns in every province
+        self.closures = []                      # active closed roads and diversions in every province
         self.provider, self.client = self._client()
         print(f"[Incident] vision provider: {self.provider or 'none (set GEMINI_API_KEY or ANTHROPIC_API_KEY)'}")
         for inc in vehicle_log.active_incidents():
@@ -232,17 +240,24 @@ class IncidentManager:
         with urllib.request.urlopen(req, timeout=15) as resp:
             items = json.loads(resp.read().decode('utf-8'))
         now = time.strftime('%Y-%m-%d %H:%M:%S')
-        out, recent, floods = [], [], []
+        out, recent, floods, national = [], [], [], []
+        everywhere, closures = [], []
         for e in items:
             etype = str(e.get('type') or '')
             title = (e.get('title') or '').strip()
             desc = (e.get('description') or '').strip()
             icon = str(e.get('icon') or '').lower()
 
+            closure = self._closure_item(e, etype, icon, title, desc, now)
+            if closure:
+                closures.append(closure)
+
             if etype == LONGDO_FLOOD_TYPE or icon == 'flood':
-                flood = self._flood_item(e, title, desc, now)
+                flood = self._flood_item(e, title, desc, now, area=False)
                 if flood:
-                    floods.append(flood)
+                    national.append(flood)
+                    if BBOX[0] <= flood['lat'] <= BBOX[2] and BBOX[1] <= flood['lng'] <= BBOX[3]:
+                        floods.append(flood)
                 continue
 
             # Identify vehicle breakdown (type 1, carbreakdown icon, or keywords)
@@ -259,14 +274,16 @@ class IncidentManager:
                 lat, lon = float(e['latitude']), float(e['longitude'])
             except (KeyError, TypeError, ValueError):
                 continue
-            if not (BBOX[0] <= lat <= BBOX[2] and BBOX[1] <= lon <= BBOX[3]):
-                continue
             item = {
                 'id': f"longdo-{e.get('eid')}", 'source': 'longdo', 'kind': kind,
                 'title': title or default_title, 'description': desc,
                 'latitude': lat, 'longitude': lon, 'start': e.get('start'), 'stop': e.get('stop'),
                 'contributor': e.get('contributor', ''), 'severity': e.get('severity', ''),
             }
+            if not e.get('stop') or e['stop'] >= now:
+                everywhere.append(item)
+            if not (BBOX[0] <= lat <= BBOX[2] and BBOX[1] <= lon <= BBOX[3]):
+                continue
             if e.get('stop') and e['stop'] < now:
                 # Ended already: keep it for the "resolved in the last 24 h" list
                 ts, cleared = _feed_ts(e.get('start')), _feed_ts(e.get('stop'))
@@ -278,16 +295,40 @@ class IncidentManager:
             self.longdo = out
             self.longdo_recent = recent
             self.longdo_floods = sorted(floods, key=lambda f: -(f['ts'] or 0))
+            self.longdo_floods_national = sorted(national, key=lambda f: -(f['ts'] or 0))
+            self.national_incidents = everywhere
+            self.closures = closures
             self.longdo_updated = int(time.time())
 
     @staticmethod
-    def _flood_item(e, title, desc, now):
-        """One Longdo flood report, or None when it is outside the area or ended too long ago."""
+    def _closure_item(e, etype, icon, title, desc, now):
+        """An active closed road or diversion from the Longdo feed, or None."""
+        if etype == LONGDO_CLOSED_TYPE or icon == 'roadclosed':
+            kind, reason = 'closed', ''
+        elif etype == LONGDO_DIVERSION_TYPE or icon == 'diversion':
+            kind, reason = 'diversion', ''
+        elif (etype == LONGDO_FLOOD_TYPE or icon == 'flood') and 'ผ่านไม่ได้' in title:
+            kind, reason = 'closed', 'flood'
+        else:
+            return None
+        if e.get('stop') and e['stop'] < now:
+            return None
         try:
             lat, lon = float(e['latitude']), float(e['longitude'])
         except (KeyError, TypeError, ValueError):
             return None
-        if not (BBOX[0] <= lat <= BBOX[2] and BBOX[1] <= lon <= BBOX[3]):
+        return {'id': f"longdo-{e.get('eid')}", 'source': 'longdo', 'kind': kind, 'reason': reason,
+                'title': title, 'description': ' '.join(desc.split()), 'latitude': lat, 'longitude': lon,
+                'start': e.get('start'), 'stop': e.get('stop'), 'contributor': e.get('contributor', '')}
+
+    @staticmethod
+    def _flood_item(e, title, desc, now, area=True):
+        """One Longdo flood report, or None when it ended too long ago or (area=True) is outside BBOX."""
+        try:
+            lat, lon = float(e['latitude']), float(e['longitude'])
+        except (KeyError, TypeError, ValueError):
+            return None
+        if area and not (BBOX[0] <= lat <= BBOX[2] and BBOX[1] <= lon <= BBOX[3]):
             return None
         ts, stop = _feed_ts(e.get('start')), _feed_ts(e.get('stop'))
         active = not e.get('stop') or e['stop'] >= now
@@ -302,16 +343,23 @@ class IncidentManager:
                 'description': ' '.join(desc.split()), 'credit': credit, 'contributor': e.get('contributor', ''),
                 'lat': lat, 'lng': lon, 'ts': ts, 'stop_ts': stop, 'active': active}
 
-    def floods(self, hours=None):
-        """Flooded-road reports from the Longdo feed (newest first); `hours` limits them by report time."""
+    def floods(self, hours=None, national=False):
+        """Flooded-road reports from the Longdo feed (newest first); `hours` limits them by report time.
+        national=True: every province instead of the Bangkok area."""
         with self.lock:
-            items = list(self.longdo_floods)
+            items = list(self.longdo_floods_national if national else self.longdo_floods)
             updated = self.longdo_updated
         if hours:
             since = time.time() - hours * 3600
             items = [f for f in items if (f['ts'] or 0) >= since]
         return {'updated_at': updated, 'active': sum(1 for f in items if f['active']), 'total': len(items),
                 'items': items}
+
+    def road_events(self):
+        """Active accidents, breakdowns and closed roads in every province, from the Longdo feed."""
+        with self.lock:
+            return {'updated_at': self.longdo_updated, 'incidents': list(self.national_incidents),
+                    'closures': list(self.closures)}
 
     def recent_longdo(self, hours=24):
         """Longdo events that ended within the last `hours`, shaped like vehicle_log.recent_incidents()."""
