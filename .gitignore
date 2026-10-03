@@ -38,6 +38,7 @@ Thumbs.db
 vehicle_counts.db
 count_cameras.json
 local/scratch/
+local/review-build-*/
 *.bak
 
 local/dataset/
