@@ -126,6 +126,7 @@ BMA_DATA_DIR=E:\data smartstreet
 - **endpoint ควบคุม** (POST/PUT/DELETE เช่น เปลี่ยนกล้อง, ตั้ง FPS, สแกน BMA, ลบผลตรวจ) ใช้ได้เฉพาะ localhost / LAN / tailnet (ผู้เข้าชมผ่าน Cloudflare นับเป็นคนนอกเสมอ) หรือส่ง header `X-Admin-Token` ให้ตรงกับ `ADMIN_TOKEN` ใน `.env` — คนนอกได้ `403`
 - **`/api/chat`** (ใช้ key Gemini/Claude) จำกัดต่อ IP ค่าเริ่มต้น 6 ครั้ง/นาที, 60 ครั้ง/วัน, body ไม่เกิน 8000 bytes — เกินได้ `429` / `413`
 - request ทั่วไปจากคนนอกจำกัด 600 ครั้ง/นาที ต่อ IP
+- **กันดึง API** (คนนอกเท่านั้น): `/api/` ตอบเฉพาะคำขอที่เบราว์เซอร์ส่งจากหน้าเว็บนี้ (`Sec-Fetch-Site: same-origin`) **และ**มี cookie `bkk_s` ที่ server เซ็นให้ตอนเปิดหน้าเว็บ (HMAC ของเวลา, key อยู่ที่ `instances\<ชื่อ>\cache\session_secret`, HttpOnly, SameSite=Strict, Secure เมื่อมาทาง Cloudflare, อายุ 12 ชม. ต่ออายุเองทุก 1 ชม. ระหว่างหน้าเว็บเปิดอยู่) — สคริปต์ที่ปลอม header แต่ไม่ได้เปิดหน้าเว็บได้ `403` · หน้าเว็บที่เปิดค้างไว้ตั้งแต่ก่อน deploy ต้อง reload หนึ่งครั้ง · `robots.txt` ห้ามบอตทั้งเว็บ · ปิดได้ด้วย `API_BROWSER_ONLY=0` / `API_SESSION=0` · กันได้แค่ระดับหนึ่ง: คนที่ตั้งใจจริงยังเปิดหน้าเว็บแล้วเก็บ cookie ไปใช้ได้ ชั้นที่แรงกว่านี้คือ Bot Fight Mode / WAF rate limit ของ Cloudflare
 
 ปรับได้ใน `.env`:
 
@@ -135,6 +136,8 @@ CHAT_RATE_PER_MIN=6
 CHAT_RATE_PER_DAY=60
 CHAT_MAX_BODY=8000
 GENERAL_RATE_PER_MIN=600
+API_BROWSER_ONLY=1
+API_SESSION=1
 ```
 
 หมายเหตุ: endpoint เส้นจราจรของ Longdo เป็นการใช้งานแบบไม่เป็นทางการ อาจเปลี่ยนหรือต้องใช้ key ในอนาคต

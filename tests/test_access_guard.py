@@ -66,6 +66,15 @@ def _app():
     app = FastAPI()
     app.middleware("http")(access_guard.guard)
 
+    @app.get("/")
+    def page():
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse("<html></html>")
+
+    @app.get("/api/data")
+    def data():
+        return {"ok": True}
+
     @app.post("/api/ai/set_fps")
     def control():
         return {"ok": True}
@@ -88,11 +97,23 @@ def test_control_endpoint_open_with_admin_token(monkeypatch):
     assert r.status_code == 200
 
 
-def test_chat_rate_limited(monkeypatch):
+SAME_ORIGIN = {"Sec-Fetch-Site": "same-origin"}
+
+
+def _visitor(monkeypatch, tmp_path):
+    """A browser from outside that has opened the page (so it holds the page-session cookie)."""
+    monkeypatch.setattr(access_guard, "SESSION_SECRET_FILE", str(tmp_path / "secret"))
+    monkeypatch.setattr(access_guard, "_secret", None)
+    c = TestClient(_app())
+    assert c.get("/").status_code == 200
+    return c
+
+
+def test_chat_rate_limited(monkeypatch, tmp_path):
     monkeypatch.setattr(access_guard, "chat_min", _Window(2, 60))
     monkeypatch.setattr(access_guard, "chat_day", _Window(100, 86400))
-    c = TestClient(_app())
-    codes = [c.post("/api/chat", json={}).status_code for _ in range(3)]
+    c = _visitor(monkeypatch, tmp_path)
+    codes = [c.post("/api/chat", json={}, headers=SAME_ORIGIN).status_code for _ in range(3)]
     assert codes == [200, 200, 429]
 
 
@@ -100,3 +121,25 @@ def test_chat_body_size_capped():
     r = TestClient(_app()).post("/api/chat", content=b"x" * (access_guard.CHAT_MAX_BODY + 1),
                                 headers={"content-type": "application/json"})
     assert r.status_code == 413
+
+
+def test_api_needs_page_session(monkeypatch, tmp_path):
+    c = _visitor(monkeypatch, tmp_path)
+    assert c.cookies.get(access_guard.SESSION_COOKIE)
+    assert c.get("/api/data", headers=SAME_ORIGIN).status_code == 200
+    # a script that fakes the browser header but never loaded the page
+    bare = TestClient(_app())
+    assert bare.get("/api/data", headers=SAME_ORIGIN).status_code == 403
+    # a forged or expired cookie
+    bare.cookies.set(access_guard.SESSION_COOKIE, "1.deadbeef")
+    assert bare.get("/api/data", headers=SAME_ORIGIN).status_code == 403
+
+
+def test_session_age_rejects_old_and_forged(monkeypatch, tmp_path):
+    monkeypatch.setattr(access_guard, "SESSION_SECRET_FILE", str(tmp_path / "secret"))
+    monkeypatch.setattr(access_guard, "_secret", None)
+    good = f"1000.{access_guard._sign(1000)}"
+    assert access_guard.session_age(good, now=1060) == 60
+    assert access_guard.session_age(good, now=1000 + access_guard.SESSION_MAX_AGE + 1) is None
+    assert access_guard.session_age("1000.0000", now=1060) is None
+    assert access_guard.session_age(None) is None
