@@ -18,8 +18,8 @@ export function PageHeader({ title, description, actions, children }) {
   return (
     <header className={`flex flex-wrap items-end justify-between gap-3 ${nested ? '' : 'pt-1'}`}>
       <div className="min-w-0">
-        <H className={`${nested ? 'text-[17px] leading-6' : 'text-xl leading-7'} font-semibold text-slate-900`}>{title}</H>
-        {description && <p className="text-[13px] text-slate-600 mt-0.5 leading-5">{description}</p>}
+        <H className={`${nested ? 'text-lg leading-7 font-bold' : 'text-[28px] leading-9 font-bold'} text-slate-900`}>{title}</H>
+        {description && <p className="text-sm text-slate-600 mt-0.5">{description}</p>}
         {children}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -69,7 +69,7 @@ export function StatusBanner({ tone = 'blue', label, children, action }) {
 // Section switcher; `tabs` is [{id, label, badge?}]
 export function Tabs({ tabs, value, onChange, label }) {
   return (
-    <div role="tablist" aria-label={label} className="flex items-center gap-1 border-b border-slate-200 overflow-x-auto overflow-y-hidden scroll-soft">
+    <div role="tablist" aria-label={label} className="flex items-center gap-1 overflow-x-auto overflow-y-hidden scroll-soft pb-1 border-b-2 border-[var(--c-ink)]">
       {tabs.map((t) => {
         const on = value === t.id;
         return (
@@ -79,12 +79,12 @@ export function Tabs({ tabs, value, onChange, label }) {
             role="tab"
             aria-selected={on}
             onClick={() => onChange(t.id)}
-            className={`cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap px-3 h-10 -mb-px text-sm font-medium border-b-2 transition-colors duration-150 ${FOCUS} ${
-              on ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-600 hover:text-slate-900'
+            className={`cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap px-4 h-11 rounded-[4px] text-[15px] font-semibold border border-transparent transition-colors duration-150 ${FOCUS} ${
+              on ? '' : 'text-slate-600 hover:text-slate-900 hover:bg-[var(--c-raised)]'
             }`}
           >
             {t.label}
-            {t.badge != null && <span className="ml-0.5 rounded-md bg-slate-100 px-1.5 text-xs text-slate-600">{t.badge}</span>}
+            {t.badge != null && <span className={`ml-0.5 rounded-[3px] px-1.5 text-xs ${on ? 'bg-[var(--c-sel-text)]/15' : 'bg-slate-100 text-slate-600'}`}>{t.badge}</span>}
           </button>
         );
       })}

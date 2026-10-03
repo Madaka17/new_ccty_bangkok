@@ -122,9 +122,9 @@ export default function YoloPage({ active, cameras, favorites, camid, incidents,
  const level = levelTone(stats.level);
  const y = pad + h + 44;
  ctx.fillStyle = '#0f172a';
- ctx.font = '600 26px "Prompt", "Poppins", sans-serif';
+ ctx.font = '600 26px "IBM Plex Sans Thai Looped", sans-serif';
  ctx.fillText('BKK StreetSmart', pad, y);
- ctx.font = '400 18px "Prompt", "Poppins", sans-serif';
+ ctx.font = '400 18px "IBM Plex Sans Thai Looped", sans-serif';
  ctx.fillStyle = '#475569';
  ctx.fillText(`${cam?.short_title || ''}`, pad, y + 30);
  ctx.fillText(`รถยนต์ ${stats.cars || 0}  ·  มอเตอร์ไซค์ ${stats.motorcycles || 0}  ·  รถบรรทุก ${stats.trucks || 0}  ·  ${level.text}  ·  ${new Date().toLocaleString('th-TH')}`, pad, y + 60);

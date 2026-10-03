@@ -6,6 +6,7 @@ import DashboardPage from './components/DashboardPage.jsx';
 import BottomNav from './components/BottomNav.jsx';
 import NavIcon from './components/NavIcons.jsx';
 import BotFace from './components/BotFace.jsx';
+import ThemeToggle from './components/ThemeToggle.jsx';
 import AlertPopups from './components/AlertPopups.jsx';
 import { fetchCameras, fetchAllCameras, fetchAIStats, fetchIncidents, fetchSurveyRanking, fetchRoadCameras } from './lib/api.js';
 import { useActiveCameras, useFavorites } from './lib/store.js';
@@ -262,32 +263,33 @@ export default function App() {
  const sidebarProps = { page, onNavigate: navigate, aiActive, liveCount: activeCams.length };
 
   return (
-    <div className="min-h-full lg:grid lg:grid-cols-[220px_1fr]">
+    <div className="min-h-full lg:grid lg:grid-cols-[244px_1fr]">
       {/* Desktop sidebar */}
       <aside className="hidden lg:block sticky top-0 h-screen">
         <Sidebar {...sidebarProps} />
       </aside>
 
       {/* Mobile top bar + drawer */}
-      <div className="lg:hidden sticky top-0 z-40 bg-white border-b border-slate-200 pl-2 pr-4 h-14 flex items-center gap-2">
+      <div className="lg:hidden sticky top-0 z-40 bg-[var(--c-surface)] border-b border-[var(--c-border)] pl-2 pr-2 h-14 flex items-center gap-2">
         <button
           type="button"
           onClick={() => setMenuOpen(true)}
           aria-label="เปิดเมนู"
           aria-haspopup="dialog"
-          className="cursor-pointer shrink-0 w-10 h-10 rounded-lg grid place-items-center text-slate-700 hover:bg-slate-100"
+          className="cursor-pointer shrink-0 w-11 h-11 rounded-full grid place-items-center text-[var(--c-ink)] hover:bg-[var(--c-raised)]"
         >
           <NavIcon name="menu" className="w-6 h-6" />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-slate-900 truncate">{PAGE_TITLES[page]}</p>
-          <p className="text-[11px] text-slate-500">BKK StreetSmart</p>
+          <p className="font-display text-base font-bold leading-tight truncate">{PAGE_TITLES[page]}</p>
+          <p className="text-xs text-[var(--c-muted)] leading-tight">BKK StreetSmart</p>
         </div>
         {activeCams.length > 0 && (
-          <button type="button" onClick={() => navigate('cameras')} className="cursor-pointer shrink-0 text-xs text-slate-600 hover:text-slate-900">
+          <button type="button" onClick={() => navigate('cameras')} className="cursor-pointer shrink-0 min-h-11 px-2 text-xs text-[var(--c-muted)] hover:text-[var(--c-ink)]">
             ดูสด {activeCams.length} กล้อง
           </button>
         )}
+        <ThemeToggle />
       </div>
       {menuOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex" role="dialog" aria-modal="true" aria-label="เมนู">
