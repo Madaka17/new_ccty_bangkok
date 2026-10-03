@@ -19,6 +19,7 @@ export default function TrafficGuidanceCard({ province = '', amphoe = '' }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [slow, setSlow] = useState(false);
   const byArea = !!province && !(province === BANGKOK && !amphoe);
 
   // `current()` is false once another area was picked, so a late answer for the old one is dropped
@@ -41,12 +42,15 @@ export default function TrafficGuidanceCard({ province = '', amphoe = '' }) {
     setError(false);
     setFilter('all');
     setShowAll(false);
+    setSlow(false);
     const run = () => load(() => live);
     run();
     const id = setInterval(run, POLL_MS);
+    const slowId = setTimeout(() => live && setSlow(true), 4000);   // an area's first answer can take a minute
     return () => {
       live = false;
       clearInterval(id);
+      clearTimeout(slowId);
     };
   }, [load]);
 
@@ -98,10 +102,15 @@ export default function TrafficGuidanceCard({ province = '', amphoe = '' }) {
       {error && !data ? (
         <ErrorState message="โหลดข้อมูลถนนไม่สำเร็จ" onRetry={() => load()} retrying={loading} />
       ) : !data ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {[1, 2, 3, 4, 5, 6].map((n) => (
-            <Skeleton key={n} className="h-80" />
-          ))}
+        <div className="flex flex-col gap-2">
+          {byArea && slow && (
+            <p role="status" className="text-sm text-ink-600">กำลังเตรียมข้อมูลถนนของพื้นที่นี้ ครั้งแรกอาจใช้เวลาถึง 1 นาที</p>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {[1, 2, 3, 4, 5, 6].map((n) => (
+              <Skeleton key={n} className="h-80" />
+            ))}
+          </div>
         </div>
       ) : !items.length ? (
         <p className="text-sm text-ink-500">พื้นที่นี้มีถนนสายหลักบนแผนที่จราจรน้อยเกินไป ยังสรุปไม่ได้</p>
@@ -123,7 +132,8 @@ export default function TrafficGuidanceCard({ province = '', amphoe = '' }) {
                     <span className="block text-xs text-ink-500 truncate" title={c.zone}>{c.zone}</span>
                   </div>
                   <Badge tone={c.tone} dot={c.status === 'incident' || c.status === 'congested'} className="shrink-0">
-                    {c.status_label}
+                    {/* "คล่องตัว" above "รถติดรวม 6.9 กม." read as a contradiction */}
+                    {c.status === 'free' && c.red_km >= 1 ? 'ส่วนใหญ่คล่อง' : c.status_label}
                   </Badge>
                 </div>
 

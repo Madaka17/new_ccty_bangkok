@@ -24,7 +24,7 @@ import shapely
 
 from backend.core import thai_regions
 from backend.traffic.area_traffic import BANGKOK, TILE_MAX_AGE, area_traffic
-from backend.traffic.guidance_service import FREE_FLOW, LEVEL_TH, GuidanceService
+from backend.traffic.guidance_service import FREE_FLOW, LEVEL_TH, GuidanceService, merge_spots
 from backend.traffic.traffic_service import (BASE_TILE_DIR, ROAD_TYPES, RoadIndex, classify_color, decode_tile,
                                              feature_lonlat, get_base_tile, get_traffic_tile, lonlat_to_tile,
                                              seg_length_km)
@@ -195,7 +195,7 @@ def _build(pcode, acode, events):
     items = []
     for row in rows:
         spots = []
-        for sp in sorted(row["spots"].values(), key=lambda s: -s["km"])[:3]:
+        for sp in sorted(row["spots"].values(), key=lambda s: -s["km"])[:6]:
             if sp["km"] < 0.2:
                 continue
             lat, lng = sp["lat"] / sp["km"], sp["lng"] / sp["km"]
@@ -206,6 +206,7 @@ def _build(pcode, acode, events):
                 text += f" ({'เขต' if bangkok else 'อ.'}{where})"
             spots.append({"road": row["name"], "km": round(sp["km"], 1), "lat": round(lat, 5), "lon": round(lng, 5),
                           "label": text, "camera": None})
+        spots = merge_spots(spots)[:3]
         alts = [{"name": o["name"], "flow": o["flow"], "level": o["level"], "red_km": o["red_km"],
                  "recommended": o["flow"] >= FREE_FLOW, "_d": _km(row["lat"], row["lng"], o["lat"], o["lng"])}
                 for o in rows if o["name"] != row["name"]]

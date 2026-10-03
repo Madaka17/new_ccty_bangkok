@@ -200,11 +200,17 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
       {section === 'overview' && (
         <>
           <FlowOverview summary={activeSummary} areas={areas} error={summaryError} onRetry={load} retrying={refreshing} onArea={setRoadArea} />
-          <DensityPanel d={density} onOpenRoad={onOpenRoad} showShare={false} />
           <TrafficGuidanceCard province={roadArea?.province} amphoe={roadArea?.amphoe} />
         </>
       )}
-      {section === 'road-risk' && <RoadRiskPanel isActive={isActive && section === 'road-risk'} onOpenRoad={onOpenRoad} />}
+      {/* The road-colour shares (Longdo lines) sit with the per-road views: on the overview they read as a second,
+          different traffic score next to the one above */}
+      {section === 'road-risk' && (
+        <>
+          <DensityPanel d={density} onOpenRoad={onOpenRoad} showShare={false} />
+          <RoadRiskPanel isActive={isActive && section === 'road-risk'} onOpenRoad={onOpenRoad} />
+        </>
+      )}
       {section === 'incidents' && <IncidentPanel incidents={incidents} onOpenAI={onOpenAI} onNavigate={onNavigate} />}
       {section === 'bma-reports' && <BMAEventFeed isActive={isActive && section === 'bma-reports'} onToast={onToast} />}
     </div>

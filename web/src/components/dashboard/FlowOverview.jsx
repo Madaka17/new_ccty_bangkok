@@ -93,9 +93,10 @@ const TOP = 8;
 const EVENT_TH = { accident: 'อุบัติเหตุ', breakdown: 'รถเสีย', closed: 'ถนนปิด', diversion: 'เบี่ยงจราจร', flood: 'น้ำท่วม' };
 const EVENT_TONE = { accident: 'text-red-700', breakdown: 'text-amber-700', closed: 'text-red-700', diversion: 'text-amber-700', flood: 'text-blue-700' };
 
-// Worst first: lowest score, then the most km of red; areas with too little road are left out
+// Worst first: the most km of red, then the lowest score; areas with too little road are left out. By score
+// alone a province with a few km of road, all yellow, came first ("ติด 0 กม.") above Bangkok's 130 km of red.
 function worstFirst(list) {
-  return list.filter((a) => a.flow != null).sort((a, b) => a.flow - b.flow || b.red_km - a.red_km);
+  return list.filter((a) => a.flow != null).sort((a, b) => b.red_km - a.red_km || a.flow - b.flow);
 }
 
 // Ranking of the provinces (none picked) or of the districts of the picked province; a tap picks the row
