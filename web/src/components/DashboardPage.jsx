@@ -30,6 +30,7 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
   const [summary, setSummary] = useState(null);
   const [bma, setBma] = useState(null);
   const [areas, setAreas] = useState(null);
+  const [roadArea, setRoadArea] = useState(null);   // province / district picked in FlowOverview, for the road cards
   const [density, setDensity] = useState(null);
   const [onlineCount, setOnlineCount] = useState(null);
   const [summaryError, setSummaryError] = useState(false);
@@ -198,9 +199,9 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
 
       {section === 'overview' && (
         <>
-          <FlowOverview summary={activeSummary} areas={areas} error={summaryError} onRetry={load} retrying={refreshing} />
+          <FlowOverview summary={activeSummary} areas={areas} error={summaryError} onRetry={load} retrying={refreshing} onArea={setRoadArea} />
           <DensityPanel d={density} onOpenRoad={onOpenRoad} showShare={false} />
-          <TrafficGuidanceCard />
+          <TrafficGuidanceCard province={roadArea?.province} amphoe={roadArea?.amphoe} />
         </>
       )}
       {section === 'road-risk' && <RoadRiskPanel isActive={isActive && section === 'road-risk'} onOpenRoad={onOpenRoad} />}

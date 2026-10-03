@@ -543,6 +543,13 @@ export async function fetchTrafficNear(lat, lng) {
   return res.json();
 }
 
+// Road cards like fetchTrafficGuidance for one province (amphoe '') or district (area_roads.py)
+export async function fetchAreaGuidance(province, amphoe = '') {
+  const res = await fetch(`/api/traffic/guidance/area?province=${province}${amphoe ? `&amphoe=${amphoe}` : ''}`);
+  if (!res.ok) throw new Error('area_guidance');
+  return res.json();
+}
+
 // Traffic score per province and district over the whole country (Longdo lines)
 export async function fetchTrafficAreas() {
   const res = await fetch('/api/traffic/areas');

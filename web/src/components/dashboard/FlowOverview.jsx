@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Card, Badge, Skeleton, ErrorState, FOCUS } from './ui.jsx';
 import { STATUS, flowLevel, fmtNum, fmtTime } from './format.js';
@@ -132,9 +132,11 @@ function AreaRanking({ title, rows, onPick, unit = '' }) {
   );
 }
 
-export default function FlowOverview({ summary, areas, error, onRetry, retrying }) {
+export default function FlowOverview({ summary, areas, error, onRetry, retrying, onArea }) {
   const [provCode, setProvCode] = useState('');
   const [ampCode, setAmpCode] = useState('');
+  // The road cards below follow the picked province / district
+  useEffect(() => { onArea?.({ province: provCode, amphoe: ampCode }); }, [provCode, ampCode, onArea]);
   // "ใกล้ฉัน": the roads around the visitor (null = off)
   const [near, setNear] = useState(null);
   const [nearBusy, setNearBusy] = useState(false);

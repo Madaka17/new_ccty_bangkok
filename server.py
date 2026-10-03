@@ -95,7 +95,7 @@ from backend.vision.camera_health import CameraHealth
 from backend.traffic.traffic_service import traffic, get_traffic_tile, get_osm_tile
 from backend.traffic.guidance_service import GuidanceService
 from backend.traffic.area_traffic import area_traffic
-from backend.traffic import near_traffic
+from backend.traffic import near_traffic, area_roads
 from backend.vision.helmet_service import HelmetPatrol
 from backend.vision.flood_cam_service import FloodCamWatch, STALE_MINUTES as FLOOD_CAM_STALE_MINUTES
 from backend.vision.itic_frames import IticFrames
@@ -778,15 +778,8 @@ def traffic_areas(request: Request):
                         headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
     return Response(body, media_type="application/json")
 
-@app.get("/api/traffic/near")
-def traffic_near(lat: float = Query(..., ge=5.5, le=20.5), lng: float = Query(..., ge=97.3, le=105.7)):
-    """Roads around a visitor's position (the "ใกล้ฉัน" button): traffic per named road within 3 km
-    (near_traffic.py), the district, and accidents, closed roads and floods within that circle.
-    The page sends the position rounded to 0.01 degree (about 1 km), and it is rounded again here."""
-    lat, lng = round(lat, 2), round(lng, 2)
-    out = dict(near_traffic.analyse(lat, lng))
-    out["province"], out["amphoe"] = area_traffic.locate(lat, lng)
-    radius = out["radius_km"]
+def road_event_points():
+    """Accidents, closed roads and floods on roads in every province as points: {"kind", "title", "lat", "lng"}."""
     events = []
     ev = incidents.road_events()
     for i in ev["incidents"]:
@@ -797,8 +790,19 @@ def traffic_near(lat: float = Query(..., ge=5.5, le=20.5), lng: float = Query(..
     for f in flood_national_map()["items"]:
         if f["kind"] == "road" and f["passable"] is not False:   # impassable ones are closures above
             events.append({"kind": "flood", "title": f["title"], "lat": f["lat"], "lng": f["lng"], "depth_cm": f["depth_cm"]})
+    return events
+
+@app.get("/api/traffic/near")
+def traffic_near(lat: float = Query(..., ge=5.5, le=20.5), lng: float = Query(..., ge=97.3, le=105.7)):
+    """Roads around a visitor's position (the "ใกล้ฉัน" button): traffic per named road within 3 km
+    (near_traffic.py), the district, and accidents, closed roads and floods within that circle.
+    The page sends the position rounded to 0.01 degree (about 1 km), and it is rounded again here."""
+    lat, lng = round(lat, 2), round(lng, 2)
+    out = dict(near_traffic.analyse(lat, lng))
+    out["province"], out["amphoe"] = area_traffic.locate(lat, lng)
+    radius = out["radius_km"]
     near = []
-    for e in events:
+    for e in road_event_points():
         d = near_traffic.distance_km(lat, lng, e["lat"], e["lng"])
         if d <= radius:
             near.append({**{k: v for k, v in e.items() if k not in ("lat", "lng")}, "distance_km": round(d, 1)})
@@ -841,6 +845,14 @@ def air_stations():
 def traffic_guidance():
     """Live dispersal guidance per main corridor: hotspots, bypass roads with live flow, advice text."""
     return guidance.status()
+
+@app.get("/api/traffic/guidance/area")
+def traffic_guidance_area(province: str = Query(..., pattern=r"^\d{2}$"), amphoe: str = Query("", pattern=r"^(\d{4})?$")):
+    """Road cards like /api/traffic/guidance for one province or district of Thailand (area_roads.py)."""
+    out = area_roads.analyse(province, amphoe, road_event_points())
+    if out is None:
+        return JSONResponse(status_code=404, content={"error": "unknown province or district"})
+    return out
 
 # ---------------------------------------------------------------- Helmet patrol (all BMA cameras)
 @app.get("/api/helmet/status")
@@ -1558,6 +1570,7 @@ if WEB_BUILT:
 
 traffic.start()
 area_traffic.start()
+area_roads.warm()
 guidance.start()
 air.start()
 flood_roads.start()

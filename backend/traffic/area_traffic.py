@@ -208,6 +208,17 @@ class AreaTraffic:
         _, name, pcode = self.names[int(hit[0])]
         return thai_regions.PROVINCES.get(pcode, ("", ""))[0], name
 
+    def geometry(self, pcode, acode=""):
+        """Outline of one district (acode) or of a whole province, None when the code is unknown."""
+        self._load_districts()
+        geoms = self.tree.geometries
+        parts = [geoms[i] for i, (code, _, p) in enumerate(self.names) if p == pcode and (not acode or code == acode)]
+        return shapely.union_all(parts) if parts else None
+
+    def district_name(self, acode):
+        self._load_districts()
+        return next((name for code, name, _ in self.names if code == acode), "")
+
     # ---- thread
     def _loop(self):
         try:
