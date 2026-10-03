@@ -183,6 +183,8 @@ API_SESSION=1
   1. `npx vite build --outDir ../instances/production/dist_next` (ในโฟลเดอร์ `web`)
   2. คัดลอกไฟล์ใหม่ใน `dist_next/assets/` ไปที่ `dist/assets/` (ไม่ทับไฟล์เดิม)
   3. คัดลอก `index.html` เป็นไฟล์สุดท้าย หน้าเว็บจะเปลี่ยนโดยไม่ต้อง restart
+- **ทั้งเว็บในปุ่มเดียว:** `launch\site\start.bat` / `restart.bat` / `stop.bat` เปิด/เริ่มใหม่/ปิด Production และ ENVIRO (:5050) พร้อมกัน (shortcut "BKK ALL ..." บน Desktop)
+- **เฝ้าเว็บล่ม:** scheduled task "BKK StreetSmart watchdog" (ติดตั้งด้วย `launch\watchdog\install.ps1`, ลบด้วย `install.ps1 -Remove`) รัน `launch\watchdog\watchdog.ps1` ทุก 2 นาทีขณะ login อยู่: ถ้า `http://127.0.0.1:8000/` หรือ `:5050/` ไม่ตอบ (หรือตอบ 5xx) 2 รอบติด จะสั่ง `restart.bat` ของตัวนั้นในหน้าต่างย่อ แล้วรอ 5 นาทีก่อนเช็คใหม่ · ปิดด้วย `stop.bat` / `kill_server.ps1` จะทิ้งไฟล์ `launch\watchdog\state\stopped_<port>` ไว้ watchdog จึงไม่เปิดคืน (`start.bat` ลบไฟล์นี้) · log: `launch\watchdog\state\watchdog.log` · server ที่เปิดใหม่ push "เซิร์ฟเวอร์เริ่มทำงาน" หัวข้อระบบขัดข้องถึงผู้ดูแล
 - ทดลองแก้หน้าเว็บโดยไม่ build ได้ด้วย `npm run dev` (ใช้ API ของ `:8000`) หรือ `npm run dev:8001` (ใช้ API ของ `:8001`)
 
 ขั้นตอน:

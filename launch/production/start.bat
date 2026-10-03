@@ -8,6 +8,8 @@ rem Production: port 8000, data in instances\production (cache, database, agent 
 rem The test server (launch\test, port 8001) keeps its own copy in instances\test.
 set "PORT=8000"
 set "INSTANCE_DIR=%CD%\instances\production"
+rem Started again: launch\watchdog may restart it from now on (stop.bat / kill_server.ps1 left this mark)
+if exist "launch\watchdog\state\stopped_8000" del "launch\watchdog\state\stopped_8000"
 
 echo ======================================================================
 echo   BKK StreetSmart - PRODUCTION  (Public: https://bkksmartstreet.com)

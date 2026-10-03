@@ -31,3 +31,8 @@ Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinu
     }
 
 if (-not $stopped) { Write-Host "[*] No server running on port $Port." }
+
+# Tell launch\watchdog this server was stopped on purpose; start.bat removes the mark
+$mark = Join-Path $PSScriptRoot "watchdog\state\stopped_$Port"
+New-Item -ItemType Directory -Force (Split-Path $mark) | Out-Null
+Set-Content -Path $mark -Value (Get-Date -Format o)
