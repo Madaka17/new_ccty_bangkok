@@ -4,142 +4,48 @@ const WEATHER_POLL_MS = 600000;
 import { fetchWaterSummary, fetchAirStations, fetchFloodReports, fetchWeatherNow } from '../../lib/api.js';
 import { flowLevel, fmtTime } from './format.js';
 
-// One glance, six answers: traffic / weather where the viewer is / rain-water / flood reports / dust / incidents. Headline only, no detail line. Each tile is a link to its page.
-// tone: green = fine, yellow = watch, red = act, neutral = no data
-
-const TONE_CONFIG = {
-  green: {
-    border: 'border-slate-200/90 dark:border-slate-800/90 hover:border-emerald-500/50 dark:hover:border-emerald-500/50',
-    topBar: 'from-emerald-500 via-teal-400 to-transparent',
-    glow: 'bg-emerald-500/10 dark:bg-emerald-500/15',
-    iconBg: 'bg-emerald-50 text-emerald-600 border-emerald-200/80 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20',
-    statusColor: 'text-emerald-600 dark:text-emerald-400',
-    dot: 'bg-emerald-500',
-    ping: 'bg-emerald-400',
-  },
-  yellow: {
-    border: 'border-slate-200/90 dark:border-slate-800/90 hover:border-amber-500/50 dark:hover:border-amber-500/50',
-    topBar: 'from-amber-500 via-orange-400 to-transparent',
-    glow: 'bg-amber-500/10 dark:bg-amber-500/15',
-    iconBg: 'bg-amber-50 text-amber-600 border-amber-200/80 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
-    statusColor: 'text-amber-600 dark:text-amber-400',
-    dot: 'bg-amber-500',
-    ping: 'bg-amber-400',
-  },
-  red: {
-    border: 'border-slate-200/90 dark:border-slate-800/90 hover:border-rose-500/50 dark:hover:border-rose-500/50',
-    topBar: 'from-rose-500 via-red-400 to-transparent',
-    glow: 'bg-rose-500/10 dark:bg-rose-500/15',
-    iconBg: 'bg-rose-50 text-rose-600 border-rose-200/80 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20',
-    statusColor: 'text-rose-600 dark:text-rose-400',
-    dot: 'bg-rose-500',
-    ping: 'bg-rose-400',
-  },
-  neutral: {
-    border: 'border-slate-200/90 dark:border-slate-800/90 hover:border-slate-300 dark:hover:border-slate-700',
-    topBar: 'from-slate-400 via-slate-300 to-transparent dark:from-slate-600 dark:via-slate-700',
-    glow: 'bg-slate-400/5 dark:bg-slate-500/5',
-    iconBg: 'bg-slate-100 text-slate-600 border-slate-200/80 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700/50',
-    statusColor: 'text-slate-800 dark:text-slate-100',
-    dot: 'bg-slate-400',
-    ping: 'bg-slate-400',
-  },
-};
+// One glance, six answers: traffic / weather where the viewer is / rain-water / flood reports / dust / incidents.
+// Shown three ways: a summary sign on top (verdict band + one plain sentence + ask AI), then on a wide screen a
+// "station line" (one dot per answer, the same rail look as the menu), on a phone question cards with the ones
+// that need care first. Every answer is a link to its page.
+// tone: green = fine, yellow = watch, red = act, neutral = no data (colours: .tone-* in index.css).
+// `known` = the answer has data. An answer without data is never counted as fine: the summary says the data is
+// not all in yet instead of "ปกติ", while a danger already known is shown at once.
 
 const ICONS = {
   traffic: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
       <path d="M5 17h14M5 12h14M5 7h14" />
     </svg>
   ),
   water: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
       <path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z" />
     </svg>
   ),
   air: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
       <path d="M3 8h11a3 3 0 1 0-3-3M3 14h14a3 3 0 1 1-3 3M3 11h7" />
     </svg>
   ),
   weather: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
       <path d="M7 18a4 4 0 1 1 .9-7.9A5 5 0 0 1 17.6 11 3.5 3.5 0 1 1 17.5 18H7z" />
     </svg>
   ),
   report: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
       <path d="M4 5h16v11H8l-4 4V5zM12 8v4M12 14.5h.01" />
     </svg>
   ),
   incident: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
       <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01" />
     </svg>
   ),
 };
 
-function Tile({ icon, title, status, note, tone = 'neutral', onClick }) {
-  const cfg = TONE_CONFIG[tone] || TONE_CONFIG.neutral;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`group relative cursor-pointer text-left rounded-2xl border p-3 sm:p-5 flex flex-col justify-between overflow-hidden bg-white/95 dark:bg-slate-900/90 backdrop-blur-md transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl dark:hover:shadow-black/50 ${cfg.border} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900`}
-    >
-      {/* Top accent gradient line */}
-      <span className={`absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r ${cfg.topBar}`} />
-
-      {/* Subtle ambient corner glow */}
-      <span className={`pointer-events-none absolute -top-10 -right-10 w-28 h-28 rounded-full blur-2xl transition-opacity duration-300 opacity-40 group-hover:opacity-100 ${cfg.glow}`} />
-
-      <div className="relative z-10 w-full">
-        {/* Header row: Icon & Title on left, Live Beacon & Arrow on right */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
-            <span className={`w-7 h-7 sm:w-8 sm:h-8 rounded-xl border flex items-center justify-center shrink-0 transition-all duration-300 group-hover:scale-105 shadow-xs ${cfg.iconBg}`}>
-              {icon}
-            </span>
-            {/* two lines on a phone, where two tiles share a row; one line from sm up */}
-            <span className="text-xs font-semibold uppercase tracking-wider leading-tight text-slate-500 dark:text-slate-400 line-clamp-2 sm:line-clamp-1">
-              {title}
-            </span>
-          </div>
-
-          <div className="hidden sm:flex items-center gap-1.5 py-1 px-2 rounded-full text-[11px] font-medium border bg-slate-50/90 dark:bg-slate-800/80 border-slate-200/80 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 shrink-0">
-            <span className="relative flex h-2 w-2">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${cfg.ping}`} />
-              <span className={`relative inline-flex rounded-full h-2 w-2 ${cfg.dot}`} />
-            </span>
-            <svg
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="w-3 h-3 opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all duration-200"
-            >
-              <path d="M6 12l4-4-4-4" />
-            </svg>
-          </div>
-        </div>
-
-        {/* Status metric */}
-        <div className="mt-2 sm:mt-3.5 flex items-baseline">
-          <p className={`text-base sm:text-[19px] font-bold tracking-tight leading-snug ${cfg.statusColor}`}>
-            {status}
-          </p>
-        </div>
-        {/* e.g. an old count kept because the latest update failed */}
-        {note && <p className="mt-0.5 text-[11px] leading-4 text-amber-700 dark:text-amber-400">{note}</p>}
-      </div>
-
-    </button>
-  );
-}
-
-export default function CityStatusStrip({ summary, incidents, flood, onNavigate, isActive }) {
+export default function CityStatusStrip({ summary, incidents, flood, avoid, onNavigate, onIncidents, onAskText, isActive }) {
   const [water, setWater] = useState(null);
   const [air, setAir] = useState(null);
   const [traffy, setTraffy] = useState(null);
@@ -214,8 +120,8 @@ export default function CityStatusStrip({ summary, incidents, flood, onNavigate,
   const overflow = water?.river_counts?.overflow || 0;
   const heavyRain = (water?.ntw?.rain_counts?.heavy || 0) + (water?.ntw?.rain_counts?.extreme || 0);
   const worstZone = water?.weather?.[0];
-  const waterTone = !water ? 'neutral' : flooding > 0 || worstZone?.watch === 'red' ? 'red' : heavyRain > 0 || overflow > 0 || worstZone?.watch === 'yellow' ? 'yellow' : 'green';
-  const waterStatus = !water ? 'กำลังโหลด' : flooding > 0 ? `ถนนน้ำท่วม ${flooding} จุด` : worstZone?.watch === 'red' ? `เฝ้าระวัง ${worstZone.name}` : overflow > 0 ? `น้ำล้นตลิ่ง ${overflow} จุด` : heavyRain > 0 ? `ฝนหนัก ${heavyRain} จุด` : 'ปกติ';
+  const waterTone = flooding > 0 || worstZone?.watch === 'red' ? 'red' : !water ? 'neutral' : heavyRain > 0 || overflow > 0 || worstZone?.watch === 'yellow' ? 'yellow' : 'green';
+  const waterStatus = flooding > 0 ? `ถนนน้ำท่วม ${flooding} จุด` : !water ? 'กำลังโหลด' : worstZone?.watch === 'red' ? `เฝ้าระวัง ${worstZone.name}` : overflow > 0 ? `น้ำล้นตลิ่ง ${overflow} จุด` : heavyRain > 0 ? `ฝนหนัก ${heavyRain} จุด` : 'ปกติ';
 
   // Flood reports: people on Traffy Fondue in the last 6 h only, the same count as the map and the report page.
   // Flooded roads from traffic news are not people's reports and stay out of it.
@@ -239,14 +145,186 @@ export default function CityStatusStrip({ summary, incidents, flood, onNavigate,
   const incTone = !incidents ? 'neutral' : total === 0 ? 'green' : total <= 2 ? 'yellow' : 'red';
   const incStatus = !incidents ? 'กำลังโหลด' : total === 0 ? 'ไม่มีเหตุ' : `${total} จุด`;
 
+  const items = [
+    { id: 'traffic', q: 'รถติดไหม', a: trafficStatus, say: `รถ${level.label}`, tone: trafficTone, known: flow != null, icon: ICONS.traffic, go: () => onNavigate('map') },
+    { id: 'weather', q: weather?.mine ? 'อากาศตรงนี้' : 'อากาศ กทม.', a: weatherStatus, say: weatherStatus, tone: weather?.tone || 'neutral', known: !!weather, icon: ICONS.weather, go: () => onNavigate('water') },
+    { id: 'water', q: 'ฝนและน้ำ', a: waterStatus, say: waterStatus, tone: waterTone, known: !!water || flooding > 0, icon: ICONS.water, go: () => onNavigate('water') },
+    { id: 'report', q: 'มีคนแจ้งน้ำท่วมไหม', sub: 'ใน 6 ชม.', a: repStatus, say: `คนแจ้งน้ำท่วม ${repStatus}`, note: repNote, tone: repTone, known: citizen != null, icon: ICONS.report, go: () => onNavigate('water') },
+    { id: 'air', q: 'ฝุ่นเยอะไหม', a: airStatus, say: `ฝุ่น PM2.5 ${airStatus}`, tone: airTone, known: pm != null, icon: ICONS.air, go: () => onNavigate('map') },
+    { id: 'incident', q: 'มีอุบัติเหตุไหม', a: incStatus, say: `อุบัติเหตุและรถเสีย ${incStatus}`, tone: incTone, known: !!incidents, icon: ICONS.incident, go: () => (onIncidents ? onIncidents() : onNavigate('dashboard')) },
+  ];
+  const reds = items.filter((i) => i.tone === 'red');
+  const yellows = items.filter((i) => i.tone === 'yellow');
+  const care = [...reds, ...yellows];
+  const calm = items.filter((i) => i.known && !care.includes(i));    // has data and nothing to watch
+  const pending = items.filter((i) => !i.known);                     // loading, or could not be loaded
+
+  // The summary: one verdict word and one sentence, made from the six answers (rules, no AI)
+  const avoidText = avoid?.length ? avoid.slice(0, 2).join(' กับ') : null;
+  const verdict = reds.length
+    ? { tone: 'red', label: 'ควรระวัง' }
+    : yellows.length
+      ? { tone: 'yellow', label: 'เฝ้าดู' }
+      : pending.length
+        ? { tone: 'neutral', label: calm.length ? 'ข้อมูลยังไม่ครบ' : 'กำลังโหลด' }
+        : { tone: 'green', label: 'ปกติ' };
+  const headline = flooding > 0
+      ? `มีถนนน้ำท่วม ${flooding} จุด ดูเส้นทางก่อนออกเดินทาง`
+      : trafficTone === 'red'
+        ? (avoidText ? `รถติดหลายจุด เลี่ยง${avoidText}` : 'รถติดหลายจุด ดูทางเลี่ยงก่อนออกเดินทาง')
+        : trafficTone === 'yellow'
+          ? (avoidText ? `ออกเดินทางได้ แต่เลี่ยง${avoidText}` : 'ออกเดินทางได้ แต่เผื่อเวลา')
+          : care.length
+            ? 'ออกเดินทางได้ มีบางเรื่องต้องระวัง'
+            : pending.length
+              ? 'กำลังรวมข้อมูลของเมือง ยังสรุปไม่ได้'
+              : 'ออกเดินทางได้ตามปกติ';
+  const detail = [
+    ...care.map((i) => i.say),
+    ...(care.length && calm.length && !pending.length ? ['เรื่องอื่นปกติ'] : []),
+    ...(pending.length ? [`ยังไม่มีข้อมูล: ${pending.map((i) => i.q).join(', ')}`] : []),
+  ].join(' · ');
+
   return (
-    <section aria-label="สถานการณ์เมืองตอนนี้" className="grid grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-2 sm:gap-3">
-      <Tile icon={ICONS.traffic} title="รถติดทั้งเมือง" status={trafficStatus} tone={trafficTone} onClick={() => onNavigate('map')} />
-      <Tile icon={ICONS.weather} title={weather?.mine ? 'อากาศตรงนี้' : 'อากาศ กทม.'} status={weatherStatus} tone={weather?.tone || 'neutral'} onClick={() => onNavigate('water')} />
-      <Tile icon={ICONS.water} title="ฝนและน้ำ" status={waterStatus} tone={waterTone} onClick={() => onNavigate('water')} />
-      <Tile icon={ICONS.report} title="คนแจ้งน้ำท่วม (6 ชม.)" status={repStatus} note={repNote} tone={repTone} onClick={() => onNavigate('water')} />
-      <Tile icon={ICONS.air} title="ฝุ่น PM2.5" status={airStatus} tone={airTone} onClick={() => onNavigate('map')} />
-      <Tile icon={ICONS.incident} title="อุบัติเหตุและรถเสีย" status={incStatus} tone={incTone} onClick={() => onNavigate('dashboard')} />
+    <>
+      <CityHero verdict={verdict} headline={headline} detail={detail} onAskText={onAskText} />
+
+      {/* wide screens: the station line */}
+      <section aria-labelledby="city-now" className="hidden md:block rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] py-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 px-6 pb-5">
+          <h2 id="city-now" className="text-xl font-bold">เมืองตอนนี้</h2>
+          <p className="text-sm text-[var(--c-muted)]">แตะจุดเพื่อดูรายละเอียด</p>
+        </div>
+        <ul className="grid grid-cols-3 xl:grid-cols-6 gap-y-6">
+          {items.map((i) => (
+            <li key={i.id} className={`tone-${i.tone}`}>
+              <button type="button" onClick={i.go} className="group relative cursor-pointer w-full flex flex-col items-center gap-1 px-2.5 text-center">
+                <span aria-hidden="true" className="absolute inset-x-0 top-5 h-1.5 bg-[var(--c-line)]" />
+                <span aria-hidden="true" className="relative w-[46px] h-[46px] rounded-full border-[7px] border-[var(--t-ring)] bg-[var(--t-fill)] mb-1.5 transition-transform duration-200 group-hover:scale-110" />
+                <span className="text-[15px] leading-snug text-[var(--c-muted)]">
+                  {i.q}
+                  {i.sub && <span className="block text-xs">{i.sub}</span>}
+                </span>
+                <span className="font-display text-xl font-bold leading-tight text-[var(--t-text)]">{i.a}</span>
+                {i.note && <span className="text-xs text-amber-700">{i.note}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <Legend />
+      </section>
+
+      {/* phones: questions, the ones that need care first and big */}
+      <section aria-label="เมืองตอนนี้" className="md:hidden flex flex-col gap-3">
+        {care.length > 0 && (
+          <>
+            <h2 className="text-[15px] font-semibold text-[var(--act-text)]">ต้องระวัง {care.length} เรื่อง</h2>
+            {care.map((i) => (
+              <button key={i.id} type="button" onClick={i.go} className={`tone-${i.tone} cursor-pointer w-full text-left flex items-center gap-3.5 rounded-md px-4 py-4 bg-[var(--t-tint)]`}>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-base text-[var(--c-ink)]">
+                    {i.q}
+                    {i.sub && <span className="text-sm text-[var(--c-muted)]"> ({i.sub})</span>}
+                  </span>
+                  <span className="block font-display text-[28px] font-bold leading-tight text-[var(--t-text)]">{i.a}</span>
+                  {i.note && <span className="block text-xs text-amber-700">{i.note}</span>}
+                </span>
+                <span aria-hidden="true" className="w-12 h-12 shrink-0 rounded-md bg-[var(--c-surface)] text-[var(--t-text)] grid place-items-center">
+                  <span className="w-6 h-6">{i.icon}</span>
+                </span>
+              </button>
+            ))}
+          </>
+        )}
+        {calm.length > 0 && <QuietList title={`ปกติดี ${calm.length} เรื่อง`} titleClass="text-[var(--ok-text)]" rows={calm} />}
+        {pending.length > 0 && <QuietList title={`ยังไม่มีข้อมูล ${pending.length} เรื่อง`} titleClass="text-[var(--c-muted)]" rows={pending} />}
+      </section>
+    </>
+  );
+}
+
+// Phones: a short list of answers with nothing to watch (or no data yet); a stale answer keeps its note
+function QuietList({ title, titleClass, rows }) {
+  return (
+    <>
+      <h2 className={`mt-1 text-[15px] font-semibold ${titleClass}`}>{title}</h2>
+      <div className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] overflow-hidden divide-y divide-[var(--c-border)]">
+        {rows.map((i) => (
+          <button key={i.id} type="button" onClick={i.go} className={`tone-${i.tone} cursor-pointer w-full min-h-15 px-4 py-2 flex items-center gap-3 text-left`}>
+            <span className="flex-1 min-w-0 text-base text-[var(--c-muted)]">{i.q}</span>
+            <span className="text-right">
+              <span className="block font-display text-lg font-bold text-[var(--t-text)]">{i.a}</span>
+              {i.note && <span className="block text-xs text-amber-700 dark:text-amber-400">{i.note}</span>}
+            </span>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 shrink-0 text-[var(--c-muted)]" aria-hidden="true">
+              <path d="M6 4l4 4-4 4" />
+            </svg>
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+// The summary as a platform sign: a band in the verdict's colour with the verdict word, the sentence under it
+function CityHero({ verdict, headline, detail, onAskText }) {
+  const [q, setQ] = useState('');
+  return (
+    <section aria-label="สรุปตอนนี้" className="rounded-md overflow-hidden border border-[var(--c-border)] bg-[var(--c-surface)]">
+      <div className={`tone-${verdict.tone} flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-5 sm:px-6 py-2.5 bg-[var(--t-band)] text-[var(--t-on)]`}>
+        <span className="inline-flex items-center gap-2 font-display text-xl font-bold">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5" aria-hidden="true">
+            {verdict.tone === 'green' ? (
+              <path d="M5 12.5l4.5 4.5L19 7.5" />
+            ) : (
+              <>
+                <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+                <path d="M12 9v4M12 17h.01" />
+              </>
+            )}
+          </svg>
+          {verdict.label}
+        </span>
+        <span className="text-sm font-medium">สรุปจาก 6 เรื่องด้านล่าง</span>
+      </div>
+      <div className="px-5 sm:px-6 pt-5 pb-6 flex flex-col gap-3">
+        <p className="font-display text-[26px] sm:text-[34px] font-bold leading-tight max-w-[26em]">{headline}</p>
+        {detail && <p className="text-base leading-relaxed text-[var(--c-muted)] max-w-[44em]">{detail}</p>}
+        {onAskText && (
+          <form
+            className="flex flex-wrap gap-2 mt-3 pt-4 border-t-2 border-[var(--c-ink)]"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const text = q.trim();
+              if (text) onAskText(text);
+            }}
+          >
+            <label htmlFor="city-ask" className="basis-full font-display text-base font-bold">ถาม AI เรื่องถนนที่จะไป</label>
+            <input
+              id="city-ask"
+              type="text"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="เช่น ลาดพร้าวตอนนี้ติดไหม"
+              className="flex-[1_1_160px] min-w-0 h-12 px-4 rounded-[4px] bg-[var(--c-surface)] border-2 border-[var(--c-border-strong)] text-base text-[var(--c-ink)] placeholder:text-[var(--c-muted)]"
+            />
+            <button type="submit" className="cursor-pointer h-12 px-6 rounded-[4px] bg-[var(--c-ink)] text-[var(--c-surface)] text-base font-bold hover:opacity-90">
+              ถาม
+            </button>
+          </form>
+        )}
+      </div>
     </section>
+  );
+}
+
+function Legend() {
+  const dot = 'w-3.5 h-3.5 rounded-full border-3 border-[var(--t-ring)] bg-[var(--t-fill)]';
+  return (
+    <ul className="flex flex-wrap justify-center gap-5 px-6 pt-6 text-sm text-[var(--c-muted)]">
+      <li className="tone-green inline-flex items-center gap-1.5"><span className={dot} aria-hidden="true" />ปกติ</li>
+      <li className="tone-yellow inline-flex items-center gap-1.5"><span className={dot} aria-hidden="true" />เฝ้าดู</li>
+      <li className="tone-red inline-flex items-center gap-1.5"><span className={dot} aria-hidden="true" />ควรระวัง</li>
+    </ul>
   );
 }

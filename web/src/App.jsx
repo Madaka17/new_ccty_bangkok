@@ -255,6 +255,14 @@ export default function App() {
     },
     [navigate]
   );
+  // A question typed on the overview summary card, sent to the AI page as written
+ const askText = useCallback(
+    (q) => {
+ setPendingQuestion(q);
+ navigate('ai');
+    },
+    [navigate]
+  );
 
  const activeCams = useMemo(() => active.map((id) => liveCameras.find((c) => c.camid === id)).filter(Boolean), [active, liveCameras]);
 
@@ -314,7 +322,7 @@ export default function App() {
           >
             <Suspense fallback={<PageLoading />}>
             {page === 'dashboard' && (
-              <DashboardPage isActive liveCount={activeCams.length} cameras={cameras} incidents={incidents} onAsk={askAI} onOpenRoad={openRoadCameras} onNavigate={navigate} onOpenAI={openAI} onToast={showToast} />
+              <DashboardPage isActive liveCount={activeCams.length} cameras={cameras} incidents={incidents} onAsk={askAI} onAskText={askText} onOpenRoad={openRoadCameras} onNavigate={navigate} onOpenAI={openAI} onToast={showToast} />
             )}
 
             {page === 'cameras' && (
