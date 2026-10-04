@@ -132,7 +132,7 @@ def _load_station(sid):
             if v is not None:
                 level.append((t, v))
     return {**info, "lat": ws._num(pos.get("latitude")), "lng": ws._num(pos.get("longitude")),
-            "flow": clean(flow), "level": level[-1] if level else None}
+            "flow": clean(flow), "level": level[-1] if level else None, "levels": level}
 
 
 def _hii_stations():
@@ -178,6 +178,38 @@ def fit_rating(pairs, holdout=48):
     if np.any(np.diff(np.polyval(coef, np.linspace(h.min(), h.max(), 25))) <= 0):
         return None
     return {"coef": [float(c) for c in coef], "mape": round(mape, 2), "h_min": float(h.min()), "h_max": float(h.max())}
+
+
+def stage_rating(s, max_mape=15.0):
+    """A gauge's own rating curve (fit_rating on its RID level and discharge, hour by hour), so a discharge
+    outlook can be read as a water level against the bank; None when the fit is poor or there is too little."""
+    flow = s.get("flow") or {}
+    pairs = [(v, flow[t - t % HOUR]) for t, v in sorted(s.get("levels") or []) if t % HOUR == 0 and (t - t % HOUR) in flow]
+    r = fit_rating(pairs)
+    return r if r and r["mape"] <= max_mape else None
+
+
+def level_for(rating, q):
+    """The water level (m above sea) at which `rating` passes discharge q: the curve inverted by bisection,
+    carried on as a straight line beyond the levels it was fitted on."""
+    a, b, c = rating["coef"]
+    lo, hi = rating["h_min"], rating["h_max"]
+
+    def flow_at(h):
+        if h < lo:
+            return a * lo * lo + b * lo + c + (2 * a * lo + b) * (h - lo)
+        if h > hi:
+            return a * hi * hi + b * hi + c + (2 * a * hi + b) * (h - hi)
+        return a * h * h + b * h + c
+
+    x, y = lo - 10, hi + 10
+    for _ in range(60):
+        m = (x + y) / 2
+        if flow_at(m) < q:
+            x = m
+        else:
+            y = m
+    return (x + y) / 2
 
 
 def _ratings(loaded):
@@ -444,7 +476,8 @@ def _build():
             "q": round(q) if fresh else None, "ts": t, "qmax": qmax,
             "pct": round(100 * q / qmax, 1) if fresh and qmax else None,
             "change_24h": round(q - q24) if q24 is not None else None,
-            "msl": lv if lv_fresh else None, "bank": bank, "below_bank": below_bank, "level_pct": level_pct,
+            "msl": lv if lv_fresh else None, "bank": bank, "ground": s.get("ground"), "below_bank": below_bank, "level_pct": level_pct,
+            "stage": stage_rating(s),
             "status": st or "offline",
             "history": [{"t": ht, "q": round(hq)} for ht, hq in sorted(s["flow"].items()) if ht > now - HISTORY_H * HOUR],
             "forecast": fc, "peak": peak,

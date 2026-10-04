@@ -18,8 +18,8 @@ The numbers are computed, not guessed by the model:
     beside it, not folded in: there is no catchment area here to turn millimetres into cubic metres;
   - a province's flood risk index (0-100) for each of the next 7 days adds today's level, its large dams'
     storage that day, full medium reservoirs, the rain of the 3 days up to that day, rising gauges and a large
-    dam over 100% that day in the basin of a high gauge there (see day_index). 80+ เสี่ยงสูงมาก, 60-79 เสี่ยงสูง,
-    40-59 เฝ้าระวัง.
+    dam over 100% that day in the basin of a high gauge there (see day_index). 70+ เสี่ยงสูงมาก, 50-69 เสี่ยงสูง,
+    30-49 เฝ้าระวัง.
 
 The Qwen model behind LOCAL_LLM_* (local_llm.default) then reads those numbers, sets each province's and
 road's risk from a fixed list and writes the plain-Thai outlook: four requests (water, provinces, roads,
@@ -53,13 +53,18 @@ USER_AGENT = "BKKStreetSmart/1.0 (bkksmartstreet.com)"
 LEVELS = ("critical", "flood", "watch", "normal")
 LABELS = {"critical": "เสี่ยงสูงมาก", "flood": "เสี่ยงสูง", "watch": "เฝ้าระวัง", "normal": "ปกติ"}
 NOW_RANK = {"critical": 3, "flood": 2, "watch": 1, "normal": 0}
-NOW_BASE = {"critical": 80, "flood": 60, "watch": 40, "normal": 15}   # today's situation alone: the floor of its band
-INDEX_LEVELS = (("critical", 80), ("flood", 60), ("watch", 40), ("normal", 0))
+NOW_BASE = {"critical": 70, "flood": 50, "watch": 30, "normal": 10}   # today's situation alone: the floor of its band
+INDEX_LEVELS = (("critical", 70), ("flood", 50), ("watch", 30), ("normal", 0))
+# Share of the room above today's base that each factor can fill (they add up to 1, so 100 means every factor at its worst)
+WEIGHTS = {"dam": 0.30, "rain": 0.35, "medium": 0.10, "basin": 0.15, "rising": 0.10}
+RAIN_FULL_3D = 120      # mm in 3 days that counts as the worst rain
+MEDIUM_FULL_N = 5       # full medium reservoirs that count as the worst
 CHANCES = ("high", "medium", "low")
 
 RULES = """หลักการ
 - ใช้ชื่อสถานที่ และตัวเลขจากข้อมูลที่แนบมาเท่านั้น ห้ามแต่งตัวเลขหรือสถานที่
 - ตัวเลขคาดการณ์ของเขื่อนคำนวณจากน้ำไหลเข้าลบน้ำที่ปล่อยเฉลี่ย 7 วันล่าสุด ถ้าฝนพยากรณ์มาก น้ำอาจขึ้นเร็วกว่านี้
+- บอกน้ำในเขื่อนเป็นล้าน ลบ.ม. และระดับน้ำในแม่น้ำเป็นเซนติเมตรเทียบตลิ่ง ห้ามใช้เปอร์เซ็นต์
 - ภาษาไทยง่าย ๆ ประโยคสั้น ข้อความล้วน ไม่ใช้ Markdown ไม่ใส่ชื่อฟิลด์ภาษาอังกฤษ"""
 
 WATER_PROMPT = f"""คุณคือนักวิเคราะห์น้ำในเขื่อนระดับประเทศ อ่านข้อมูลเขื่อนและฝนพยากรณ์ 7 วันที่แนบมา แล้วเขียน JSON ตาม schema:
@@ -73,7 +78,7 @@ PROVINCE_PROMPT = f"""คุณคือนักวิเคราะห์น�
   risk: critical (เสี่ยงสูงมาก) / flood (เสี่ยงสูง) / watch (เฝ้าระวัง) / normal (ปกติ) ใช้ peak เป็นหลัก ปรับได้ไม่เกิน 1 ขั้นถ้ามีเหตุผล
   outlook: 7 วันข้างหน้า 1-2 ประโยค น้ำมาจากไหน (เขื่อน แม่น้ำ ฝน) จะขึ้นหรือลด
   advice: คำแนะนำประชาชน 1 ประโยค
-ข้อมูลแต่ละจังหวัด: now = สถานการณ์วันนี้, days = คะแนนเสี่ยงน้ำท่วมรายวัน 7 วัน (0-100: 80 ขึ้นไป = สูงมาก, 60-79 = สูง, 40-59 = เฝ้าระวัง),
+ข้อมูลแต่ละจังหวัด: now = สถานการณ์วันนี้, days = คะแนนเสี่ยงน้ำท่วมรายวัน 7 วัน (0-100: 70 ขึ้นไป = สูงมาก, 50-69 = สูง, 30-49 = เฝ้าระวัง),
 peak = คะแนนสูงสุดใน 7 วัน, why = เหตุผลที่คำนวณไว้,
 overflow / high / rising = จุดวัดน้ำล้นตลิ่ง / สูง / กำลังขึ้น, dams = เขื่อนใหญ่ (% วันนี้ และ % ใน 7 วัน),
 medium_full = อ่างเก็บน้ำขนาดกลางที่เต็ม, rain7 = ฝนพยากรณ์ 7 วัน (มม.), highways = ทางหลวงน้ำท่วม, reports = คนแจ้งน้ำท่วม
@@ -83,7 +88,7 @@ ROAD_PROMPT = f"""คุณคือนักวิเคราะห์ถน�
 - overview: ภาพรวม 2-3 ประโยค ถนนไหนท่วมอยู่ ถนนไหนควรระวังใน 7 วัน
 - roads: ถนนเสี่ยงทุกสายในข้อมูล chance: high / medium / low ว่าจะมีน้ำท่วมใน 7 วันข้างหน้า note: เหตุผล 1 ประโยค
 ข้อมูล: flooded = ถนนที่ท่วมอยู่ (กรมทางหลวงแจ้ง), risk_roads = ถนนสายหลักที่อยู่ใกล้จุดน้ำสูง/ล้นตลิ่ง หรือใกล้เขื่อนที่น้ำเกือบเต็ม
-(near = อยู่ใกล้อะไร, pct = % ของตลิ่งหรือของเขื่อน, province_risk = ความเสี่ยงจังหวัด 7 วัน)
+(near = อยู่ใกล้อะไร, water = ระดับน้ำเทียบตลิ่ง หรือน้ำเกินความจุเขื่อน, province_risk = ความเสี่ยงจังหวัด 7 วัน)
 {RULES}"""
 
 SUMMARY_PROMPT = f"""คุณคือผู้สรุปสถานการณ์น้ำท่วมของประเทศให้ประชาชนอ่าน อ่านตัวเลขและบทวิเคราะห์ที่แนบมา แล้วเขียน JSON ตาม schema:
@@ -243,20 +248,24 @@ def province_middles(rain_points):
 
 
 def day_index(p, d, full_basins):
-    """Flood risk index 0-100 of province p on day d (1..DAYS): today's situation, its large dams' projected
-    storage that day, full medium reservoirs, the rain of the 3 days up to that day, rising rivers (first 3
-    days) and a large dam over 100% that day in the basin of one of its high gauges."""
-    idx = NOW_BASE.get(p["now"], 15)
+    """Flood risk index 0-100 of province p on day d (1..DAYS). It starts from today's situation (NOW_BASE, the
+    floor of that band) and the factors fill a share of the room left up to 100, so a province already in crisis
+    still moves with the rain and its dams instead of sitting at 100:
+        dam     its fullest large dam that day, from 80% (nothing) to 100% of normal storage (all)
+        rain    the rain of the 3 days up to that day, up to RAIN_FULL_3D mm
+        medium  full medium reservoirs, up to MEDIUM_FULL_N
+        basin   a large dam over 100% that day in the basin of one of its high gauges
+        rising  rivers rising now (first 3 days only)"""
+    base = NOW_BASE.get(p["now"], 10)
     pcts = [x["days"][d - 1] for x in p["dams"]]
-    if pcts:
-        idx += min(15, max(0, (max(pcts) - 80) * 0.75))
-    idx += min(6, 1.5 * p["medium_full"])
-    idx += min(20, 0.2 * sum(p["rain7"][max(0, d - 3):d]))
-    if d <= 3 and p["counts"].get("rising", 0) >= 2:
-        idx += 4
-    if p["basins"] & full_basins[d - 1]:
-        idx += 6
-    return min(100, round(idx))
+    f = {
+        "dam": min(1.0, max(0.0, (max(pcts) - 80) / 20)) if pcts else 0.0,
+        "rain": min(1.0, sum(p["rain7"][max(0, d - 3):d]) / RAIN_FULL_3D),
+        "medium": min(1.0, p["medium_full"] / MEDIUM_FULL_N),
+        "basin": 1.0 if p["basins"] & full_basins[d - 1] else 0.0,
+        "rising": 1.0 if d <= 3 and p["counts"].get("rising", 0) >= 2 else 0.0,
+    }
+    return round(base + (100 - base) * sum(WEIGHTS[k] * v for k, v in f.items()))
 
 
 def level_of(idx):
@@ -299,7 +308,7 @@ def build_provinces(today, dams, medium, rain):
             "province": name, "region": thai_regions.region_of(name), "now": t.get("level", "normal"),
             "now_label": t.get("label", "ปกติ"), "now_summary": t.get("summary", ""),
             "counts": t.get("counts") or {}, "center": t.get("center"),
-            "dams": [{k: d[k] for k in ("name", "pct", "pct_7d", "full_day", "net", "days")} for d in dams if d["province"] == name],
+            "dams": [{k: d[k] for k in ("name", "pct", "pct_7d", "full_day", "net", "days", "storage", "normal")} for d in dams if d["province"] == name],
             "medium_full": sum(m["pct"] >= MEDIUM_FULL_PCT for m in medium if m["province"] == name),
             "medium_count": sum(m["province"] == name for m in medium),
             "rain7": rain.get(name) or [0.0] * DAYS,
@@ -361,12 +370,14 @@ def risk_points(today, dams):
         for g in p.get("gauges") or []:
             if g.get("level", 0) >= 5 or (g.get("level") == 4 and g.get("trend", 0) > 0):
                 where = g["name"] + (f" ({g['river']})" if g.get("river") and g["river"] != g["name"] else "")
+                below = round((g["bank"] - g["msl"]) * 100) if g.get("bank") is not None and g.get("msl") is not None else None
                 pts.append({"key": f"g:{p['province']}:{g['name']}", "lat": g["lat"], "lng": g["lng"], "province": p["province"],
-                            "near": f"จุดวัดน้ำ{where}", "pct": round(g.get("pct") or 0), "kind": "gauge"})
+                            "near": f"จุดวัดน้ำ{where}", "pct": round(g.get("pct") or 0), "below_cm": below, "kind": "gauge"})
     for d in dams:
         if d["pct_7d"] >= FULL_WARN_PCT and d["lat"] is not None:
             pts.append({"key": f"d:{d['id']}", "lat": d["lat"], "lng": d["lng"], "province": d["province"],
-                        "near": f"เขื่อน{d['name']}", "pct": round(d["pct_7d"]), "kind": "dam"})
+                        "near": f"เขื่อน{d['name']}", "pct": round(d["pct_7d"]), "kind": "dam",
+                        "over_mcm": round((d["pct_7d"] - 100) * d["normal"] / 100)})
     pts.sort(key=lambda x: -x["pct"])
     return pts[:ROAD_POINTS]
 
@@ -438,7 +449,8 @@ class NationalForecast:
                     continue
                 seen.add((r["road"], p["province"]))
                 risk.append({"road": r["road"], "kind": r["kind"], "province": p["province"], "near": p["near"],
-                             "pct": p["pct"], "near_kind": p["kind"], "lat": p["lat"], "lng": p["lng"],
+                             "pct": p["pct"], "below_cm": p.get("below_cm"), "over_mcm": p.get("over_mcm"),
+                             "near_kind": p["kind"], "lat": p["lat"], "lng": p["lng"],
                              "province_risk": levels.get(p["province"], "normal")})
         flooded = []
         for p in today:
@@ -515,8 +527,10 @@ class NationalForecast:
         started = time.time()
         try:
             water = self._ask(WATER_PROMPT, {
-                "large_dams": [{"name": x["name"], "province": x["province"], "basin": x["basin"], "pct_now": x["pct"],
-                                "pct_7d": x["pct_7d"], "full_in_days": x["full_day"],  # 0 = full today "net_mcm_per_day": x["net"],
+                # full_in_days: 0 = full today
+                "large_dams": [{"name": x["name"], "province": x["province"], "basin": x["basin"], "storage_mcm": round(x["storage"]),
+                                "normal_mcm": round(x["normal"]), "storage_7d_mcm": round(x["pct_7d"] * x["normal"] / 100),
+                                "full_in_days": x["full_day"], "net_mcm_per_day": x["net"],
                                 "rain7_mm": round(sum(x["rain7"]))} for x in d["dams"][:20]],
                 "large_counts": {"total": len(d["dams"]), "full_now": sum(x["full_day"] == 0 for x in d["dams"]),
                                  "full_in_7d": sum(x["full_day"] is not None and x["full_day"] > 0 for x in d["dams"]),
@@ -529,14 +543,16 @@ class NationalForecast:
                 "province": p["province"], "region": p["region"], "now": p["now_label"], "peak": p["score"],
                 "days": [x["index"] for x in p["days"]], "why": p["why"],
                 "overflow": p["counts"].get("overflow", 0), "high": p["counts"].get("high", 0), "rising": p["counts"].get("rising", 0),
-                "dams": [f"{x['name']} {round(x['pct'])}% -> {round(x['pct_7d'])}%" for x in p["dams"]],
+                "dams": [f"{x['name']} {round(x['storage'])} -> {round(x['pct_7d'] * x['normal'] / 100)} ล้าน ลบ.ม. (ความจุปกติ {round(x['normal'])})" for x in p["dams"]],
                 "medium_full": p["medium_full"], "rain7": round(sum(p["rain7"])),
                 "highways": len(p["highways"]), "reports": p["counts"].get("reports", 0),
             } for p in risky], PROVINCE_SCHEMA, 8000)
             levels = {x["province"]: x.get("risk") for x in provinces.get("provinces") or []}
             roads = self._ask(ROAD_PROMPT, {
                 "flooded": [f"{r['road']} {r['province']}" + (f" น้ำ {r['depth_cm']} ซม." if r["depth_cm"] else "") for r in d["roads"]["flooded"][:30]],
-                "risk_roads": [{"road": r["road"], "province": r["province"], "near": r["near"], "pct": r["pct"],
+                "risk_roads": [{"road": r["road"], "province": r["province"], "near": r["near"],
+                                "water": (f"ต่ำกว่าตลิ่ง {r['below_cm']} ซม." if r["below_cm"] > 0 else f"สูงกว่าตลิ่ง {-r['below_cm']} ซม.")
+                                         if r.get("below_cm") is not None else f"เกินความจุเขื่อน {r['over_mcm']} ล้าน ลบ.ม." if r.get("over_mcm") is not None else None,
                                 "province_risk": levels.get(r["province"]) or r["province_risk"]} for r in d["roads"]["risk"][:40]],
             }, ROAD_SCHEMA, 5000)
             summary = self._ask(SUMMARY_PROMPT, {

@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 import { Badge, Card, ErrorState, FOCUS, SectionHeader, Skeleton } from '../dashboard/ui.jsx';
 import { StatusBanner } from '../dashboard/primitives.jsx';
 import { agoText, fmtDateTime } from '../dashboard/format.js';
-import { CHIP_OFF, CHIP_ON, REGIONS, RISK, sum, useFloodForecast } from './forecastData.js';
+import { CHIP_OFF, CHIP_ON, REGIONS, RISK, damLater, mcm, sum, useFloodForecast } from './forecastData.js';
 
 const NOW = {
   critical: { label: 'วันนี้: วิกฤต', tone: 'red' },
@@ -34,7 +34,7 @@ function DailyTable({ provinces, items }) {
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-3 text-xs text-slate-700">
         <span className="font-medium">คะแนนเสี่ยงน้ำท่วม 0-100:</span>
-        {[['normal', 'ปกติ 0-39'], ['watch', 'เฝ้าระวัง 40-59'], ['flood', 'เสี่ยงสูง 60-79'], ['critical', 'เสี่ยงสูงมาก 80-100']].map(([k, label]) => (
+        {[['normal', 'ปกติ 0-29'], ['watch', 'เฝ้าระวัง 30-49'], ['flood', 'เสี่ยงสูง 50-69'], ['critical', 'เสี่ยงสูงมาก 70-100']].map(([k, label]) => (
           <span key={k} className="inline-flex items-center gap-1.5"><span className={`w-2.5 h-2.5 rounded-full ${DOT[k]}`} />{label}</span>
         ))}
       </div>
@@ -86,8 +86,8 @@ function DailyTable({ provinces, items }) {
         </button>
       )}
       <p className="text-[11px] text-slate-500 leading-4">
-        คะแนนเริ่มจากสถานการณ์วันนี้ แล้วบวกเพิ่มตามน้ำในเขื่อนใหญ่วันนั้น อ่างเก็บน้ำกลางที่เต็ม ฝน 3 วันล่าสุดถึงวันนั้น แม่น้ำที่กำลังขึ้น
-        และเขื่อนต้นน้ำในลุ่มน้ำเดียวกันที่เต็ม
+        คะแนนเริ่มจากสถานการณ์วันนี้ (วิกฤต 70 · ท่วม 50 · เฝ้าระวัง 30 · ปกติ 10) แล้วเพิ่มขึ้นตามน้ำในเขื่อนใหญ่วันนั้น ฝน 3 วันล่าสุดถึงวันนั้น
+        อ่างเก็บน้ำกลางที่เต็ม เขื่อนต้นน้ำในลุ่มน้ำเดียวกันที่เต็ม และแม่น้ำที่กำลังขึ้น ยิ่งมีหลายอย่าง คะแนนยิ่งเข้าใกล้ 100
       </p>
     </div>
   );
@@ -118,7 +118,7 @@ function ProvinceCard({ p, ai }) {
         <span>คนแจ้ง <b className="text-slate-900">{c.reports || 0}</b></span>
         <span>ฝน 7 วัน <b className="text-slate-900">{Math.round(sum(p.rain7))} มม.</b></span>
         {p.dams.map((d) => (
-          <span key={d.name}>เขื่อน{d.name} <b className="text-slate-900">{Math.round(d.pct)}% → {Math.round(d.pct_7d)}%</b></span>
+          <span key={d.name}>เขื่อน{d.name} <b className="text-slate-900">{mcm(d.storage)} → {mcm(damLater(d))}</b> / {mcm(d.normal)} ล้าน ลบ.ม.</span>
         ))}
       </div>
     </article>

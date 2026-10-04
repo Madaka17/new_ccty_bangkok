@@ -6,6 +6,7 @@ import { Badge, Card, ErrorState, SectionHeader, Skeleton } from '../dashboard/u
 import { StatusBanner } from '../dashboard/primitives.jsx';
 import { agoText, fmtDateTime } from '../dashboard/format.js';
 import NorthRouteMap from './NorthRouteMap.jsx';
+import { bankShort, bankText } from './forecastData.js';
 
 const POLL_MS = 5 * 60000;
 const LEVEL = {
@@ -17,29 +18,24 @@ const LEVEL = {
 const BKK = 'นนทบุรี-กรุงเทพฯ';
 const dayLabel = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short' });
 
-function cellValue(p, x) {
-  if (p.province === BKK) return x.below_bank > 0 ? `-${x.below_bank.toFixed(2)} ม.` : `+${(-x.below_bank).toFixed(2)} ม.`;
-  return x.pct != null ? `${Math.round(x.pct)}%` : '–';
-}
-
 function DailyTable({ data }) {
   const dates = data.dates || [];
   return (
     <Card className="p-4 flex flex-col gap-2">
       <SectionHeader id="north-days-title" title="จังหวัดที่น้ำเหนือไหลผ่าน วันนี้และ 7 วันข้างหน้า"
-        description="ตัวเลข = น้ำเต็มลำน้ำกี่ % (นนทบุรี-กรุงเทพฯ = ระดับน้ำต่ำ/สูงกว่าตลิ่ง) · ช่องเส้นประ = แนวโน้ม ความแม่นยำน้อยกว่า" />
+        description="ตัวเลข = ระดับน้ำเทียบตลิ่ง (ต่ำ = ยังต่ำกว่าตลิ่ง, เกิน = น้ำสูงกว่าตลิ่ง) · ช่องเส้นประ = แนวโน้ม ความแม่นยำน้อยกว่า" />
       <div className="flex flex-wrap items-center gap-3 text-xs text-slate-700">
         {Object.entries(LEVEL).map(([k, v]) => (
           <span key={k} className="inline-flex items-center gap-1.5"><span className={`w-2.5 h-2.5 rounded-full ${v.dot}`} />{v.label}</span>
         ))}
       </div>
       <div className="overflow-x-auto rounded-xl border border-slate-200">
-        <table className="w-full text-sm border-collapse min-w-[820px]">
+        <table className="w-full text-sm border-collapse min-w-[920px]">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200 text-xs text-slate-600">
               <th className="text-left py-2.5 px-3 w-44 sticky left-0 bg-slate-50">จังหวัด (ต้นน้ำ → ปลายน้ำ)</th>
               {dates.map((iso, i) => (
-                <th key={iso} className="text-center py-2.5 px-1 min-w-[72px]">
+                <th key={iso} className="text-center py-2.5 px-1 min-w-[84px]">
                   <div className="font-semibold text-slate-900">{i === 0 ? 'วันนี้' : `+${i} วัน`}</div>
                   <div className="text-[10px] font-normal text-slate-500">{dayLabel(iso)}</div>
                 </th>
@@ -56,10 +52,10 @@ function DailyTable({ data }) {
                 {p.days.map((x) => (
                   <td key={x.day} className="p-1 align-middle">
                     <div className={`rounded-lg border text-center py-1.5 px-1 ${LEVEL[x.level].cell} ${x.kind === 'trend' ? 'border-dashed' : ''}`}
-                      title={`${dayLabel(dates[x.day])} · ${LEVEL[x.level].label}${x.q != null ? ` · ${x.q.toLocaleString('th-TH')} ลบ.ม./วิ` : ''}${x.kind === 'trend' ? ' · แนวโน้ม' : ''}`}>
+                      title={`${dayLabel(dates[x.day])} · ${LEVEL[x.level].label} · ${bankText(x.below_cm)}${x.q != null ? ` · ${x.q.toLocaleString('th-TH')} ลบ.ม./วิ` : ''}${x.kind === 'trend' ? ' · แนวโน้ม' : ''}`}>
                       <div className="flex items-center justify-center gap-1">
                         <span className={`w-1.5 h-1.5 rounded-full ${LEVEL[x.level].dot}`} />
-                        <span className="text-[13px] font-bold tabular-nums leading-none">{cellValue(p, x)}</span>
+                        <span className="text-[12px] font-bold tabular-nums leading-none whitespace-nowrap">{bankShort(x.below_cm)}</span>
                       </div>
                       <div className="text-[10px] font-medium mt-1 leading-none">{LEVEL[x.level].label}</div>
                       {x.kind === 'trend' && <div className="text-[9px] mt-0.5 leading-none opacity-70">แนวโน้ม</div>}

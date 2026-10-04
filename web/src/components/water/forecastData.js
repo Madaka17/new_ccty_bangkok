@@ -21,6 +21,13 @@ export const CHIP_ON = 'bg-blue-600 text-white border-blue-600';
 
 export const sum = (xs) => (xs || []).reduce((a, b) => a + (b || 0), 0);
 
+// Water level against the bank, from centimetres below it (negative = over the bank)
+export const bankText = (cm) => (cm == null ? '–' : cm > 0 ? `ต่ำกว่าตลิ่ง ${cm.toLocaleString('th-TH')} ซม.` : `สูงกว่าตลิ่ง ${(-cm).toLocaleString('th-TH')} ซม.`);
+export const bankShort = (cm) => (cm == null ? '–' : cm > 0 ? `ต่ำ ${cm} ซม.` : `เกิน ${-cm} ซม.`);
+// Million cubic metres, rounded, with thousands separators
+export const mcm = (v) => (v == null ? '–' : Math.round(v).toLocaleString('th-TH'));
+export const damLater = (d) => (d.pct_7d * d.normal) / 100;   // a large dam's storage in 7 days (million m3)
+
 // "เต็มแล้ว" / "เต็มใน 3 วัน" / "" for a large dam
 export function fullText(d) {
   if (d.full_day === 0) return 'เต็มแล้ว';

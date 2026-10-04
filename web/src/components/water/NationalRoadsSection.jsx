@@ -8,7 +8,7 @@ import { Badge, Card, ErrorState, SectionHeader, Skeleton } from '../dashboard/u
 import { StatusBanner } from '../dashboard/primitives.jsx';
 import { agoText, fmtDateTime } from '../dashboard/format.js';
 import { baseStyle } from './WaterMap.jsx';
-import { CHANCE, useFloodForecast } from './forecastData.js';
+import { CHANCE, bankText, mcm, useFloodForecast } from './forecastData.js';
 
 const THAILAND = [[97.3, 5.6], [105.7, 20.5]];
 const COLOR = { flooded: '#7c3aed', high: '#dc2626', medium: '#f59e0b', low: '#3b82f6' };
@@ -127,7 +127,7 @@ export default function NationalRoadsSection({ isActive }) {
                     <span className="text-xs text-slate-500">{r.province}</span>
                     {r.ai && <Badge tone={ch.tone} dot>{ch.label}</Badge>}
                   </div>
-                  <p className="text-xs text-slate-600">ใกล้{r.near} ({r.near_kind === 'dam' ? `น้ำ ${r.pct}% ของเขื่อนใน 7 วัน` : `น้ำ ${r.pct}% ของตลิ่ง`})</p>
+                  <p className="text-xs text-slate-600">ใกล้{r.near} ({r.near_kind === 'dam' ? `อีก 7 วันน้ำเกินความจุ ${mcm(r.over_mcm)} ล้าน ลบ.ม.` : bankText(r.below_cm)})</p>
                   {r.ai?.note && <p className="text-[13px] text-slate-800 leading-6">{r.ai.note}</p>}
                 </li>
               );

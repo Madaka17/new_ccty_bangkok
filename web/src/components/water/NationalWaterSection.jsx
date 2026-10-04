@@ -5,11 +5,11 @@ import { useMemo, useState } from 'react';
 import { Badge, Card, ErrorState, SectionHeader, Skeleton } from '../dashboard/ui.jsx';
 import { StatTile, StatusBanner } from '../dashboard/primitives.jsx';
 import { agoText, fmtDateTime } from '../dashboard/format.js';
-import { fullText, sum, useFloodForecast } from './forecastData.js';
+import { damLater, fullText, mcm, sum, useFloodForecast } from './forecastData.js';
 
 const SHOW = 12;
 
-// Storage bar: today's level and, lighter, where it will be in 7 days; the 100% line is the normal storage
+// Storage bar: today's storage and, lighter, where it will be in 7 days; the black line is the normal storage
 function DamBar({ now, later }) {
   const scale = 130;
   const w = (v) => `${Math.min(100, (Math.max(0, v) / scale) * 100)}%`;
@@ -32,10 +32,11 @@ function DamRow({ d, note }) {
         <span className="text-xs text-slate-500">{d.province}</span>
         {full && <Badge tone={d.full_day === 0 ? 'red' : 'yellow'} dot>{full}</Badge>}
         <span className="ml-auto text-xs text-slate-700 tabular-nums">
-          วันนี้ <b>{Math.round(d.pct)}%</b> → 7 วัน <b className={d.pct_7d >= 100 ? 'text-red-700' : ''}>{Math.round(d.pct_7d)}%</b>
+          วันนี้ <b>{mcm(d.storage)}</b> → 7 วัน <b className={d.pct_7d >= 100 ? 'text-red-700' : ''}>{mcm(damLater(d))}</b> / ความจุ {mcm(d.normal)} ล้าน ลบ.ม.
         </span>
       </div>
       <DamBar now={d.pct} later={d.pct_7d} />
+      {d.pct_7d >= 100 && <p className="text-xs text-red-700">อีก 7 วันน้ำเกินความจุปกติ {mcm(damLater(d) - d.normal)} ล้าน ลบ.ม.</p>}
       <p className="text-xs text-slate-600">
         {d.net >= 0 ? `น้ำเข้ามากกว่าที่ปล่อยวันละ ${d.net.toFixed(1)} ล้าน ลบ.ม.` : `ปล่อยน้ำมากกว่าที่เข้าวันละ ${Math.abs(d.net).toFixed(1)} ล้าน ลบ.ม.`}
         {` · ฝน 7 วัน ${Math.round(sum(d.rain7))} มม.`}
@@ -72,7 +73,7 @@ export default function NationalWaterSection({ isActive }) {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatTile label="เขื่อนใหญ่ที่เต็มแล้ว" value={`${fullNow} / ${dams.length}`} tone={fullNow ? 'red' : undefined} sub="น้ำเกินความจุปกติ" />
         <StatTile label="เขื่อนใหญ่ที่จะเต็มใน 7 วัน" value={fullSoon} tone={fullSoon ? 'yellow' : undefined} sub="ถ้าปล่อยน้ำเท่าเดิม" />
-        <StatTile label="อ่างเก็บน้ำกลางที่เต็ม" value={`${data.medium.full} / ${data.medium.count}`} sub={`เกิน 80% อีก ${data.medium.over80 - data.medium.full} แห่ง`} />
+        <StatTile label="อ่างเก็บน้ำกลางที่เต็ม" value={`${data.medium.full} / ${data.medium.count}`} sub={`เกือบเต็มอีก ${data.medium.over80 - data.medium.full} แห่ง`} />
         <StatTile label="ฝน 7 วันมากที่สุด" value={rainTop[0] ? `${Math.round(rainTop[0].mm)} มม.` : '–'} sub={rainTop[0]?.province || ''} />
       </div>
 
@@ -82,7 +83,7 @@ export default function NationalWaterSection({ isActive }) {
           title="น้ำในเขื่อนใหญ่ วันนี้และอีก 7 วัน"
           description={`อัปเดต ${fmtDateTime(data.updated_at)} (${agoText(data.updated_at)})${data.ai?.generated_at ? ` · AI วิเคราะห์เมื่อ ${fmtDateTime(data.ai.generated_at)}` : ''}`}
         />
-        <p className="text-xs text-slate-500">แถบเข้ม = วันนี้ · แถบจาง = อีก 7 วัน · เส้นดำ = ความจุปกติ (100%)</p>
+        <p className="text-xs text-slate-500">ตัวเลขเป็นล้าน ลบ.ม. · แถบเข้ม = วันนี้ · แถบจาง = อีก 7 วัน · เส้นดำ = ความจุปกติ</p>
         <ul className="divide-y divide-slate-100">
           {shown.map((d) => <DamRow key={d.id} d={d} note={ai?.dams?.[d.name]} />)}
         </ul>
@@ -101,7 +102,7 @@ export default function NationalWaterSection({ isActive }) {
               <li key={s.province} className="flex items-center gap-2">
                 <span className="text-slate-900">{s.province}</span>
                 <span className="ml-auto text-xs text-slate-600 tabular-nums">
-                  เต็ม <b className={s.full ? 'text-red-700' : ''}>{s.full}</b> · เกิน 80% <b>{s.over80}</b> จาก {s.count} แห่ง
+                  เต็ม <b className={s.full ? 'text-red-700' : ''}>{s.full}</b> · เกือบเต็ม <b>{s.over80 - s.full}</b> จาก {s.count} แห่ง
                 </span>
               </li>
             ))}

@@ -8,9 +8,10 @@ import { baseStyle, bounds } from './WaterMap.jsx';
 import { mPerDeg, square, strip } from './NorthFlowMap.jsx';
 import { Card, SectionHeader, FOCUS } from '../dashboard/ui.jsx';
 import { fmtNum } from '../dashboard/format.js';
+import { bankText, mcm } from './forecastData.js';
 
 const COLORS = { critical: '#dc2626', flood: '#ea580c', watch: '#d97706', normal: '#059669', dam: '#2563eb', none: '#94a3b8' };
-const LEGEND = [['critical', 'ล้นตลิ่ง ≥ 100%'], ['flood', 'ใกล้ล้น ≥ 85%'], ['watch', 'น้ำมาก ≥ 70%'], ['normal', 'ปกติ'], ['dam', 'น้ำที่เขื่อนปล่อย']];
+const LEGEND = [['critical', 'ล้นตลิ่ง'], ['flood', 'ใกล้ล้นตลิ่ง'], ['watch', 'น้ำมาก'], ['normal', 'ปกติ'], ['dam', 'น้ำที่เขื่อนปล่อย']];
 const EMPTY = { type: 'FeatureCollection', features: [] };
 const TILT = { pitch: 55, bearing: -12 };
 const RIVER_TH = { ping: 'ปิง', wang: 'วัง', yom: 'ยม', nan: 'น่าน', chao_phraya: 'เจ้าพระยา', sakae_krang: 'สะแกกรัง', pasak: 'ป่าสัก' };
@@ -53,11 +54,11 @@ export default function NorthRouteMap({ data, isActive }) {
       const d = g.days?.[day];
       // a province with more than one gauge names the river too (นครสวรรค์ has the Ping, the Nan and the Chao Phraya)
       const label = shared[g.province] > 1 ? `${g.province} (${RIVER_TH[g.river] || g.river})` : g.province;
-      out[g.code] = { lat: g.lat, lng: g.lng, q: d?.q ?? null, pct: d?.pct ?? null, level: d?.level || 'none', kind: d?.kind, label, g };
+      out[g.code] = { lat: g.lat, lng: g.lng, q: d?.q ?? null, below: d?.below_cm ?? null, level: d?.level || 'none', kind: d?.kind, label, g };
     }
     for (const d of data.dams || []) {
       if (d.lat == null) continue;
-      out[`dam:${d.name}`] = { lat: d.lat, lng: d.lng, q: d.released_m3s, pct: d.storage_pct, level: 'dam', label: `เขื่อน${d.name}`, d };
+      out[`dam:${d.name}`] = { lat: d.lat, lng: d.lng, q: d.released_m3s, level: 'dam', label: `เขื่อน${d.name}`, d };
     }
     const c35 = out['C.35'];
     const bkk = (data.provinces || []).find((p) => p.province === 'นนทบุรี-กรุงเทพฯ');
@@ -139,10 +140,9 @@ export default function NorthRouteMap({ data, isActive }) {
         dot.style.background = COLORS[n.level] || COLORS.none;
         const text = document.createElement('span');
         text.className = 'text-slate-900 tabular-nums';
-        const value = n.bkk ? (n.bkk.below_bank > 0 ? `ต่ำกว่าตลิ่ง ${n.bkk.below_bank.toFixed(2)} ม.` : `เกินตลิ่ง ${(-n.bkk.below_bank).toFixed(2)} ม.`)
-          : n.pct != null ? `${Math.round(n.pct)}%` : '';
+        const value = n.bkk ? bankText(n.bkk.below_cm) : n.d ? (n.d.storage != null ? `${mcm(n.d.storage)} ล้าน ลบ.ม.` : '') : n.below != null ? bankText(n.below) : '';
         text.textContent = `${n.label} ${value}`;
-        el.title = n.g ? `${n.g.name} · ${n.q != null ? `${fmtNum(n.q)} ลบ.ม./วิ` : 'ไม่มีข้อมูล'}${n.kind === 'trend' ? ' (แนวโน้ม)' : ''}` : n.d ? `ปล่อยน้ำ ${fmtNum(n.q)} ลบ.ม./วิ · ความจุ ${Math.round(n.pct ?? 0)}%` : '';
+        el.title = n.g ? `${n.g.name} · ${n.q != null ? `${fmtNum(n.q)} ลบ.ม./วิ` : 'ไม่มีข้อมูล'}${n.kind === 'trend' ? ' (แนวโน้ม)' : ''}` : n.d ? `ปล่อยน้ำ ${fmtNum(n.q)} ลบ.ม./วิ · น้ำในเขื่อน ${mcm(n.d.storage)} จากความจุ ${mcm(n.d.normal)} ล้าน ลบ.ม.` : '';
         // normal water: a plain dot (its name on hover), so the busy middle of the map stays readable
         const quiet = n.level === 'normal' || n.level === 'none';
         if (quiet) {
@@ -202,7 +202,7 @@ export default function NorthRouteMap({ data, isActive }) {
     <Card className="p-0 overflow-hidden" aria-labelledby="north-route-map-title">
       <div className="p-4 pb-3 flex flex-col gap-3">
         <SectionHeader id="north-route-map-title" title="แผนที่ทางน้ำเหนือ 3 มิติ"
-          description="แถบยิ่งสูงและกว้าง น้ำยิ่งมาก · เม็ดสีขาววิ่งไปทางที่น้ำไหล · ตัวเลข = น้ำเต็มลำน้ำกี่ %" />
+          description="แถบยิ่งสูงและกว้าง น้ำยิ่งมาก · เม็ดสีขาววิ่งไปทางที่น้ำไหล · ตัวเลข = ระดับน้ำเทียบตลิ่ง (ซม.)" />
         <div role="group" aria-label="เลือกวัน" className="flex gap-1.5 overflow-x-auto pb-1">
           {dates.map((iso, i) => (
             <button key={iso} type="button" aria-pressed={day === i} onClick={() => setDay(i)}
