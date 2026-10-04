@@ -359,7 +359,16 @@ def get_all_cameras(request: Request):
     whose "media" says how the page shows each one. Left out: Longdo cameras on the "tempsus" placeholder stream (suspended, about 80 in Pattaya) and links
     with a masked address (camid=X.X.X.X). Each camera carries its province and region (ภาค) for the
     nationwide tab."""
-    items = [_unmasked(c) for c in cameras_data]
+    # A DOH feed on iTIC's relay plays from DOH's own host when DOH's list (checked daily) has it live:
+    # the relay answers 404 for many of these feeds
+    doh_live = {doh_stream_key(c.get("hls_url")): c["hls_url"] for c in doh_cameras.items()}
+    doh_live.pop("", None)
+
+    def _direct(c):
+        url = doh_live.get(doh_stream_key(c.get("hls_url")))
+        return dict(c, hls_url=url) if url else c
+
+    items = [_direct(_unmasked(c)) for c in cameras_data]
     seen = {c.get("camid") for c in cameras_data} | {c.get("hls_url") for c in cameras_data if c.get("hls_url")}
     for c in map(_unmasked, get_longdo_cameras().get("items") or []):
         if not (c["hls_url"] or c["vdourl"]) or c.get("camid") in seen or c["hls_url"] in seen:
