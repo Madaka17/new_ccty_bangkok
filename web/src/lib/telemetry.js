@@ -36,5 +36,10 @@ export function startHeartbeat() {
     if (document.visibilityState === 'visible') post('/api/telemetry/heartbeat', current);
   };
   const id = setInterval(tick, HEARTBEAT_MS);
-  return () => clearInterval(id);
+  // Back on the tab (phone unlocked, app switched back): count the visitor now, not at the next tick
+  document.addEventListener('visibilitychange', tick);
+  return () => {
+    clearInterval(id);
+    document.removeEventListener('visibilitychange', tick);
+  };
 }
