@@ -1,9 +1,8 @@
 // เส้นทางน้ำเหนือ: the simple view is NorthRouteView (provinces on the way, 7 days, 3D map, north_route.py); the
 // detail view keeps every RID discharge gauge from the Ping / Wang / Yom / Nan down the Chao Phraya to Ayutthaya,
-// the 10-minute estimates, the routed 4-day outlook (north_flow.py), upstream dams and the warnings they add up to,
-// with the AI's line per gauge (north_impact_agent.py).
+// the 10-minute estimates, the routed 4-day outlook (north_flow.py), upstream dams and the warnings they add up to.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { fetchNorthImpact, fetchWaterNorth } from '../../lib/api.js';
+import { fetchWaterNorth } from '../../lib/api.js';
 import { Card, SectionHeader, Badge, Button, Segmented, Skeleton, EmptyState, ErrorState, FOCUS } from '../dashboard/ui.jsx';
 import { StatTile, StatusBanner } from '../dashboard/primitives.jsx';
 import { fmtDateTime, fmtDay, fmtNum, fmtTime } from '../dashboard/format.js';
@@ -12,6 +11,7 @@ import { HowToRead, TenMinuteTable, fullness, nowOf } from './NorthFlowExplain.j
 import NorthRouteView from './NorthRouteView.jsx';
 
 const POLL_MS = 5 * 60000;
+const NO_TEXTS = {};   // the gauge rows, table and map can carry an AI line per gauge; none here
 const STATUS = {
   overflow: { label: 'ล้นตลิ่ง', tone: 'red', bar: 'bg-red-600' },
   high: { label: 'น้ำมาก', tone: 'yellow', bar: 'bg-amber-500' },
@@ -335,18 +335,9 @@ export default function NorthFlowSection({ isActive }) {
   const [refreshing, setRefreshing] = useState(false);
   const [code, setCode] = useState('C.2');
   const [allAlerts, setAllAlerts] = useState(false);
-  const [impact, setImpact] = useState(null);
   // Simple view for anyone who opens the tab; every table, chart and the map in the detail view
   const [view, setView] = useState('simple');
   const [scrollTo, setScrollTo] = useState(null);
-
-  const loadImpact = useCallback(
-    () =>
-      fetchNorthImpact()
-        .then(setImpact)
-        .catch(() => {}),
-    [],
-  );
 
   const load = useCallback(() => {
     setRefreshing(true);
@@ -362,17 +353,13 @@ export default function NorthFlowSection({ isActive }) {
   useEffect(() => {
     if (!isActive) return;
     load();
-    loadImpact();
-    const id = setInterval(() => {
-      load();
-      loadImpact();
-    }, POLL_MS);
+    const id = setInterval(load, POLL_MS);
     return () => clearInterval(id);
-  }, [isActive, load, loadImpact]);
+  }, [isActive, load]);
 
   const by = useMemo(() => Object.fromEntries((data?.stations || []).map((s) => [s.code, s])), [data]);
   const dams = useMemo(() => Object.fromEntries((data?.dams || []).map((d) => [d.name, d])), [data]);
-  const texts = useMemo(() => Object.fromEntries((impact?.report?.points || []).map((p) => [p.code, p.text])), [impact]);
+  const texts = NO_TEXTS;
 
   // A link in the simple view opens the detail view at the card it names (a stop's chart, every road)
   useEffect(() => {

@@ -124,12 +124,10 @@ from backend.core.telemetry_service import telemetry
 from backend.core import access_guard
 from backend.core.alert_service import AlertService
 from backend.agents.flood_agent import FloodAgent
-from backend.agents.north_impact_agent import NorthImpactAgent
 from backend.agents.riskbkk_agent import RiskAgent
 from backend.agents.traffy_agent import TraffyAgent
 from backend.agents.traffy_history import TraffyHistory
 from backend.water import weather_now
-from backend.agents.water_agent import WaterAgent
 
 # ids that end up in file names: letters, digits, _ . - only (never a path)
 SAFE_ID = re.compile(r"[A-Za-z0-9_.-]{1,80}")
@@ -1382,8 +1380,8 @@ def chat_endpoint(payload: dict = Body(...)):
                     ("violations", lambda: violations.recent(hours=24, limit=1)),
                     ("analytics", analytics_service.get_summary), ("north_flow", north_flow.brief),
                     ("weather_outlook", weather_now.outlook), ("tmd", tmd_warnings.status),
-                    ("flood_agent", lambda: flood_agent.status()), ("water_agent", lambda: water_agent.status()),
-                    ("north_impact", lambda: north_impact.status()),
+                    ("flood_agent", lambda: flood_agent.status()), ("bkk_districts", bkk_districts.status),
+                    ("north_route", north_route.status), ("national_forecast", national_forecast.status),
                     ("areas", area_traffic.status), ("provinces", province_flood.status)):
         try:
             extra[key] = fn()
@@ -1413,8 +1411,6 @@ def flood_agent_run(payload: dict = Body(None)):
     """Run the agent now (operator only through access_guard); an optional question is answered in `answer`."""
     return flood_agent.run(question=(payload or {}).get("question"), force=True)
 
-# ---------------------------------------------------------------- Water Forecast analyst (local model)
-water_agent = WaterAgent(DATA_DIR, flood_agent)
 def citizen_flood_reports():
     """Floods people report, for the province tab: Longdo Traffic in every province (still open; not the
     "DOH Admin" posts, which are the DOH highway tickets the tab already counts), this site's report form
@@ -1450,34 +1446,6 @@ def ai_usage(request: Request, minutes: int = Query(30, ge=1, le=1440)):
         return JSONResponse(status_code=403, content={"error": "operator only"})
     from backend.core import local_llm
     return local_llm.usage(minutes)
-
-@app.get("/api/water/agent")
-def water_agent_status():
-    """AI flood outlook / three waters / measures / public guide for the Water Forecast page."""
-    return water_agent.status()
-
-@app.post("/api/water/agent/run")
-def water_agent_run():
-    """Re-run it now (operator only through access_guard)."""
-    return water_agent.run(force=True)
-
-# ---------------------------------------------------------------- Northern water -> Bangkok districts (local model)
-north_impact = NorthImpactAgent(DATA_DIR, {
-    "north": north_flow.get_outlook, "water_map": water_service.get_map, "roads": flood_roads.status,
-    "rain": water_service.rain_stations, "tide": lambda: water_service.get_summary().get("tide"),
-    "road_risk": lambda: road_risk.status(limit=2000)["items"],
-    "nonthaburi": lambda: river_roads.get(traffic),
-})
-
-@app.get("/api/water/north/impact")
-def water_north_impact():
-    """AI read of the northern water: plain summary, each gauge, the Bangkok districts and the roads at risk."""
-    return north_impact.status()
-
-@app.post("/api/water/north/impact/run")
-def water_north_impact_run():
-    """Re-run it now (operator only through access_guard)."""
-    return north_impact.run(force=True)
 
 # ---------------------------------------------------------------- BMA traffic-risk analyst (local model)
 risk_agent = RiskAgent(DATA_DIR, os.path.join(BASE_DIR, "web", "public", "riskbkk"))
@@ -1703,8 +1671,6 @@ flood_agent.start()
 risk_agent.start()
 traffy_agent.start()
 traffy_history.start()
-water_agent.start()
-north_impact.start()
 alerts.start()
 
 def start_browser_when_ready(url="http://localhost:8000"):

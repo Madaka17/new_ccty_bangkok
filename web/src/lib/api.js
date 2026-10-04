@@ -179,12 +179,6 @@ export async function fetchFloodAnalysis() {
   return res.json();
 }
 
-export async function fetchFloodRoads(limit = 60) {
-  const res = await fetch(`/api/flood/roads?limit=${limit}`);
-  if (!res.ok) throw new Error('flood_roads');
-  return res.json();
-}
-
 // Flood complaints residents filed on Traffy Fondue in the last few hours (flood_feeds.py)
 // Flooded-road reports on the Longdo Traffic feed (iTIC / FM91), newest first (incident_service.floods)
 export async function fetchLongdoFloods({ national = false } = {}) {
@@ -256,39 +250,6 @@ export async function postUserReport(body) {
 export async function fetchFloodCameras({ all = false } = {}) {
   const res = await fetch(`/api/flood/cameras${all ? '?all=1' : ''}`);
   if (!res.ok) throw new Error('flood_cameras');
-  return res.json();
-}
-
-// Flood analyst agent (flood_agent.py): latest situation report, level history, whether a run is going
-export async function fetchFloodAgent() {
-  const res = await fetch('/api/flood/agent');
-  if (!res.ok) throw new Error('flood_agent');
-  return res.json();
-}
-
-// Run the agent now; operator only (403 from anywhere else). `question` is answered in report.answer
-export async function runFloodAgent(question = '') {
-  const res = await fetch('/api/flood/agent/run', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question }),
-  });
-  if (res.status === 403) throw new Error('forbidden');
-  if (!res.ok) throw new Error('flood_agent_run');
-  return res.json();
-}
-
-// Water Forecast analyst (water_agent.py): AI outlook, three waters, measures and public guide
-export async function fetchWaterAgent() {
-  const res = await fetch('/api/water/agent');
-  if (!res.ok) throw new Error('water_agent');
-  return res.json();
-}
-
-export async function runWaterAgent() {
-  const res = await fetch('/api/water/agent/run', { method: 'POST' });
-  if (res.status === 403) throw new Error('forbidden');
-  if (!res.ok) throw new Error('water_agent_run');
   return res.json();
 }
 
@@ -472,37 +433,10 @@ export async function fetchWaterMap() {
   return res.json();
 }
 
-export async function fetchWaterForecast(stationId) {
-  const res = await fetch(`/api/water/forecast?station=${encodeURIComponent(stationId)}`);
-  if (!res.ok) throw new Error('water_forecast');
-  return res.json();
-}
-
 // Northern rivers to the Central Plain: RID discharge, routed 4-day outlook, dams, warnings (north_flow.py)
 export async function fetchWaterNorth() {
   const res = await fetch('/api/water/north');
   if (!res.ok) throw new Error('water_north');
-  return res.json();
-}
-
-// AI read of which Bangkok districts the northern water reaches, when and why (north_impact_agent.py)
-export async function fetchNorthImpact() {
-  const res = await fetch('/api/water/north/impact');
-  if (!res.ok) throw new Error('north_impact');
-  return res.json();
-}
-
-export async function runNorthImpact() {
-  const res = await fetch('/api/water/north/impact/run', { method: 'POST' });
-  if (res.status === 403) throw new Error('forbidden');
-  if (!res.ok) throw new Error('north_impact_run');
-  return res.json();
-}
-
-// Nonthaburi roads beside the Chao Phraya and the chance the river tops its bank next to them (river_roads.py)
-export async function fetchNorthNonthaburi() {
-  const res = await fetch('/api/water/north/nonthaburi');
-  if (!res.ok) throw new Error('north_nonthaburi');
   return res.json();
 }
 

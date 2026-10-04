@@ -411,7 +411,8 @@ def _cm(v):
 
 
 def predict_context(ex):
-    """What the site's analysts expect next: the flood agent, the water outlook, northern water by district."""
+    """What the site's analysts expect next: the flood agent, Bangkok's districts, the northern water and the
+    national 7-day outlook."""
     lines = []
     fa = (ex.get("flood_agent") or {}).get("report") or {}
     if fa.get("headline"):
@@ -422,22 +423,29 @@ def predict_context(ex):
         if roads:
             lines.append("  ถนนที่ควรเลี่ยงเพราะน้ำ: " + ", ".join(
                 f"{r.get('road')} ({r.get('district')}{_cm(r.get('depth_cm'))})" for r in roads[:6]))
-    wa = (ex.get("water_agent") or {}).get("report") or {}
-    if wa.get("outlook_summary"):
-        lines.append(f"AI คาดการณ์สถานการณ์น้ำ ({wa.get('status_label')}): {wa['outlook_summary'][:400]}")
-        for z in (wa.get("zones") or [])[:5]:
-            lines.append(f"  - {z.get('name')} [{z.get('badge')}]: {(z.get('forecast') or '')[:220]}")
-    ni = (ex.get("north_impact") or {}).get("report") or {}
-    if ni.get("title"):
-        lines.append(f"คาดการณ์น้ำเหนือต่อกรุงเทพฯ ({ni.get('status_label')}): {ni['title']}")
-        lines += [f"  - {t.get('when')}: {t.get('event')}" for t in (ni.get("timeline") or [])[:4]]
-        dists = ni.get("districts") or []
-        if dists:
-            lines.append("  เขตที่จะได้รับผลกระทบ: " + "; ".join(
-                f"{d.get('district')} ({d.get('level')}, {d.get('when')}) {(d.get('cause') or '')[:80]}" for d in dists[:6]))
-        roads = ni.get("roads") or []
-        if roads:
-            lines.append("  ถนนเสี่ยงน้ำท่วม: " + "; ".join(f"{r.get('road')} ({r.get('level')}, {r.get('when')})" for r in roads[:6]))
+    bd = ex.get("bkk_districts") or {}
+    if bd.get("districts"):
+        ai = bd.get("ai") or {}
+        if ai.get("overview"):
+            lines.append(f"AI สรุปน้ำท่วมรายเขต กทม. ({_hhmm(ai.get('generated_at'))}): {ai['overview'][:400]}")
+        risky = [d for d in bd["districts"] if d.get("level") != "normal"][:8]
+        if risky:
+            lines.append("  เขตที่ต้องระวัง: " + "; ".join(
+                f"{d['district']} ({d['label']} {d['score']}) {((ai.get('districts') or {}).get(d['district']) or {}).get('summary') or ', '.join(d['why'][:2])}"[:200]
+                for d in risky))
+    nr = ex.get("north_route") or {}
+    if nr.get("provinces"):
+        ai = nr.get("ai") or {}
+        if ai.get("headline"):
+            lines.append(f"AI วิเคราะห์น้ำเหนือ ({_hhmm(ai.get('generated_at'))}): {ai['headline']} {(ai.get('next7') or '')[:300]}")
+        watch = [p for p in nr["provinces"] if p.get("level") != "normal"]
+        if watch:
+            lines.append("  จังหวัดตามทางน้ำเหนือที่ต้องระวังใน 7 วัน: " + ", ".join(
+                f"{p['province']} ({p['label']}, หนักสุด{' +' + str(p['peak_day']) + ' วัน' if p['peak_day'] else 'วันนี้'})" for p in watch))
+    nf = ex.get("national_forecast") or {}
+    s = (nf.get("ai") or {}).get("summary") or {}
+    if s.get("headline"):
+        lines.append(f"AI สรุปน้ำท่วมทั่วประเทศ 7 วัน: {s['headline']} {(s.get('summary') or '')[:300]}")
     return lines + analytics_flood(ex.get("analytics"))
 
 
