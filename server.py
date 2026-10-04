@@ -109,6 +109,9 @@ from backend.water.user_reports import UserReports, report_locations
 from backend.water.flood_feeds import traffy_reports, tmd_warnings, hdms_floods, js100_floods
 from backend.core.news_feed import news_feed
 from backend.water.province_flood import ProvinceFlood
+from backend.water.national_forecast import NationalForecast
+from backend.water.north_route import NorthRoute
+from backend.water.bkk_districts import BkkDistricts
 from backend.traffic.road_service import road_risk
 from backend.agents import chat_service
 from backend.water import water_service, north_flow, river_roads
@@ -121,12 +124,10 @@ from backend.core.telemetry_service import telemetry
 from backend.core import access_guard
 from backend.core.alert_service import AlertService
 from backend.agents.flood_agent import FloodAgent
-from backend.agents.north_impact_agent import NorthImpactAgent
 from backend.agents.riskbkk_agent import RiskAgent
 from backend.agents.traffy_agent import TraffyAgent
 from backend.agents.traffy_history import TraffyHistory
 from backend.water import weather_now
-from backend.agents.water_agent import WaterAgent
 
 # ids that end up in file names: letters, digits, _ . - only (never a path)
 SAFE_ID = re.compile(r"[A-Za-z0-9_.-]{1,80}")
@@ -1215,6 +1216,12 @@ def water_north():
     except Exception as e:
         return JSONResponse(status_code=503, content={"error": str(e)})
 
+@app.get("/api/water/north/route")
+def water_north_route():
+    """เส้นทางน้ำเหนือ tab: each gauge's and province's water for today and the next 7 days (routed, then a
+    trend), the river course between the gauges for the 3D map, and the AI's read: see north_route.py."""
+    return north_route.status()
+
 @app.get("/api/water/north/nonthaburi")
 def water_north_nonthaburi():
     """Nonthaburi roads beside the Chao Phraya and the chance the river tops its bank next to them in 7 days."""
@@ -1373,8 +1380,8 @@ def chat_endpoint(payload: dict = Body(...)):
                     ("violations", lambda: violations.recent(hours=24, limit=1)),
                     ("analytics", analytics_service.get_summary), ("north_flow", north_flow.brief),
                     ("weather_outlook", weather_now.outlook), ("tmd", tmd_warnings.status),
-                    ("flood_agent", lambda: flood_agent.status()), ("water_agent", lambda: water_agent.status()),
-                    ("north_impact", lambda: north_impact.status()),
+                    ("flood_agent", lambda: flood_agent.status()), ("bkk_districts", bkk_districts.status),
+                    ("north_route", north_route.status), ("national_forecast", national_forecast.status),
                     ("areas", area_traffic.status), ("provinces", province_flood.status)):
         try:
             extra[key] = fn()
@@ -1404,8 +1411,6 @@ def flood_agent_run(payload: dict = Body(None)):
     """Run the agent now (operator only through access_guard); an optional question is answered in `answer`."""
     return flood_agent.run(question=(payload or {}).get("question"), force=True)
 
-# ---------------------------------------------------------------- Water Forecast analyst (local model)
-water_agent = WaterAgent(DATA_DIR, flood_agent)
 def citizen_flood_reports():
     """Floods people report, for the province tab: Longdo Traffic in every province (still open; not the
     "DOH Admin" posts, which are the DOH highway tickets the tab already counts), this site's report form
@@ -1422,6 +1427,16 @@ def citizen_flood_reports():
 
 # Flood situation in every province, with the same local model's analysis
 province_flood = ProvinceFlood(DATA_DIR, reports=citizen_flood_reports)
+# 7-day outlook for dams, provinces and roads in the whole country, read by the same model
+national_forecast = NationalForecast(DATA_DIR, province_flood)
+# Where the northern water goes, the provinces on the way and its 7-day trend, read by the same model
+north_route = NorthRoute(DATA_DIR, national_forecast)
+# Each Bangkok district: canals, main gauges, road water, rain and Traffy reports, read by the same model
+bkk_districts = BkkDistricts(DATA_DIR, {
+    "water": water_service.get_map, "roads": flood_roads.status, "rain": water_service.rain_stations,
+    "reports": lambda: traffy_reports.status()["items"],
+    "river": lambda: next((p["days"] for p in north_route.status().get("provinces") or [] if p["province"] == "นนทบุรี-กรุงเทพฯ"), []),
+})
 
 @app.get("/api/ai/usage")
 def ai_usage(request: Request, minutes: int = Query(30, ge=1, le=1440)):
@@ -1431,34 +1446,6 @@ def ai_usage(request: Request, minutes: int = Query(30, ge=1, le=1440)):
         return JSONResponse(status_code=403, content={"error": "operator only"})
     from backend.core import local_llm
     return local_llm.usage(minutes)
-
-@app.get("/api/water/agent")
-def water_agent_status():
-    """AI flood outlook / three waters / measures / public guide for the Water Forecast page."""
-    return water_agent.status()
-
-@app.post("/api/water/agent/run")
-def water_agent_run():
-    """Re-run it now (operator only through access_guard)."""
-    return water_agent.run(force=True)
-
-# ---------------------------------------------------------------- Northern water -> Bangkok districts (local model)
-north_impact = NorthImpactAgent(DATA_DIR, {
-    "north": north_flow.get_outlook, "water_map": water_service.get_map, "roads": flood_roads.status,
-    "rain": water_service.rain_stations, "tide": lambda: water_service.get_summary().get("tide"),
-    "road_risk": lambda: road_risk.status(limit=2000)["items"],
-    "nonthaburi": lambda: river_roads.get(traffic),
-})
-
-@app.get("/api/water/north/impact")
-def water_north_impact():
-    """AI read of the northern water: plain summary, each gauge, the Bangkok districts and the roads at risk."""
-    return north_impact.status()
-
-@app.post("/api/water/north/impact/run")
-def water_north_impact_run():
-    """Re-run it now (operator only through access_guard)."""
-    return north_impact.run(force=True)
 
 # ---------------------------------------------------------------- BMA traffic-risk analyst (local model)
 risk_agent = RiskAgent(DATA_DIR, os.path.join(BASE_DIR, "web", "public", "riskbkk"))
@@ -1528,6 +1515,18 @@ def flood_provinces():
     """Flood situation in every province (Thai Water gauges and rain, DOH flooded highways) with the AI's
     analysis: see province_flood.py."""
     return province_flood.status()
+
+@app.get("/api/flood/forecast")
+def flood_forecast():
+    """7-day outlook for the whole country: large dams' storage projection, medium reservoirs, each province's
+    flood risk, flooded and at-risk main roads, and the AI's outlook and summary: see national_forecast.py."""
+    return national_forecast.status()
+
+@app.get("/api/flood/bkk-districts")
+def flood_bkk_districts():
+    """Flood risk in each of Bangkok's 50 districts (canals, main gauges, road water, rain, Traffy reports) with
+    the AI's overview and a line per district: see bkk_districts.py."""
+    return bkk_districts.status()
 
 @app.get("/api/flood/hdms")
 def flood_hdms(national: bool = False):
@@ -1655,6 +1654,9 @@ traffy_reports.start()
 tmd_warnings.start()
 hdms_floods.start()
 province_flood.start()
+national_forecast.start()
+north_route.start()
+bkk_districts.start()
 news_feed.start()
 js100_floods.start()
 # Heartbeats stamped by a wrong clock would otherwise sit in the online count forever
@@ -1669,8 +1671,6 @@ flood_agent.start()
 risk_agent.start()
 traffy_agent.start()
 traffy_history.start()
-water_agent.start()
-north_impact.start()
 alerts.start()
 
 def start_browser_when_ready(url="http://localhost:8000"):

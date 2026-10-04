@@ -25,10 +25,10 @@ const fmtQ = (q) => (q == null ? '–' : fmtNum(Math.round(q)));
 const inText = (h) => (h < 36 ? `~${h} ชม.` : `~${(h / 24).toFixed(1).replace('.0', '')} วัน`);
 
 // Shapes are drawn in metres: metres per degree of longitude / latitude near a latitude
-const mPerDeg = (lat) => [111320 * Math.cos((lat * Math.PI) / 180), 110540];
+export const mPerDeg = (lat) => [111320 * Math.cos((lat * Math.PI) / 180), 110540];
 
 // A strip w metres wide from a to z ([lng, lat] each), as a closed polygon ring
-function strip(a, z, w) {
+export function strip(a, z, w) {
   const [kx, ky] = mPerDeg((a[1] + z[1]) / 2);
   const dx = (z[0] - a[0]) * kx;
   const dy = (z[1] - a[1]) * ky;
@@ -39,7 +39,7 @@ function strip(a, z, w) {
 }
 
 // A square of side `side` metres centred on p
-function square(p, side) {
+export function square(p, side) {
   const [kx, ky] = mPerDeg(p[1]);
   const hx = side / 2 / kx;
   const hy = side / 2 / ky;

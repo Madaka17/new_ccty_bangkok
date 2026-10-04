@@ -1,17 +1,17 @@
-// น้ำเหนือ → ภาคกลาง: RID discharge gauges from the Ping / Wang / Yom / Nan down the Chao Phraya to
-// Ayutthaya, the 10-minute estimates, the routed 4-day outlook (north_flow.py), upstream dams, the warnings
-// they add up to, and the AI's plain-language read of it all (north_impact_agent.py).
+// เส้นทางน้ำเหนือ: the simple view is NorthRouteView (provinces on the way, 7 days, 3D map, north_route.py); the
+// detail view keeps every RID discharge gauge from the Ping / Wang / Yom / Nan down the Chao Phraya to Ayutthaya,
+// the 10-minute estimates, the routed 4-day outlook (north_flow.py), upstream dams and the warnings they add up to.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { fetchNorthImpact, fetchNorthNonthaburi, fetchWaterNorth } from '../../lib/api.js';
+import { fetchWaterNorth } from '../../lib/api.js';
 import { Card, SectionHeader, Badge, Button, Segmented, Skeleton, EmptyState, ErrorState, FOCUS } from '../dashboard/ui.jsx';
 import { StatTile, StatusBanner } from '../dashboard/primitives.jsx';
 import { fmtDateTime, fmtDay, fmtNum, fmtTime } from '../dashboard/format.js';
 import NorthFlowMap from './NorthFlowMap.jsx';
-import NorthImpactCard from './NorthImpactCard.jsx';
 import { HowToRead, TenMinuteTable, fullness, nowOf } from './NorthFlowExplain.jsx';
-import NorthFlowSimple, { NonthaburiCard, RoadsCard } from './NorthFlowSimple.jsx';
+import NorthRouteView from './NorthRouteView.jsx';
 
 const POLL_MS = 5 * 60000;
+const NO_TEXTS = {};   // the gauge rows, table and map can carry an AI line per gauge; none here
 const STATUS = {
   overflow: { label: 'ล้นตลิ่ง', tone: 'red', bar: 'bg-red-600' },
   high: { label: 'น้ำมาก', tone: 'yellow', bar: 'bg-amber-500' },
@@ -329,29 +329,15 @@ function Stat({ label, value, sub, tone }) {
   );
 }
 
-export default function NorthFlowSection({ isActive, onOpenRoad }) {
+export default function NorthFlowSection({ isActive }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [code, setCode] = useState('C.2');
   const [allAlerts, setAllAlerts] = useState(false);
-  const [impact, setImpact] = useState(null);
-  const [impactFailed, setImpactFailed] = useState(false);
-  const [nb, setNb] = useState(null);
   // Simple view for anyone who opens the tab; every table, chart and the map in the detail view
   const [view, setView] = useState('simple');
   const [scrollTo, setScrollTo] = useState(null);
-
-  const loadImpact = useCallback(
-    () =>
-      fetchNorthImpact()
-        .then((d) => {
-          setImpact(d);
-          setImpactFailed(false);
-        })
-        .catch(() => setImpactFailed(true)),
-    [],
-  );
 
   const load = useCallback(() => {
     setRefreshing(true);
@@ -364,30 +350,16 @@ export default function NorthFlowSection({ isActive, onOpenRoad }) {
       .finally(() => setRefreshing(false));
   }, []);
 
-  const loadNb = useCallback(
-    () =>
-      fetchNorthNonthaburi()
-        .then(setNb)
-        .catch(() => {}),
-    [],
-  );
-
   useEffect(() => {
     if (!isActive) return;
     load();
-    loadImpact();
-    loadNb();
-    const id = setInterval(() => {
-      load();
-      loadImpact();
-      loadNb();
-    }, POLL_MS);
+    const id = setInterval(load, POLL_MS);
     return () => clearInterval(id);
-  }, [isActive, load, loadImpact, loadNb]);
+  }, [isActive, load]);
 
   const by = useMemo(() => Object.fromEntries((data?.stations || []).map((s) => [s.code, s])), [data]);
   const dams = useMemo(() => Object.fromEntries((data?.dams || []).map((d) => [d.name, d])), [data]);
-  const texts = useMemo(() => Object.fromEntries((impact?.report?.points || []).map((p) => [p.code, p.text])), [impact]);
+  const texts = NO_TEXTS;
 
   // A link in the simple view opens the detail view at the card it names (a stop's chart, every road)
   useEffect(() => {
@@ -398,10 +370,6 @@ export default function NorthFlowSection({ isActive, onOpenRoad }) {
   const openDetail = (id) => {
     setView('detail');
     setScrollTo(id);
-  };
-  const openChart = (c) => {
-    setCode(c);
-    openDetail('north-chart-title');
   };
 
   if (error && !data) return <ErrorState message="เชื่อมต่อข้อมูลกรมชลประทานผ่าน thaiwater.net ไม่สำเร็จ" onRetry={load} retrying={refreshing} />;
@@ -445,21 +413,7 @@ export default function NorthFlowSection({ isActive, onOpenRoad }) {
 
       {view === 'simple' ? (
         <>
-          <NorthFlowSimple
-            data={data}
-            impact={impact}
-            by={by}
-            map={<NorthFlowMap data={data} code={code} onSelect={setCode} isActive={isActive} texts={texts} roads={impact?.report?.roads} nb={nb} />}
-            onSelect={openChart}
-            onDetail={openDetail}
-            onOpenRoad={onOpenRoad}
-          />
-          <p className="text-xs text-slate-500 leading-5 px-1">
-            ข้อมูลจากกรมชลประทานและสถาบันสารสนเทศทรัพยากรน้ำ (สสน.) · การคาดการณ์ยังไม่รวมฝนที่จะตกเพิ่ม ใช้เพื่อเฝ้าระวังเท่านั้น ·{' '}
-            <button type="button" onClick={() => openDetail('north-view')} className={`underline text-blue-700 cursor-pointer ${FOCUS}`}>
-              ดูแผนที่ ตัวเลข และกราฟทั้งหมด
-            </button>
-          </p>
+          <NorthRouteView isActive={isActive} onDetail={() => openDetail('north-view')} />
         </>
       ) : (
         <>
@@ -502,13 +456,7 @@ export default function NorthFlowSection({ isActive, onOpenRoad }) {
             </Card>
           )}
 
-          <NorthImpactCard data={impact} failed={impactFailed} onReload={loadImpact} onData={setImpact} />
-
-          <RoadsCard report={impact?.report} onOpenRoad={onOpenRoad} expanded />
-
-          <NonthaburiCard nb={nb} report={impact?.report} onOpenRoad={onOpenRoad} />
-
-          <NorthFlowMap data={data} code={code} onSelect={setCode} isActive={isActive} texts={texts} roads={impact?.report?.roads} nb={nb} />
+          <NorthFlowMap data={data} code={code} onSelect={setCode} isActive={isActive} texts={texts} />
 
           <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
             <Card className="p-5 xl:col-span-2" aria-labelledby="north-trib-title">

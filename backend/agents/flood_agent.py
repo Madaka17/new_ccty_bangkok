@@ -8,7 +8,7 @@ back as JSON by REPORT_SCHEMA.
 
     road sensors      BMA drainage sensors: water on the road surface, rising / falling (flood_service)
     rivers / canals   gauges near or over the bank, main stations, tide (water_service), and the northern
-                      water on its way down the Chao Phraya (north_flow; for water_agent only)
+                      water on its way down the Chao Phraya (north_flow; gathered, left out of the prompt)
     rain outlook      per-zone rain / storm forecast, watch level and the 1-6 h risk score (analytics_service)
     citizen reports   Traffy Fondue flood complaints by district (flood_feeds)
     weather warnings  TMD heavy-rain / storm warnings (flood_feeds)
@@ -350,17 +350,6 @@ class FloodAgent:
     def _all_facts(self):
         """Every source with default arguments: the model prompt, the rule-based report and the change signature."""
         return {name: self._run_tool(name, {})[0] for name in SOURCES}
-
-    def facts(self):
-        """The same facts, compacted, for other agents (water_agent) that read the same sources.
-        Tide, dams and the northern water stay in: the three-waters analysis needs them even though this
-        agent's own prompt drops them."""
-        facts = self._all_facts()
-        compact = self._compact(facts)
-        river = facts.get("get_rivers_canals") or {}
-        if isinstance(compact.get("get_rivers_canals"), dict):
-            compact["get_rivers_canals"].update({k: river[k] for k in ("tide", "dams", "north_flow") if river.get(k)})
-        return compact, self._signature(facts)
 
     @staticmethod
     def _signature(facts):
