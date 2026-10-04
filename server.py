@@ -109,6 +109,9 @@ from backend.water.user_reports import UserReports, report_locations
 from backend.water.flood_feeds import traffy_reports, tmd_warnings, hdms_floods, js100_floods
 from backend.core.news_feed import news_feed
 from backend.water.province_flood import ProvinceFlood
+from backend.water.national_forecast import NationalForecast
+from backend.water.north_route import NorthRoute
+from backend.water.bkk_districts import BkkDistricts
 from backend.traffic.road_service import road_risk
 from backend.agents import chat_service
 from backend.water import water_service, north_flow, river_roads
@@ -1215,6 +1218,12 @@ def water_north():
     except Exception as e:
         return JSONResponse(status_code=503, content={"error": str(e)})
 
+@app.get("/api/water/north/route")
+def water_north_route():
+    """เส้นทางน้ำเหนือ tab: each gauge's and province's water for today and the next 7 days (routed, then a
+    trend), the river course between the gauges for the 3D map, and the AI's read: see north_route.py."""
+    return north_route.status()
+
 @app.get("/api/water/north/nonthaburi")
 def water_north_nonthaburi():
     """Nonthaburi roads beside the Chao Phraya and the chance the river tops its bank next to them in 7 days."""
@@ -1422,6 +1431,16 @@ def citizen_flood_reports():
 
 # Flood situation in every province, with the same local model's analysis
 province_flood = ProvinceFlood(DATA_DIR, reports=citizen_flood_reports)
+# 7-day outlook for dams, provinces and roads in the whole country, read by the same model
+national_forecast = NationalForecast(DATA_DIR, province_flood)
+# Where the northern water goes, the provinces on the way and its 7-day trend, read by the same model
+north_route = NorthRoute(DATA_DIR, national_forecast)
+# Each Bangkok district: canals, main gauges, road water, rain and Traffy reports, read by the same model
+bkk_districts = BkkDistricts(DATA_DIR, {
+    "water": water_service.get_map, "roads": flood_roads.status, "rain": water_service.rain_stations,
+    "reports": lambda: traffy_reports.status()["items"],
+    "river": lambda: next((p["days"] for p in north_route.status().get("provinces") or [] if p["province"] == "นนทบุรี-กรุงเทพฯ"), []),
+})
 
 @app.get("/api/ai/usage")
 def ai_usage(request: Request, minutes: int = Query(30, ge=1, le=1440)):
@@ -1528,6 +1547,18 @@ def flood_provinces():
     """Flood situation in every province (Thai Water gauges and rain, DOH flooded highways) with the AI's
     analysis: see province_flood.py."""
     return province_flood.status()
+
+@app.get("/api/flood/forecast")
+def flood_forecast():
+    """7-day outlook for the whole country: large dams' storage projection, medium reservoirs, each province's
+    flood risk, flooded and at-risk main roads, and the AI's outlook and summary: see national_forecast.py."""
+    return national_forecast.status()
+
+@app.get("/api/flood/bkk-districts")
+def flood_bkk_districts():
+    """Flood risk in each of Bangkok's 50 districts (canals, main gauges, road water, rain, Traffy reports) with
+    the AI's overview and a line per district: see bkk_districts.py."""
+    return bkk_districts.status()
 
 @app.get("/api/flood/hdms")
 def flood_hdms(national: bool = False):
@@ -1655,6 +1686,9 @@ traffy_reports.start()
 tmd_warnings.start()
 hdms_floods.start()
 province_flood.start()
+national_forecast.start()
+north_route.start()
+bkk_districts.start()
 news_feed.start()
 js100_floods.start()
 # Heartbeats stamped by a wrong clock would otherwise sit in the online count forever
