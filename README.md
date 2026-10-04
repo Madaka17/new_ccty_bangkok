@@ -1,68 +1,89 @@
 # BKK StreetSmart
 
-เว็บดูสถานการณ์กรุงเทพฯ และปริมณฑลแบบสด: รถติดตรงไหน น้ำท่วมที่ไหน ฝุ่นเป็นอย่างไร และมีเหตุอะไรบนถนน
-ทุกอย่างอยู่ในเว็บเดียว ใช้ภาษาไทยง่าย ๆ ใครก็เปิดดูได้
+A live view of Bangkok and the surrounding provinces: where the traffic is jammed, where it is flooding,
+how the air is, and what is happening on the roads. Everything is on one site, written in plain Thai so
+anyone can use it.
 
-**เปิดดูได้ที่ https://bkksmartstreet.com**
+**Live at https://bkksmartstreet.com**
 
 ---
 
-## เว็บนี้ทำอะไรได้บ้าง
+## What the site does
 
-| เมนู | ดูอะไรได้ |
+| Menu | What you can see |
 |---|---|
-| **ภาพรวมจราจร** | ตอนนี้รถติดแค่ไหน ถนนไหนติดที่สุด และมีเหตุอะไรบนถนน |
-| **แผนที่จราจร** | แผนที่สีรถติด กล้อง น้ำท่วมบนถนน ฝน ลม และฝุ่น PM2.5 |
-| **กล้อง AI** | AI นับรถจากกล้อง ตรวจคนไม่สวมหมวกกันน็อก และรถขับย้อนศร |
-| **ดูกล้องสด** | ดูภาพจากกล้องจราจรหลายตัวพร้อมกัน |
-| **น้ำท่วม** | ระดับน้ำในคลองและแม่น้ำ น้ำเหนือที่กำลังลงมา ถนนที่น้ำท่วม และจุดพักพิง |
-| **อุบัติเหตุ** | จุดที่เกิดอุบัติเหตุบ่อยในกรุงเทพฯ |
-| **แจ้งเตือน** | ประกาศเตือนภัย และตั้งให้เว็บเตือนเมื่อมีเหตุ |
-| **แผ่นดินไหว** | เฝ้าระวังแผ่นดินไหว (เปิดจากเว็บ ENVIRO ที่ `/enviro/`) |
-| **ถาม AI** | ถามเรื่องรถติด น้ำท่วม หรือเส้นทาง แล้ว AI ตอบจากข้อมูลสด |
-| **แจ้งน้ำท่วม** | คนทั่วไปแจ้งน้ำท่วมพร้อมรูป |
-| **สถิติผู้ใช้** | มีคนใช้เว็บกี่คน และดูหน้าไหนมากที่สุด |
+| **Traffic overview** (ภาพรวมจราจร) | How bad the traffic is right now, the most jammed roads, and incidents on the road |
+| **Traffic map** (แผนที่จราจร) | Congestion colours, cameras, water on the roads, rain, wind and PM2.5 dust |
+| **AI cameras** (กล้อง AI) | AI counts vehicles on camera feeds and spots riders without helmets and wrong-way drivers |
+| **Live cameras** (ดูกล้องสด) | Many traffic cameras on one screen |
+| **Floods** (น้ำท่วม) | Water in dams nationwide, a 7-day flood outlook per province, flooded roads, the water coming down from the North, flood risk in each Bangkok district, and shelters |
+| **Accidents** (อุบัติเหตุ) | Places in Bangkok where accidents happen often |
+| **Alerts** (แจ้งเตือน) | Warnings, and alerts the site can send you |
+| **Earthquakes** (แผ่นดินไหว) | Earthquake watch (served by the ENVIRO site at `/enviro/`) |
+| **Ask AI** (ถาม AI) | Ask about traffic, floods or a route; the AI answers from the live data |
+| **Report a flood** (แจ้งน้ำท่วม) | Anyone can report a flood with a photo |
+| **Visitor stats** (สถิติผู้ใช้) | How many people use the site and which pages they open |
+
+### The Floods page
+
+| Tab | What it shows |
+|---|---|
+| Water nationwide (ระดับน้ำทั่วประเทศ) | Large dams now and in 7 days (million m³ against normal storage), full medium reservoirs, 7-day rain |
+| Flood outlook (คาดการณ์น้ำท่วม) | Provinces flooded today, a daily 0-100 flood risk index for the next 7 days, and flood reports from people nationwide |
+| Flooded roads (ถนนน้ำท่วม) | Highways flooded now, and main roads that may flood within 7 days, on a map |
+| Situation summary (สรุปสถานการณ์) | An AI summary of all of the above and what people should do |
+| Northern water route (เส้นทางน้ำเหนือ) | Where the water from the North goes, the provinces on the way (centimetres below or above the bank, today and 7 days), and a 3D map of the flow along the real rivers |
+| Bangkok district flood risk (เขตเสี่ยงน้ำท่วมในกรุงเทพมหานคร) | All 50 districts: canals, main gauges, water on the roads, rain and reports, with a risk score |
+| Shelters / People's reports | Nearby BMA shelters, and flood reports from Traffy Fondue |
 
 ---
 
-## ทำงานอย่างไร
+## How it works
 
 ```
-แหล่งข้อมูลสด                     เครื่องเซิร์ฟเวอร์                       คนดู
-─────────────                     ────────────────                        ────
-กล้อง กทม. 574 ตัว  ──┐
-กล้อง iTIC / ทางหลวง ─┤           AI ดูภาพ (YOLO)
-ระดับน้ำ ฝน น้ำทะเล   ─┼──────►   นับรถ ตรวจหมวก/ย้อนศร   ──────►   เว็บ bkksmartstreet.com
-เซ็นเซอร์น้ำบนถนน    ─┤           AI สรุปสถานการณ์ (Qwen/Gemini)       (ผ่าน Cloudflare)
-ฝุ่น จราจร อุบัติเหตุ ─┘           เก็บสถิติลงฐานข้อมูล
+Live sources                       Server                                   Visitors
+────────────                       ──────                                   ────────
+574 BMA cameras        ──┐
+iTIC / DOH cameras     ──┤         AI vision (YOLO)
+Water level, rain, tide──┼──────►  vehicle counts, helmets, wrong way  ──►  bkksmartstreet.com
+Road water sensors     ──┤         AI write-ups (Qwen / Gemini)              (through Cloudflare)
+Dams, air, traffic     ──┘         statistics in SQLite
 ```
 
-1. **ดึงข้อมูล:** เซิร์ฟเวอร์ดึงภาพกล้องและข้อมูลน้ำ ฝน ฝุ่น จราจร จากหน่วยงานต่าง ๆ เอง ทุก 1–10 นาที
-2. **ให้ AI ดู:** AI นับรถในภาพกล้อง กทม. ทุก 3 นาที และหาคนไม่สวมหมวกกันน็อกกับรถย้อนศร
-3. **สรุปเป็นภาษาง่าย ๆ:** AI อ่านตัวเลขทั้งหมดแล้วเขียนสรุปสั้น ๆ เช่น น้ำเหนือจะถึงกรุงเทพฯ เมื่อไร เขตไหนควรเตรียมตัว
-4. **แสดงบนเว็บ:** หน้าเว็บโหลดข้อมูลใหม่เอง ไม่ต้องกดรีเฟรช
+1. **Collect:** the server pulls camera images and water, rain, dam, air and traffic data from each agency
+   itself, every 1-10 minutes (dams and forecasts every few hours).
+2. **Let the AI look:** the AI counts vehicles on the BMA cameras every 3 minutes and looks for riders
+   without helmets and wrong-way vehicles.
+3. **Compute, then explain:** forecasts are computed from the numbers first (for example, a dam's storage
+   in 7 days from its recent inflow and release, or a river's level from its discharge through the gauge's
+   own rating curve). The AI then reads those numbers and writes a short plain-Thai explanation; it does not
+   invent the figures.
+4. **Show:** the pages refresh on their own; there is no need to reload.
 
-ถ้าแหล่งข้อมูลไหนล่ม (เช่น เว็บกล้อง กทม. `cpudapp.bangkok.go.th`) เว็บจะขึ้นป้ายเตือน และไม่เอาข้อมูลเก่ามาแสดงเหมือนเป็นข้อมูลสด
+If a source goes down (for example the BMA camera site `cpudapp.bangkok.go.th`), the site shows a warning
+and never passes old data off as live.
 
-### ข้อมูลมาจากไหน
+### Where the data comes from
 
-- **กล้อง:** กล้องจราจร กทม. (cpudapp.bangkok.go.th), กล้อง iTIC และกรมทางหลวง
-- **น้ำ:** คลังข้อมูลน้ำ สสน. (ThaiWater), กรมชลประทาน, สำนักการระบายน้ำ กทม.
-- **อากาศ:** กรมอุตุนิยมวิทยา, Open-Meteo, MET Norway, Air4Thai, AirBKK
-- **จราจรและเหตุ:** Longdo Traffic, Traffy Fondue, JS100, กรมทางหลวง (HDMS), ThaiRSC
+- **Cameras:** BMA traffic cameras (cpudapp.bangkok.go.th), iTIC, Department of Highways
+- **Water:** National water data warehouse (ThaiWater, HII), Royal Irrigation Department (dams and river
+  gauges), BMA Drainage Department
+- **Weather and air:** Thai Meteorological Department, Open-Meteo, MET Norway, Air4Thai, AirBKK
+- **Traffic and incidents:** Longdo Traffic, Traffy Fondue, JS100, Department of Highways (HDMS), ThaiRSC
+- **Maps:** OpenStreetMap (river courses and main roads, through the Overpass API)
 
 ---
 
-## เริ่มใช้งานบนเครื่องตัวเอง
+## Run it on your own machine
 
-### สิ่งที่ต้องมี
+### Requirements
 
-- Windows 10/11 หรือ macOS
-- Python 3 (เครื่องที่รันจริงใช้ 3.14)
-- Node.js 18 ขึ้นไป (ใช้สร้างหน้าเว็บ)
-- การ์ดจอ NVIDIA ไม่บังคับ แต่ถ้าไม่มี AI ดูภาพจะช้ากว่ามาก (บน Mac AI ใช้ CPU)
+- Windows 10/11 or macOS
+- Python 3 (the live server runs 3.14)
+- Node.js 18 or newer (to build the web pages)
+- An NVIDIA GPU is optional, but the vision AI is much slower without one (on a Mac it runs on the CPU)
 
-### ติดตั้ง (Windows)
+### Install (Windows)
 
 ```bash
 git clone https://github.com/Madaka17/new_ccty_bangkok.git
@@ -71,79 +92,87 @@ cd new_ccty_bangkok
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 
-# ถ้ามีการ์ดจอ NVIDIA: ลง PyTorch รุ่นที่ใช้ GPU
+# With an NVIDIA GPU: install the GPU build of PyTorch
 .venv\Scripts\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
 ```
 
-### ติดตั้ง (macOS)
+### Install (macOS)
 
 ```bash
-brew install python node        # ถ้ายังไม่มี Python 3 และ Node.js
+brew install python node        # if you do not have Python 3 and Node.js yet
 git clone https://github.com/Madaka17/new_ccty_bangkok.git
 cd new_ccty_bangkok
-bash launch/setup.sh            # สร้าง .venv ลงแพ็กเกจ Python และแพ็กเกจหน้าเว็บ
+bash launch/setup.sh            # creates .venv and installs the Python and web packages
 ```
 
-หน้าเว็บไม่ต้องสร้างเอง ตอนเปิดเซิร์ฟเวอร์ครั้งแรก `start.bat` / `start.sh` จะสร้างให้ (ต้องติดตั้ง Node.js ไว้ก่อน)
+You do not need to build the web pages yourself: on the first start, `start.bat` / `start.sh` builds them
+(Node.js must be installed).
 
-### ตั้งค่า
+### Configure
 
-สร้างไฟล์ `.env` ไว้ที่โฟลเดอร์หลัก ใส่เท่าที่มี ไม่มี key ก็เปิดเว็บได้ แต่ AI จะสรุปและตอบแชทได้แค่แบบพื้นฐานจากตัวเลข
+Create a `.env` file in the project folder with whatever you have. The site opens without any keys, but the
+AI write-ups and the chat then fall back to simple rule-based text.
 
 ```
-GEMINI_API_KEY=        # AI แชทและตรวจภาพ (สร้างฟรีที่ https://aistudio.google.com/apikey)
-LOCAL_LLM_URL=         # AI Qwen สำหรับสรุปสถานการณ์และตรวจภาพ
+GEMINI_API_KEY=        # AI chat and image checks (free key at https://aistudio.google.com/apikey)
+LOCAL_LLM_URL=         # OpenAI-compatible endpoint of the Qwen model used for the write-ups and image checks
 LOCAL_LLM_MODEL=
 LOCAL_LLM_API_KEY=
-BMA_DATA_DIR=D:\Data   # โฟลเดอร์เก็บสถิติและภาพหลักฐาน (ไม่ใส่: Windows ใช้ D:\Data, Mac ใช้ instances/production/data)
+BMA_DATA_DIR=D:\Data   # where statistics and evidence images go (default: D:\Data on Windows,
+                       # instances/production/data on macOS)
 ```
 
-ห้าม commit ไฟล์ `.env` ขึ้น GitHub เพราะมี key ลับอยู่ในนั้น
+Never commit `.env` to GitHub: it holds secret keys.
 
-### เปิดเว็บ
+### Start the site
 
 **Windows**
-1. ดับเบิลคลิก `launch\production\start.bat`
-2. รอสักครู่ แล้วเปิด http://localhost:8000
-3. หยุดใช้งาน: `launch\production\stop.bat` · เริ่มใหม่: `launch\production\restart.bat`
+1. Double-click `launch\production\start.bat`
+2. Wait a moment, then open http://localhost:8000
+3. Stop: `launch\production\stop.bat` · Restart: `launch\production\restart.bat`
 
-**macOS** (ใน Terminal ที่โฟลเดอร์โปรเจกต์)
-1. `bash launch/production/start.sh` (เซิร์ฟเวอร์รันอยู่ในหน้าต่าง Terminal นั้น)
-2. รอสักครู่ แล้วเปิด http://localhost:8000
-3. หยุดใช้งาน: กด Ctrl+C หรือ `bash launch/production/stop.sh` · เริ่มใหม่: `bash launch/production/restart.sh`
-4. เซิร์ฟเวอร์ทดสอบ (:8001): `bash launch/test/start.sh` · `stop.sh` · `restart.sh`
+**macOS** (in a Terminal at the project folder)
+1. `bash launch/production/start.sh` (the server runs in that Terminal window)
+2. Wait a moment, then open http://localhost:8000
+3. Stop: press Ctrl+C or `bash launch/production/stop.sh` · Restart: `bash launch/production/restart.sh`
+4. Test server (:8001): `bash launch/test/start.sh` · `stop.sh` · `restart.sh`
 
-ไฟล์โมเดล AI (`*.pt`) ไม่อยู่ใน GitHub เพราะใหญ่เกิน โมเดลนับรถ `yolo26x.pt` จะดาวน์โหลดให้เองตอนเปิดครั้งแรก
-ส่วนโมเดลตรวจหมวกและย้อนศร ต้องเทรนเองหรือขอไฟล์จากผู้ดูแล
+The AI model files (`*.pt`) are not on GitHub because they are too large. The vehicle counting model
+`yolo26x.pt` downloads itself on the first start; the helmet and wrong-way models have to be trained or
+requested from the maintainers.
 
 ---
 
-## ถ้ามีปัญหา
+## Troubleshooting
 
-| อาการ | สาเหตุ / วิธีแก้ |
+| Symptom | Cause / fix |
 |---|---|
-| เปิดหน้าแรกแล้วขึ้น `503` | ยังไม่มีหน้าเว็บ ติดตั้ง Node.js แล้วรัน `launch\build_web.bat` (Windows) หรือ `bash launch/build_web.sh` (Mac) |
-| ขึ้นป้ายแดง "เว็บกล้อง กทม. ล่ม" | เว็บกล้องของ กทม. ไม่ส่งภาพ ไม่ใช่ปัญหาของเรา ระบบลองใหม่เองทุก 3 นาที |
-| ภาพกล้อง กทม. เป็นตอนกลางวันทั้งที่เป็นกลางคืน | เป็นภาพสุดท้ายก่อนเว็บกล้อง กทม. ล่ม รอให้เว็บกลับมา |
-| ลมบนแผนที่ไม่ขึ้น | Open-Meteo จำกัดการเรียกต่อวัน รอวันถัดไป |
-| AI ดูภาพช้ามาก | เครื่องใช้ CPU อยู่ ให้ลง PyTorch รุ่น GPU ตามขั้นติดตั้ง |
+| The home page returns `503` | The web pages are not built yet: install Node.js, then run `launch\build_web.bat` (Windows) or `bash launch/build_web.sh` (Mac) |
+| Red banner "BMA camera site down" | The BMA camera site is not sending images; this is not on our side. The server retries every 3 minutes |
+| BMA camera images show daylight at night | It is the last image before the BMA camera site went down; wait for it to come back |
+| No wind on the map | Open-Meteo limits calls per day; wait for the next day |
+| Fewer "roads that may flood" than usual | The public Overpass servers were busy; the next refresh asks again |
+| The vision AI is very slow | The machine is using the CPU; install the GPU build of PyTorch (see Install) |
 
 ---
 
-## สำหรับนักพัฒนา
+## For developers
 
-- **โครงสร้างโค้ด ค่าตั้งใน `.env` ทั้งหมด และวิธีดูแลเซิร์ฟเวอร์:** [docs/DEVELOPER.md](docs/DEVELOPER.md)
-- **รันเทสต์:** `.venv\Scripts\python -m pytest tests` (Mac: `.venv/bin/python -m pytest tests`)
-- **โครงสร้างหลัก:**
+- **Code structure, every `.env` setting and how to run the servers:** [docs/DEVELOPER.md](docs/DEVELOPER.md)
+- **Run the tests:** `.venv\Scripts\python -m pytest tests` (Mac: `.venv/bin/python -m pytest tests`)
+- **Rebuild the river courses** for the northern water map: `.venv\Scripts\python local\pipeline\fetch_north_rivers.py`
+- **Layout:**
 
 ```
-server.py      จุดเริ่มต้นเซิร์ฟเวอร์ (FastAPI)
-backend/       โค้ดฝั่งเซิร์ฟเวอร์ แยกตามเรื่อง: กล้อง กทม., จราจร, น้ำ, AI
-web/           หน้าเว็บ (React + Tailwind)
-config/        รายชื่อกล้อง
-launch/        สคริปต์เปิด/ปิดเซิร์ฟเวอร์ และ Cloudflare Tunnel
-local/         สคริปต์เก็บภาพและเทรนโมเดล (ใช้ในเครื่อง)
-instances/     ฐานข้อมูลและไฟล์ชั่วคราวของแต่ละเซิร์ฟเวอร์ (ไม่อยู่ใน Git)
+server.py      server entry point (FastAPI)
+backend/       server code by topic: BMA cameras, traffic, water, vision, AI agents
+web/           web pages (React + Tailwind)
+config/        camera lists, river courses and district outlines
+launch/        start / stop scripts and the Cloudflare Tunnel
+local/         scripts for collecting images, training models and rebuilding map data (run locally)
+instances/     each server's databases and caches (not in Git)
+ENVIRO/        the earthquake and environment site served at /enviro/
 ```
 
-ข้อมูลทั้งหมดใช้เพื่อเฝ้าระวังและช่วยตัดสินใจเท่านั้น ผลจาก AI (เช่น ตรวจหมวกหรือย้อนศร) อาจผิดได้ ควรให้คนตรวจซ้ำก่อนนำไปใช้
+All data is for monitoring and decision support only. AI results (helmet and wrong-way checks, flood
+outlooks and write-ups) can be wrong and should be checked by a person before they are acted on.
