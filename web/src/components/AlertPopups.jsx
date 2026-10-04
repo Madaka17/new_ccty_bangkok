@@ -12,6 +12,8 @@ const MAX_CARDS = 3;
 const SEEN_KEY = 'alerts.lastSeen';
 const ON_KEY = 'alerts.inPage';
 const ON_EVENT = 'alerts-inpage';
+const PLACE_KEY = 'alerts.province';
+const DEFAULT_PLACE = 'กรุงเทพมหานคร';
 
 const TOPIC = {
   flood: { label: 'น้ำท่วมถนน', tone: 'blue', page: 'water' },
@@ -36,6 +38,14 @@ const write = (k, v) => {
 };
 
 export const inPageAlertsOn = () => read(ON_KEY) !== '0';
+// The province this browser wants alerts for ('' = the whole country). Alerts without a province (TMD
+// warnings) always show. Bangkok by default: nationwide, the accidents alone are several an hour.
+export const alertProvince = () => read(PLACE_KEY) ?? DEFAULT_PLACE;
+export function setAlertProvince(name) {
+  write(PLACE_KEY, name);
+  window.dispatchEvent(new Event(ON_EVENT));
+}
+const wanted = (a, place) => !place || !a.province || a.province === place;
 export function setInPageAlerts(on) {
   write(ON_KEY, on ? '1' : '0');
   window.dispatchEvent(new Event(ON_EVENT));
@@ -47,10 +57,14 @@ const pageOf = (a) => (a.key?.startsWith('traffy:') ? 'map' : TOPIC[a.topic]?.pa
 export default function AlertPopups({ onNavigate }) {
   const [cards, setCards] = useState([]);
   const [on, setOn] = useState(inPageAlertsOn);
+  const [place, setPlace] = useState(alertProvince);
   const timers = useRef({});
 
   useEffect(() => {
-    const sync = () => setOn(inPageAlertsOn());
+    const sync = () => {
+      setOn(inPageAlertsOn());
+      setPlace(alertProvince());
+    };
     window.addEventListener(ON_EVENT, sync);
     window.addEventListener('storage', sync);
     return () => {
@@ -77,7 +91,7 @@ export default function AlertPopups({ onNavigate }) {
           const newest = Math.max(0, ...items.map((a) => a.ts));
           if (seen === null) seen = newest;
           // System alerts (server restarts, disk) are for the operators on the Alerts page only
-          const fresh = items.filter((a) => a.ts > seen && TOPIC[a.topic]).slice(0, MAX_CARDS);
+          const fresh = items.filter((a) => a.ts > seen && TOPIC[a.topic] && wanted(a, place)).slice(0, MAX_CARDS);
           seen = Math.max(seen, newest);
           write(SEEN_KEY, String(seen));
           if (!fresh.length) return;
@@ -94,7 +108,7 @@ export default function AlertPopups({ onNavigate }) {
       alive = false;
       clearInterval(id);
     };
-  }, [on, close]);
+  }, [on, place, close]);
 
   useEffect(() => () => Object.values(timers.current).forEach(clearTimeout), []);
 

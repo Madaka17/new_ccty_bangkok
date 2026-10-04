@@ -4,9 +4,11 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: "Prompt", ui-sans-serif, system-ui, sans-serif;
+  /* Looped Thai (with heads) for reading, Bai Jamjuree for headings and big status words */
+  --font-sans: "IBM Plex Sans Thai Looped", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Bai Jamjuree", "IBM Plex Sans Thai Looped", ui-sans-serif, sans-serif;
 
-  /* Readability: Thai glyphs in Prompt run small, so every size step is one notch larger than
+  /* Readability: Thai glyphs run small, so every size step is one notch larger than
      Tailwind's default (xs 12->13px, sm 14->15px, base 16->17px) with roomier line-height. */
   --text-xs: 0.8125rem;
   --text-xs--line-height: 1.25rem;
@@ -58,14 +60,93 @@
   --shadow-lift: 0 0 0 1px #e2e8f0, 0 4px 12px -4px rgba(15, 23, 42, 0.08);
 }
 
+/* ---------------------------------------------------------------- city look (light and dark)
+   One set of colours for the whole site, read by the shell (Sidebar, BottomNav), the city status line and
+   the summary card. The station line is --c-line, the page you are on is --c-here. Status tones:
+   ok = fine, watch = keep an eye on it, act = take care, none = no data yet. */
+:root {
+  --c-ground: #eef1f4;
+  --c-surface: #ffffff;
+  --c-raised: #f6f7f9;
+  --c-border: #dde2e8;
+  --c-border-strong: #c9d0d9;
+  --c-ink: #12161d;
+  --c-muted: #4a5361;
+  --c-line: #183153;
+  --c-here: #e8590c;
+  --c-here-tint: #fff1e8;
+  --c-here-text: #a33e06;
+  --c-primary: #c2410c;
+  --c-primary-hover: #9a3412;
+  --c-on-primary: #ffffff;
+  --c-sel-bg: #183153;
+  --c-sel-text: #ffffff;
+  --line-1: #1d3e73;
+  --line-2: #0b6b6b;
+  --line-3: #6a2c8f;
+  --line-4: #7a4b1e;
+
+  --ok-ring: #1e9e57;   --ok-fill: var(--c-surface);   --ok-text: #17733f;   --ok-tint: #e3f4ea;
+  --watch-ring: #e09a0b; --watch-fill: #fce7b8;        --watch-text: #8a5300; --watch-tint: #fdf0d5;
+  --act-ring: #d63a2c;  --act-fill: #d63a2c;           --act-text: #b42318;  --act-tint: #fbe1de;
+  --none-ring: #9aa3af; --none-fill: var(--c-surface); --none-text: #4a5361; --none-tint: #e9ecf0;
+}
+.dark {
+  --c-ground: #0b0e13;
+  --c-surface: #141922;
+  --c-raised: #1b212b;
+  --c-border: #2a323e;
+  --c-border-strong: #3a4352;
+  --c-ink: #eef1f5;
+  --c-muted: #a7b0bd;
+  --c-line: #6f93c8;
+  --c-here: #f07a35;
+  --c-here-tint: rgba(240, 122, 53, 0.16);
+  --c-here-text: #ffb487;
+  --c-primary: #f07a35;
+  --c-primary-hover: #f49456;
+  --c-on-primary: #12161d;
+  --c-sel-bg: #dce6f5;
+  --c-sel-text: #12161d;
+  --line-1: #7ea3dc;
+  --line-2: #4fbcb5;
+  --line-3: #b98ae0;
+  --line-4: #d9a066;
+
+  --ok-text: #6ee7a0;   --ok-tint: rgba(30, 158, 87, 0.16);
+  --watch-ring: #f2b33d; --watch-fill: #5c4210; --watch-text: #fcd34d; --watch-tint: rgba(242, 179, 61, 0.14);
+  --act-ring: #f0564a;  --act-fill: #f0564a;  --act-text: #fca5a5;  --act-tint: rgba(240, 86, 74, 0.16);
+  --none-ring: #6a7381; --none-text: #a7b0bd; --none-tint: #1b212b;
+}
+/* A status colour set on one element, read by its children as --t-* */
+.tone-green { --t-ring: var(--ok-ring); --t-fill: var(--ok-fill); --t-text: var(--ok-text); --t-tint: var(--ok-tint); --t-band: #1e7d49; --t-on: #ffffff; }
+.tone-yellow { --t-ring: var(--watch-ring); --t-fill: var(--watch-fill); --t-text: var(--watch-text); --t-tint: var(--watch-tint); --t-band: #f2b33d; --t-on: #12161d; }
+.tone-red { --t-ring: var(--act-ring); --t-fill: var(--act-fill); --t-text: var(--act-text); --t-tint: var(--act-tint); --t-band: #c62f22; --t-on: #ffffff; }
+.tone-neutral { --t-ring: var(--none-ring); --t-fill: var(--none-fill); --t-text: var(--none-text); --t-tint: var(--none-tint); --t-band: #5f6875; --t-on: #ffffff; }
+
 html, body, #root { height: 100%; }
 
 body {
-  background: #f8fafc;
-  color: #0f172a;
+  background: var(--c-ground);
+  color: var(--c-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
+
+/* Every page, in the look of station signs: headings in the display face, small square-ish corners,
+   the selected tab a filled block, the main button in the action colour */
+h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.005em; }
+.rounded-xl.border, .rounded-2xl.border { border-radius: 6px; }
+[role="tab"][aria-selected="true"] {
+  background: var(--c-sel-bg);
+  color: var(--c-sel-text);
+  border-color: transparent;
+  border-radius: 4px;
+}
+.bg-blue-600, .bg-lavender-600 { background-color: var(--c-primary); color: var(--c-on-primary); }
+.border-blue-600 { border-color: var(--c-primary); }
+.hover\:bg-blue-700:hover, .hover\:bg-lavender-700:hover { background-color: var(--c-primary-hover); }
+.hover\:border-blue-700:hover { border-color: var(--c-primary-hover); }
 
 /* Flat panel (name kept for older pages) */
 .glass,
@@ -80,7 +161,7 @@ body {
 .scroll-soft::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
 
 :focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--c-here);
   outline-offset: 2px;
 }
 
@@ -127,17 +208,17 @@ body {
 }
 
 /* ---------------------------------------------------------------- dark theme
-   Enabled by the `dark` class on <html> (set in index.html; the app is always dark + hf).
+   Enabled by the `dark` class on <html> (index.html picks it before the first paint; lib/theme.js switches it).
    Tailwind v4 utilities read colour tokens through var(--color-*), so the light
    tints and neutral surfaces are remapped once here instead of adding dark:
    variants to every element. Text shades are overridden per utility because the
    same token (slate-900) is a dark surface in one place and dark text in another. */
 .dark {
   color-scheme: dark;
-  --color-slate-50: #1e293b;
-  --color-slate-100: #263449;
-  --color-slate-200: #334155;
-  --color-slate-300: #475569;
+  --color-slate-50: #1b212b;
+  --color-slate-100: #222935;
+  --color-slate-200: #2a323e;
+  --color-slate-300: #3a4352;
   --color-emerald-50: #052e16;
   --color-emerald-100: #064e3b;
   --color-emerald-200: #065f46;
@@ -150,11 +231,11 @@ body {
   --color-blue-50: #172554;
   --color-blue-100: #1e3a8a;
   --color-blue-200: #1e40af;
-  --color-cream: #0f172a;
-  --color-cream-100: #1e293b;
-  --color-cream-200: #334155;
-  --color-ink-900: #f1f5f9;
-  --color-ink-600: #cbd5e1;
+  --color-cream: #141922;
+  --color-cream-100: #1b212b;
+  --color-cream-200: #2a323e;
+  --color-ink-900: #eef1f5;
+  --color-ink-600: #c9d1dc;
   --color-sage-50: #052e16;
   --color-sage-100: #064e3b;
   --color-sage-200: #065f46;
@@ -168,10 +249,10 @@ body {
   --color-gold-100: #78350f;
   --color-gold-200: #92400e;
 }
-.dark body { background: #020617; color: #f1f5f9; }
-.dark .bg-white, .dark .glass, .dark .glass-strong { background-color: #0f172a; }
-.dark .glass, .dark .glass-strong { border-color: #334155; }
-.dark .text-slate-900, .dark .text-slate-800 { color: #f1f5f9; }
+.dark body { background: var(--c-ground); color: var(--c-ink); }
+.dark .bg-white, .dark .glass, .dark .glass-strong { background-color: var(--c-surface); }
+.dark .glass, .dark .glass-strong { border-color: var(--c-border); }
+.dark .text-slate-900, .dark .text-slate-800 { color: var(--c-ink); }
 .dark .text-slate-700 { color: #e2e8f0; }
 .dark .text-slate-600 { color: #cbd5e1; }
 .dark .text-slate-500 { color: #94a3b8; }
@@ -180,12 +261,12 @@ body {
 .dark .text-red-700, .dark .text-red-800, .dark .text-red-900 { color: #fca5a5; }
 .dark .text-blue-700, .dark .text-blue-800, .dark .text-blue-900 { color: #93c5fd; }
 .dark .hover\:text-slate-900:hover { color: #ffffff; }
-.dark .hover\:bg-slate-50:hover, .dark .hover\:bg-slate-100:hover { background-color: #263449; }
-.dark .hover\:bg-white:hover { background-color: #1e293b; }
+.dark .hover\:bg-slate-50:hover, .dark .hover\:bg-slate-100:hover { background-color: #222935; }
+.dark .hover\:bg-white:hover { background-color: var(--c-raised); }
 .dark .bg-slate-900\/80 { background-color: rgba(2, 6, 23, 0.8); }
 .dark .bg-slate-900\/60, .dark .bg-slate-900\/50 { background-color: rgba(2, 6, 23, 0.7); }
-.dark .scroll-soft::-webkit-scrollbar-thumb { background: #334155; }
-.dark .maplibregl-popup-content { background: #0f172a; color: #f1f5f9; border-color: #334155; }
+.dark .scroll-soft::-webkit-scrollbar-thumb { background: var(--c-border-strong); }
+.dark .maplibregl-popup-content { background: var(--c-surface); color: var(--c-ink); border-color: var(--c-border); }
 .dark svg text { fill: #94a3b8; }
 
 /* Camera AI & Analysis view switch (CameraAiPage.jsx) */
@@ -195,71 +276,12 @@ body {
 .seg-on { background: #ffffff; color: #1d4ed8; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.08); }
 .seg-icon { background: #e2e8f0; color: #64748b; }
 .seg-hint { color: #64748b; font-weight: 400; }
-.dark .seg-tray { background: #0b1222; border-color: #1e293b; }
+.dark .seg-tray { background: var(--c-ground); border-color: var(--c-border); }
 .dark .seg-off { color: #94a3b8; }
-.dark .seg-off:hover { background: #1e293b; color: #f1f5f9; }
-.dark .seg-on { background: #1e293b; color: #93c5fd; box-shadow: 0 0 0 1px #334155, 0 6px 16px rgba(0, 0, 0, 0.35); }
-.dark .seg-icon { background: #1e293b; color: #94a3b8; }
+.dark .seg-off:hover { background: var(--c-raised); color: var(--c-ink); }
+.dark .seg-on { background: var(--c-raised); color: #93c5fd; box-shadow: 0 0 0 1px var(--c-border-strong), 0 6px 16px rgba(0, 0, 0, 0.35); }
+.dark .seg-icon { background: var(--c-raised); color: #94a3b8; }
 .dark .seg-hint { color: #94a3b8; }
-
-/* ---------------------------------------------------------------- hf theme
-   Hugging Face Spaces look in dark: near-black page, 2px light outlines with a hard
-   offset shadow on cards, yellow for the active/primary state, Mitr headings and
-   mono tab labels. index.html sets both `dark` and `hf` on <html>, so the .dark
-   remaps above do the text colours and this block only restyles on top. */
-.hf {
-  --hf-line: #e8e3d6;
-  --hf-yellow: #ffd21e;
-  --hf-on-yellow: #1a1a1a;
-  --hf-paper: #121620;
-  --color-slate-50: #1a1f2b;
-  --color-slate-100: #222836;
-  --color-slate-200: #2e3544;
-  --color-slate-300: #3d4556;
-  --color-cream: #121620;
-  --color-cream-100: #1a1f2b;
-  --color-cream-200: #2e3544;
-  --color-cream-300: #3d4556;
-}
-.hf body { background: #0a0c11; color: #f3f1ea; }
-.hf .bg-white, .hf .glass, .hf .glass-strong { background-color: var(--hf-paper); }
-
-/* cards and panels */
-.hf .rounded-xl.border, .hf .rounded-2xl.border, .hf .glass, .hf .glass-strong {
-  border: 2px solid var(--hf-line);
-  border-radius: 16px;
-  box-shadow: 4px 4px 0 #000;
-}
-
-/* headings */
-.hf h1, .hf h2, .hf h3 { font-family: "Mitr", var(--font-sans); font-weight: 600; letter-spacing: -0.01em; }
-.hf h1 { font-size: 1.6rem; line-height: 2.1rem; }
-
-/* tabs and segmented switches: mono labels, active = yellow pill */
-.hf [role="tab"] { font-family: "IBM Plex Mono", var(--font-sans); letter-spacing: 0.02em; }
-.hf [role="tab"][aria-selected="true"] {
-  background: var(--hf-yellow);
-  color: var(--hf-on-yellow);
-  border: 2px solid #000;
-  border-radius: 999px;
-  box-shadow: 2px 2px 0 #000;
-}
-
-/* primary buttons: blue fill becomes yellow with dark text */
-.hf .bg-blue-600, .hf .bg-lavender-600 {
-  background-color: var(--hf-yellow);
-  color: var(--hf-on-yellow);
-  border: 2px solid #000;
-  box-shadow: 2px 2px 0 #000;
-}
-.hf .hover\:bg-blue-700:hover, .hf .hover\:bg-lavender-700:hover { background-color: #f5c400; }
-
-.hf :focus-visible { outline: 2px solid var(--hf-yellow); outline-offset: 2px; }
-.hf .scroll-soft::-webkit-scrollbar-thumb { background: #3d4556; }
-.hf .maplibregl-popup-content { background: var(--hf-paper); color: #f3f1ea; border: 2px solid var(--hf-line); border-radius: 12px; box-shadow: 3px 3px 0 #000; }
-.hf .maplibregl-ctrl-group { box-shadow: 0 0 0 2px var(--hf-line), 3px 3px 0 2px #000 !important; }
-.hf .seg-tray { background: #1a1f2b; border: 2px solid var(--hf-line); }
-.hf .seg-on { background: var(--hf-yellow); color: var(--hf-on-yellow); box-shadow: 2px 2px 0 #000; }
 
 /* Floating AI button robot (BotFace.jsx): blink every few seconds, antenna bulb glows */
 .bot-eyes { transform-box: fill-box; transform-origin: center; animation: bot-blink 4.5s infinite; }

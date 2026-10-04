@@ -113,10 +113,10 @@ def http_get(url, timeout=12):
         return resp.read()
 
 
-def get_traffic_tile(z, x, y):
-    """Return (bytes, is_stale). Bytes are gzip-compressed pbf. Cached with TTL, stale on failure."""
+def get_traffic_tile(z, x, y, max_age=TRAFFIC_TILE_TTL):
+    """Return (bytes, is_stale). Bytes are gzip-compressed pbf. Cached for max_age seconds, stale on failure."""
     path = os.path.join(TRAFFIC_TILE_DIR, f"{z}_{x}_{y}.pbf")
-    fresh = os.path.exists(path) and (time.time() - os.path.getmtime(path)) < TRAFFIC_TILE_TTL
+    fresh = os.path.exists(path) and (time.time() - os.path.getmtime(path)) < max_age
     if fresh:
         with open(path, "rb") as f:
             return f.read(), False

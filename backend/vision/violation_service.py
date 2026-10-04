@@ -35,13 +35,14 @@ from collections import defaultdict
 import cv2
 import numpy as np
 
+from backend.core.instance import DEFAULT_BMA_DATA_DIR
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 FLOW_DIR = os.path.join(DATA_DIR, "cache", "flow")
 EVIDENCE_DIR = os.path.join(DATA_DIR, "cache", "violations")
 # Long-term copy of every evidence image on the data drive (same drive as the BMA CSV archive):
 #   D:/Data/violations/<YYYY-MM-DD>/<kind>/<camid>_<HHMMSS>.jpg  + violations.csv index
-ARCHIVE_DIR = os.getenv("VIOLATION_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", r"D:\Data"), "violations"))
+ARCHIVE_DIR = os.getenv("VIOLATION_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", DEFAULT_BMA_DATA_DIR), "violations"))
 
 GRID_COLS, GRID_ROWS = 12, 9
 FLOW_MIN_COUNT = 60          # motion samples a cell needs before its direction counts

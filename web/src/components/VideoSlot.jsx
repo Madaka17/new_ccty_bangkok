@@ -5,11 +5,18 @@ import { PROVINCE_TONE, CAM_LEVEL, camStatusText } from '../lib/store.js';
 import { getBmaSnapshotUrl } from '../lib/api.js';
 
 const BMA_REFRESH_MS = 3000;
+const STILL_REFRESH_MS = 30000;   // other sources' pictures (media "image"); the BMA flood centre takes ~9 s each
 
-// BMA cameras have no video: show the scanner's last frame at once, then a fresh one every few seconds.
-// The next frame loads off screen and replaces the shown one only when complete, so the picture never blanks.
-function BmaFrames({ cam, onOffline }) {
- const [src, setSrc] = useState(() => getBmaSnapshotUrl(cam.bma_id, false, null, false));
+// Cameras without video: show the last picture at once, then a fresh one every few seconds. BMA: the scanner's
+// frame, then BMA live. The next picture loads off screen and replaces the shown one only when complete, so the
+// picture never blanks.
+const firstUrl = (cam) => (cam.source === 'bma' ? getBmaSnapshotUrl(cam.bma_id, false, null, false) : cam.imgurl);
+const nextUrl = (cam, t) => (cam.source === 'bma'
+  ? getBmaSnapshotUrl(cam.bma_id, true, t, false)
+  : `${cam.imgurl}${cam.imgurl.includes('?') ? '&' : '?'}t=${t}`);
+
+function Frames({ cam, everyMs, onOffline }) {
+ const [src, setSrc] = useState(() => firstUrl(cam));
  const offline = useRef(onOffline);
  offline.current = onOffline;
  useEffect(() => {
@@ -22,21 +29,24 @@ function BmaFrames({ cam, onOffline }) {
  if (!alive) return;
  fails = 0;
  setSrc(img.src);
- timer = setTimeout(next, BMA_REFRESH_MS);
+ timer = setTimeout(next, everyMs);
       };
  img.onerror = () => {
  if (!alive) return;
  if (++fails >= 3) offline.current();
- else timer = setTimeout(next, BMA_REFRESH_MS);
+ else timer = setTimeout(next, everyMs);
       };
- img.src = getBmaSnapshotUrl(cam.bma_id, true, Date.now(), false);
+ img.src = nextUrl(cam, Date.now());
     };
- next();
+ // BMA asks live at once; the others already show their newest picture
+ if (cam.source === 'bma') next();
+ else timer = setTimeout(next, everyMs);
  return () => {
  alive = false;
  clearTimeout(timer);
     };
-  }, [cam.bma_id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cam.source, cam.bma_id, cam.imgurl, everyMs]);
  return (
     <img
  src={src}
@@ -50,14 +60,33 @@ function BmaFrames({ cam, onOffline }) {
 
 export default function VideoSlot({ cam, status: aiStatus, incident, onClose, onOpenAI }) {
  const videoRef = useRef(null);
- const [status, setStatus] = useState('loading'); // loading | live | offline
+ const [status, setStatus] = useState('loading'); // loading | live | offline | frames | mjpeg | embed | link
  const [attempt, setAttempt] = useState(0);
 
  useEffect(() => {
  const video = videoRef.current;
- if (cam?.source === 'bma') {
+ if (cam?.source === 'bma' || cam?.media === 'image') {
  setStatus('frames');
  return;
+    }
+ if (cam?.media === 'iframe' || cam?.media === 'link') {
+ setStatus(cam.media === 'iframe' ? 'embed' : 'link');
+ return;
+    }
+ if (video && cam?.video_url) {
+ // A webm stream (Koh Samui): the browser plays it as it is
+ setStatus('loading');
+ const onData = () => setStatus('live');
+ const onErr = () => setStatus('offline');
+ video.addEventListener('loadeddata', onData);
+ video.addEventListener('error', onErr);
+ video.src = cam.video_url;
+ return () => {
+ video.removeEventListener('loadeddata', onData);
+ video.removeEventListener('error', onErr);
+ video.removeAttribute('src');
+ video.load();
+      };
     }
  if (!cam?.hls_url && cam?.vdourl) {
  setStatus('mjpeg');
@@ -112,7 +141,7 @@ export default function VideoSlot({ cam, status: aiStatus, incident, onClose, on
  return () => {
  if (hls) hls.destroy();
     };
-  }, [cam?.hls_url, cam?.source, attempt]);
+  }, [cam?.hls_url, cam?.source, cam?.media, cam?.video_url, attempt]);
 
  useEffect(() => {
  if (status === 'offline') {
@@ -151,7 +180,7 @@ export default function VideoSlot({ cam, status: aiStatus, incident, onClose, on
             สด
           </span>
         )}
-        {status === 'frames' && <span className="hidden sm:inline text-[11px] text-slate-500">รูปทุก {BMA_REFRESH_MS / 1000} วิ</span>}
+        {status === 'frames' && <span className="hidden sm:inline text-[11px] text-slate-500">รูปทุก {(cam.source === 'bma' ? BMA_REFRESH_MS : STILL_REFRESH_MS) / 1000} วิ</span>}
         {onOpenAI && (
           <button type="button" onClick={onOpenAI} title="ให้ AI นับรถจากกล้องนี้" className="cursor-pointer h-7 px-2 rounded-md text-[11px] text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors duration-200">
             AI
@@ -170,7 +199,19 @@ export default function VideoSlot({ cam, status: aiStatus, incident, onClose, on
         {status === 'mjpeg' && (
           <img src={`${cam.vdourl}${cam.vdourl.includes('?') ? '&' : '?'}t=${attempt}`} alt="" onError={() => setStatus('offline')} className="absolute inset-0 w-full h-full object-cover" />
         )}
-        {status === 'frames' && <BmaFrames cam={cam} onOffline={() => setStatus('offline')} />}
+        {status === 'frames' && <Frames cam={cam} everyMs={cam.source === 'bma' ? BMA_REFRESH_MS : STILL_REFRESH_MS} onOffline={() => setStatus('offline')} />}
+ {status === 'embed' && (
+ <iframe src={cam.embed_url} title={cam.short_title || cam.title} allow="autoplay; fullscreen" className="absolute inset-0 w-full h-full border-0 bg-black" />
+        )}
+ {status === 'link' && (
+ <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center px-6 bg-slate-50">
+ <p className="font-medium text-ink-900">ดูภาพกล้องนี้ได้ที่เว็บ{cam.organization || 'ของเจ้าของกล้อง'}</p>
+ <p className="text-xs text-ink-600">เว็บนั้นให้ยืนยันว่าไม่ใช่บอทก่อน จึงเปิดภาพในหน้านี้ไม่ได้ เปิดเว็บแล้วค้นหาชื่อกล้อง "{cam.short_title || cam.title}"</p>
+ <a href={cam.page_url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center rounded-lg bg-blue-600 text-white px-4 py-2 text-sm font-medium hover:bg-blue-700">
+              เปิดเว็บ{cam.organization || ''}
+ </a>
+ </div>
+        )}
 
         {(status === 'live' || status === 'mjpeg') && (
           <div className="absolute bottom-2 left-2 flex items-center gap-1.5">

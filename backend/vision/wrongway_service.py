@@ -39,11 +39,12 @@ from datetime import datetime
 import cv2
 import numpy as np
 
+from backend.core.instance import DEFAULT_BMA_DATA_DIR
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "wrongway")
 FIELD_DIR = os.path.join(DATA_DIR, "cache", "heading")
-ARCHIVE_DIR = os.getenv("WRONGWAY_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", r"D:\Data"), "wrongway"))
+ARCHIVE_DIR = os.getenv("WRONGWAY_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", DEFAULT_BMA_DATA_DIR), "wrongway"))
 DET_PATH = os.getenv("WRONGWAY_DET", os.path.join(BASE_DIR, "wrongway_det.pt"))
 if not os.path.isabs(DET_PATH):
     DET_PATH = os.path.join(BASE_DIR, DET_PATH)

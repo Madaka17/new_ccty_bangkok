@@ -16,6 +16,10 @@
   this site's own pages (``Sec-Fetch-Site: same-origin``, or a same-host Referer on browsers without
   fetch metadata). A script, another website or a pasted API URL gets 403. ``API_BROWSER_ONLY=0``
   turns it off. This raises the bar; it cannot stop someone copying what the page itself shows.
+- Page session: that header is easy to fake, so from outside the trusted networks /api/ also wants the
+  ``bkk_s`` cookie. The server signs it (HMAC of the time with a secret kept in the instance's cache) and
+  sets it with the page (HttpOnly, SameSite=Strict, 12 h, renewed while the page keeps calling the API).
+  A script must now load the page and keep its cookies first. ``API_SESSION=0`` turns it off.
 - /docs, /redoc and /openapi.json (the full endpoint map) are trusted-only.
 - Every response carries security headers (CSP, no framing, nosniff, referrer / permissions policy,
   HSTS, noindex).
@@ -26,6 +30,7 @@ Cloudflare Tunnel (cloudflared) connects to ``CLOUDFLARE_TUNNEL_ADDR`` (127.0.0.
 and only those requests are keyed on ``CF-Connecting-IP``: both proxies come from 127.0.0.1, and a
 Funnel visitor could send that header themselves.
 """
+import hashlib
 import hmac
 import os
 import time
@@ -36,6 +41,8 @@ from collections import deque
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
+
+from backend.core.instance import DATA_DIR
 
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "").strip()
 CHAT_RATE_PER_MIN = int(os.getenv("CHAT_RATE_PER_MIN", "6"))
@@ -48,6 +55,11 @@ USER_REPORT_MAX_BODY = int(os.getenv("USER_REPORT_MAX_BODY", str(6 * 2**20)))   
 USER_REPORT_RATE_PER_HOUR = int(os.getenv("USER_REPORT_RATE_PER_HOUR", "5"))
 USER_REPORT_RATE_PER_DAY = int(os.getenv("USER_REPORT_RATE_PER_DAY", "20"))
 API_BROWSER_ONLY = os.getenv("API_BROWSER_ONLY", "1").strip() != "0"
+API_SESSION = os.getenv("API_SESSION", "1").strip() != "0"
+SESSION_COOKIE = "bkk_s"
+SESSION_MAX_AGE = 12 * 3600
+SESSION_RENEW = 3600          # a cookie older than this is replaced on the next page or API answer
+SESSION_SECRET_FILE = os.path.join(DATA_DIR, "cache", "session_secret")
 TUNNEL_ADDR = os.getenv("CLOUDFLARE_TUNNEL_ADDR", "127.0.0.2")   # cloudflared's origin: http://127.0.0.2:8000
 DOC_PATHS = ("/docs", "/redoc", "/openapi.json")
 BAD_PATH = re.compile(r"\\|\.\.|:")
@@ -64,7 +76,8 @@ SECURITY_HEADERS = {
         "media-src 'self' https: http: blob:",
         "connect-src 'self' https: http: blob: data:",
         "worker-src 'self' blob:",
-        "frame-src 'self' https://embed.windy.com",   # 'self': the Earthquake page frames ENVIRO at /enviro/
+        # 'self': the Earthquake page frames ENVIRO at /enviro/; nstcctv: Nakhon Si Thammarat's camera player
+        "frame-src 'self' https://embed.windy.com https://nstcctv.nakhoncity.org",
         "frame-ancestors 'none'",
         "object-src 'none'",
         "base-uri 'self'",
@@ -174,9 +187,69 @@ def _from_own_page(request: Request) -> bool:
     return bool(host) and re.match(rf"^https?://{re.escape(host)}(/|$)", ref) is not None
 
 
+def _load_secret():
+    """The key that signs page-session cookies, made once per instance and kept so a restart keeps them valid."""
+    try:
+        with open(SESSION_SECRET_FILE, encoding="ascii") as f:
+            key = bytes.fromhex(f.read().strip())
+        if len(key) >= 32:
+            return key
+    except (OSError, ValueError):
+        pass
+    key = os.urandom(32)
+    try:
+        os.makedirs(os.path.dirname(SESSION_SECRET_FILE), exist_ok=True)
+        with open(SESSION_SECRET_FILE, "w", encoding="ascii") as f:
+            f.write(key.hex())
+    except OSError:
+        pass   # cookies then last until the next restart
+    return key
+
+
+_secret = None
+
+
+def _sign(ts):
+    global _secret
+    if _secret is None:
+        _secret = _load_secret()
+    return hmac.new(_secret, str(ts).encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def session_age(value, now=None):
+    """Seconds since a page-session cookie was signed, or None when it is missing, forged or expired."""
+    try:
+        ts, sig = (value or "").split(".", 1)
+        ts = int(ts)
+    except ValueError:
+        return None
+    age = (now or time.time()) - ts
+    if not -300 <= age <= SESSION_MAX_AGE or not hmac.compare_digest(sig, _sign(ts)):
+        return None
+    return age
+
+
+def _set_session(response, request):
+    ts = int(time.time())
+    https = _via_tunnel(request) or request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https"
+    response.set_cookie(SESSION_COOKIE, f"{ts}.{_sign(ts)}", max_age=SESSION_MAX_AGE, path="/",
+                        httponly=True, samesite="strict", secure=https)
+
+
+def _is_page(path):
+    """The page itself: "/", an .html file or an app route. Its request reaches the server on every load
+    (no-cache), even when the answer is a 304, so the session cookie rides on it."""
+    last = path.rsplit("/", 1)[-1]
+    return path == "/" or last.endswith(".html") or "." not in last
+
+
 def _secure(response):
     for k, v in SECURITY_HEADERS.items():
         response.headers.setdefault(k, v)
+    # The page (index.html) names the hashed JS/CSS of the current build. Without this the browser keeps an
+    # old copy by heuristic caching (it has Last-Modified only) and a new deploy shows up only after Ctrl+F5.
+    if response.headers.get("content-type", "").startswith("text/html"):
+        response.headers.setdefault("Cache-Control", "no-cache")
     return response
 
 
@@ -192,7 +265,12 @@ async def guard(request: Request, call_next):
     if path.startswith(DOC_PATHS) and not trusted:
         return _deny(404, "not found")
     if not path.startswith("/api/"):
-        return _secure(await call_next(request))
+        response = await call_next(request)
+        if API_SESSION and request.method == "GET" and _is_page(path) and response.status_code < 400:
+            age = session_age(request.cookies.get(SESSION_COOKIE))
+            if age is None or age > SESSION_RENEW:
+                _set_session(response, request)
+        return _secure(response)
 
     ip = client_ip(request)
 
@@ -224,7 +302,16 @@ async def guard(request: Request, call_next):
     if not trusted and API_BROWSER_ONLY and not _from_own_page(request):
         return _deny(403, "the API answers this site's own pages only")
 
+    session = None
+    if not trusted and API_SESSION:
+        session = session_age(request.cookies.get(SESSION_COOKIE))
+        if session is None:
+            return _deny(403, "the API answers this site's own pages only (reload the page)")
+
     if not trusted and (not general_min.allow(ip) or not general_day.allow(ip)):
         return _deny(429, "too many requests")
 
-    return _secure(await call_next(request))
+    response = await call_next(request)
+    if session is not None and session > SESSION_RENEW:
+        _set_session(response, request)   # a page left open for days keeps working
+    return _secure(response)

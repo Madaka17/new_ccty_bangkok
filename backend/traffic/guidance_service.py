@@ -88,6 +88,18 @@ def _km(lat1, lon1, lat2, lon2):
     return math.hypot(x, y)
 
 
+def merge_spots(spots):
+    """Hotspots with the same label as one row (km added up), longest first: a road without a camera near its
+    red pieces otherwise showed its own name two or three times."""
+    by = {}
+    for s in spots:
+        if s["label"] in by:
+            by[s["label"]]["km"] = round(by[s["label"]]["km"] + s["km"], 1)
+        else:
+            by[s["label"]] = dict(s)
+    return sorted(by.values(), key=lambda s: -s["km"])
+
+
 def _weighted_flow(roads):
     tot = sum(r["length_km"] for r in roads)
     if not tot:
@@ -177,8 +189,7 @@ class GuidanceService:
                         label = f"ใกล้ {far['title']}" if far else r["name"]
                     spots.append({"road": r["name"], "km": sp["km"], "lat": sp["lat"], "lon": sp["lon"],
                                   "label": label, "camera": cam})
-            spots.sort(key=lambda s: -s["km"])
-            spots = spots[:3]
+            spots = merge_spots(spots)[:3]
 
             # Alternatives with live flow
             alts = []

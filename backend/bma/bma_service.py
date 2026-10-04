@@ -14,9 +14,11 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from backend.bma import bma_site
 from backend.bma.bma_archive import CycleArchiver
 
 from backend.core.instance import BASE_DIR  # project root
+from backend.core.instance import thai_font
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "bma_snapshots")
 os.makedirs(CACHE_DIR, exist_ok=True)
@@ -59,8 +61,6 @@ CLASS_THAI = {
 }
 
 
-BMA_URL = 'https://cpudapp.bangkok.go.th/bmatraffic/'
-BMA_SITE = 'cpudapp.bangkok.go.th'
 # A scan cycle with fresh frames from fewer than this share of the cameras means the BMA site is down (no
 # frames) or frozen (the same picture again). On Oct 1 2026 the whole site answered 404 from 10:19 on.
 SOURCE_MIN_SHARE = 0.05
@@ -111,8 +111,8 @@ class BmaSession:
         """The camera's JPEG from show.aspx, or None for a placeholder (< 2500 bytes), an error or a timeout."""
         try:
             res = s.get(
-                f'{BMA_URL}show.aspx?image={camid_str}&time={int(time.time() * 1000)}',
-                headers={'Referer': f'{BMA_URL}PlayVideo.aspx?ID={camid_str}'},
+                f'{bma_site.base()}show.aspx?image={camid_str}&time={int(time.time() * 1000)}',
+                headers={'Referer': f'{bma_site.base()}PlayVideo.aspx?ID={camid_str}'},
                 timeout=timeout
             )
             if res.status_code == 200 and len(res.content) > 2500:
@@ -120,6 +120,11 @@ class BmaSession:
         except Exception:
             pass
         return None
+
+    def reset(self):
+        """Forget every bound ASP.NET session (after the site moved to another address)."""
+        self._jars.clear()
+        self._rebind_after.clear()
 
     def fetch_snapshot(self, camid: str, timeout: float = 4.0) -> bytes:
         """Fetch raw snapshot JPEG for a camera ID from BMA traffic."""
@@ -141,8 +146,8 @@ class BmaSession:
         s.cookies = requests.cookies.RequestsCookieJar()
         bind_timeout = max(timeout, 15.0)
         try:
-            s.get(f'{BMA_URL}index.aspx', timeout=bind_timeout)
-            s.get(f'{BMA_URL}PlayVideo.aspx?ID={camid_str}', headers={'Referer': f'{BMA_URL}index.aspx'}, timeout=bind_timeout)
+            s.get(f'{bma_site.base()}index.aspx', timeout=bind_timeout)
+            s.get(f'{bma_site.base()}PlayVideo.aspx?ID={camid_str}', headers={'Referer': f'{bma_site.base()}index.aspx'}, timeout=bind_timeout)
         except Exception:
             return None   # index.aspx (416 KB) timed out: BMA is busy, not this camera, so no backoff
         raw = self._show(s, camid_str, timeout)
@@ -366,7 +371,7 @@ class BmaScanner:
         self._frame_ids = {}       # camid -> _pixels_id of its last frame
         raw = [os.path.join(RAW_DIR, f) for f in os.listdir(RAW_DIR) if f.endswith('.jpg')]
         self._last_fresh = max((os.path.getmtime(p) for p in raw), default=None)   # survives a restart
-        self.source = {"state": "starting", "site": BMA_SITE, "frames_ok": None, "frames_new": None,
+        self.source = {"state": "starting", "site": bma_site.host(), "frames_ok": None, "frames_new": None,
                        "last_frame_at": int(self._last_fresh) if self._last_fresh else None}
         # BMA answers slowly (~1.3 s a picture): 5 at a time with one session per camera (BmaSession)
         # scan the 574 cameras in ~2.5 min; the first cycle after a start binds every session (~10 min)
@@ -597,7 +602,10 @@ class BmaScanner:
             state = "down" if tally["ok"] < need else "frozen" if tally["new"] < need else "ok"
             if state != "ok":
                 print(f"[BMA Scanner] BMA site {state}: {tally['ok']} pictures, {tally['new']} new, from {len(cams)} cameras")
-            self.source = {"state": state, "site": BMA_SITE, "frames_ok": tally["ok"], "frames_new": tally["new"],
+            if state == "down" and bma_site.failover():
+                self.session.reset()
+                print(f"[BMA Scanner] BMA site moved: now reading {bma_site.base()}")
+            self.source = {"state": state, "site": bma_site.host(), "frames_ok": tally["ok"], "frames_new": tally["new"],
                            "last_frame_at": int(self._last_fresh) if self._last_fresh else None}
         print(f"[BMA Scanner] Finished scan cycle #{self.cycle_count} in {self.last_scan_duration:.1f}s")
         # Live snapshot CSVs (what every camera sees right now); cycle files are written by the archiver
@@ -638,8 +646,8 @@ class BmaScanner:
         try:
             pil_im = Image.fromarray(cv2.cvtColor(draw_img, cv2.COLOR_BGR2RGB))
             draw = ImageDraw.Draw(pil_im)
-            font_path = 'C:\\Windows\\Fonts\\tahoma.ttf'
-            if os.path.exists(font_path):
+            font_path = thai_font()
+            if font_path:
                 font = ImageFont.truetype(font_path, 13)
                 font_bold = ImageFont.truetype(font_path, 13)
             else:
@@ -649,7 +657,7 @@ class BmaScanner:
             # Box labels (PIL works in RGB; BOX_COLORS are BGR)
             for d in dets:
                 x1, y1 = d['box'][:2]
-                label = f"{d['name']} {int(d['conf'] * 100)}%"
+                label = f"{d['name']} {int(d['conf'] * 100)}%" if d['conf'] >= 0.5 else d['name']   # unsure: no number
                 b, g, r_ = BOX_COLORS.get(d['class'], (0, 255, 0))
                 tw = int(draw.textlength(label, font=font))
                 ty = max(0, y1 - 16)

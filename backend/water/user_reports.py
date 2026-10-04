@@ -1,6 +1,6 @@
 """
-Flood reports from the public: a pin, how deep the water is, an optional photo and a short note, sent from
-the flood map on the Water Forecast page.
+Flood reports from the public: province, district, a pin, water depth, an optional photo and a note
+of up to 2,000 characters, sent from the Report Flood page.
 
 POST /api/flood/user-reports (public; size and rate limited in access_guard)
     -> the photo is decoded with Pillow (at most MAX_PIXELS), turned upright, cut to MAX_SIDE and saved again
@@ -23,11 +23,12 @@ import sqlite3
 import threading
 import time
 from contextlib import contextmanager
+from functools import lru_cache
 
 from PIL import Image, ImageOps
 
-from backend.core import local_llm
-from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
+from backend.core import local_llm, thai_regions
+from backend.core.instance import BASE_DIR, DATA_DIR
 from backend.water.flood_feeds import hide_contacts
 
 DB_PATH = os.path.join(DATA_DIR, "vehicle_counts.db")
@@ -35,12 +36,13 @@ PHOTO_DIR = os.path.join(DATA_DIR, "cache", "user_reports")
 SHOW_HOURS = float(os.getenv("USER_REPORT_HOURS", "6"))
 MAX_PIXELS = 40_000_000        # refuse bigger images before decoding them (decompression bombs)
 MAX_SIDE = 1280
-NOTE_MAX = 100
+NOTE_MAX = 2000
 RETRY_SECONDS = 60
 AGENT_TIMEOUT = 45
-# Bangkok and the provinces around it, with room to spare: a pin outside is a mistake or a test
-LAT_RANGE, LNG_RANGE = (12.5, 15.0), (99.5, 101.8)
-DEPTHS = {"ankle": ("ตาตุ่ม", 10), "shin": ("ครึ่งแข้ง", 25), "knee": ("เข่า", 45), "thigh": ("เลยเข่า", 60)}
+# All of Thailand (the province flood tab counts reports from every province): a pin outside is a mistake or a test
+LAT_RANGE, LNG_RANGE = (5.5, 20.5), (97.3, 105.7)
+DEPTHS = {"ankle": ("ข้อเท้า", 10), "shin": ("หน้าแข้ง", 25), "chest": ("อก", 120),
+          "knee": ("เข่า", 45), "thigh": ("เลยเข่า", 60)}  # retain old reports' depth codes
 LEVEL_TH = {"none": "ไม่เห็นน้ำท่วม", "puddle": "น้ำขังเล็กน้อย", "flooded": "น้ำท่วมผิวจราจร", "severe": "น้ำท่วมหนัก"}
 _ID = re.compile(r"[0-9a-f]{12}")
 _LINK = re.compile(r"https?://|www\.|\.(com|net|org|co|th|ly|io)\b", re.I)
@@ -58,6 +60,24 @@ CHECK_PROMPT = (
 )
 
 
+@lru_cache(maxsize=1)
+def report_locations():
+    """Province/district choices from the bundled boundaries, independent of live traffic feeds."""
+    with open(os.path.join(BASE_DIR, "config", "thailand_districts.geojson"), encoding="utf-8") as f:
+        features = json.load(f)["features"]
+    provinces = {}
+    for ft in features:
+        p = ft["properties"]
+        province = thai_regions.PROVINCES[str(p["pro_code"])][0]
+        coords = ft["geometry"]["coordinates"]
+        rings = coords if ft["geometry"]["type"] == "Polygon" else [r for poly in coords for r in poly]
+        points = [point for ring in rings for point in ring]
+        lng = (min(p[0] for p in points) + max(p[0] for p in points)) / 2
+        lat = (min(p[1] for p in points) + max(p[1] for p in points)) / 2
+        provinces.setdefault(province, []).append({"name": p["amp_th"], "lat": round(lat, 5), "lng": round(lng, 5)})
+    return {name: sorted(districts, key=lambda d: d["name"]) for name, districts in sorted(provinces.items())}
+
+
 class UserReports:
     def __init__(self):
         self.lock = threading.Lock()
@@ -69,7 +89,7 @@ class UserReports:
                     ts        INTEGER NOT NULL,
                     lat       REAL NOT NULL,
                     lng       REAL NOT NULL,
-                    depth     TEXT NOT NULL,        -- ankle | shin | knee | thigh
+                    depth     TEXT NOT NULL,        -- ankle | shin | chest (legacy: knee | thigh)
                     note      TEXT,
                     has_photo INTEGER NOT NULL,
                     status    TEXT NOT NULL,        -- pending | published | rejected | deleted
@@ -77,6 +97,10 @@ class UserReports:
                     ai_note   TEXT
                 )""")
             conn.execute("CREATE INDEX IF NOT EXISTS user_flood_reports_ts ON user_flood_reports(ts)")
+            columns = {r["name"] for r in conn.execute("PRAGMA table_info(user_flood_reports)")}
+            for name in ("province", "district"):
+                if name not in columns:
+                    conn.execute(f"ALTER TABLE user_flood_reports ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
 
     @contextmanager
     def _db(self):
@@ -129,11 +153,19 @@ class UserReports:
         except (TypeError, ValueError):
             raise ValueError("ยังไม่ได้ปักหมุดตำแหน่ง") from None
         if not (LAT_RANGE[0] <= lat <= LAT_RANGE[1] and LNG_RANGE[0] <= lng <= LNG_RANGE[1]):
-            raise ValueError("ตำแหน่งอยู่นอกกรุงเทพฯ และปริมณฑล")
+            raise ValueError("ตำแหน่งอยู่นอกประเทศไทย")
         depth = str(body.get("depth") or "")
         if depth not in DEPTHS:
             raise ValueError("เลือกระดับน้ำก่อน")
-        note = " ".join(str(body.get("note") or "").split())[:NOTE_MAX]
+        province = str(body.get("province") or "").strip()
+        district = str(body.get("district") or "").strip()
+        if province not in report_locations():
+            raise ValueError("เลือกจังหวัดก่อน")
+        if district not in {d["name"] for d in report_locations()[province]}:
+            raise ValueError("เลือกอำเภอ/เขตให้ตรงกับจังหวัด")
+        note = str(body.get("note") or "").strip()
+        if len(note) > NOTE_MAX:
+            raise ValueError("รายละเอียดต้องไม่เกิน 2,000 ตัวอักษร")
         if _LINK.search(note):
             raise ValueError("ข้อความใส่ลิงก์ไม่ได้")
         jpeg = self._clean_photo(body["photo"]) if body.get("photo") else None
@@ -144,8 +176,11 @@ class UserReports:
                 f.write(jpeg)
         status = "pending" if (jpeg or note) else "published"
         with self.lock, self._db() as conn:
-            conn.execute("INSERT INTO user_flood_reports VALUES (?,?,?,?,?,?,?,?,?,?)",
-                         (rid, int(time.time()), round(lat, 6), round(lng, 6), depth, note, int(bool(jpeg)), status, None, None))
+            conn.execute("""INSERT INTO user_flood_reports
+                         (id, ts, lat, lng, depth, note, has_photo, status, ai_level, ai_note, province, district)
+                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                         (rid, int(time.time()), round(lat, 6), round(lng, 6), depth, note, int(bool(jpeg)), status,
+                          None, None, province, district))
         if status == "pending":
             status = self._check(rid)
         messages = {"published": "ขึ้นแผนที่แล้ว ขอบคุณที่แจ้ง",
@@ -218,6 +253,7 @@ class UserReports:
                                 (since,)).fetchall()
         items = [{"id": r["id"], "ts": r["ts"], "lat": r["lat"], "lng": r["lng"], "depth": r["depth"],
                   "depth_th": DEPTHS[r["depth"]][0], "depth_cm": DEPTHS[r["depth"]][1], "note": hide_contacts(r["note"] or ""),
+                  "province": r["province"], "district": r["district"],
                   "photo": f"/api/flood/user-reports/{r['id']}/photo" if r["has_photo"] else None,
                   "ai_level": r["ai_level"], "ai_level_th": LEVEL_TH.get(r["ai_level"] or ""), "ai_note": r["ai_note"] or ""}
                  for r in rows]

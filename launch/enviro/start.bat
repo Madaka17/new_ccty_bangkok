@@ -8,6 +8,9 @@ echo   ENVIRO Seismic Command  (Public at https://bkksmartstreet.com/enviro/)
 echo ======================================================================
 echo.
 
+rem Started again: launch\watchdog may restart it from now on (stop.bat / kill_server.ps1 left this mark)
+if exist "%~dp0..\watchdog\state\stopped_5050" del "%~dp0..\watchdog\state\stopped_5050"
+
 rem Already running: say so instead of starting a second copy (restart.bat replaces it)
 netstat -ano | findstr /r /c:":5050 .*LISTENING" >nul
 if %ERRORLEVEL% EQU 0 (

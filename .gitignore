@@ -38,6 +38,7 @@ Thumbs.db
 vehicle_counts.db
 count_cameras.json
 local/scratch/
+local/review-build-*/
 *.bak
 
 local/dataset/
@@ -68,3 +69,6 @@ web/dist/
 # AI analyst report caches written next to the data (riskbkk_agent, water_agent)
 riskbkk_analysis.json
 water_agent.json
+
+# launch\watchdog run state and log
+launch/watchdog/state/

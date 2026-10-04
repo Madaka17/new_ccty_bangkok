@@ -6,7 +6,7 @@ from backend.core.alert_service import CLEAR_SECONDS, AlertService
 def _svc(tmp_path, monkeypatch, **sources):
     pushed = []
     svc = AlertService(str(tmp_path), sources)
-    monkeypatch.setattr(svc, "push", lambda topic, title, body, only=None: pushed.append((topic, title, body)) or 1)
+    monkeypatch.setattr(svc, "_deliver", lambda topic, items: pushed.append((topic, *svc._group(topic, items))))
     return svc, pushed
 
 
@@ -111,7 +111,7 @@ def test_subscribe_validates_and_filters_topics(tmp_path, monkeypatch):
     svc, _ = _svc(tmp_path, monkeypatch)
     assert not svc.subscribe({"endpoint": "https://push/x"})["ok"]
     r = svc.subscribe({"endpoint": "https://push/x", "keys": {"p256dh": "k", "auth": "a"}}, ["flood", "bogus"])
-    assert r == {"ok": True, "topics": ["flood"]}
+    assert r == {"ok": True, "topics": ["flood"], "provinces": []}
     svc.subscribe({"endpoint": "https://push/x", "keys": {"p256dh": "k", "auth": "a"}}, ["air"])
     st = svc.status("https://push/x")
     assert st["subscribers"] == 1 and st["my_topics"] == ["air"]
@@ -126,6 +126,23 @@ def test_push_only_to_subscribers_of_topic(tmp_path, monkeypatch):
     svc.subscribe({"endpoint": "e-flood", "keys": keys}, ["flood"])
     svc.subscribe({"endpoint": "e-all", "keys": keys})
     assert svc.push("air", "t", "b") == 1 and sent == ["e-all"]
+
+
+def test_push_follows_the_provinces_picked(tmp_path, monkeypatch):
+    svc = AlertService(str(tmp_path), {})
+    sent = []
+    monkeypatch.setattr(alert_service, "webpush", lambda info, data, **kw: sent.append((info["endpoint"], data)))
+    keys = {"p256dh": "k", "auth": "a"}
+    svc.subscribe({"endpoint": "e-bkk", "keys": keys}, ["incident"], provinces=["กรุงเทพมหานคร", "ไม่มีจังหวัดนี้"])
+    svc.subscribe({"endpoint": "e-all", "keys": keys}, ["incident"])
+    assert svc.status("e-bkk")["my_provinces"] == ["กรุงเทพมหานคร"]
+    items = [{"topic": "incident", "key": "a", "title": "ชนที่เชียงใหม่", "body": "", "province": "เชียงใหม่"},
+             {"topic": "incident", "key": "b", "title": "ชนที่บางนา", "body": "", "province": "กรุงเทพมหานคร"},
+             {"topic": "incident", "key": "c", "title": "เตือนทั้งประเทศ", "body": "", "province": ""}]
+    svc._deliver("incident", items)
+    got = {e: d for e, d in sent}
+    assert "เชียงใหม่" not in got["e-bkk"] and "บางนา" in got["e-bkk"] and "ทั้งประเทศ" in got["e-bkk"]
+    assert "เชียงใหม่" in got["e-all"] and len(sent) == 2
 
 
 def test_vapid_public_key_is_stable(tmp_path):
@@ -147,14 +164,34 @@ def test_traffy_needs_a_burst_in_one_district(tmp_path, monkeypatch):
     assert svc.candidates(now=10_000) == []
 
 
-def test_tmd_alerts_once_per_event_and_only_for_bangkok(tmp_path, monkeypatch):
+def test_tmd_alerts_once_per_event_in_every_province(tmp_path, monkeypatch):
     issue = {"n": 1}
+    active = [
+        {"title": "คลื่นลมแรง ฉบับที่ 1", "series": "คลื่นลมแรง", "summary": "ภาคใต้", "bkk": False}]
     warn = lambda: {"active": [
         {"title": f"ฝนตกหนักบริเวณประเทศไทย ฉบับที่ {issue['n']}", "series": "ฝนตกหนักบริเวณประเทศไทย",
-         "summary": "ภาคกลาง รวมทั้งกรุงเทพมหานครและปริมณฑล", "bkk": True},
-        {"title": "คลื่นลมแรง ฉบับที่ 1", "series": "คลื่นลมแรง", "summary": "ภาคใต้", "bkk": False}]}
+         "summary": "ภาคกลาง รวมทั้งกรุงเทพมหานครและปริมณฑล", "bkk": True}] + active}
     svc, pushed = _svc(tmp_path, monkeypatch, tmd=warn)
-    assert [a["key"] for a in svc.check(now=1000)] == ["tmd:ฝนตกหนักบริเวณประเทศไทย"]
+    assert svc.check(now=1000) == []          # warnings already out when the service starts: recorded quietly
     issue["n"] = 2
-    assert svc.check(now=1060) == []
+    assert svc.check(now=1060) == []          # a new issue of the same event is not a new alert
+    active.append({"title": "พายุ ฉบับที่ 1", "series": "พายุ", "summary": "ภาคเหนือ", "bkk": False})
+    fresh = svc.check(now=1120)
+    assert [a["key"] for a in fresh] == ["tmd:พายุ"] and "(ต่างจังหวัด)" in fresh[0]["title"]
     assert len(pushed) == 1
+
+
+def test_province_floods_and_closed_roads(tmp_path, monkeypatch):
+    provinces = [{"province": "ปราจีนบุรี", "level": "critical", "summary": "น้ำล้นตลิ่ง 6 จุด"}]
+    closures = [{"id": "longdo-1", "kind": "closed", "reason": "flood", "title": "น้ำท่วมทางหลวง 3076 (ผ่านไม่ได้)",
+                 "province": "ปราจีนบุรี", "amphoe": "บ้านสร้าง", "description": ""},
+                {"id": "longdo-2", "kind": "diversion", "reason": "", "title": "เบี่ยงจราจร ถนนมหาไชย"}]
+    svc, pushed = _svc(tmp_path, monkeypatch, provinces=lambda: {"provinces": provinces},
+                       road_events=lambda: {"incidents": [], "closures": closures})
+    assert svc.check(now=1000) == []          # open at start: quiet
+    provinces.append({"province": "ระยอง", "level": "flood", "summary": "ทางหลวงน้ำท่วม 3 จุด"})
+    closures.append({"id": "longdo-3", "kind": "closed", "reason": "", "title": "ถนนปิด สะพานข้ามแยก",
+                     "province": "กรุงเทพมหานคร", "amphoe": "ราชเทวี", "description": "ซ่อมสะพาน"})
+    fresh = {a["key"]: a for a in svc.check(now=1060)}
+    assert set(fresh) == {"prov:ระยอง", "close:longdo-3"}   # diversions never alert
+    assert fresh["prov:ระยอง"]["level"] == 1 and "อ.ราชเทวี จ.กรุงเทพมหานคร" in fresh["close:longdo-3"]["body"]

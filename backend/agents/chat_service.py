@@ -1,18 +1,24 @@
 """
-Traffic assistant chatbot.
+Assistant chatbot (the "Ask AI" page) for the whole country, answered by the Qwen model behind local_llm.chat_client.
 
-Answers questions about how traffic is flowing on Bangkok roads, grounded in
-the live per-road aggregation from traffic_service plus the YOLO camera counts.
-Provider order:
+Grounded in the live data of every section of the site: road-level detail for Bangkok, and for every province
+the traffic per province and district (area_traffic), the flood level per province with its AI analysis
+(province_flood) and the weather of a province the question names. Provider order:
   1. AI model           - local_llm.chat_client (CHAT_LLM_*, else LOCAL_LLM_* in .env)
-  2. Rule-based summary - when the local server is off, so the page still works
+  2. Rule-based summary - when the model is off, so the page still works
 
-The live data is split into topics (traffic, flood, accident, air) and only the topics the question is
-about go into the prompt, most relevant first, cut to what fits the local model's context window.
+The question is sorted into topics (traffic, flood, weather, predict, accident, air). Only those topics go
+into the prompt, most relevant first, cut to what fits the model's context window, and each topic adds a
+short "how to answer" note so the reply answers the question asked and nothing else.
+
+A route question ("จากบางนาไปสีลม", "ไปลาดกระบังทางไหนดี") is planned by flood_route.FloodRouter around the
+flooded spots and the jams; the model words the answer from that plan and the browser draws the route.
 """
+import json
+import re
 import time
 
-from backend.core import local_llm
+from backend.core import local_llm, thai_regions
 
 llm = local_llm.chat_client
 
@@ -20,54 +26,54 @@ REPLY_TOKENS = 1200
 HISTORY_KEEP = 6            # past messages sent with the question
 HISTORY_CHARS = 800         # per past message
 
-SYSTEM_PROMPT = """คุณคือ "ผู้ช่วยอัจฉริยะ" ของแอป BKK StreetSmart (กรุงเทพฯ และปริมณฑล)
-ตอบได้ทุกคำถาม ทั้งเรื่องที่มีข้อมูลสดแนบมา และเรื่องทั่วไปทุกหัวข้อ (ความรู้ ภาษา คณิต เทคโนโลยี สุขภาพ อาหาร ท่องเที่ยว งาน ชีวิตประจำวัน เขียน/แปล/สรุป ฯลฯ)
-เหมือน ChatGPT/Gemini ปกติ ไม่ต้องจำกัดตัวเองอยู่แค่เรื่องจราจรหรือน้ำท่วม
+SYSTEM_PROMPT = """คุณคือ "ผู้ช่วยอัจฉริยะ" ของแอป BKK StreetSmart ตอบได้ทั่วประเทศไทย 77 จังหวัด
 
-เรื่องที่มีข้อมูลสดให้ใช้
-1) จราจร: การระบายรถของถนนจากเส้นจราจรสด (Longdo Traffic) จำนวนรถจากกล้อง AI (YOLO) ทั้งกล้องที่เลือกและกล้อง กทม. 500+ ตัว
-   สรุปตามเขต/ถนน แนะนำเส้นทาง เวลาที่ควรออกเดินทาง
-2) น้ำท่วม ฝน พายุ: ระดับน้ำแม่น้ำ/คลอง (ThaiWater/HII) เซ็นเซอร์น้ำท่วมถนน (กทม.) น้ำทะเลหนุน ฝนที่ตกแล้ว
-   พยากรณ์ฝน-ลมกระโชก-พายุฝนฟ้าคะนอง 24 ชม.ล่วงหน้ารายพื้นที่ (Open-Meteo) และระดับเฝ้าระวังรายพื้นที่
-3) อุบัติเหตุและเหตุการณ์: อุบัติเหตุที่กล้อง AI ตรวจพบตอนนี้ รายงานอุบัติเหตุจาก Longdo เหตุการณ์จากศูนย์จราจร กทม.
-   (อุบัติเหตุ น้ำท่วม ปิดถนน ซ่อมถนน) และสถิติอุบัติเหตุ กทม. (ThaiRSC): วันนี้/ปีนี้ เขตเสี่ยง ประเภทรถ ช่วงเวลา จุดกล้องเสี่ยงสูง
-4) คำแนะนำเกี่ยวกับเมือง: การเตรียมตัวรับมือน้ำท่วม/พายุ ขับขี่ปลอดภัย วางแผนเดินทางในกรุงเทพฯ กฎจราจร เบอร์ฉุกเฉิน
-   (1669 แพทย์ฉุกเฉิน, 1197 จราจร, 191 ตำรวจ, 1555 กทม., 1784 ปภ., 1460 ชลประทาน) วิธีใช้แอปนี้ (หน้าแดชบอร์ด/แผนที่/กล้อง/น้ำ/AI)
-5) ฝุ่น PM2.5/AQI รายชั่วโมงรายสถานี (AirBKK + Air4Thai) ค่าเฉลี่ยเมืองและสถานีที่ค่าสูงสุด
-6) คำแนะนำระบายรถรายสายทางหลัก: จุดสะสม ทางเลี่ยงพร้อม flow สด และสิ่งที่ควรทำ
-7) ระดับน้ำท่วมรายถนนตามเกณฑ์ทางการ (ห้ามขับผ่าน/ควรเลี่ยง/ผ่านได้/เฝ้าระวัง) และบทวิเคราะห์เซ็นเซอร์น้ำบนถนน
-8) การฝ่าฝืนจากกล้อง AI: ไม่สวมหมวกกันน็อก และขับย้อนศร (วันนี้ สะสม และรายการล่าสุด)
-9) analytics แดชบอร์ด: ดัชนีความแออัดและสาเหตุ ความหนาแน่นถนน เขตน้ำเร่งด่วน คาดการณ์น้ำท่วม 1-6 ชม. จุดเสี่ยงอุบัติเหตุ (black spot)
+สิ่งที่สำคัญที่สุด: ตอบให้ตรงคำถาม
+- ประโยคแรกตอบสิ่งที่ถามตรง ๆ เช่น ถาม "ติดไหม" ตอบติด/ไม่ติด, "ท่วมไหม" ตอบท่วม/ไม่ท่วม, "ฝนจะตกไหม" ตอบตก/ไม่ตก พร้อมช่วงเวลา,
+  "ใช้เวลานานไหม" ตอบเป็นช่วงนาที, "ไปทางไหน" ตอบชื่อถนนตามลำดับ แล้วค่อยให้รายละเอียดสนับสนุน 2-4 บรรทัด
+- ตอบเฉพาะเรื่องที่ถาม ห้ามเล่าหมวดอื่น (ถามรถติดอย่าเล่าฝุ่น ถามอากาศอย่าเล่าอุบัติเหตุ) ยกเว้นมันกระทบเรื่องที่ถามจริง เช่น น้ำท่วมบนเส้นทางที่ถาม
+- ถ้าผู้ใช้ระบุถนน เขต อำเภอ จังหวัด หรือเวลา (คืนนี้ พรุ่งนี้ ช่วงเย็น) ให้ตอบเจาะที่นั้น ไม่ต้องสรุปทั้งประเทศ
+- ถ้าไม่ระบุพื้นที่: เรื่องที่มีข้อมูลทั่วประเทศ (รถติด น้ำท่วม) บอกภาพรวมทั่วประเทศสั้น ๆ ก่อน แล้วตามด้วยกรุงเทพฯ
+- ท้ายข้อความผู้ใช้มี "วิธีตอบคำถามนี้" ให้ทำตามนั้น
+
+ข้อมูลสดที่แนบมา (ใช้ตอบเรื่องเหล่านี้ ห้ามเดาตัวเลขหรือสถานะเอง)
+1) จราจร: สภาพรถรายถนน (Longdo Traffic) จำนวนรถจากกล้อง กทม. ช่วงที่ติด ทางเลี่ยงรายสายทางหลัก
+2) น้ำท่วม: เซ็นเซอร์น้ำบนถนน กทม. กล้อง AI ที่เห็นน้ำท่วม รายงานจากประชาชน แม่น้ำ/คลองเทียบตลิ่ง น้ำทะเลหนุน น้ำเหนือ ระดับน้ำท่วมรายถนน
+3) อากาศ: พยากรณ์ 3 วัน (ฝน ช่วงเวลา อุณหภูมิ) พยากรณ์ฝน-ลม-พายุ 24 ชม. รายโซน ประกาศเตือนกรมอุตุนิยมวิทยา
+4) การคาดการณ์: ผล AI วิเคราะห์และคาดการณ์น้ำท่วม คาดการณ์น้ำเหนือรายเขต ความเสี่ยงน้ำท่วม 1-6 ชม. แนวโน้มจราจร 1 ชม.
+5) อุบัติเหตุและเหตุการณ์ สถิติอุบัติเหตุ จุดเสี่ยง การฝ่าฝืน (ไม่สวมหมวก ย้อนศร) 6) ฝุ่น PM2.5 รายสถานี
+7) เส้นทาง: เมื่อถามเส้นทาง ระบบคำนวณเส้นทางที่เลี่ยงจุดน้ำท่วมให้แล้วในหัวข้อ "เส้นทางที่ระบบคำนวณ" ให้ใช้ถนน ระยะ เวลาจากหัวข้อนั้นเท่านั้น
+8) ทั่วประเทศ: รถติดรายจังหวัดและอำเภอ (Longdo Traffic) น้ำท่วมรายจังหวัด (ระดับน้ำเทียบตลิ่ง ทางหลวงน้ำท่วม ฝน และบทวิเคราะห์ AI) พยากรณ์อากาศของจังหวัดที่ถาม
+ข้อ 1-6 ส่วนใหญ่เป็นข้อมูลละเอียดของกรุงเทพฯ (รายถนน กล้อง เซ็นเซอร์ ฝุ่น อุบัติเหตุ) ถ้าถามจังหวัดอื่นให้ใช้ข้อ 8 และบอกตรง ๆ ว่ารายละเอียดระดับถนนมีเฉพาะกรุงเทพฯ
 
 แนวทางตอบ
-- ประโยคแรกต้องตอบสิ่งที่ถามตรง ๆ ก่อน แล้วค่อยให้รายละเอียดสนับสนุน 2-4 บรรทัด
-  เช่น ถาม "ใช้เวลานานไหม" ตอบเป็นช่วงนาที, ถาม "ติดไหม" ตอบติด/ไม่ติด, ถาม "ท่วมไหม" ตอบท่วม/ไม่ท่วม
-  ห้ามเล่าข้อมูลหมวดที่ไม่ได้ถาม (ถามเส้นทางอย่าเล่าน้ำท่วม/ฝุ่น ยกเว้นมีน้ำท่วมหรือเหตุบนเส้นทางนั้นจริง)
-- ถามเวลาเดินทางจาก A ไป B: ประเมินระยะทางจากความรู้ทั่วไปเรื่องกรุงเทพฯ ปรับตาม flow ของถนนที่เกี่ยวข้องในข้อมูลสด
-  ตอบเป็นช่วงเวลา (เช่น 35-50 นาที) บอกเส้นทางแนะนำ 1 เส้น และบอกว่าถนนช่วงไหนติดถ้ามี
-- ตัวเลข/สถานะสดของจราจร น้ำ ฝน ฝุ่น อุบัติเหตุ การฝ่าฝืน ใช้จากข้อมูลที่แนบมาเท่านั้น ห้ามเดา
-- ก่อนตอบว่า "ไม่มีข้อมูล" ให้หาในข้อมูลที่แนบมาทุกหมวดก่อน ชื่อถนน/เขตอาจอยู่คนละหมวด (เช่น ถนนในหมวดน้ำท่วมรายถนนหรือคำแนะนำระบายรถ เขตในสถานี PM2.5 หรือ black spot)
-  ถ้าหาไม่เจอจริง ให้บอกตรง ๆ ว่าไม่มีข้อมูลของที่ถามตอนนี้ แล้วเสนอพื้นที่ใกล้เคียงหรือภาพรวมที่มีข้อมูลแทนเสมอ
-- คำถามอื่นทุกเรื่อง ตอบเต็มที่จากความรู้ของคุณ ไม่ต้องอ้างข้อมูลสดและไม่ต้องดึงเรื่องกลับมาที่จราจร/น้ำท่วม
-  ถ้าเป็นเรื่องที่เปลี่ยนเร็ว (ข่าว ราคา ผลกีฬา) บอกว่าเป็นความรู้ ณ ช่วงที่ฝึก อาจไม่ล่าสุด
-- ใช้ข้อมูลสดที่แนบมาเฉพาะเมื่อเกี่ยวกับคำถาม ไม่ต้องไล่ทุกหมวด ถ้าถามภาพรวมเมืองให้สรุปหมวดละ 1-2 บรรทัดแล้วชี้จุดที่น่าห่วงสุด
-- ตอบเป็นภาษาเดียวกับที่ผู้ใช้ถาม (ไทยเป็นหลัก) อบอุ่น เป็นกันเอง กระชับ ปกติไม่เกิน 8-12 บรรทัด ยาวกว่านี้ได้ถ้าผู้ใช้ขอรายละเอียด
-  เช่น เขียนบทความ อธิบายทีละขั้น หรือโค้ด ใช้ bullet สั้น ๆ ได้ ไม่ต้องใส่หัวข้อ Markdown ใหญ่
-- ถ้าผู้ใช้ให้ทำงาน เช่น แปล สรุป เขียน แก้ไข คำนวณ ให้ทำเลย ไม่ต้องถามกลับถ้าไม่จำเป็น
-- อุบัติเหตุ: ระบุจุด เวลา แหล่งที่มา และแนะนำเส้นเลี่ยง ถ้าถามสถิติให้ระบุปี พ.ศ. และเทียบวันนี้/ปีนี้
-- เรื่องจราจร: บอกด้วยคำง่าย ติดขัด / ชะลอตัว / คล่องตัว และติดยาวกี่ กม. ถ้ามี ไม่ต้องบอกคะแนน flow
-  ถ้าถามเส้นทาง A ไป B ให้เทียบถนนที่เกี่ยวข้องและแนะนำเส้นที่รถคล่องกว่า
-- ใช้คำที่คนทั่วไปเข้าใจ ห้ามใส่ชื่อฟิลด์ รหัสสถานี หรือศัพท์เทคนิค (เช่น flow, ม.รทก., ลบ.ม./วินาที) ถ้าจำเป็นต้องใช้ตัวเลขให้อธิบายความหมายสั้น ๆ
-- เรื่องน้ำท่วม/ฝน ให้ตอบตามลำดับนี้
-  (1) สถานการณ์ตอนนี้: ถนนที่มีน้ำท่วมขัง (ระบุ ซม.) แม่น้ำ/คลองที่ล้นตลิ่งหรือใกล้เต็ม ฝนที่ตกแล้ว
-  (2) คาดการณ์: ฝนสะสม 24 ชม., ช่วงเวลาที่ฝนหนักสุด, พายุฝนฟ้าคะนอง/ลมกระโชกแรง (กม./ชม.) รายพื้นที่
-  (3) เตือนภัยรายพื้นที่: ใช้ระดับเฝ้าระวัง เขียว=ปกติ เหลือง=ติดตาม ส้ม=เฝ้าระวัง แดง=เตือนภัย ระบุชื่อพื้นที่/เขตให้ชัด
-  (4) แนวทางป้องกัน/รับมือ 2-3 ข้อที่ทำได้จริง เช่น เลี่ยงถนนที่ท่วม ย้ายรถขึ้นที่สูง ยกของขึ้นชั้นบน เตรียมกระสอบทราย
-      ตรวจท่อระบายน้ำหน้าบ้าน ไม่จอดรถใต้ต้นไม้/ป้ายโฆษณาช่วงพายุ ตัดไฟชั้นล่างถ้าน้ำเข้าบ้าน
-  ถ้าผู้ใช้ถามพื้นที่เฉพาะ ให้เจาะพื้นที่นั้น ถ้าถามภาพรวม ให้ไล่จากพื้นที่ที่เสี่ยงสุดลงมา
-- ถ้าจราจรกับน้ำท่วมเกี่ยวกัน (ถนนติดเพราะน้ำท่วม) ให้เชื่อมโยงและแนะนำเส้นเลี่ยง
-- คำถามจราจร/น้ำท่วม/อุบัติเหตุ ปิดท้ายด้วยคำแนะนำสั้น ๆ 1 ข้อ คำถามทั่วไปไม่ต้องใส่คำแนะนำท้ายและไม่ต้องโยงกลับมาเรื่องเมือง
-- หน้าจอแสดงข้อความล้วน: ห้ามใช้ Markdown ตัวหนา (**), หัวข้อ (#), ตาราง หรือสูตร LaTeX ($...$) เขียนสูตรเป็นข้อความธรรมดา เช่น H2O, 480 x 0.25 = 120"""
+- ก่อนตอบว่า "ไม่มีข้อมูล" ให้หาในข้อมูลที่แนบมาทุกหมวดก่อน ถ้าไม่มีจริงบอกตรง ๆ แล้วเสนอพื้นที่ใกล้เคียงหรือภาพรวมที่มี
+- การคาดการณ์/ทำนาย: บอกว่าจะเกิดอะไร ที่ไหน เมื่อไร และบอกว่าเป็นการคาดการณ์ ไม่ใช่สิ่งที่เกิดแล้ว
+  จราจรล่วงหน้าไม่มีโมเดลทำนาย ให้ประเมินจากแนวโน้ม 1 ชม. ช่วงเร่งด่วนปกติ (เช้า 07:00-09:00 เย็น 16:30-19:30 ศุกร์เย็นหนักสุด) และฝนที่คาดว่าจะตก
+- เรื่องจราจรใช้คำง่าย: ติดขัด / ชะลอตัว / คล่องตัว และติดยาวกี่ กม. ห้ามพูดคะแนนหรือเปอร์เซ็นต์สี
+- ใช้คำที่คนทั่วไปเข้าใจ ห้ามใส่ชื่อฟิลด์ รหัสสถานี หรือศัพท์เทคนิค (flow, ม.รทก., ลบ.ม./วินาที)
+- คำถามทั่วไปที่ไม่เกี่ยวกับเมือง ตอบเต็มที่จากความรู้ของคุณ ไม่ต้องโยงกลับมาเรื่องจราจร/น้ำท่วม เรื่องที่เปลี่ยนเร็ว (ข่าว ราคา) บอกว่าอาจไม่ล่าสุด
+  ถ้าให้ทำงาน เช่น แปล สรุป เขียน คำนวณ ให้ทำเลย
+- เบอร์ฉุกเฉิน: 1669 แพทย์ฉุกเฉิน, 1197 จราจร, 191 ตำรวจ, 1555 กทม., 1784 ปภ., 1460 ชลประทาน
+- ตอบภาษาเดียวกับผู้ใช้ (ไทยเป็นหลัก) เป็นกันเอง กระชับ ปกติไม่เกิน 6-10 บรรทัด คำถามสั้นตอบสั้น ใช้ bullet สั้น ๆ ได้
+- หน้าจอแสดงข้อความล้วน: ห้ามใช้ Markdown ตัวหนา (**), หัวข้อ (#), ตาราง หรือ LaTeX"""
+
+# How to answer each kind of question, added after the question itself
+ANSWER_STYLE = {
+    "route": "ผู้ใช้ถามเส้นทาง: ประโยคแรกบอกเส้นทางแนะนำเป็นชื่อถนนตามลำดับ ระยะทาง และเวลาโดยประมาณ จากหัวข้อ \"เส้นทางที่ระบบคำนวณ\" "
+             "จากนั้นบอกจุดน้ำท่วมที่เส้นนี้อ้อมให้ (ถ้ามี) จุดน้ำท่วมหรือรถติดที่ยังอยู่บนเส้นทาง แล้วปิดท้ายว่ากดปุ่ม \"นำทางใน Google Maps\" ใต้ข้อความได้ "
+             "ห้ามแนะนำถนนที่ไม่อยู่ในเส้นทางที่คำนวณ",
+    "avoid": "ผู้ใช้ถามถนนที่ควรเลี่ยง: ตอบเป็นรายการ 3-5 สาย เรียงจากหนักสุด แต่ละสายบอกว่าทำไม (ติดยาวกี่ กม. ช่วงไหน หรือน้ำท่วมกี่ ซม.) "
+             "และทางเลี่ยง 1 เส้นถ้ามีในข้อมูล",
+    "traffic": "ผู้ใช้ถามเรื่องจราจร: ตอบสภาพของถนน/พื้นที่ที่ถามก่อน (ติดขัด/ชะลอตัว/คล่องตัว ติดยาวกี่ กม.) แล้วแนะนำทางเลี่ยงถ้าติด",
+    "flood": "ผู้ใช้ถามเรื่องน้ำท่วม: ตอบท่วม/ไม่ท่วมก่อน ระบุถนน/เขตและความลึก (ซม.) แล้วบอกแนวโน้มและสิ่งที่ควรทำ 1-2 ข้อ",
+    "weather": "ผู้ใช้ถามเรื่องอากาศ: ตอบตามวันที่ถาม (ไม่ระบุคือวันนี้) ว่าฝนตกไหม ช่วงกี่โมง มากน้อยแค่ไหน อุณหภูมิต่ำสุด-สูงสุด "
+               "และประกาศเตือนของกรมอุตุฯ ถ้ามี ถ้าถามเขตให้ใช้พยากรณ์ของโซนที่เขตนั้นอยู่",
+    "predict": "ผู้ใช้ถามการคาดการณ์: บอกสิ่งที่คาดว่าจะเกิด ที่ไหน เมื่อไร จากผลวิเคราะห์ที่แนบมา ระบุว่าเป็นการคาดการณ์ "
+               "และบอกสัญญาณที่ควรติดตาม 1 ข้อ",
+    "accident": "ผู้ใช้ถามเรื่องอุบัติเหตุ: ระบุจุด เวลา แหล่งที่มา และเส้นเลี่ยง ถ้าถามสถิติให้ระบุปี พ.ศ.",
+    "air": "ผู้ใช้ถามเรื่องฝุ่น: ตอบค่าฝุ่นของพื้นที่ที่ถามก่อน บอกว่าดี/ปานกลาง/มีผลต่อสุขภาพ แล้วคำแนะนำ 1 ข้อ",
+}
 
 WATCH_TH = {"green": "เขียว-ปกติ", "yellow": "เหลือง-ติดตาม", "orange": "ส้ม-เฝ้าระวัง", "red": "แดง-เตือนภัย"}
 FLOOD_WORDS = ("น้ำ", "ฝน", "ท่วม", "พายุ", "ลมแรง", "ลมกระโชก", "คลอง", "แม่น้ำ", "ระบายน้ำ", "เตือน", "เฝ้าระวัง", "ป้องกัน")
@@ -129,9 +135,24 @@ def water_context(w):
     return lines
 
 
+def flow_th(flow):
+    """Plain Thai for a 0-100 flow score (the same cut points as traffic_service's levels)."""
+    if flow is None:
+        return "ไม่มีข้อมูล"
+    return "คล่องตัว" if flow >= 75 else ("ชะลอตัว" if flow >= 45 else "ติดขัด")
+
+
 def _fmt_road(r):
-    return (f"- {r['name']}: flow {r['flow']}/100 ({r['level']}), เขียว {r['green_pct']}% "
-            f"เหลือง {r['yellow_pct']}% แดง {r['red_pct']}%, ระยะที่มีข้อมูล {r['length_km']} กม., ติดขัด {r['red_km']} กม.")
+    jam = f", ติดยาว {r['red_km']} กม." if r.get("red_km") else ""
+    return f"- {r['name']}: {flow_th(r.get('flow'))}{jam} (ช่วงที่มีข้อมูล {r['length_km']} กม.)"
+
+
+def _trend_th(hist):
+    """"ดีขึ้น" / "แย่ลง" / "ทรงตัว" over the last hour of the city flow index."""
+    if len(hist) < 2:
+        return ""
+    d = hist[-1]["flow"] - hist[max(0, len(hist) - 20)]["flow"]
+    return "รถคล่องขึ้น" if d >= 3 else ("รถติดมากขึ้น" if d <= -3 else "ทรงตัว")
 
 
 def _hhmm(ts):
@@ -249,8 +270,8 @@ def guidance_context(guidance, question):
     lines = ["คำแนะนำระบายรถรายสายทางหลัก (เส้นเลี่ยงพร้อม flow สด):"]
     for i in (picked + [i for i in items if i not in picked])[:6]:
         spots = ", ".join(s.get("label") for s in (i.get("hotspots") or [])[:3] if s.get("label"))
-        alts = ", ".join(f"{a['name']} {a['flow']}/100" for a in (i.get("alternatives") or [])[:3])
-        lines.append(f"  - {i['name']} ({i.get('zone')}): {i.get('status_label')} flow {i.get('flow')}/100"
+        alts = ", ".join(f"{a['name']} ({flow_th(a.get('flow'))})" for a in (i.get("alternatives") or [])[:3])
+        lines.append(f"  - {i['name']} ({i.get('zone')}): {i.get('status_label')}"
                      + (f", จุดสะสม {spots}" if spots else "") + (f", ทางเลี่ยง {alts}" if alts else "")
                      + f" | แนะนำ: {i.get('action')}")
     return lines
@@ -325,7 +346,7 @@ def analytics_traffic(a):
         lines.append(f"ดัชนีความแออัด (แดชบอร์ด): {t.get('congestion_index')} ({t.get('congestion_level')}), "
                      f"รายงานเหตุ 6 ชม. {t.get('reports_6h')} เรื่อง")
         for r in (t.get("top5") or [])[:5]:
-            lines.append(f"  - ติดสุด {r['name']}: แดง {r['red_km']} กม. flow {r['flow']} สาเหตุ: {r.get('cause_text')}")
+            lines.append(f"  - ติดสุด {r['name']}: ติดยาว {r['red_km']} กม. สาเหตุ: {r.get('cause_text')}")
     d = (a or {}).get("density") or {}
     if d.get("ready"):
         lines.append("ความหนาแน่นถนน: " + ", ".join(
@@ -360,6 +381,235 @@ def analytics_accidents(a):
     return lines
 
 
+def weather_context(outlook, water, tmd, place="กรุงเทพฯ"):
+    """Weather: 3-day forecast for `place`, the 24 h rain / wind outlook per Bangkok zone, TMD warnings."""
+    lines = []
+    days = (outlook or {}).get("days") or []
+    if days:
+        lines.append(f"พยากรณ์อากาศ{place} 3 วัน (MET Norway):")
+        for d in days:
+            if d["rain_mm"] >= 0.5:
+                rain = f"ฝนรวม {d['rain_mm']} มม." + (f" ช่วง {d['rain_hours']} น." if d.get("rain_hours") else "")
+            else:
+                rain = "ไม่มีฝนหรือฝนน้อยมาก"
+            temp = f", อุณหภูมิ {d['tmin']}-{d['tmax']} °C" if d.get("tmin") is not None else ""
+            lines.append(f"  - {d['day']} ({d['date']}): {d['text']}, {rain}{temp}")
+    zones = (water or {}).get("weather") or []
+    if zones:
+        lines.append("พยากรณ์ฝน/ลม/พายุ 24 ชม. รายโซน (เรียงเสี่ยงมากไปน้อย):")
+        lines += [_fmt_zone(z) for z in zones]
+    for o in ((water or {}).get("ntw") or {}).get("rain_outlook") or []:
+        lines.append(f"คาดการณ์ฝน 3 วัน: {o['province']} {o['text']}")
+    active = (tmd or {}).get("active") or []
+    for w in sorted(active, key=lambda w: not w.get("bkk"))[:3]:
+        lines.append(f"ประกาศกรมอุตุนิยมวิทยา {w.get('date')}: {w.get('title')} — {(w.get('summary') or '')[:300]}")
+    return lines
+
+
+def _cm(v):
+    return f" {v:.0f} ซม." if v else ""
+
+
+def predict_context(ex):
+    """What the site's analysts expect next: the flood agent, the water outlook, northern water by district."""
+    lines = []
+    fa = (ex.get("flood_agent") or {}).get("report") or {}
+    if fa.get("headline"):
+        lines.append(f"AI วิเคราะห์น้ำท่วม ({fa.get('level_th') or fa.get('overall_level')}, {_hhmm(fa.get('generated_at'))}): {fa['headline']}")
+        if fa.get("outlook"):
+            lines.append(f"  คาดการณ์: {fa['outlook'][:400]}")
+        roads = fa.get("roads_to_avoid") or []
+        if roads:
+            lines.append("  ถนนที่ควรเลี่ยงเพราะน้ำ: " + ", ".join(
+                f"{r.get('road')} ({r.get('district')}{_cm(r.get('depth_cm'))})" for r in roads[:6]))
+    wa = (ex.get("water_agent") or {}).get("report") or {}
+    if wa.get("outlook_summary"):
+        lines.append(f"AI คาดการณ์สถานการณ์น้ำ ({wa.get('status_label')}): {wa['outlook_summary'][:400]}")
+        for z in (wa.get("zones") or [])[:5]:
+            lines.append(f"  - {z.get('name')} [{z.get('badge')}]: {(z.get('forecast') or '')[:220]}")
+    ni = (ex.get("north_impact") or {}).get("report") or {}
+    if ni.get("title"):
+        lines.append(f"คาดการณ์น้ำเหนือต่อกรุงเทพฯ ({ni.get('status_label')}): {ni['title']}")
+        lines += [f"  - {t.get('when')}: {t.get('event')}" for t in (ni.get("timeline") or [])[:4]]
+        dists = ni.get("districts") or []
+        if dists:
+            lines.append("  เขตที่จะได้รับผลกระทบ: " + "; ".join(
+                f"{d.get('district')} ({d.get('level')}, {d.get('when')}) {(d.get('cause') or '')[:80]}" for d in dists[:6]))
+        roads = ni.get("roads") or []
+        if roads:
+            lines.append("  ถนนเสี่ยงน้ำท่วม: " + "; ".join(f"{r.get('road')} ({r.get('level')}, {r.get('when')})" for r in roads[:6]))
+    return lines + analytics_flood(ex.get("analytics"))
+
+
+def _spot_th(h):
+    depth = _cm(h.get("depth_cm")) or (f" {h['depth_text']}" if h.get("depth_text") else "")
+    return f"{h.get('name')}{depth} (แหล่งข้อมูล: {h.get('source')})"
+
+
+def route_context(r):
+    """The planned route in plain Thai, for the model to word the answer from."""
+    o, d = r["origin"], r["destination"]
+    lines = ["เส้นทางที่ระบบคำนวณ (ใช้ถนน ระยะ เวลาจากส่วนนี้เท่านั้น):",
+             f"จาก {o.get('label') or o.get('name')} ไป {d.get('label') or d.get('name')}: "
+             f"ระยะ {r['km']} กม. ใช้เวลาประมาณ {r['minutes'][0]}-{r['minutes'][1]} นาที (รวมช่วงรถติดแล้ว)",
+             "ถนนตามลำดับ: " + " → ".join(f"{x['name']} ({x['km']} กม.)" for x in r["roads"])]
+    missing = r.get("flood_missing") or []
+    if not r.get("flood_checked") and missing:
+        lines.append(f"ตรวจน้ำท่วมได้ไม่ครบ: อ่านข้อมูลจาก {', '.join(missing)} ไม่ได้ ห้ามบอกว่าเส้นทางนี้ปลอดน้ำท่วม "
+                     "ให้บอกผู้ใช้ว่าตรวจได้บางส่วน และควรดูแผนที่น้ำท่วมก่อนออกเดินทาง")
+    elif not r.get("flood_checked"):
+        lines.append("ตรวจจุดน้ำท่วมบนเส้นทางไม่ได้ตอนนี้ ห้ามบอกว่าอ้อมน้ำท่วมหรือเส้นทางปลอดน้ำท่วม "
+                     "ให้บอกผู้ใช้ว่ายังยืนยันเรื่องน้ำท่วมไม่ได้")
+    fast = r.get("fastest")
+    if r.get("avoided"):
+        lines.append(f"เส้นนี้อ้อมจุดน้ำท่วม {len(r['avoided'])} จุดที่เส้นทางปกติ (ผ่าน {', '.join(fast['roads'][:3])}) จะเจอ: "
+                     + "; ".join(_spot_th(h) for h in r["avoided"][:5]))
+    elif fast:
+        lines.append(f"เลือกเส้นนี้แทนเส้นผ่าน {', '.join(fast['roads'][:3])} ({fast['km']} กม.) เพราะรถติดน้อยกว่า")
+    if not r.get("avoided"):
+        # without this the model takes flooded spots from the city data and says the route went round them
+        lines.append("เส้นนี้ไม่ได้อ้อมจุดน้ำท่วมใด ห้ามบอกว่าอ้อมหรือหลีกเลี่ยงน้ำท่วม และห้ามยกจุดน้ำท่วมที่ไม่อยู่ในส่วนนี้มาเป็นเหตุผลของเส้นทาง")
+    if r.get("flood_on_route"):
+        lines.append("จุดน้ำท่วมที่เลี่ยงไม่ได้บนเส้นทาง: " + "; ".join(f"{_spot_th(h)} กม.ที่ {h['at_km']}" for h in r["flood_on_route"][:5]))
+    if r.get("wet_on_route"):
+        lines.append("น้ำขังเล็กน้อยบนเส้นทาง (รถเก๋งยังผ่านได้ ขับช้า ๆ): " + "; ".join(_spot_th(h) for h in r["wet_on_route"][:5]))
+    if r.get("flood_at_ends"):
+        lines.append("น้ำท่วมใกล้จุดต้นทาง/ปลายทาง (เลี่ยงไม่ได้): " + "; ".join(_spot_th(h) for h in r["flood_at_ends"][:4]))
+    if r.get("jams"):
+        lines.append("ช่วงรถติดบนเส้นทาง: " + "; ".join(f"{j['road']} ติด {j['km']} กม. (ราวกม.ที่ {j['at_km']} จากต้นทาง)" for j in r["jams"]))
+    if r.get("flood_checked") and not any(r.get(k) for k in ("avoided", "flood_on_route", "wet_on_route", "flood_at_ends", "jams")):
+        lines.append("ไม่พบจุดน้ำท่วมหรือช่วงรถติดบนเส้นทางนี้ตอนนี้")
+    return lines
+
+
+# Everyday names of provinces (and of towns people name instead of the province)
+PLACE_ALIASES = {"อยุธยา": "พระนครศรีอยุธยา", "โคราช": "นครราชสีมา", "กทม": thai_regions.BANGKOK, "สุพรรณ": "สุพรรณบุรี",
+                 "กาญจน์": "กาญจนบุรี", "อุบล": "อุบลราชธานี", "อุดร": "อุดรธานี", "ปราจีน": "ปราจีนบุรี",
+                 "แปดริ้ว": "ฉะเชิงเทรา", "หาดใหญ่": "สงขลา", "พัทยา": "ชลบุรี", "หัวหิน": "ประจวบคีรีขันธ์"}
+NATION_WORDS = ("ทั่วประเทศ", "ประเทศ", "ทั่วไทย", "จังหวัด", "ภาคเหนือ", "ภาคอีสาน", "ภาคใต้", "ภาคกลาง", "ภาคตะวันออก",
+                "ภาคตะวันตก", "ต่างจังหวัด")
+
+
+def named_places(question, areas=None):
+    """[(province, [amphoe names asked])] the question names, at most three: provinces by name ("จ.X", the long
+    names, everyday names like โคราช), then provinces of the districts it names (ปากช่อง -> นครราชสีมา)."""
+    text = question or ""
+    found = {}
+    for alias, prov in PLACE_ALIASES.items():
+        if alias in text:
+            found.setdefault(prov, [])
+    t = text
+    for _ in range(3):
+        prov = thai_regions.find_in_text(t)
+        if not prov:
+            break
+        found.setdefault(prov, [])
+        t = t.replace(prov, " ").replace("กรุงเทพ", " ")
+    for p in (areas or {}).get("provinces") or []:
+        for a in p.get("amphoes") or []:
+            name = a.get("name") or ""
+            if len(name) >= 4 and name in text:
+                found.setdefault(p["province"], []).append(name)
+    return list(found.items())[:3]
+
+
+def _amphoe_th(province, name):
+    return f"เขต{name}" if province == thai_regions.BANGKOK else f"อ.{name}"
+
+
+def province_traffic_context(areas, named):
+    """Traffic over the whole country from Longdo's lines: the country, the provinces asked (with their worst
+    districts) and the most jammed provinces."""
+    a = areas or {}
+    provs = {p["province"]: p for p in a.get("provinces") or []}
+    if not a.get("ready") or not provs:
+        return []
+    n = a.get("national") or {}
+    lines = [f"รถติดทั่วประเทศ (Longdo Traffic {_hhmm(a.get('updated_at'))}): {flow_th(n.get('flow'))} "
+             f"ติดขัดรวม {n.get('red_km')} กม. จากถนนที่มีข้อมูล {n.get('total_km')} กม."]
+    for prov, asked in named:
+        p = provs.get(prov)
+        if not p:
+            continue
+        jam = f" ติดขัด {p['red_km']} กม." if p.get("red_km") else ""
+        lines.append(f"จังหวัด{prov} ({p.get('region')}): {flow_th(p.get('flow'))}{jam} จากถนนที่มีข้อมูล {p.get('total_km')} กม.")
+        ams = [x for x in p.get("amphoes") or [] if x.get("flow") is not None]
+        picked = [x for x in ams if x.get("name") in asked]
+        worst = sorted((x for x in ams if x not in picked), key=lambda x: x["flow"])[:4]
+        for x in picked + worst:
+            lines.append(f"  - {_amphoe_th(prov, x['name'])}: {flow_th(x['flow'])}" + (f" ติดขัด {x['red_km']} กม." if x.get("red_km") else "")
+                         + f" จากถนนที่มีข้อมูลในอำเภอ {x.get('total_km')} กม.")
+    top = sorted((p for p in provs.values() if p.get("flow") is not None and (p.get("total_km") or 0) >= 30),
+                 key=lambda p: p["flow"])[:5]
+    if top:
+        lines.append("จังหวัดที่รถติดที่สุดตอนนี้: " + ", ".join(f"{p['province']} ({flow_th(p['flow'])} ติดขัด {p.get('red_km')} กม.)" for p in top))
+    return lines
+
+
+def _province_flood_row(p):
+    k = p.get("counts") or {}
+    r = p.get("rain") or {}
+    bits = [f"ล้นตลิ่ง {k.get('overflow', 0)} จุด", f"น้ำสูง {k.get('high', 0)} จุด"]
+    if k.get("highways"):
+        bits.append(f"ทางหลวงน้ำท่วม {k['highways']} สาย")
+    if r.get("max_mm"):
+        bits.append(f"ฝนสูงสุด {r['max_mm']:.0f} มม. ที่{r.get('place') or '-'}")
+    if k.get("reports"):
+        bits.append(f"คนแจ้งน้ำท่วม {k['reports']} เรื่อง")
+    return f"- {p['province']} ({p.get('region')}): {p.get('label')} — " + ", ".join(bits)
+
+
+def province_flood_context(pf, named):
+    """Flood level of every province (province_flood.status()): the country, the provinces asked with the AI's
+    reading and their highest gauges, and the provinces flooded worst."""
+    d = pf or {}
+    provs = d.get("provinces") or []
+    if not provs:
+        return []
+    c = d.get("counts") or {}
+    ai = d.get("ai") or {}
+    lines = [f"น้ำท่วมรายจังหวัดทั่วประเทศ (ระดับน้ำ ThaiWater ทางหลวง ฝน {_hhmm(d.get('updated_at'))}): วิกฤต {c.get('critical', 0)} "
+             f"น้ำท่วม {c.get('flood', 0)} เฝ้าระวัง {c.get('watch', 0)} ปกติ {c.get('normal', 0)} จังหวัด"]
+    if ai.get("overview"):
+        lines.append(f"AI สรุปน้ำท่วมทั่วประเทศ: {ai['overview'][:400]}")
+    by = {p["province"]: p for p in provs}
+    reading = ai.get("provinces") or {}
+    asked = [prov for prov, _ in named]
+    for prov in asked:
+        p = by.get(prov)
+        if not p:
+            continue
+        lines.append(_province_flood_row(p))
+        for key, label in (("summary", "สรุป"), ("analysis", "วิเคราะห์"), ("advice", "คำแนะนำ")):
+            if (reading.get(prov) or {}).get(key):
+                lines.append(f"  {label}: {reading[prov][key][:300]}")
+        for g in sorted((g for g in p.get("gauges") or [] if g.get("pct") is not None), key=lambda g: -g["pct"])[:3]:
+            lines.append(f"  - จุดวัดน้ำ{g.get('name')} อ.{g.get('amphoe')}: น้ำสูง {g['pct']:.0f}% ของความสูงตลิ่ง "
+                         f"(เกิน 100% = ล้นตลิ่ง ไม่ใช่ความสูงเป็นเมตร)")
+    worst = [p for p in provs if p.get("level") in ("critical", "flood") and p["province"] not in asked]
+    if worst:
+        lines.append("จังหวัดที่น้ำท่วมหนัก (เรียงหนักไปเบา):")
+        lines += [_province_flood_row(p) for p in worst[:8]]
+    return lines
+
+
+def province_weather_context(ex, named):
+    """3-day forecast of each province asked (not Bangkok, which the weather block already has), at its first
+    river gauge; `ex["weather_at"]` is weather_now.outlook."""
+    fn = ex.get("weather_at")
+    gauges = {p["province"]: p.get("gauges") or [] for p in (ex.get("provinces") or {}).get("provinces") or []}
+    lines = []
+    for prov, _ in named:
+        g = next((g for g in gauges.get(prov, []) if g.get("lat") is not None), None)
+        if not fn or prov == thai_regions.BANGKOK or not g:
+            continue
+        try:
+            lines += weather_context(fn(g["lat"], g["lng"]), None, None, place=f"จังหวัด{prov}")
+        except Exception as e:  # noqa: BLE001 - MET Norway down: the Bangkok forecast still goes in
+            print(f"[Chat] weather for {prov} unavailable: {str(e)[:120]}")
+    return lines
+
+
 def site_context(question, ex):
     """Every other data set shown on the website, so the bot never says 'no data' for something on screen."""
     return (air_context(ex.get("air"), question) + guidance_context(ex.get("guidance"), question)
@@ -371,51 +621,87 @@ def site_context(question, ex):
 # Tie order matters: a route question that also names a place goes to traffic first
 TOPIC_WORDS = {
     "traffic": ("ถนน", "จราจร", "รถ", "ติด", "ทาง", "เส้น", "ไป", "โล่ง", "แยก", "ซอย", "สะพาน", "ด่วน", "flow", "กล้อง",
-                "ใช้เวลา", "นานไหม", "กี่นาที", "เดินทาง", "จาก"),
+                "ใช้เวลา", "นานไหม", "กี่นาที", "เดินทาง", "จาก", "เลี่ยง"),
     "flood": FLOOD_WORDS,
+    "weather": ("อากาศ", "พยากรณ์", "ฝน", "ฝนจะตก", "ฝนตก", "ร้อน", "อุณหภูมิ", "องศา", "ฟ้าผ่า", "ฟ้าคะนอง", "พายุ",
+                "ลมแรง", "ลมกระโชก", "เมฆ", "แดด", "หนาว", "พกร่ม"),
+    "predict": ("คาดการณ์", "ทำนาย", "แนวโน้ม", "พยากรณ์", "จะท่วม", "จะติด", "จะตก", "อีกกี่", "ล่วงหน้า", "พรุ่งนี้",
+                "มะรืน", "สัปดาห์หน้า", "อาทิตย์หน้า", "คืนนี้", "เย็นนี้", "น้ำเหนือ", "เมื่อไหร่", "เมื่อไร", "อนาคต",
+                "จะเป็นยังไง", "จะหนักไหม", "จะลด", "จะสูง"),
     "accident": ("อุบัติเหตุ", "ชน", "รถคว่ำ", "เสียชีวิต", "บาดเจ็บ", "เหตุการณ์", "ปิดถนน", "หมวก", "ย้อนศร",
                  "ฝ่าฝืน", "จุดเสี่ยง", "black spot"),
-    "air": ("ฝุ่น", "PM", "pm", "AQI", "aqi", "มลพิษ", "คุณภาพอากาศ"),
+    "air": ("ฝุ่น", "PM", "pm", "AQI", "aqi", "มลพิษ"),
 }
-OVERVIEW_WORDS = ("ภาพรวม", "สรุป", "เมือง", "สถานการณ์", "วันนี้", "ตอนนี้", "กรุงเทพ", "กทม")
-# Place names and words that contain a topic word but are not about it (สี"ลม", ท่า"น้ำ", "น้ำ"มัน)
-NOT_TOPIC = ("สีลม", "ท่าน้ำ", "น้ำมัน", "น้ำใจ", "น้ำหอม", "ลมหายใจ", "ทางด่วน")
+ALL_TOPICS = ["traffic", "flood", "weather", "predict", "accident", "air"]
+OVERVIEW_WORDS = ("ภาพรวม", "สรุป", "เมือง", "สถานการณ์", "วันนี้", "ตอนนี้", "กรุงเทพ", "กทม", "ประเทศ", "ทั่วไทย", "จังหวัด")
+# Place names and words that contain a topic word but are not about it (สี"ลม", ท่า"น้ำ", "น้ำ"มัน, ท่า"อากาศ"ยาน)
+NOT_TOPIC = {"สีลม": " ", "ท่าน้ำ": " ", "น้ำมัน": " ", "น้ำใจ": " ", "น้ำหอม": " ", "ลมหายใจ": " ", "ทางด่วน": " ทาง ",
+             "ท่าอากาศยาน": " ", "คุณภาพอากาศ": " ฝุ่น ", "ชนบท": " "}
+AVOID_WORDS = ("เลี่ยง", "ห้ามผ่าน", "อย่าไป", "ไม่ควรไป", "ควรหลีก")
+ROUTE_WORDS = ("นำทาง", "เส้นทาง", "ไปยังไง", "ไปทางไหน", "ไปอย่างไร", "ไปเส้นไหน", "ขับไป", "ขับรถไป", "เดินทางไป",
+               "ไปไง", "ทางไป")
+
+
+def _normalise(question):
+    q = question or ""
+    for w, to in NOT_TOPIC.items():
+        q = q.replace(w, to)
+    return q
 
 
 def question_topics(question):
     """Topics the question is about, most matched first ([] for a general question)."""
-    q = question or ""
-    for w in NOT_TOPIC:
-        q = q.replace(w, " ทาง " if w == "ทางด่วน" else " ")
+    q = _normalise(question)
     hits = {k: sum(w in q for w in words) for k, words in TOPIC_WORDS.items()}
     return [k for k in sorted(hits, key=lambda k: -hits[k]) if hits[k]]
+
+
+def wants_route(question):
+    """A question about getting from A to B (or to B from here)."""
+    q = _normalise(question)
+    return (any(w in q for w in ROUTE_WORDS) or bool(re.search(r"จาก.+ไป", q))
+            or bool(re.search(r"ไป.+(ทางไหน|เส้นไหน|ยังไง|อย่างไร|ใช้เวลา|กี่นาที)", q)))
+
+
+def answer_style(question, topics, route=False):
+    """The "how to answer" note: the route, the roads to avoid, or the main topics (at most two)."""
+    keys = ["route"] if route else []
+    if not route and any(w in (question or "") for w in AVOID_WORDS) and {"traffic", "flood"} & set(topics):
+        keys.append("avoid")
+    for k in topics:
+        if len(keys) >= 2:
+            break
+        if k not in keys and not (keys and k == "traffic"):
+            keys.append(k)
+    return " / ".join(ANSWER_STYLE[k] for k in keys if k in ANSWER_STYLE)
 
 
 def context_sections(traffic, question, camera_stats=None, water=None, extra=None):
     """Live data as {topic: [lines]}; "base" is the one-line picture of the city that always goes in."""
     ex = extra or {}
     s = traffic.get_summary(top=8)
-    sec = {"base": [f"ตอนนี้ {time.strftime('%Y-%m-%d %H:%M')} (เวลาไทย)"], "traffic": [], "flood": [], "accident": [], "air": []}
+    sec = {"base": [f"ตอนนี้ {time.strftime('%Y-%m-%d %H:%M')} (เวลาไทย)"], "route": [], **{k: [] for k in ALL_TOPICS}}
     if not s.get("ready"):
         sec["base"].append("ยังไม่มีข้อมูลจราจร (ระบบกำลังโหลด)")
     else:
         sec["base"] += [
             f"เวลาข้อมูล: {time.strftime('%H:%M', time.localtime(s['updated_at']))} "
             f"({'ออนไลน์' if s.get('online') else 'ออฟไลน์ ใช้ข้อมูลล่าสุดที่บันทึกไว้'})",
-            f"ภาพรวมทั้งเมือง: flow index {s['flow_index']}/100, เขียว {s['green_pct']}% เหลือง {s['yellow_pct']}% "
-            f"แดง {s['red_pct']}%, ถนนที่มีข้อมูล {s['road_count']} สาย รวม {s['total_km']} กม.",
+            f"ภาพรวมกรุงเทพฯ: {flow_th(s['flow_index'])} (ระยะถนนที่คล่องตัว {s['green_pct']}% ชะลอตัว {s['yellow_pct']}% "
+            f"ติดขัด {s['red_pct']}% จาก {s['road_count']} สาย)",
         ]
         t = sec["traffic"]
         mentioned = traffic.find_roads_in_text(question)
         if mentioned:
             t.append("ถนนที่ผู้ใช้ถามถึง:")
             t += [_fmt_road(r) for r in mentioned]
-        hist = s.get("history", [])
-        if len(hist) >= 2:
-            t.append(f"แนวโน้ม 1 ชม.ล่าสุด: flow index {' -> '.join(str(h['flow']) for h in hist[-20::4])}")
+        trend = _trend_th(s.get("history", []))
+        if trend:
+            t.append(f"แนวโน้มจราจร 1 ชม.ล่าสุด: {trend}")
+            sec["predict"].append(f"แนวโน้มจราจร 1 ชม.ล่าสุด: {trend}")
         t.append("ถนนที่ติดขัดมากที่สุดตอนนี้:")
         t += [_fmt_road(r) for r in s["congested"][:8]]
-        t.append("ถนนสายหลักที่ระบายดี:")
+        t.append("ถนนสายหลักที่รถคล่อง:")
         t += [_fmt_road(r) for r in s["free_flow"][:5]]
     if camera_stats and camera_stats.get("active"):
         sec["traffic"].append(
@@ -427,21 +713,48 @@ def context_sections(traffic, question, camera_stats=None, water=None, extra=Non
     sec["flood"] += (water_context(water) + north_flow_context(ex.get("north_flow")) + tide_context(water)
                      + road_flood_context(ex.get("road_risk"), ex.get("flood_report"), question)
                      + analytics_flood(ex.get("analytics")))
+    sec["weather"] += weather_context(ex.get("weather_outlook"), water, ex.get("tmd"))
+    sec["predict"] += predict_context(ex) + weather_context(ex.get("weather_outlook"), None, None)
     sec["accident"] += (incident_context(ex.get("incidents"), ex.get("bma_events"))
                         + accident_stats_context(ex.get("rsc"), ex.get("camera_risk"))
                         + patrol_context(ex.get("helmet"), ex.get("wrongway"), ex.get("violations"))
                         + analytics_accidents(ex.get("analytics")))
     sec["air"] += air_context(ex.get("air"), question)
+
+    # The whole country: first when the question names a province outside Bangkok or asks about the country,
+    # after the Bangkok detail otherwise
+    named = named_places(question, ex.get("areas"))
+    sec["named"] = [prov for prov, _ in named]
+    away = any(prov != thai_regions.BANGKOK for prov in sec["named"]) or any(w in (question or "") for w in NATION_WORDS)
+    nation = {"traffic": province_traffic_context(ex.get("areas"), named),
+              "flood": province_flood_context(ex.get("provinces"), named),
+              "weather": province_weather_context(ex, named) if away else []}
+    for k, lines in nation.items():
+        sec[k] = lines + sec[k] if away else sec[k] + lines
+    if away:
+        sec["predict"] = nation["flood"] + sec["predict"]
+    if ex.get("route"):
+        sec["route"] = route_context(ex["route"])
+    elif ex.get("route_error"):
+        sec["route"] = [f"เส้นทาง: {ex['route_error']}"]
     return sec
 
 
 def pick_topics(question, sections):
-    """Topics for the prompt; a named road puts traffic in, an overview question takes every topic."""
+    """Topics for the prompt; a named road puts traffic in, a route adds the water and the jams beside it,
+    an overview question takes every topic."""
     chosen = question_topics(question)
     if "traffic" not in chosen and any(x.startswith("ถนนที่ผู้ใช้ถามถึง") for x in sections.get("traffic", [])):
         chosen.append("traffic")
+    if sections.get("route"):
+        chosen = ["route"] + chosen
+        for k in ("flood", "traffic"):
+            if k not in chosen:
+                chosen.append(k)
     if not chosen and any(w in (question or "") for w in OVERVIEW_WORDS):
-        chosen = ["traffic", "flood", "accident", "air"]
+        chosen = ["traffic", "flood", "weather", "accident", "air"]
+    if not chosen and sections.get("named"):        # "เชียงใหม่เป็นยังไงบ้าง"
+        chosen = ["traffic", "flood", "weather"]
     return chosen
 
 
@@ -449,19 +762,23 @@ def build_context(traffic, question, camera_stats=None, water=None, extra=None, 
     """The live-data block for the prompt. With max_chars, only the asked topics go in, cut to fit."""
     sec = context_sections(traffic, question, camera_stats, water, extra)
     if max_chars is None and topics is None:
-        order = ["traffic", "flood", "accident", "air"]
+        order = ["route"] + ALL_TOPICS
     else:
         order = pick_topics(question, sec) if topics is None else topics
     lines = list(sec["base"])
+    seen = set(lines)
     budget = (max_chars or 10 ** 9) - sum(len(x) + 1 for x in lines)
     for k in order:
-        if not sec[k] or budget <= 0:
+        if not sec.get(k) or budget <= 0:
             continue
         lines.append("")
         for x in sec[k]:          # rows are ranked inside each builder, so cutting keeps the important ones
+            if x in seen:         # a line can belong to two topics
+                continue
             if len(x) + 1 > budget:
                 break
             lines.append(x)
+            seen.add(x)
             budget -= len(x) + 1
     return "\n".join(lines)
 
@@ -504,15 +821,40 @@ OFFLINE_NOTE = "(โหมดออฟไลน์: เชื่อมต่อ�
 TRAFFIC_WORDS = ("ถนน", "จราจร", "รถ", "ติด", "ทาง", "เส้น", "ไป", "โล่ง", "แยก", "ซอย", "สะพาน", "ด่วน")
 
 
+def route_reply(r):
+    """The planned route as a short Thai answer, without the model."""
+    out = [f"เส้นทางแนะนำ: {' → '.join(x['name'] for x in r['roads'][:6]) or 'ตามแผนที่'}",
+           f"ระยะ {r['km']} กม. ใช้เวลาประมาณ {r['minutes'][0]}-{r['minutes'][1]} นาที"]
+    if r.get("avoided"):
+        out.append(f"เส้นนี้อ้อมจุดน้ำท่วม {len(r['avoided'])} จุด: " + ", ".join(h["name"] for h in r["avoided"][:3]))
+    if r.get("flood_on_route") or r.get("flood_at_ends"):
+        out.append("ระวังน้ำท่วมที่: " + ", ".join(h["name"] for h in (r.get("flood_on_route") or []) + (r.get("flood_at_ends") or [])))
+    if r.get("jams"):
+        out.append("รถติดช่วง: " + ", ".join(f"{j['road']} {j['km']} กม." for j in r["jams"][:3]))
+    if not r.get("flood_checked"):
+        out.append("ตอนนี้ยังตรวจจุดน้ำท่วมบนเส้นทางไม่ได้ครบ ดูแผนที่น้ำท่วมก่อนออกเดินทาง")
+    out.append("กดปุ่ม \"นำทางใน Google Maps\" ด้านล่างเพื่อเริ่มนำทาง")
+    return "\n".join(out)
+
+
+def _weather_reply(extra):
+    lines = weather_context((extra or {}).get("weather_outlook"), None, (extra or {}).get("tmd"))
+    return "\n".join(lines) if lines else "ยังไม่มีข้อมูลพยากรณ์อากาศตอนนี้"
+
+
 def rule_based_reply(traffic, question, water=None, extra=None):
+    if (extra or {}).get("route"):
+        return route_reply(extra["route"]) + "\n" + OFFLINE_NOTE
     topics = question_topics(question)
     if not topics:
-        return ("โหมดออฟไลน์ตอบได้เฉพาะสรุปจราจร น้ำท่วม/ฝน อุบัติเหตุ และฝุ่นจากข้อมูลสด" + chr(10) +
+        return ("โหมดออฟไลน์ตอบได้เฉพาะสรุปจราจร น้ำท่วม/ฝน อากาศ อุบัติเหตุ และฝุ่นจากข้อมูลสด" + chr(10) +
                 "เชื่อมต่อโมเดล AI ไม่ได้ตอนนี้ ลองถามใหม่อีกครั้งในอีกสักครู่")
     if topics[0] == "accident":
         return _accident_reply(extra) + "\n" + OFFLINE_NOTE
-    if topics[0] == "flood":
+    if topics[0] == "flood" or (topics[0] == "predict" and "traffic" not in topics):
         return _flood_reply(water) + "\n" + OFFLINE_NOTE
+    if topics[0] == "weather":
+        return _weather_reply(extra) + "\n" + OFFLINE_NOTE
     if topics[0] == "air":
         lines = air_context((extra or {}).get("air"), question)
         return ("\n".join(lines) if lines else "ยังไม่มีข้อมูลฝุ่นตอนนี้") + "\n" + OFFLINE_NOTE
@@ -523,11 +865,12 @@ def rule_based_reply(traffic, question, water=None, extra=None):
     out = []
     if mentioned:
         for r in mentioned:
-            out.append(f"• {r['name']}: ระบายรถ {r['flow']}/100 ({r['level']}) เขียว {r['green_pct']}% เหลือง {r['yellow_pct']}% แดง {r['red_pct']}%")
+            jam = f" ติดยาว {r['red_km']} กม." if r.get("red_km") else ""
+            out.append(f"• {r['name']}: {flow_th(r['flow'])}{jam}")
     else:
-        out.append(f"ภาพรวมตอนนี้ระบายรถได้ {s['flow_index']}/100 (เขียว {s['green_pct']}% เหลือง {s['yellow_pct']}% แดง {s['red_pct']}%)")
-        out.append("ถนนที่ติดขัดมากสุด:")
-        out += [f"• {r['name']} ติด {r['red_km']} กม. (flow {r['flow']})" for r in s["congested"][:4]]
+        out.append(f"ภาพรวมตอนนี้: {flow_th(s['flow_index'])} (ถนนที่ติดขัด {s['red_pct']}% ของระยะที่มีข้อมูล)")
+        out.append("ถนนที่ควรเลี่ยง (ติดมากสุด):")
+        out += [f"• {r['name']} ติดยาว {r['red_km']} กม." for r in s["congested"][:4]]
     worst = min(mentioned or s["congested"][:1] or [None], key=lambda r: r["flow"] if r else 0)
     if worst and worst["flow"] < 45:
         out.append(f"แนะนำ: เลี่ยง {worst['name']} ไปก่อนนะ")
@@ -537,29 +880,127 @@ def rule_based_reply(traffic, question, water=None, extra=None):
     return "\n".join(out)
 
 
-def chat(traffic, messages, camera_stats=None, water=None, extra=None):
-    """messages: list of {role: user|assistant, content: str}. Returns {reply, mode}.
-    `water` is water_service.get_summary() or None when it is unavailable.
-    `extra` holds optional sources: incidents, bma_events, bma_analytics, rsc, camera_risk, air, guidance, ..."""
-    question = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
-    offline = lambda: {"reply": rule_based_reply(traffic, question, water, extra), "mode": "offline"}
-    if not llm.enabled():
-        return offline()
+# ---------------------------------------------------------------- route questions
+TRIP_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["origin", "destination"],
+               "properties": {"origin": {"type": "string"}, "destination": {"type": "string"}}}
+TRIP_PROMPT = """ดึงต้นทางและปลายทางของการเดินทางจากข้อความล่าสุดของผู้ใช้ (ใช้บทสนทนาก่อนหน้าช่วยตีความ เช่น "แล้วถ้าไปลาดกระบังล่ะ")
+- เขียนชื่อสถานที่แบบที่ค้นบนแผนที่ได้ ขยายชื่อย่อ เช่น ม.เกษตร → มหาวิทยาลัยเกษตรศาสตร์, อนุสาวรีย์ → อนุสาวรีย์ชัยสมรภูมิ, จุฬา → จุฬาลงกรณ์มหาวิทยาลัย
+- ไม่ใส่คำว่า แถว ย่าน ที่ บริเวณ และไม่ใส่คำอื่นของประโยค
+- ไม่บอกต้นทาง หรือต้นทางคือ ที่นี่ / ตรงนี้ / บ้าน / ที่ทำงาน ให้ origin เป็น ""
+- ไม่ใช่คำถามเรื่องการเดินทาง ให้ทั้งสองเป็น \"\""""
+_TAIL = re.compile(r"\s*(ยังไง|อย่างไร|ทางไหน|เส้นไหน|ดีไหม|ดี|ควร|เลี่ยง|โดย|ใช้เวลา|กี่|ไหม|มั้ย|หน่อย|ครับ|ค่ะ|คะ|นะ|ล่ะ|ตอนนี้|บ้าง|\?).*$")
 
+
+def _trip_by_pattern(question):
+    """(origin, destination) from "จาก A ไป B" / "ไป B", or ("", "")."""
+    q = (question or "").replace("ไปยัง", "ไป").replace("ไปที่", "ไป").replace("นำทางไป", "ไป")
+    m = re.search(r"จาก\s*(.+?)\s*(?:ไป|ถึง)\s*(.+)", q)
+    if m:
+        return _TAIL.sub("", m[1]).strip(), _TAIL.sub("", m[2]).strip()
+    m = re.search(r"ไป\s*(.+)", q)
+    return ("", _TAIL.sub("", m[1]).strip()) if m else ("", "")
+
+
+def extract_trip(history):
+    """(origin, destination) of the trip the last user message asks about. A plain "จาก A ไป B" / "ไป B" is read
+    by pattern (fast, and spelled as typed); the model reads the rest, and follow-ups such as "แล้วถ้าไปลาดกระบังล่ะ"
+    that take the start from earlier in the conversation."""
+    origin, dest = _trip_by_pattern(history[-1]["content"])
+    follow_up = not origin and any(m["role"] == "user" for m in history[:-1])
+    if dest and (origin or not follow_up) or not llm.enabled():
+        return origin, dest
+    convo = "\n".join(f"{'ผู้ใช้' if m['role'] == 'user' else 'ผู้ช่วย'}: {m['content'][:300]}" for m in history[-3:])
+    try:
+        raw = llm.chat([{"role": "system", "content": TRIP_PROMPT}, {"role": "user", "content": convo}],
+                       max_tokens=120, temperature=0, json_schema=TRIP_SCHEMA, timeout=40)
+        got = json.loads(raw[raw.find("{"):raw.rfind("}") + 1])
+        return (got.get("origin") or "").strip(), (got.get("destination") or "").strip()
+    except Exception as e:  # noqa: BLE001 - keep what the pattern read
+        print(f"[Chat] trip extraction failed: {str(e)[:160]}")
+        return origin, dest
+
+
+def plan_route(router, history, location=None):
+    """{"route": ...} on success, {"ask": text} when the bot must ask back, {"error": text} when the map fails,
+    or None when the question names no destination."""
+    origin_text, dest_text = extract_trip(history)
+    if not dest_text:
+        return None
+    try:
+        dest = router.geocode(dest_text)
+        if not dest:
+            return {"ask": f"หา \"{dest_text}\" บนแผนที่ไม่เจอ ลองพิมพ์ชื่อให้ชัดขึ้น เช่น ชื่อห้าง ชื่อสถานี ชื่อถนน หรือชื่อเขต"}
+        if router.is_here(origin_text) or origin_text in ("บ้าน", "ที่ทำงาน"):
+            if not location:
+                return {"ask": f"จะเริ่มเดินทางจากที่ไหนไป {dest['name']}? พิมพ์ต้นทาง เช่น \"จากบางนาไป{dest['name']}\" "
+                               "หรือกดปุ่ม \"ใช้ตำแหน่งของฉัน\" แล้วถามใหม่", "need_location": True}
+            origin = {"name": "ตำแหน่งของคุณ", "label": "ตำแหน่งของคุณ", "lat": location["lat"], "lng": location["lng"]}
+        else:
+            origin = router.geocode(origin_text)
+            if not origin:
+                return {"ask": f"หา \"{origin_text}\" บนแผนที่ไม่เจอ ลองพิมพ์ชื่อให้ชัดขึ้น เช่น ชื่อห้าง ชื่อสถานี ชื่อถนน หรือชื่อเขต"}
+        return {"route": router.plan(origin, dest)}
+    except Exception as e:  # noqa: BLE001 - Nominatim / Valhalla down: answer from the live data instead
+        print(f"[Chat] route failed: {str(e)[:200]}")
+        return {"error": "คำนวณเส้นทางไม่ได้ตอนนี้ (ระบบแผนที่ไม่ตอบ) ให้แนะนำจากสภาพจราจรและน้ำท่วมที่มีแทน และบอกว่าเป็นการประเมินคร่าว ๆ"}
+
+
+# Common words written without their tone mark ("ไม" for ไม่, "ผาน" for ผ่าน, "ได" for ได้ ...): the gateway's Qwen
+# sometimes drops tone marks for a whole reply. A few in one reply means it happened; one can be a real word.
+_NO_TONE = re.compile(r"ไม[ ก-ฮ](?![ัิ-ฺ็-์])|ผาน|ทวม|ได[ ,.)\n]|แต[ \n]|นี[ ,\n]|เพยี|ตึด|ตืด|เทาน")
+GARBLED_MIN = 3
+
+
+def garbled(text):
+    """How many tone-mark-less common words the reply has."""
+    return len(_NO_TONE.findall(text or ""))
+
+
+def chat(traffic, messages, camera_stats=None, water=None, extra=None, router=None, location=None):
+    """messages: list of {role: user|assistant, content: str}. Returns {reply, mode[, model, route]}.
+    `water` is water_service.get_summary() or None when it is unavailable.
+    `extra` holds optional sources: incidents, bma_events, bma_analytics, rsc, camera_risk, air, guidance, ...
+    `router` (flood_route.FloodRouter) plans route questions; `location` is the user's {lat, lng} if shared."""
+    question = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
     history = [{"role": m["role"], "content": m["content"][:HISTORY_CHARS]}
                for m in messages[-HISTORY_KEEP:] if m.get("content")]
     if not history or history[-1]["role"] != "user":
         history.append({"role": "user", "content": question or "สรุปสภาพจราจรตอนนี้"})
     asked = history[-1]["content"]
-    room = llm.token_budget(SYSTEM_PROMPT, *(m["content"] for m in history), reply_tokens=REPLY_TOKENS + 300)
+
+    extra = dict(extra or {})
+    route = None
+    if router and wants_route(asked):
+        plan = plan_route(router, history, location)
+        if plan and plan.get("ask"):
+            return {"reply": plan["ask"], "mode": "local" if llm.enabled() else "offline",
+                    "need_location": bool(plan.get("need_location"))}
+        if plan and plan.get("route"):
+            route = extra["route"] = plan["route"]
+        elif plan:
+            extra["route_error"] = plan["error"]
+
+    def offline():
+        out = {"reply": rule_based_reply(traffic, question, water, extra), "mode": "offline"}
+        return dict(out, route=route) if route else out
+
+    if not llm.enabled():
+        return offline()
+    style = answer_style(asked, question_topics(asked), route=bool(route))
+    note = f"\n\nวิธีตอบคำถามนี้: {style}" if style else ""
+    room = llm.token_budget(SYSTEM_PROMPT, note, *(m["content"] for m in history), reply_tokens=REPLY_TOKENS + 300)
     max_chars = max(0, int(room * local_llm.CHARS_PER_TOKEN))
     for share in (1.0, 0.5, 0.0):        # the character estimate can be off; shrink the data and retry
-        context = build_context(traffic, question, camera_stats, water, extra, max_chars=int(max_chars * share))
-        turn = {"role": "user", "content": f"ข้อมูลสดที่เกี่ยวข้อง:\n{context}\n\nคำถาม: {asked}"}
+        context = build_context(traffic, asked, camera_stats, water, extra, max_chars=int(max_chars * share))
+        turn = {"role": "user", "content": f"ข้อมูลสดที่เกี่ยวข้อง:\n{context}\n\nคำถาม: {asked}{note}"}
         try:
-            text = llm.chat([{"role": "system", "content": SYSTEM_PROMPT}] + history[:-1] + [turn],
-                                  max_tokens=REPLY_TOKENS)
-            return {"reply": text, "mode": "local", "model": llm.model}
+            prompt = [{"role": "system", "content": SYSTEM_PROMPT}] + history[:-1] + [turn]
+            text = llm.chat(prompt, max_tokens=REPLY_TOKENS)
+            if garbled(text) >= GARBLED_MIN:     # once the model drops a tone mark it keeps doing so: ask again
+                again = llm.chat(prompt, max_tokens=REPLY_TOKENS, temperature=0.7)
+                text = min((text, again), key=garbled)
+            out = {"reply": text, "mode": "local", "model": llm.model}
+            return dict(out, route=route) if route else out
         except local_llm.ContextTooLong:
             continue
         except Exception as e:  # noqa: BLE001 - local server off / model unloaded: answer from the data

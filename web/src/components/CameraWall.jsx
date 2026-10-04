@@ -1,15 +1,25 @@
-// Live camera page: every camera as a wall, six to a row on a wide screen, under two tabs: iTIC and BMA.
-// iTIC tiles play their video while on screen, at most MAX_VIDEOS at once (about 0.5 Mbps each); BMA tiles
-// show the BMA scanner's last frame, plain (without its YOLO boxes). A tap opens the camera large, where it
-// can be liked or kept open on top.
-import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Hls from 'hls.js';
-import VideoSlot from './VideoSlot.jsx';
+// Live camera page: every camera in the country, picked by search, region and province, under two tabs: a wall of
+// tiles (six to a row on a wide screen) and a map with the cameras on screen beside it.
+// The tiles are in cameras/Tiles.jsx. A tap opens the camera large, where it can be liked or kept open on top.
+import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
+import { Skeleton } from './dashboard/ui.jsx';
 import ViewSwitch from './ViewSwitch.jsx';
-import { Button, Skeleton } from './dashboard/ui.jsx';
 import { distanceKm } from '../lib/store.js';
-import { fetchBmaScanStatus, getBmaSnapshotUrl } from '../lib/api.js';
-import BmaSiteNotice from './bma/BmaSiteNotice.jsx';
+import CamTile from './cameras/Tiles.jsx';
+import useFlood from './cameras/useFlood.js';
+import RegionPicker, { inPlace } from './cameras/RegionPicker.jsx';
+import FocusView from './cameras/FocusView.jsx';
+
+const MapPanel = lazy(() => import('./cameras/MapPanel.jsx'));   // maplibre loads with the map tab only
+const VIEW_KEY = 'camwall_view';   // the tab this viewer had open last time
+
+function readView() {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'map' ? 'map' : 'wall';
+  } catch {
+    return 'wall';
+  }
+}
 
 const CHIP_OFF = 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50';
 const CHIP_ON = 'bg-blue-600 text-white border-blue-600';
@@ -20,165 +30,6 @@ const CHIPS = [
   { id: 'fav', label: 'รายการโปรด' },
 ];
 const GRID = 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3';
-const MAX_VIDEOS = 18;
-const BMA_TILE_REFRESH_MS = 60000;
-const TAB_KEY = 'camwall_tab';   // the tab this viewer had open last time
-
-function readTab() {
-  try {
-    return localStorage.getItem(TAB_KEY) === 'bma' ? 'bma' : 'itic';
-  } catch {
-    return 'itic';
-  }
-}
-
-// One IntersectionObserver for all tiles: each tile learns when it comes near the screen and when it leaves
-const watchers = new Map();
-let observer;
-function watch(el, onChange) {
-  observer ||= new IntersectionObserver(
-    (entries) => entries.forEach((e) => watchers.get(e.target)?.(e.isIntersecting)),
-    { rootMargin: '200px 0px' },
-  );
-  watchers.set(el, onChange);
-  observer.observe(el);
-  return () => {
-    observer.unobserve(el);
-    watchers.delete(el);
-  };
-}
-
-function useOnScreen(ref) {
-  const [on, setOn] = useState(false);
-  useEffect(() => watch(ref.current, setOn), [ref]);
-  return on;
-}
-
-// Video slots: a tile on screen asks for one and starts playing when it gets it. The returned function gives
-// the slot back (to the next tile waiting) or leaves the queue.
-const slots = { used: 0, queue: [] };
-function takeSlot(start) {
-  let granted = false;
-  const grant = () => {
-    granted = true;
-    slots.used += 1;
-    start();
-  };
-  if (slots.used < MAX_VIDEOS) grant();
-  else slots.queue.push(grant);
-  return () => {
-    const i = slots.queue.indexOf(grant);
-    if (i >= 0) slots.queue.splice(i, 1);
-    else if (granted) {
-      granted = false;
-      slots.used -= 1;
-      slots.queue.shift()?.();
-    }
-  };
-}
-
-function TileVideo({ cam, onDead }) {
-  const ref = useRef(null);
-  const dead = useRef(onDead);
-  dead.current = onDead;
-  useEffect(() => {
-    const video = ref.current;
-    if (!video || !cam.hls_url) return undefined;
-    let hls;
-    if (Hls.isSupported()) {
-      hls = new Hls({ enableWorker: true, lowLatencyMode: true, maxBufferLength: 6, backBufferLength: 10, manifestLoadingTimeOut: 8000 });
-      hls.loadSource(cam.hls_url);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
-      hls.on(Hls.Events.ERROR, (_, data) => data.fatal && dead.current());
-    } else {
-      video.src = cam.hls_url;   // Safari plays HLS by itself
-      video.onerror = () => dead.current();
-    }
-    return () => {
-      hls?.destroy();
-      video.removeAttribute('src');
-      video.load();
-    };
-  }, [cam.hls_url]);
-  if (!cam.hls_url) return <img src={cam.vdourl} alt="" onError={() => dead.current()} className="absolute inset-0 w-full h-full object-cover" />;
-  return <video ref={ref} muted playsInline autoPlay className="absolute inset-0 w-full h-full object-cover" />;
-}
-
-const TileNote = ({ text }) => <span className="absolute inset-0 flex items-center justify-center text-[11px] text-slate-500">{text}</span>;
-
-const Tile = forwardRef(function Tile({ cam, pinned, onOpen, children }, ref) {
-  return (
-    <button
-      ref={ref}
-      type="button"
-      onClick={() => onOpen(cam)}
-      title={cam.title}
-      className={`text-left rounded-xl border bg-white overflow-hidden cursor-pointer transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
-        pinned ? 'border-blue-500 ring-1 ring-blue-500' : 'border-slate-200 hover:border-slate-400'
-      }`}
-    >
-      <div className="relative aspect-video bg-slate-100">
-        {children}
-        {pinned && <span className="absolute top-1.5 left-1.5 rounded-md bg-blue-600 px-1.5 py-0.5 text-[10px] font-medium text-white">เปิดค้างไว้</span>}
-      </div>
-      <div className="px-2.5 py-2 min-w-0">
-        <p className="text-[13px] font-medium text-slate-900 truncate">{cam.short_title || cam.title}</p>
-        <p className="text-[11px] text-slate-500 truncate">
-          {cam.province}
-          {typeof cam._km === 'number' && ` · ${cam._km < 1 ? `${Math.round(cam._km * 1000)} ม.` : `${cam._km.toFixed(1)} กม.`}`}
-        </p>
-      </div>
-    </button>
-  );
-});
-
-function IticTile({ cam, pinned, onOpen }) {
-  const ref = useRef(null);
-  const onScreen = useOnScreen(ref);
-  const [playing, setPlaying] = useState(false);
-  const [dead, setDead] = useState(false);
-  useEffect(() => {
-    if (!onScreen || dead) return undefined;
-    const release = takeSlot(() => setPlaying(true));
-    return () => {
-      release();
-      setPlaying(false);
-    };
-  }, [onScreen, dead]);
-  const markDead = useCallback(() => setDead(true), []);
-  return (
-    <Tile ref={ref} cam={cam} pinned={pinned} onOpen={onOpen}>
-      {playing && !dead && <TileVideo cam={cam} onDead={markDead} />}
-      {dead ? <TileNote text="ไม่มีสัญญาณ" /> : onScreen && !playing && <TileNote text="รอคิวเล่น" />}
-    </Tile>
-  );
-}
-
-function BmaTile({ cam, pinned, onOpen }) {
-  const ref = useRef(null);
-  const onScreen = useOnScreen(ref);
-  const [t, setT] = useState(null);   // null until the tile first comes on screen
-  const [missing, setMissing] = useState(false);   // no plain frame kept yet: asked again on the next refresh
-  useEffect(() => {
-    if (!onScreen) return undefined;
-    setT((x) => x ?? 0);
-    const id = setInterval(() => {
-      setT(Date.now());
-      setMissing(false);
-    }, BMA_TILE_REFRESH_MS);
-    return () => clearInterval(id);
-  }, [onScreen]);
-  return (
-    <Tile ref={ref} cam={cam} pinned={pinned} onOpen={onOpen}>
-      {t !== null && !missing && (
-        <img src={getBmaSnapshotUrl(cam.bma_id, false, t || null, false)} alt="" onError={() => setMissing(true)} className="absolute inset-0 w-full h-full object-cover" />
-      )}
-      {missing && <TileNote text="ยังไม่มีรูป" />}
-    </Tile>
-  );
-}
-
 function Section({ id, title, hint, count, loading, children }) {
   return (
     <section aria-labelledby={id} className="flex flex-col gap-3">
@@ -196,36 +47,6 @@ function Section({ id, title, hint, count, loading, children }) {
         <p className="text-sm text-slate-500 py-4">ไม่มีกล้องที่ตรงกับที่ค้นหา</p>
       )}
     </section>
-  );
-}
-
-function FocusView({ cam, onClose, camStatus, incidents, pinned, fav, onTogglePin, onToggleFav, onOpenAI }) {
-  useEffect(() => {
-    const onKey = (e) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-  return (
-    <div role="dialog" aria-modal="true" aria-label={cam.short_title || cam.title} className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
-      <button type="button" aria-label="ปิดภาพใหญ่" onClick={onClose} className="absolute inset-0 bg-slate-900/70 cursor-pointer" />
-      <div className="relative w-full max-w-4xl flex flex-col gap-2">
-        <div className="grid h-[60vh] sm:h-[70vh]">
-          <VideoSlot
-            cam={cam}
-            status={camStatus[cam.camid]}
-            incident={(incidents?.camera || []).find((i) => i.camid === cam.camid)}
-            onClose={onClose}
-            onOpenAI={onOpenAI}
-          />
-        </div>
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button size="sm" onClick={onToggleFav}>{fav ? 'เอาออกจากรายการโปรด' : 'เพิ่มในรายการโปรด'}</Button>
-          <Button size="sm" variant={pinned ? 'secondary' : 'primary'} onClick={onTogglePin}>
-            {pinned ? 'เลิกเปิดค้างไว้' : 'เปิดค้างไว้ด้านบน'}
-          </Button>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -247,21 +68,16 @@ export default function CameraWall({
   aiIds,
 }) {
   const [focus, setFocus] = useState(null);
-  const [tab, setTab] = useState(readTab);
-  const [site, setSite] = useState(null);   // is the BMA camera site sending pictures (scan_status.source)
-  useEffect(() => {
-    if (tab !== 'bma') return undefined;
-    const load = () => fetchBmaScanStatus().then((s) => setSite(s.source)).catch(() => {});
-    load();
-    const id = setInterval(load, BMA_TILE_REFRESH_MS);
-    return () => clearInterval(id);
-  }, [tab]);
-  const pickTab = (id) => {
-    setTab(id);
+  const [view, setView] = useState(readView);
+  const flood = useFlood();
+  const pickView = (id) => {
+    setView(id);
     try {
-      localStorage.setItem(TAB_KEY, id);
+      localStorage.setItem(VIEW_KEY, id);
     } catch {}
   };
+  const [region, setRegion] = useState('');
+  const [province, setProvince] = useState('');
   const list = useMemo(() => {
     let out = cameras;
     if (filter === 'bkk') out = out.filter((c) => c.province === 'กรุงเทพมหานคร');
@@ -278,19 +94,28 @@ export default function CameraWall({
     }
     return out;
   }, [cameras, favorites, filter, query, userPos]);
-  const itic = useMemo(() => list.filter((c) => c.source !== 'bma'), [list]);
-  const bma = useMemo(() => list.filter((c) => c.source === 'bma'), [list]);
+  const nation = useMemo(
+    () => list.filter((c) => inPlace(c, region, province)),
+    [list, region, province],
+  );
+  const pickRegion = (r) => {
+    setRegion(r);
+    setProvince('');
+  };
   const pinned = useMemo(() => new Set(active), [active]);
   const close = useCallback(() => setFocus(null), []);
 
-  const tabs = [
-    { id: 'itic', label: loading ? 'กล้อง iTIC' : `กล้อง iTIC ${itic.length} ตัว`, icon: 'cameras', hint: 'วิดีโอสดจาก iTIC และกรมทางหลวง' },
-    { id: 'bma', label: loading ? 'กล้อง กทม.' : `กล้อง กทม. ${bma.length} ตัว`, icon: 'report', hint: 'รูปจากกล้องจราจรของ กทม.' },
-  ];
-
   return (
     <div className="flex flex-col gap-4">
-      <ViewSwitch tabs={tabs} value={tab} onChange={pickTab} label="กลุ่มกล้อง" />
+      <ViewSwitch
+        label="มุมมองกล้อง"
+        value={view}
+        onChange={pickView}
+        tabs={[
+          { id: 'wall', label: 'ช่องกล้อง', icon: 'cameras', hint: 'กล้องทุกตัวเรียงเป็นช่อง' },
+          { id: 'map', label: 'แผนที่', icon: 'cammap', hint: 'กล้องบนแผนที่ พร้อมเรดาร์ฝน และช่องกล้องในกรอบแผนที่' },
+        ]}
+      />
       <div className="glass rounded-xl p-4 flex flex-col gap-3">
         <label htmlFor="cam-search" className="sr-only">ค้นหาถนนหรือแยก</label>
         <input
@@ -315,29 +140,30 @@ export default function CameraWall({
             </button>
           ))}
           <span className="ml-auto text-xs text-slate-600">
-            {loading ? 'กำลังโหลดรายชื่อกล้อง...' : `พบ ${(tab === 'bma' ? bma : itic).length} กล้อง`}
+            {loading ? 'กำลังโหลดรายชื่อกล้อง...' : `พบ ${nation.length} กล้อง`}
             {filter === 'near' && !userPos && ' (กำลังหาตำแหน่งของคุณ...)'}
           </span>
         </div>
+        <div className="border-t border-slate-200 pt-3">
+          <RegionPicker cameras={list} region={region} province={province} onRegion={pickRegion} onProvince={setProvince} />
+        </div>
       </div>
 
-      {/* only the open tab is on the page: the other one plays and loads nothing */}
-      {tab === 'itic' ? (
-        <Section id="wall-itic" title="กล้อง iTIC" count={itic.length} loading={loading}
-          hint={`วิดีโอสด เล่นพร้อมกันได้ ${MAX_VIDEOS} ช่อง ช่องที่เลื่อนพ้นจอจะหยุดเอง แตะเพื่อดูภาพใหญ่`}>
+      <Section id="wall-nation" title={province ? `กล้องใน${province}` : region ? `กล้องใน${region}` : 'กล้องทั่วประเทศ'} count={nation.length} loading={loading}
+        hint={view === 'map'
+          ? 'แตะวงกลมตัวเลขเพื่อซูมเข้า แตะจุดหรือช่องกล้องข้างแผนที่เพื่อดูภาพใหญ่'
+          : 'กล้องจาก iTIC กรมทางหลวง กทม. เมืองพัทยา เทศบาล กรมทรัพยากรน้ำ และเขื่อน แตะช่องกล้องเพื่อดูภาพใหญ่'}>
+        {/* only the open tab is on the page: the other one plays and loads nothing */}
+        {view === 'map' ? (
+          <Suspense fallback={<Skeleton className="h-[70vh] rounded-xl" />}>
+            <MapPanel cameras={nation} flood={flood} pinned={pinned} onOpen={setFocus} frameKey={`${region}|${province}|${filter}|${query}`} />
+          </Suspense>
+        ) : (
           <div className={GRID}>
-            {itic.map((cam) => <IticTile key={cam.camid} cam={cam} pinned={pinned.has(cam.camid)} onOpen={setFocus} />)}
+            {nation.map((cam) => <CamTile key={cam.camid} cam={cam} pinned={pinned.has(cam.camid)} flood={flood.get(cam.camid)} onOpen={setFocus} />)}
           </div>
-        </Section>
-      ) : (
-        <Section id="wall-bma" title="กล้อง กทม." count={bma.length} loading={loading}
-          hint="รูปล่าสุดจากกล้อง กทม. อัปเดตทุก 1 นาที แตะเพื่อดูรูปใหม่ทุก 3 วินาที">
-          <BmaSiteNotice source={site} />
-          <div className={GRID}>
-            {bma.map((cam) => <BmaTile key={cam.camid} cam={cam} pinned={pinned.has(cam.camid)} onOpen={setFocus} />)}
-          </div>
-        </Section>
-      )}
+        )}
+      </Section>
 
       {focus && (
         <FocusView

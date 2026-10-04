@@ -16,7 +16,8 @@ if sys.platform == 'win32':
 # 1. Auto-detect and switch to .venv if running under global Python
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
-venv_python = os.path.join(BASE_DIR, ".venv", "Scripts", "python.exe")
+venv_python = (os.path.join(BASE_DIR, ".venv", "Scripts", "python.exe") if sys.platform == "win32"
+               else os.path.join(BASE_DIR, ".venv", "bin", "python"))
 if os.path.exists(venv_python) and sys.prefix == sys.base_prefix and os.path.normcase(sys.executable) != os.path.normcase(venv_python):
     import subprocess
     print(f"[Auto-Env] Switching to virtual environment (.venv)...")
@@ -47,9 +48,21 @@ def free_port_if_needed(port=8000):
         
         print(f"[Server] Port {port} is occupied. Attempting to free it...")
         import subprocess
-        res = subprocess.run(f'netstat -ano | findstr :{port}', shell=True, capture_output=True, text=True)
         my_pid = os.getpid()
         killed = False
+        if sys.platform != "win32":
+            # macOS / Linux: lsof lists the processes listening on the port
+            import signal
+            res = subprocess.run(["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"], capture_output=True, text=True)
+            for pid in (int(p) for p in res.stdout.split() if p.isdigit()):
+                if pid != my_pid:
+                    print(f"[Server] Closing old process PID {pid} on port {port}...")
+                    os.kill(pid, signal.SIGTERM)
+                    killed = True
+            if killed:
+                time.sleep(1.0)
+            return
+        res = subprocess.run(f'netstat -ano | findstr :{port}', shell=True, capture_output=True, text=True)
         for line in res.stdout.strip().splitlines():
             parts = line.strip().split()
             if len(parts) >= 5 and f":{port}" in parts[1] and parts[3] == "LISTENING":
@@ -81,21 +94,28 @@ from backend.vision.violation_service import ViolationMonitor
 from backend.vision.camera_health import CameraHealth
 from backend.traffic.traffic_service import traffic, get_traffic_tile, get_osm_tile
 from backend.traffic.guidance_service import GuidanceService
+from backend.traffic.flood_route import FloodRouter, gather, sensor_spots
+from backend.traffic.area_traffic import area_traffic
+from backend.traffic import near_traffic, area_roads
 from backend.vision.helmet_service import HelmetPatrol
 from backend.vision.flood_cam_service import FloodCamWatch, STALE_MINUTES as FLOOD_CAM_STALE_MINUTES
 from backend.vision.itic_frames import IticFrames
+from backend.vision.doh_cameras import doh_cameras, stream_key as doh_stream_key
+from backend.vision.world_cameras import world_cameras
 from backend.vision.wrongway_service import WrongWayPatrol
 from backend.water.air_service import air
 from backend.water.flood_service import flood_roads
-from backend.water.user_reports import UserReports
+from backend.water.user_reports import UserReports, report_locations
 from backend.water.flood_feeds import traffy_reports, tmd_warnings, hdms_floods, js100_floods
+from backend.core.news_feed import news_feed
+from backend.water.province_flood import ProvinceFlood
 from backend.traffic.road_service import road_risk
 from backend.agents import chat_service
 from backend.water import water_service, north_flow, river_roads
 from backend.traffic import rsc_service
 from backend.bma.bma_events import bma_feed
 from backend.bma.bma_service import BmaScanner, RAW_DIR as BMA_RAW_DIR
-from backend.core import stale_stamp
+from backend.core import stale_stamp, thai_regions
 from backend.traffic import analytics_service
 from backend.core.telemetry_service import telemetry
 from backend.core import access_guard
@@ -136,7 +156,7 @@ WEB_DIST = os.getenv("WEB_DIST") or os.path.join(DATA_DIR, "dist")
 INDEX_HTML = os.path.join(WEB_DIST, "index.html")
 WEB_BUILT = os.path.exists(INDEX_HTML)
 if not WEB_BUILT:
-    print(f"[Warning] {INDEX_HTML} not found: run launch\\build_web.bat (needs Node.js), then restart. Serving the API only.")
+    print(f"[Warning] {INDEX_HTML} not found: run launch\\build_web.bat (Windows) or launch/build_web.sh (macOS) (needs Node.js), then restart. Serving the API only.")
 
 # Load cameras (strictly verified live streams)
 cameras_data = []
@@ -333,9 +353,12 @@ def _unmasked(c):
 @app.get("/api/cameras/all")
 def get_all_cameras(request: Request):
     """Every camera for the live camera page. Ours first (cameras_bkk.json, the ones the AI knows), then the
-    rest of iTIC's list from Longdo, then the BMA cameras (source "bma"), which have no video: the page shows
-    their newest frame. Left out: Longdo cameras on the "tempsus" placeholder stream (suspended, about 80 in
-    Pattaya) and links with a masked address (camid=X.X.X.X)."""
+    rest of iTIC's list from Longdo, then the Department of Highways cameras Longdo does not list (source
+    "doh"), then the BMA cameras (source "bma"), which have no video: the page shows their newest frame,
+    then the rest of the country (world_cameras.py: BMA flood centre, Pattaya, city and river cameras),
+    whose "media" says how the page shows each one. Left out: Longdo cameras on the "tempsus" placeholder stream (suspended, about 80 in Pattaya) and links
+    with a masked address (camid=X.X.X.X). Each camera carries its province and region (ภาค) for the
+    nationwide tab."""
     items = [_unmasked(c) for c in cameras_data]
     seen = {c.get("camid") for c in cameras_data} | {c.get("hls_url") for c in cameras_data if c.get("hls_url")}
     for c in map(_unmasked, get_longdo_cameras().get("items") or []):
@@ -343,6 +366,13 @@ def get_all_cameras(request: Request):
             continue
         seen.update(k for k in (c.get("camid"), c["hls_url"]) if k)
         items.append(c)
+    # The same DOH feed reaches us through iTIC's relay as well as from DOH's own hosts
+    feeds = {doh_stream_key(c.get("hls_url")) for c in items} - {""}
+    for c in doh_cameras.items():
+        if c.get("camid") in seen or doh_stream_key(c.get("hls_url")) in feeds:
+            continue
+        seen.add(c.get("camid"))
+        items.append(dict(c))
     for c in bma_scanner.cameras:
         camid = str(c.get("camid") or "")
         if not SAFE_ID.fullmatch(camid):
@@ -356,12 +386,30 @@ def get_all_cameras(request: Request):
             "province": "กรุงเทพมหานคร", "hls_url": "", "vdourl": "", "imgurl": f"/api/bma/snapshot/{camid}?annotate=0",
             "latitude": float(c.get("latitude") or 0), "longitude": float(c.get("longitude") or 0),
         })
+    items.extend(world_cameras.items())
+    for c in items:
+        # Longdo's geocode beats the province in its title, which defaults to Bangkok when the title has none
+        province = thai_regions.from_geocode(c.get("geocode")) or thai_regions.normalize(c.get("province"))
+        c["province"] = province or c.get("province") or ""
+        c["region"] = thai_regions.region_of(province)
+        if not thai_regions.in_thailand(c.get("latitude"), c.get("longitude")):
+            c["latitude"] = c["longitude"] = 0   # e.g. BMA-1712 has its latitude in both
     # About 430 KB of mostly Thai text: gzip takes it under 60 KB
     body = json.dumps({"total": len(items), "items": items}, ensure_ascii=False).encode("utf-8")
     if "gzip" in request.headers.get("accept-encoding", ""):
         return Response(gzip.compress(body, 6), media_type="application/json",
                         headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
     return Response(body, media_type="application/json")
+
+@app.get("/api/cameras/image/{camid}")
+def get_camera_image(camid: str):
+    """Newest picture of a DWR river camera, which takes two calls the browser cannot make: see world_cameras.py."""
+    if not SAFE_ID.fullmatch(camid):
+        raise HTTPException(400, "bad camera id")
+    data = world_cameras.image_bytes(camid)
+    if not data:
+        return Response(status_code=404)
+    return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "max-age=60"})
 
 @app.get("/api/bma/analytics")
 def get_bma_analytics():
@@ -723,6 +771,68 @@ async def video_feed(camid: str = None, url: str = None):
 def traffic_summary(top: int = Query(8, ge=1, le=30)):
     return traffic.get_summary(top=top)
 
+@app.get("/api/traffic/areas")
+def traffic_areas(request: Request):
+    """Traffic score per province and district from Longdo's lines over the whole country (area_traffic.py)."""
+    body = json.dumps(area_traffic.status(), ensure_ascii=False).encode("utf-8")
+    if "gzip" in request.headers.get("accept-encoding", ""):
+        return Response(gzip.compress(body, 6), media_type="application/json",
+                        headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
+    return Response(body, media_type="application/json")
+
+def road_event_points():
+    """Accidents, closed roads and floods on roads in every province as points: {"kind", "title", "lat", "lng"}."""
+    events = []
+    ev = incidents.road_events()
+    for i in ev["incidents"]:
+        events.append({"kind": i["kind"], "title": i["title"], "lat": i["latitude"], "lng": i["longitude"]})
+    for c in ev["closures"]:
+        events.append({"kind": "closed" if c["kind"] == "closed" else "diversion", "title": c["title"],
+                       "lat": c["latitude"], "lng": c["longitude"]})
+    for f in flood_national_map()["items"]:
+        if f["kind"] == "road" and f["passable"] is not False:   # impassable ones are closures above
+            events.append({"kind": "flood", "title": f["title"], "lat": f["lat"], "lng": f["lng"], "depth_cm": f["depth_cm"]})
+    return events
+
+@app.get("/api/traffic/near")
+def traffic_near(lat: float = Query(..., ge=5.5, le=20.5), lng: float = Query(..., ge=97.3, le=105.7)):
+    """Roads around a visitor's position (the "ใกล้ฉัน" button): traffic per named road within 3 km
+    (near_traffic.py), the district, and accidents, closed roads and floods within that circle.
+    The page sends the position rounded to 0.01 degree (about 1 km), and it is rounded again here."""
+    lat, lng = round(lat, 2), round(lng, 2)
+    out = dict(near_traffic.analyse(lat, lng))
+    out["province"], out["amphoe"] = area_traffic.locate(lat, lng)
+    radius = out["radius_km"]
+    near = []
+    for e in road_event_points():
+        d = near_traffic.distance_km(lat, lng, e["lat"], e["lng"])
+        if d <= radius:
+            near.append({**{k: v for k, v in e.items() if k not in ("lat", "lng")}, "distance_km": round(d, 1)})
+    out["events"] = sorted(near, key=lambda e: e["distance_km"])[:15]
+    return out
+
+@app.get("/api/road/events")
+def road_events():
+    """Accidents and closed roads in every province for the traffic map: the Longdo feed (all of Thailand) and
+    the BMA traffic centre's accident / road-work reports (Bangkok), each with its province and district."""
+    out = incidents.road_events()
+    bma = bma_feed.get(hours=24, limit=200)["items"]
+    for e in bma:
+        if e.get("lat") is None or e.get("lng") is None or e.get("kind") not in ("accident", "roadwork"):
+            continue
+        if e["kind"] == "accident" and time.time() - (e.get("ts") or 0) > 3 * 3600:
+            continue   # the BMA list has no end time: an accident older than 3 hours is taken as cleared
+        item = {"id": f"bma-{e['id']}", "source": "bma", "title": e.get("title") or "", "description": e.get("desc") or "",
+                "latitude": e["lat"], "longitude": e["lng"], "start": datetime.fromtimestamp(e["ts"]).strftime("%Y-%m-%d %H:%M:%S") if e.get("ts") else None,
+                "stop": None, "contributor": "ศูนย์จราจร กทม."}
+        if e["kind"] == "accident":
+            out["incidents"].append({**item, "kind": "accident"})
+        else:
+            out["closures"].append({**item, "kind": "diversion", "reason": ""})
+    for i in out["incidents"] + out["closures"]:
+        i["province"], i["amphoe"] = area_traffic.locate(i["latitude"], i["longitude"])
+    return out
+
 @app.get("/api/weather/wind")
 def weather_wind():
     """Current wind / rain / cloud on a 7x7 grid over Bangkok (Open-Meteo) for the map overlay."""
@@ -737,6 +847,14 @@ def air_stations():
 def traffic_guidance():
     """Live dispersal guidance per main corridor: hotspots, bypass roads with live flow, advice text."""
     return guidance.status()
+
+@app.get("/api/traffic/guidance/area")
+def traffic_guidance_area(province: str = Query(..., pattern=r"^\d{2}$"), amphoe: str = Query("", pattern=r"^(\d{4})?$")):
+    """Road cards like /api/traffic/guidance for one province or district of Thailand (area_roads.py)."""
+    out = area_roads.analyse(province, amphoe, road_event_points())
+    if out is None:
+        return JSONResponse(status_code=404, content={"error": "unknown province or district"})
+    return out
 
 # ---------------------------------------------------------------- Helmet patrol (all BMA cameras)
 @app.get("/api/helmet/status")
@@ -821,14 +939,22 @@ def flood_cameras_check():
     """Check every camera now instead of waiting for its turn (operator only through access_guard)."""
     return flood_cams.check_all()
 
+@app.get("/api/flood/report-locations")
+def user_report_locations():
+    return {"provinces": report_locations()}
+
 @app.get("/api/flood/user-reports")
 def user_reports_recent(hours: float = Query(None, gt=0, le=48)):
-    """Published flood reports from the public in the last hours (default USER_REPORT_HOURS)."""
-    return user_reports.recent(hours)
+    """Published flood reports from the public in the last hours (default USER_REPORT_HOURS), each with its province."""
+    out = user_reports.recent(hours)
+    for r in out["items"]:
+        if not r.get("province"):
+            r["province"] = province_flood.place(r["note"], "", r["lat"], r["lng"])
+    return out
 
 @app.post("/api/flood/user-reports")
 async def user_reports_create(request: Request):
-    """A flood report from the public: {lat, lng, depth, note?, photo? (data: URL)}. Size and rate limited in access_guard."""
+    """Own flood report: {province, district, lat, lng, depth, note?, photo? (data: URL)}. Size/rate limited."""
     body = bytearray()
     async for chunk in request.stream():   # counted here too: a chunked upload has no content-length to check
         body += chunk
@@ -957,12 +1083,29 @@ def water_summary():
 
 @app.get("/api/water/map")
 def water_map():
-    """Every metro water / rain gauge, the upstream dams and flooded roads (BMA road sensors, Longdo
-    flood reports and Department of Highways HDMS tickets) as map points."""
+    """Map points of the water map, all of Thailand: river / canal gauges, rain gauges and the 35 large dams
+    (metro ones from water_service, the rest from Thai Water's national snapshot read by province_flood every
+    30 minutes), and flooded roads (BMA road sensors, Longdo flood reports and Department of Highways HDMS
+    tickets in every province)."""
     try:
         out = water_service.get_map()
     except Exception as e:
         return JSONResponse(status_code=503, content={"error": str(e)})
+    # Thai Water situation_level: 5 over the bank, 4 high, 3 normal, 1-2 low, 0 no reading
+    status = {5: "overflow", 4: "high", 3: "normal", 2: "low", 1: "low"}
+    near = [(p["lat"], p["lng"]) for p in out["water"]]
+    for g in province_flood.gauges():
+        if any(abs(g["lat"] - a) < 0.001 and abs(g["lng"] - b) < 0.001 for a, b in near):
+            continue
+        msl, bank = g.get("msl"), g.get("bank")
+        out["water"].append({
+            "id": f"river-th-{g.get('station_id') or g['name']}", "kind": "river", "name": g["name"],
+            "district": g["amphoe"], "province": g["province"], "lat": g["lat"], "lng": g["lng"], "ts": g["ts"],
+            "status": status.get(g["level"], "offline"), "msl": msl, "bank": bank,
+            "diff_bank": round(bank - msl, 2) if msl is not None and bank is not None else None,
+            # No station_id: the snapshot's station ids are not the ones the graph API (the trend chart) takes
+            "storage_pct": g["pct"], "river": g["river"],
+        })
     roads = []
     for s in flood_roads.stations(limit=1000)["items"]:
         if s.get("lat") and s.get("lng"):
@@ -971,24 +1114,80 @@ def water_map():
                           "lat": s["lat"], "lng": s["lng"], "ts": s.get("ts"), "status": s.get("status"),
                           "depth_cm": s.get("level_cm"), "max_cm": s.get("max_cm"), "trend": s.get("trend_th"),
                           "sensor_kind": s.get("kind")})
-    for f in incidents.floods()["items"]:
-        roads.append({"id": f["id"], "kind": "report", "name": f["place"], "district": "", "province": "",
+    # Department of Highways tickets in every province (the Bangkok-area list adds their photos)
+    hdms = {h["id"]: h for h in hdms_floods.national()}
+    hdms.update({h["id"]: h for h in hdms_floods.status()["items"]})
+    hdms = [h for h in hdms.values() if h["lat"] and h["lng"]]
+    # Longdo flood reports in every province; the Department's own reports there repeat its HDMS tickets
+    for f in incidents.floods(national=True)["items"]:
+        if any(abs(f["lat"] - h["lat"]) < 0.003 and abs(f["lng"] - h["lng"]) < 0.003 for h in hdms):
+            continue
+        province, amphoe = area_traffic.locate(f["lat"], f["lng"])
+        roads.append({"id": f["id"], "kind": "report", "name": f["place"], "district": amphoe, "province": province,
                       "lat": f["lat"], "lng": f["lng"], "ts": f["ts"],
                       "status": "report" if f["active"] else "report_ended",
-                      "description": f["description"], "credit": f["credit"]})
-    for h in hdms_floods.status()["items"]:
+                      "description": f["description"], "credit": f["credit"] or f.get("contributor") or "Longdo Traffic"})
+    for h in hdms:
         if h["lat"] and h["lng"]:
             roads.append({"id": h["id"], "kind": "hdms", "name": h["place"] or h["title"], "district": h["amphoe"] or "",
                           "province": h["province"], "lat": h["lat"], "lng": h["lng"], "ts": h["ts"],
                           "status": "hdms" if h["active"] else "hdms_ended", "depth_cm": h["depth_cm"],
                           "description": " · ".join(x for x in (h["title"], h["closure"], h["relief"]) if x),
                           "credit": h["depot"]})
+    # What people report (not verified): Traffy Fondue in Bangkok, this site's report form, the BMA traffic
+    # centre's flood reports; JS100 radio news has no position, so it comes as text beside the map
+    for t in traffy_reports.status()["items"]:
+        try:
+            lat, lng = float(t["lat"]), float(t["lng"])
+        except (TypeError, ValueError, KeyError):
+            continue
+        roads.append({"id": f"traffy-{t['id']}", "kind": "traffy", "name": t.get("address") or f"เขต{t.get('district') or ''}",
+                      "district": t.get("district") or "", "province": "กรุงเทพมหานคร", "lat": lat, "lng": lng,
+                      "ts": int(t["ts"]) if t.get("ts") else None, "status": "people", "description": t.get("text") or "",
+                      "depth_text": t.get("depth") or "", "photo": t.get("photo"), "url": t.get("url"),
+                      "state": t.get("state") or "", "credit": "Traffy Fondue"})
+    for r in user_reports.recent()["items"]:
+        province, amphoe = area_traffic.locate(r["lat"], r["lng"])
+        roads.append({"id": f"user-{r['id']}", "kind": "user", "name": r["note"] or "คนแจ้งน้ำท่วม",
+                      "district": amphoe, "province": province, "lat": r["lat"], "lng": r["lng"], "ts": r["ts"],
+                      "status": "people", "description": r["ai_note"], "depth_text": r["depth_th"],
+                      "photo": r["photo"], "state": r["ai_level_th"] or "", "credit": "แจ้งผ่านเว็บนี้"})
+    for e in bma_feed.get(kind="flood", hours=6, limit=100)["items"]:
+        if e.get("lat") is not None and e.get("lng") is not None:
+            roads.append({"id": f"bma-{e['id']}", "kind": "bma", "name": e.get("title") or "น้ำท่วม",
+                          "district": "", "province": "กรุงเทพมหานคร", "lat": e["lat"], "lng": e["lng"], "ts": e.get("ts"),
+                          "status": "people", "description": e.get("desc") or "", "credit": "ศูนย์จราจร กทม."})
+    out["roads_text"] = [{"text": j["text"], "ts": int(j["ts"]) if j.get("ts") else None, "source": "JS100"}
+                         for j in js100_floods.status()["items"][:20]]
+    # Rain gauges and large dams in every province (Thai Water snapshot, via province_flood)
+    near = [(p["lat"], p["lng"]) for p in out["rain"]]
+    for r in province_flood.rain_points():
+        if any(abs(r["lat"] - a) < 0.001 and abs(r["lng"] - b) < 0.001 for a, b in near):
+            continue
+        out["rain"].append({"id": f"rain-th-{r['lat']}-{r['lng']}", "kind": "rain", "name": r["name"], "district": r["amphoe"],
+                            "province": r["province"], "lat": r["lat"], "lng": r["lng"], "ts": r["ts"],
+                            "status": water_service._rain_level(r["rain_24h"]), "rain_24h": r["rain_24h"], "rain_1h": r["rain_1h"]})
+    dams = province_flood.dams()
+    if dams:
+        out["dams"] = []
+        for d in dams:
+            pct = d["storage_pct"] or 0
+            province, _ = area_traffic.locate(d["lat"], d["lng"])
+            out["dams"].append({"id": f"dam-{d['name']}", "kind": "dam", "name": d["name"], "district": "", "province": province,
+                                "lat": d["lat"], "lng": d["lng"], "ts": None,
+                                "status": "high" if pct >= 90 else "normal" if pct >= 50 else "low",
+                                **{k: d[k] for k in ("storage_pct", "storage", "max_storage", "inflow", "released", "date")}})
     return {**out, "roads": roads}
 
 @app.get("/api/flood/longdo")
-def flood_longdo(hours: int = Query(None, ge=1, le=48)):
-    """Flooded-road reports from the Longdo Traffic event feed (type 6; iTIC / FM91 relays), newest first."""
-    return incidents.floods(hours=hours)
+def flood_longdo(hours: int = Query(None, ge=1, le=48), national: bool = False):
+    """Flooded-road reports from the Longdo Traffic event feed (type 6; iTIC / FM91 relays), newest first.
+    national=1: every province instead of the Bangkok area, each with its province."""
+    out = incidents.floods(hours=hours, national=national)
+    if national:
+        for f in out["items"]:
+            f["province"] = province_flood.place(f["title"], f["description"], f["lat"], f["lng"])
+    return out
 
 @app.get("/api/water/forecast")
 def water_forecast(station: int = Query(..., ge=1)):
@@ -1100,10 +1299,54 @@ def telemetry_view(payload: dict = Body(...)):
 def telemetry_heartbeat(payload: dict = Body(...)):
     return {"ok": telemetry.heartbeat(payload.get("sid"), payload.get("view"))}
 
+def route_hazards():
+    """Flooded spots for the chat bot's routes, and the sources that could not be read (flood_route.gather).
+    `avoid` = keep the route out (deep enough to stop a car, or reported flooded with no depth); the rest is
+    shallow water the answer only mentions."""
+    return gather([
+        ("เซ็นเซอร์น้ำ กทม.", lambda: sensor_spots(flood_roads.status())),
+        ("กล้อง กทม. (AI)", lambda: [
+            {"lat": float(c["lat"]), "lng": float(c["lng"]), "name": c.get("title"), "source": "กล้อง กทม. (AI)",
+             "depth_text": c.get("level_th"), "avoid": c.get("level") in ("flooded", "severe")}
+            for c in flood_cams.status()["items"] if c.get("lat") and c.get("lng") and not c.get("stale")]),
+        ("ประชาชนแจ้ง", lambda: [
+            {"lat": r["lat"], "lng": r["lng"], "name": r["note"] or "ประชาชนแจ้งน้ำท่วม", "source": "ประชาชนแจ้ง",
+             "depth_cm": r["depth_cm"], "depth_text": r["depth_th"], "avoid": (r["depth_cm"] or 0) >= 20}
+            for r in user_reports.recent()["items"]]),
+        ("Longdo Traffic", lambda: [
+            {"lat": f["lat"], "lng": f["lng"], "name": f["place"] or f["title"], "source": "Longdo Traffic",
+             "avoid": "ผ่านได้" not in (f["place"] or "") + (f["description"] or "")}
+            for f in incidents.floods()["items"] if f["active"]]),
+        ("กรมทางหลวง", lambda: [
+            {"lat": h["lat"], "lng": h["lng"], "name": h.get("place") or h.get("title"), "source": "กรมทางหลวง",
+             "depth_cm": h.get("depth_cm"), "avoid": True}
+            for h in hdms_floods.status()["items"] if h.get("active") and h.get("lat") and h.get("lng")]),
+        ("ศูนย์จราจร กทม.", lambda: [
+            {"lat": e["lat"], "lng": e["lng"], "name": e.get("title") or "น้ำท่วม", "source": "ศูนย์จราจร กทม.", "avoid": True}
+            for e in bma_feed.get(kind="flood", hours=6, limit=100)["items"]
+            if e.get("lat") is not None and e.get("lng") is not None]),
+    ])
+
+def route_jams():
+    """Congested stretches of the live traffic roads, for the routes."""
+    return [{"road": r["name"], "lat": h["lat"], "lng": h["lon"], "km": h["km"]}
+            for r in traffic.get_roads(limit=5000) for h in r.get("hotspots") or []]
+
+flood_router = FloodRouter(hazards=route_hazards, jams=route_jams)
+
+def _user_location(v):
+    """{lat, lng} the browser shared, if it is a real point in Thailand; None otherwise."""
+    try:
+        lat, lng = float(v["lat"]), float(v["lng"])
+    except (TypeError, ValueError, KeyError):
+        return None
+    return {"lat": lat, "lng": lng} if 5.5 <= lat <= 20.5 and 97.3 <= lng <= 105.7 else None
+
 @app.post("/api/chat")
 def chat_endpoint(payload: dict = Body(...)):
     messages = payload.get("messages") or []
-    messages = [m for m in messages if isinstance(m, dict) and m.get("role") in ("user", "assistant")]
+    messages = [m for m in messages if isinstance(m, dict) and m.get("role") in ("user", "assistant")
+                and isinstance(m.get("content"), str)]
     if not messages:
         return JSONResponse(status_code=400, content={"error": "messages required"})
     try:
@@ -1119,12 +1362,18 @@ def chat_endpoint(payload: dict = Body(...)):
                     ("helmet", lambda: {"status": helmet.status(), "recent": helmet.recent(verdict="no_helmet", limit=5)["items"]}),
                     ("wrongway", lambda: {"status": wrongway.status(), "recent": wrongway.recent(verdict="wrong_way", limit=5)["items"]}),
                     ("violations", lambda: violations.recent(hours=24, limit=1)),
-                    ("analytics", analytics_service.get_summary), ("north_flow", north_flow.brief)):
+                    ("analytics", analytics_service.get_summary), ("north_flow", north_flow.brief),
+                    ("weather_outlook", weather_now.outlook), ("tmd", tmd_warnings.status),
+                    ("flood_agent", lambda: flood_agent.status()), ("water_agent", lambda: water_agent.status()),
+                    ("north_impact", lambda: north_impact.status()),
+                    ("areas", area_traffic.status), ("provinces", province_flood.status)):
         try:
             extra[key] = fn()
         except Exception as e:
             print(f"[Chat] {key} unavailable: {e}")
-    return chat_service.chat(traffic, messages, detector.get_stats(), water, extra)
+    extra["weather_at"] = weather_now.outlook   # forecast of a province the question names
+    return chat_service.chat(traffic, messages, detector.get_stats(), water, extra, router=flood_router,
+                             location=_user_location(payload.get("location")))
 
 # ---------------------------------------------------------------- Flood analyst agent (local model)
 flood_agent = FloodAgent(DATA_DIR, {
@@ -1148,6 +1397,22 @@ def flood_agent_run(payload: dict = Body(None)):
 
 # ---------------------------------------------------------------- Water Forecast analyst (local model)
 water_agent = WaterAgent(DATA_DIR, flood_agent)
+def citizen_flood_reports():
+    """Floods people report, for the province tab: Longdo Traffic in every province (still open; not the
+    "DOH Admin" posts, which are the DOH highway tickets the tab already counts), this site's report form
+    (published) and Traffy Fondue (Bangkok)."""
+    out = [{"source": "Longdo Traffic", "title": f["title"], "text": f["description"], "depth": None,
+            "ts": f["ts"], "lat": f["lat"], "lng": f["lng"]}
+           for f in incidents.floods(national=True)["items"] if f["active"] and f["contributor"] != "DOH Admin"]
+    out += [{"source": "แจ้งผ่านเว็บนี้", "title": r["note"] or "คนแจ้งน้ำท่วม", "text": r["ai_note"], "depth": r["depth_th"],
+             "ts": r["ts"], "lat": r["lat"], "lng": r["lng"]} for r in user_reports.recent()["items"]]
+    out += [{"source": "Traffy Fondue", "title": f"เขต{t['district']} กรุงเทพฯ" if t["district"] else "กรุงเทพมหานคร",
+             "text": t["text"], "depth": t["depth"], "ts": t["ts"], "lat": t["lat"], "lng": t["lng"]}
+            for t in traffy_reports.status()["items"] if t["lat"] is not None]
+    return out
+
+# Flood situation in every province, with the same local model's analysis
+province_flood = ProvinceFlood(DATA_DIR, reports=citizen_flood_reports)
 
 @app.get("/api/ai/usage")
 def ai_usage(request: Request, minutes: int = Query(30, ge=1, le=1440)):
@@ -1236,17 +1501,71 @@ alerts = AlertService(DATA_DIR, {
     "bma_events": lambda: bma_feed.get(hours=2, limit=60), "air": air.status,
     "traffy": traffy_reports.status, "tmd": tmd_warnings.status,
     "health": lambda: json.loads(health().body),
+    "road_events": road_events, "provinces": province_flood.status,
 })
+
+@app.get("/api/news")
+def news(kind: str = Query(None, pattern="^(flood|accident)$")):
+    """Flood and road-accident headlines from Thai news outlets' own RSS feeds, newest first (news_feed.py)."""
+    return news_feed.status(kind)
 
 @app.get("/api/flood/reports")
 def flood_reports():
     """Flood complaints from Traffy Fondue in the last few hours, newest first."""
     return traffy_reports.status()
 
+@app.get("/api/flood/provinces")
+def flood_provinces():
+    """Flood situation in every province (Thai Water gauges and rain, DOH flooded highways) with the AI's
+    analysis: see province_flood.py."""
+    return province_flood.status()
+
 @app.get("/api/flood/hdms")
-def flood_hdms():
-    """Flooded highways in Bangkok and vicinity from the Department of Highways HDMS dashboard, newest first."""
+def flood_hdms(national: bool = False):
+    """Flooded highways in Bangkok and vicinity from the Department of Highways HDMS dashboard, newest first.
+    national=1: every province (without photos)."""
+    if national:
+        st = hdms_floods.status()
+        items = hdms_floods.national()
+        return {"updated_at": st["updated_at"], "error": st["error"], "total": len(items), "items": items}
     return hdms_floods.status()
+
+@app.get("/api/flood/national-map")
+def flood_national_map():
+    """Where it is flooded now in every province, for the traffic map: flooded roads from the Longdo feed (the
+    Department of Highways' reports and people's), with the water depth from HDMS where the two match (HDMS
+    tickets are the same floods), HDMS tickets Longdo lacks, and river gauges over the bank (Thai Water)."""
+    items = []
+    for f in incidents.floods(national=True)["items"]:
+        if not f["active"]:
+            continue
+        title = f["title"]
+        passable = False if "ผ่านไม่ได้" in title else True if "ผ่านได้" in title else None
+        items.append({"id": f["id"], "kind": "road", "title": title, "description": f["description"],
+                      "lat": f["lat"], "lng": f["lng"], "ts": f["ts"], "passable": passable, "depth_cm": None,
+                      "source": "กรมทางหลวง" if f["contributor"] == "DOH Admin" else "ข่าวจราจร"})
+    roads = list(items)
+    for h in hdms_floods.national():
+        if not h["active"] or not h["lat"] or not h["lng"]:
+            continue
+        same = next((r for r in roads if abs(r["lat"] - h["lat"]) < 0.003 and abs(r["lng"] - h["lng"]) < 0.003), None)
+        if same:
+            same["depth_cm"] = same["depth_cm"] or h["depth_cm"]
+            continue
+        items.append({"id": h["id"], "kind": "road", "title": f"น้ำท่วม {h['place'] or h['title']}",
+                      "description": " · ".join(x for x in (h["cause"], h["relief"]) if x), "lat": h["lat"], "lng": h["lng"],
+                      "ts": h["ts"], "passable": None, "depth_cm": h["depth_cm"], "source": "กรมทางหลวง"})
+    for p in province_flood.status()["provinces"]:
+        for g in p["gauges"]:
+            if g["level"] >= 5 and g["lat"] and g["lng"]:
+                items.append({"id": f"gauge-{g['lat']}-{g['lng']}", "kind": "river",
+                              "title": f"{g['river'] or 'น้ำ'}ล้นตลิ่ง ที่ {g['name']}" if g["river"] != g["name"] else f"{g['name']} ล้นตลิ่ง",
+                              "description": f"ระดับน้ำ {round(g['pct'] or 0)}% ของตลิ่ง", "lat": g["lat"], "lng": g["lng"],
+                              "ts": g["ts"], "passable": None, "depth_cm": None, "source": "คลังข้อมูลน้ำแห่งชาติ"})
+    for i in items:
+        i["province"], i["amphoe"] = area_traffic.locate(i["lat"], i["lng"])
+    return {"updated_at": int(time.time()), "items": items,
+            "counts": {"road": sum(i["kind"] == "road" for i in items), "river": sum(i["kind"] == "river" for i in items)}}
 
 @app.get("/api/flood/js100")
 def flood_js100():
@@ -1269,7 +1588,8 @@ def alerts_recent(limit: int = Query(50, ge=1, le=200)):
 
 @app.post("/api/alerts/subscribe")
 def alerts_subscribe(payload: dict = Body(...)):
-    return alerts.subscribe(payload.get("subscription"), payload.get("topics"), payload.get("label", ""))
+    return alerts.subscribe(payload.get("subscription"), payload.get("topics"), payload.get("label", ""),
+                            payload.get("provinces"))
 
 @app.post("/api/alerts/unsubscribe")
 def alerts_unsubscribe(payload: dict = Body(...)):
@@ -1283,7 +1603,7 @@ def alerts_test(payload: dict = Body(None)):
 @app.get("/")
 def read_root():
     if not WEB_BUILT:
-        return Response("Web UI not built: run launch\\build_web.bat (needs Node.js), then restart the server.\n",
+        return Response("Web UI not built: run launch\\build_web.bat (Windows) or launch/build_web.sh (macOS) (needs Node.js), then restart the server.\n",
                         status_code=503, media_type="text/plain")
     # never cache the shell so a rebuilt bundle is picked up on the next reload
     return FileResponse(INDEX_HTML, headers={"Cache-Control": "no-cache"})
@@ -1312,15 +1632,21 @@ if WEB_BUILT:
     app.mount("/", StaticFiles(directory=WEB_DIST, html=True), name="static")
 
 traffic.start()
+area_traffic.start()
+area_roads.warm()
 guidance.start()
 air.start()
 flood_roads.start()
 flood_cams.start()
 itic_frames.start()
+doh_cameras.start()
+world_cameras.start()
 user_reports.start()
 traffy_reports.start()
 tmd_warnings.start()
 hdms_floods.start()
+province_flood.start()
+news_feed.start()
 js100_floods.start()
 # Heartbeats stamped by a wrong clock would otherwise sit in the online count forever
 telemetry.purge_future()

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { fetchTrafficSummary, fetchBmaAnalytics, fetchAnalytics, fetchOnlineCount, fetchFloodStatus } from '../lib/api.js';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { fetchTrafficSummary, fetchTrafficAreas, fetchBmaAnalytics, fetchAnalytics, fetchOnlineCount, fetchFloodStatus } from '../lib/api.js';
 import { bmaSiteDown } from './bma/BmaSiteNotice.jsx';
 import { trackView } from '../lib/telemetry.js';
 import { Button } from './dashboard/ui.jsx';
@@ -12,6 +12,8 @@ import DensityPanel from './dashboard/DensityPanel.jsx';
 import TrafficGuidanceCard from './dashboard/TrafficGuidanceCard.jsx';
 import CityStatusStrip from './dashboard/CityStatusStrip.jsx';
 import RoadRiskPanel from './dashboard/RoadRiskPanel.jsx';
+import NewsCard from './dashboard/NewsCard.jsx';
+import AvoidRoadsCard from './dashboard/AvoidRoadsCard.jsx';
 import BMAEventFeed from './water/BMAEventFeed.jsx';
 
 const POLL_MS = 60000;
@@ -24,11 +26,13 @@ const SECTIONS = [
 ];
 
 
-export default function DashboardPage({ isActive, liveCount, cameras = [], incidents, onAsk, onOpenRoad, onNavigate, onOpenAI, onToast }) {
+export default function DashboardPage({ isActive, liveCount, cameras = [], incidents, onAsk, onAskText, onOpenRoad, onNavigate, onOpenAI, onToast }) {
   const source = 'bma';
   const [section, setSection] = useState('overview');
   const [summary, setSummary] = useState(null);
   const [bma, setBma] = useState(null);
+  const [areas, setAreas] = useState(null);
+  const [roadArea, setRoadArea] = useState(null);   // province / district picked in FlowOverview, for the road cards
   const [density, setDensity] = useState(null);
   const [onlineCount, setOnlineCount] = useState(null);
   const [summaryError, setSummaryError] = useState(false);
@@ -51,7 +55,8 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
     }).catch(() => {});
     const d = fetchOnlineCount().then((n) => setOnlineCount(n)).catch(() => {});
     const e = fetchFloodStatus().then((f) => setFlood(f)).catch(() => {});
-    return Promise.allSettled([a, b, c, d, e]).finally(() => setRefreshing(false));
+    const f = fetchTrafficAreas().then(setAreas).catch(() => {});
+    return Promise.allSettled([a, b, c, d, e, f]).finally(() => setRefreshing(false));
   }, []);
 
   useEffect(() => {
@@ -140,6 +145,31 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
 
   const activeSummary = source === 'bma' ? (bmaSummary || ready) : (ready || bmaSummary);
   const incidentCount = (incidents?.camera?.length || 0) + (incidents?.longdo?.length || 0);
+  // The most jammed roads, by name only, for the summary sentence ("เลี่ยง ... กับ ...")
+  const avoid = activeSummary?.flow_index != null && activeSummary.flow_index < 75
+    ? [...new Set((bma?.top_congested || []).map((c) => c.road).filter(Boolean))].slice(0, 2)
+    : [];
+  const pickSection = (id) => {
+    setSection(id);
+    trackView(`dashboard:${id}`);
+  };
+  // The accident answer on the summary opens the accident tab and brings its list into view with the focus on it.
+  // Only after that tap: switching tabs or loading the page never scrolls.
+  const incidentsRef = useRef(null);
+  const [jump, setJump] = useState(false);
+  const openIncidents = () => {
+    pickSection('incidents');
+    setJump(true);
+  };
+  useEffect(() => {
+    if (!jump || section !== 'incidents') return;
+    setJump(false);
+    const el = incidentsRef.current;
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'start' });
+  }, [jump, section]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -182,27 +212,49 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
       )}
 
 
-      <CityStatusStrip summary={activeSummary} incidents={incidents} flood={flood} onNavigate={onNavigate} isActive={isActive} />
+      <CityStatusStrip
+        summary={activeSummary}
+        incidents={incidents}
+        flood={flood}
+        avoid={avoid}
+        onNavigate={onNavigate}
+        onIncidents={openIncidents}
+        onAskText={onAskText}
+        isActive={isActive}
+      />
+
+      {/* roads to avoid on the left, the country's flood and accident news beside them */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-4 items-start">
+        <AvoidRoadsCard summary={summary} onOpenRoad={onOpenRoad} onNavigate={onNavigate} />
+        <NewsCard isActive={isActive} />
+      </div>
 
       <Tabs
         label="หมวดข้อมูลจราจร"
         value={section}
-        onChange={(id) => {
-          setSection(id);
-          trackView(`dashboard:${id}`);
-        }}
+        onChange={pickSection}
         tabs={SECTIONS.map((t) => (t.id === 'incidents' ? { ...t, badge: incidentCount || undefined } : t))}
       />
 
       {section === 'overview' && (
         <>
-          <FlowOverview summary={activeSummary} error={summaryError} onRetry={load} retrying={refreshing} />
-          <DensityPanel d={density} onOpenRoad={onOpenRoad} showShare={false} />
-          <TrafficGuidanceCard />
+          <FlowOverview summary={activeSummary} areas={areas} error={summaryError} onRetry={load} retrying={refreshing} onArea={setRoadArea} />
+          <TrafficGuidanceCard province={roadArea?.province} amphoe={roadArea?.amphoe} />
         </>
       )}
-      {section === 'road-risk' && <RoadRiskPanel isActive={isActive && section === 'road-risk'} onOpenRoad={onOpenRoad} />}
-      {section === 'incidents' && <IncidentPanel incidents={incidents} onOpenAI={onOpenAI} onNavigate={onNavigate} />}
+      {/* The road-colour shares (Longdo lines) sit with the per-road views: on the overview they read as a second,
+          different traffic score next to the one above */}
+      {section === 'road-risk' && (
+        <>
+          <DensityPanel d={density} onOpenRoad={onOpenRoad} showShare={false} />
+          <RoadRiskPanel isActive={isActive && section === 'road-risk'} onOpenRoad={onOpenRoad} />
+        </>
+      )}
+      {section === 'incidents' && (
+        <div ref={incidentsRef} tabIndex={-1} aria-label="รายการอุบัติเหตุและรถเสีย" className="scroll-mt-20 outline-none">
+          <IncidentPanel incidents={incidents} onOpenAI={onOpenAI} onNavigate={onNavigate} />
+        </div>
+      )}
       {section === 'bma-reports' && <BMAEventFeed isActive={isActive && section === 'bma-reports'} onToast={onToast} />}
     </div>
   );

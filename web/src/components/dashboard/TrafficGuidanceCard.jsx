@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Card, Badge, Button, Skeleton, ErrorState } from './ui.jsx';
-import { fetchTrafficGuidance } from '../../lib/api.js';
+import { fetchTrafficGuidance, fetchAreaGuidance } from '../../lib/api.js';
 
 const POLL_MS = 60000;
+const BANGKOK = '10';
 const MAX_HOTSPOTS = 3;
 const MAX_ALTS = 3;
 const FIRST_CARDS = 6; // cards shown before "ดูทั้งหมด"; the rest open on demand so the overview stays short
@@ -10,28 +11,47 @@ const FIRST_CARDS = 6; // cards shown before "ดูทั้งหมด"; the 
 // ถนนสายหลัก: ติดตรงไหน เลี่ยงทางไหน ทุกอย่างในการ์ดนี้มาจาก /api/traffic/guidance ซึ่งสร้างใหม่ทุกนาที
 // จากเส้นสีแผนที่ Longdo + จำนวนรถจากกล้อง กทม. + เหตุการณ์ (ไม่มีข้อความคงที่)
 // ทุกการ์ดมีบล็อกเท่ากัน 5 ส่วน (หัว / ระยะที่ติด / จุดที่ติด / ทางเลี่ยง / คำแนะนำ) ความสูงล็อกไว้ให้ตรงกันทั้งกริด
-export default function TrafficGuidanceCard() {
+// เลือกจังหวัด/อำเภอในการ์ด "รถติดแค่ไหนตอนนี้": การ์ดเป็นถนนในพื้นที่นั้นแทน (/api/traffic/guidance/area)
+// ยกเว้นเลือกกรุงเทพฯ ทั้งจังหวัด ซึ่งใช้ 12 เส้นทางหลักเดิม
+export default function TrafficGuidanceCard({ province = '', amphoe = '' }) {
   const [filter, setFilter] = useState('all');
   const [showAll, setShowAll] = useState(false);
   const [data, setData] = useState(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [slow, setSlow] = useState(false);
+  const byArea = !!province && !(province === BANGKOK && !amphoe);
 
-  const load = useCallback(() => {
+  // `current()` is false once another area was picked, so a late answer for the old one is dropped
+  const load = useCallback((current = () => true) => {
     setLoading(true);
-    return fetchTrafficGuidance()
+    return (byArea ? fetchAreaGuidance(province, amphoe) : fetchTrafficGuidance())
       .then((d) => {
+        if (!current()) return;
         setData(d);
         setError(false);
       })
-      .catch(() => setError(true))
-      .finally(() => setLoading(false));
-  }, []);
+      .catch(() => current() && setError(true))
+      .finally(() => current() && setLoading(false));
+  }, [byArea, province, amphoe]);
 
   useEffect(() => {
-    load();
-    const id = setInterval(load, POLL_MS);
-    return () => clearInterval(id);
+    // A new area: drop the old cards (skeleton) first
+    let live = true;
+    setData(null);
+    setError(false);
+    setFilter('all');
+    setShowAll(false);
+    setSlow(false);
+    const run = () => load(() => live);
+    run();
+    const id = setInterval(run, POLL_MS);
+    const slowId = setTimeout(() => live && setSlow(true), 4000);   // an area's first answer can take a minute
+    return () => {
+      live = false;
+      clearInterval(id);
+      clearTimeout(slowId);
+    };
   }, [load]);
 
   const items = data?.items || [];
@@ -64,8 +84,12 @@ export default function TrafficGuidanceCard() {
     <Card className="p-4 sm:p-5 flex flex-col gap-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h2 className="text-[15px] font-semibold text-ink-900 leading-6">ถนนสายหลัก: ติดตรงไหน เลี่ยงทางไหน</h2>
-          <p className="text-[13px] text-slate-600 mt-0.5 leading-5">อัปเดตทุก 1 นาที</p>
+          <h2 className="text-[15px] font-semibold text-ink-900 leading-6">
+            ถนนสายหลัก{byArea && data?.area ? ` ${data.area}` : ''}: ติดตรงไหน เลี่ยงทางไหน
+          </h2>
+          <p className="text-[13px] text-slate-600 mt-0.5 leading-5">
+            {byArea ? 'ถนนในพื้นที่ที่เลือก เรียงจากที่ติดมากสุด · อัปเดตทุก 5 นาที' : 'อัปเดตทุก 1 นาที'}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 self-start sm:self-auto">
           {chip('all', `ทั้งหมด ${items.length}`, 'bg-ink-900 text-white dark:bg-slate-100 dark:text-slate-900')}
@@ -76,13 +100,20 @@ export default function TrafficGuidanceCard() {
       </div>
 
       {error && !data ? (
-        <ErrorState message="โหลดข้อมูลถนนไม่สำเร็จ" onRetry={load} retrying={loading} />
+        <ErrorState message="โหลดข้อมูลถนนไม่สำเร็จ" onRetry={() => load()} retrying={loading} />
       ) : !data ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {[1, 2, 3, 4, 5, 6].map((n) => (
-            <Skeleton key={n} className="h-80" />
-          ))}
+        <div className="flex flex-col gap-2">
+          {byArea && slow && (
+            <p role="status" className="text-sm text-ink-600">กำลังเตรียมข้อมูลถนนของพื้นที่นี้ ครั้งแรกอาจใช้เวลาถึง 1 นาที</p>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {[1, 2, 3, 4, 5, 6].map((n) => (
+              <Skeleton key={n} className="h-80" />
+            ))}
+          </div>
         </div>
+      ) : !items.length ? (
+        <p className="text-sm text-ink-500">พื้นที่นี้มีถนนสายหลักบนแผนที่จราจรน้อยเกินไป ยังสรุปไม่ได้</p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 auto-rows-fr">
           {visible.map((c) => {
@@ -101,7 +132,8 @@ export default function TrafficGuidanceCard() {
                     <span className="block text-xs text-ink-500 truncate" title={c.zone}>{c.zone}</span>
                   </div>
                   <Badge tone={c.tone} dot={c.status === 'incident' || c.status === 'congested'} className="shrink-0">
-                    {c.status_label}
+                    {/* "คล่องตัว" above "รถติดรวม 6.9 กม." read as a contradiction */}
+                    {c.status === 'free' && c.red_km >= 1 ? 'ส่วนใหญ่คล่อง' : c.status_label}
                   </Badge>
                 </div>
 

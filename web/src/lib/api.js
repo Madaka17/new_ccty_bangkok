@@ -187,15 +187,15 @@ export async function fetchFloodRoads(limit = 60) {
 
 // Flood complaints residents filed on Traffy Fondue in the last few hours (flood_feeds.py)
 // Flooded-road reports on the Longdo Traffic feed (iTIC / FM91), newest first (incident_service.floods)
-export async function fetchLongdoFloods() {
-  const res = await fetch('/api/flood/longdo');
+export async function fetchLongdoFloods({ national = false } = {}) {
+  const res = await fetch(`/api/flood/longdo${national ? '?national=1' : ''}`);
   if (!res.ok) throw new Error('longdo_floods');
   return res.json();
 }
 
 // Flooded highways in Bangkok and vicinity from the Department of Highways HDMS dashboard (flood_feeds.py)
-export async function fetchHdmsFloods() {
-  const res = await fetch('/api/flood/hdms');
+export async function fetchHdmsFloods({ national = false } = {}) {
+  const res = await fetch(`/api/flood/hdms${national ? '?national=1' : ''}`);
   if (!res.ok) throw new Error('hdms_floods');
   return res.json();
 }
@@ -235,7 +235,13 @@ export async function fetchUserReports() {
   return res.json();
 }
 
-// Send one: { lat, lng, depth, note?, photo? (data: URL) } -> { id, status: published | pending | rejected, message }
+export async function fetchReportLocations() {
+  const res = await fetch('/api/flood/report-locations');
+  if (!res.ok) throw new Error('โหลดรายชื่อจังหวัดและอำเภอไม่ได้');
+  return (await res.json()).provinces;
+}
+
+// Send one: { province, district, lat, lng, depth, note?, photo? (data: URL) } -> { id, status: published | pending | rejected, message }
 export async function postUserReport(body) {
   const res = await fetch('/api/flood/user-reports', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
@@ -432,11 +438,12 @@ export async function fetchRoadCameras(name, maxKm = 0.25) {
   return (await res.json()).items || [];
 }
 
-export async function sendChat(messages) {
+// `location` ({lat, lng}, optional) is where the person is, for "how do I get to ..." with no start
+export async function sendChat(messages, location = null) {
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify(location ? { messages, location } : { messages }),
   });
   if (res.status === 429) throw new Error('rate_limited');
   if (res.status === 413) throw new Error('too_long');
@@ -511,6 +518,49 @@ export async function fetchBMAEvents({ kind, hours = 24, limit = 60 } = {}) {
 export async function fetchBmaCameras() {
   const res = await fetch('/api/bma/cameras');
   if (!res.ok) throw new Error('bma_cameras');
+  return res.json();
+}
+
+// Flooded roads and rivers over the bank in every province, for the traffic map
+export async function fetchNationalFloods() {
+  const res = await fetch('/api/flood/national-map');
+  if (!res.ok) throw new Error('national_floods');
+  return res.json();
+}
+
+// Flood situation in every province (province_flood.py), also used by the Alerts page
+export async function fetchProvinceFloods() {
+  const res = await fetch('/api/flood/provinces');
+  if (!res.ok) throw new Error('province_floods');
+  return res.json();
+}
+
+// Accidents and closed roads in every province (Longdo feed + BMA traffic centre), for the traffic map
+export async function fetchRoadEvents() {
+  const res = await fetch('/api/road/events');
+  if (!res.ok) throw new Error('road_events');
+  return res.json();
+}
+
+// Roads around a position (the card's "ใกล้ฉัน" button). Rounded to 0.01 degree (about 1 km) before it
+// leaves the browser, so the exact position never reaches the server or its logs.
+export async function fetchTrafficNear(lat, lng) {
+  const res = await fetch(`/api/traffic/near?lat=${lat.toFixed(2)}&lng=${lng.toFixed(2)}`);
+  if (!res.ok) throw new Error('traffic_near');
+  return res.json();
+}
+
+// Road cards like fetchTrafficGuidance for one province (amphoe '') or district (area_roads.py)
+export async function fetchAreaGuidance(province, amphoe = '') {
+  const res = await fetch(`/api/traffic/guidance/area?province=${province}${amphoe ? `&amphoe=${amphoe}` : ''}`);
+  if (!res.ok) throw new Error('area_guidance');
+  return res.json();
+}
+
+// Traffic score per province and district over the whole country (Longdo lines)
+export async function fetchTrafficAreas() {
+  const res = await fetch('/api/traffic/areas');
+  if (!res.ok) throw new Error('traffic_areas');
   return res.json();
 }
 
@@ -688,6 +738,13 @@ async function postAlert(path, body) {
   return res.json();
 }
 
-export const subscribeAlerts = (subscription, topics, label) => postAlert('subscribe', { subscription, topics, label });
+export const subscribeAlerts = (subscription, topics, label, provinces) => postAlert('subscribe', { subscription, topics, label, provinces });
 export const unsubscribeAlerts = (endpoint) => postAlert('unsubscribe', { endpoint });
 export const testAlert = (endpoint) => postAlert('test', { endpoint });
+
+// Flood and road-accident headlines from Thai news outlets (news_feed.py); kind: 'flood' | 'accident' | undefined
+export async function fetchNews(kind) {
+  const res = await fetch(kind ? `/api/news?kind=${kind}` : '/api/news');
+  if (!res.ok) throw new Error('news');
+  return res.json();
+}

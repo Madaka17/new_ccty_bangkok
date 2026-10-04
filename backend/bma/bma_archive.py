@@ -28,7 +28,9 @@ import threading
 import time
 from datetime import datetime, timedelta
 
-DATA_DIR = os.getenv("BMA_DATA_DIR", r"D:\Data")
+from backend.core.instance import DEFAULT_BMA_DATA_DIR
+
+DATA_DIR = os.getenv("BMA_DATA_DIR", DEFAULT_BMA_DATA_DIR)
 CYCLE_MINUTES = max(5, int(os.getenv("BMA_CYCLE_MINUTES", "60")))
 
 CYCLE_HEADER = ["Cycle_Start", "Cycle_End", "Date", "Camera_ID", "Camera_Code", "Location", "Road", "District",

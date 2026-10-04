@@ -16,10 +16,13 @@ from ultralytics.trackers import BYTETracker
 from ultralytics.utils import YAML, IterableSimpleNamespace
 from ultralytics.utils.checks import check_yaml
 
+from backend.core.instance import thai_font
+
 # Target classes. COCO IDs: 1: bicycle, 2: car, 3: motorcycle, 5: bus, 7: truck; 0: person is detected only
 # as an incident signal (people on the road next to a stopped vehicle) and never counted as a vehicle
 PERSON_CLASS = 0
 TARGET_CLASSES = [PERSON_CLASS, 1, 2, 3, 5, 7]
+SURE_CONF = 0.5   # on the picture, a box below this shows no percentage and a thinner line
 
 # Color mapping (RGB)
 CLASS_CONFIG = {
@@ -550,16 +553,7 @@ class VehicleDetectorYOLO11x:
         self._clahe = cv2.createCLAHE(clipLimit=2.2, tileGridSize=(8, 8))
 
     def _init_fonts(self):
-        font_candidates = [
-            'C:\\Windows\\Fonts\\tahoma.ttf',
-            'C:\\Windows\\Fonts\\leelawad.ttf',
-            'C:\\Windows\\Fonts\\arial.ttf'
-        ]
-        chosen = None
-        for fc in font_candidates:
-            if os.path.exists(fc):
-                chosen = fc
-                break
+        chosen = thai_font()
 
         if chosen:
             try:
@@ -929,10 +923,14 @@ class VehicleDetectorYOLO11x:
 
             # Thin, rounded pastel box; red and thicker for a vehicle breaking a rule
             color = (220, 50, 50) if kind else cfg['color']
-            draw.rounded_rectangle([x1, y1, x2, y2], radius=8, outline=color, width=3 if kind else 2)
+            draw.rounded_rectangle([x1, y1, x2, y2], radius=8, outline=color,
+                                   width=3 if kind else 2 if conf >= SURE_CONF else 1)
 
-            # Small label pill floating above the vehicle: e.g. "รถยนต์ 89%" / "ย้อนศร · มอไซ"
-            label_text = f"{self.VIOLATION_LABEL.get(kind, kind)} · {cat}" if kind else f"{cat} {int(conf * 100)}%"
+            # Small label pill floating above the vehicle: e.g. "รถยนต์ 89%" / "ย้อนศร · มอไซ". The thresholds are
+            # low on purpose (every vehicle counts), but "รถยนต์ 27%" on screen reads as a wrong guess, so a box the
+            # model is unsure of keeps a thin line and its name without the number.
+            label_text = (f"{self.VIOLATION_LABEL.get(kind, kind)} · {cat}" if kind
+                          else f"{cat} {int(conf * 100)}%" if conf >= SURE_CONF else cat)
             ty = max(4, y1 - 20)
             text_bbox = draw.textbbox((x1 + 6, ty), label_text, font=self.font)
             pill = [text_bbox[0] - 6, text_bbox[1] - 3, text_bbox[2] + 6, text_bbox[3] + 3]

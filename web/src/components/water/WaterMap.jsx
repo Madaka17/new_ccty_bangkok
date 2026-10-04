@@ -12,7 +12,7 @@ const SELECT = `h-10 w-full rounded-lg border border-slate-300 bg-white px-2.5 t
 const LAYERS = {
   water: {
     label: 'ระดับน้ำ',
-    note: 'สีบอกว่าน้ำในแม่น้ำหรือคลองใกล้ตลิ่งแค่ไหน',
+    note: 'จุดวัดน้ำทั่วประเทศ สีบอกว่าน้ำในแม่น้ำหรือคลองใกล้ตลิ่งแค่ไหน',
     status: [
       ['overflow', 'ล้นตลิ่ง', '#dc2626'],
       ['high', 'ใกล้ล้นตลิ่ง', '#d97706'],
@@ -23,12 +23,13 @@ const LAYERS = {
   },
   roads: {
     label: 'น้ำท่วมถนน',
-    note: 'จากเครื่องวัดน้ำบนถนนของ กทม. ข่าวจราจร และกรมทางหลวง',
+    note: 'ทั่วประเทศ จากกรมทางหลวง ข่าวจราจร คนแจ้ง (Traffy Fondue, เว็บนี้) และเครื่องวัดน้ำบนถนนของ กทม.',
     status: [
       ['flood', 'น้ำท่วมเกิน 10 ซม.', '#dc2626'],
       ['slight', 'น้ำท่วม 5-10 ซม.', '#d97706'],
       ['hdms', 'ทางหลวงน้ำท่วม', '#be185d'],
       ['report', 'มีข่าวน้ำท่วม', '#7c3aed'],
+      ['people', 'คนแจ้งน้ำท่วม (ยังไม่ยืนยัน)', '#2563eb'],
       ['report_ended', 'น้ำลดแล้ว (ใน 3 ชม.)', '#c4b5fd'],
       ['hdms_ended', 'ทางหลวงน้ำลดแล้ว (ใน 3 ชม.)', '#f9a8d4'],
       ['normal', 'ไม่มีน้ำท่วม', '#059669'],
@@ -37,7 +38,7 @@ const LAYERS = {
   },
   rain: {
     label: 'ฝน 24 ชม.',
-    note: 'ฝนที่ตกรวมใน 24 ชม. ที่ผ่านมา',
+    note: 'จุดวัดฝนทั่วประเทศ ฝนที่ตกรวมใน 24 ชม. ที่ผ่านมา',
     status: [
       ['extreme', 'หนักมาก > 90 มม.', '#7c3aed'],
       ['heavy', 'หนัก 50-90 มม.', '#dc2626'],
@@ -48,7 +49,7 @@ const LAYERS = {
   },
   dams: {
     label: 'เขื่อนและน้ำเหนือ',
-    note: 'เขื่อนใหญ่ที่ส่งน้ำลงแม่น้ำเจ้าพระยา อัปเดตวันละครั้ง',
+    note: 'เขื่อนใหญ่ทั่วประเทศ 35 แห่ง อัปเดตวันละครั้ง',
     status: [
       ['high', 'น้ำมาก ≥ 90%', '#dc2626'],
       ['normal', 'ปกติ 50-90%', '#059669'],
@@ -65,6 +66,10 @@ function valueText(p) {
   if (p.kind === 'rain') return `${fmt(p.rain_24h, 1)} มม.`;
   if (p.kind === 'sensor') return `${fmt(p.depth_cm, 0)} ซม.`;
   if (p.kind === 'report') return 'มีข่าวน้ำท่วม';
+  if (p.kind === 'traffy' || p.kind === 'user' || p.kind === 'bma') {
+    if (!p.depth_text) return 'คนแจ้งว่าน้ำท่วม';
+    return p.depth_text.includes('ไม่') ? 'แจ้งว่าน้ำยังไม่ท่วม (น้ำขัง/ท่ออุดตัน)' : `น้ำระดับ${p.depth_text}`;
+  }
   if (p.kind === 'hdms') return p.depth_cm ? `${p.depth_cm} ซม.` : 'กรมทางหลวงแจ้ง';
   if (p.kind === 'dam') return `${fmt(p.storage_pct, 0)}%`;
   if (p.diff_bank != null) {
@@ -348,7 +353,7 @@ export default function WaterMap({ isActive, onPickStation }) {
                 </button>
               </div>
               <p className="text-xs text-slate-500">
-                {{ river: 'จุดวัดน้ำแม่น้ำ', canal: 'จุดวัดน้ำคลอง', rain: 'จุดวัดฝน', dam: 'เขื่อน', sensor: 'เครื่องวัดน้ำบนถนน กทม.', report: 'ข่าวน้ำท่วมบนถนน', hdms: 'ทางหลวงน้ำท่วม (กรมทางหลวง)' }[sel.kind]}
+                {{ river: 'จุดวัดน้ำแม่น้ำ', canal: 'จุดวัดน้ำคลอง', rain: 'จุดวัดฝน', dam: 'เขื่อน', sensor: 'เครื่องวัดน้ำบนถนน กทม.', report: 'ข่าวน้ำท่วมบนถนน', hdms: 'ทางหลวงน้ำท่วม (กรมทางหลวง)', traffy: 'คนแจ้งผ่าน Traffy Fondue', user: 'คนแจ้งผ่านเว็บนี้', bma: 'ศูนย์จราจร กทม.' }[sel.kind]}
                 {sel.road ? ` · ${sel.road}` : ''}
                 {sel.river ? ` · ${sel.river}` : ''}
                 {sel.district ? ` · ${sel.district}` : ''}
@@ -359,6 +364,11 @@ export default function WaterMap({ isActive, onPickStation }) {
                 <span className="font-medium text-slate-900">{(scale.find((s) => s[0] === sel.status) || [])[1] || sel.status}</span>
                 <span className="text-slate-700">· {valueText(sel)}</span>
               </p>
+              {sel.photo && (
+                <a href={sel.url || sel.photo} target="_blank" rel="noreferrer" className="block mt-2">
+                  <img src={sel.photo} alt="รูปที่คนแจ้งส่งมา" loading="lazy" className="w-full max-h-48 object-cover rounded-md border border-slate-200" />
+                </a>
+              )}
               {sel.description && <p className="mt-1.5 text-xs text-slate-700 leading-5">{sel.description}</p>}
               <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs text-slate-600">
                 {sel.msl != null && (
@@ -411,7 +421,13 @@ export default function WaterMap({ isActive, onPickStation }) {
                     </dd>
                   </>
                 )}
-                <dt>เวลาวัด</dt>
+                {sel.state && (
+                  <>
+                    <dt>{sel.kind === 'user' ? 'AI ตรวจรูป' : 'สถานะเรื่อง'}</dt>
+                    <dd>{sel.state}</dd>
+                  </>
+                )}
+                <dt>{sel.status === 'people' ? 'เวลาที่แจ้ง' : 'เวลาวัด'}</dt>
                 <dd>{sel.kind === 'dam' ? sel.date || '–' : agoText(sel.ts)}</dd>
               </dl>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -422,13 +438,25 @@ export default function WaterMap({ isActive, onPickStation }) {
                 )}
                 {sel.url && (
                   <a href={sel.url} target="_blank" rel="noreferrer" className={`inline-flex items-center h-8 px-3 rounded-lg border border-slate-300 text-xs text-slate-800 hover:bg-slate-50 ${FOCUS}`}>
-                    ดูที่เว็บ กทม.
+                    {sel.kind === 'traffy' ? 'ดูเรื่องนี้ใน Traffy' : 'ดูที่เว็บ กทม.'}
                   </a>
                 )}
               </div>
             </div>
           ) : (
             <p className="text-xs text-slate-500">แตะจุดบนแผนที่เพื่อดูรายละเอียด</p>
+          )}
+
+          {layer === 'roads' && data?.roads_text?.length > 0 && (
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs font-semibold text-slate-800">ข่าววิทยุ JS100 ({data.roads_text.length})</p>
+              <p className="text-[11px] text-slate-500 mb-1.5">ไม่มีพิกัด จึงไม่ได้ปักบนแผนที่</p>
+              <ul className="flex flex-col gap-1.5 text-xs text-slate-700">
+                {data.roads_text.map((j, i) => (
+                  <li key={i} className="leading-5">{j.text}{j.ts ? <span className="text-slate-500"> · {agoText(j.ts)}</span> : null}</li>
+                ))}
+              </ul>
+            </div>
           )}
         </aside>
       </div>

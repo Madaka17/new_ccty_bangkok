@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import Hls from 'hls.js';
-import { fetchTrafficSummary, fetchLongdoCameras, fetchWaterSummary, fetchAirStations, fetchWindGrid, fetchFloodStatus, fetchFloodStations, fetchFloodReports, fetchHdmsFloods, fetchFloodCameras, fetchUserReports } from '../lib/api.js';
+import { fetchTrafficSummary, fetchLongdoCameras, fetchWaterSummary, fetchAirStations, fetchWindGrid, fetchFloodStatus, fetchFloodStations, fetchFloodReports, fetchHdmsFloods, fetchFloodCameras, fetchUserReports, fetchRoadEvents, fetchNationalFloods } from '../lib/api.js';
 import { enrichCamerasWithFloodRisk } from '../lib/floodRisk.js';
 import { fmtTime } from './dashboard/format.js';
 import { accuracyText, roughWarning, showAccuracy, frameFix } from '../lib/geo.js';
@@ -172,12 +172,62 @@ const poiKindOf = (p) => POI_KIND[p.class] || POI_KIND[p.subclass];
 const poiTierOf = (p) => POI_TIER(POI_KIND[p.class] ? p.class : p.subclass);
 
 const KIND_TH = { accident: 'อุบัติเหตุ', breakdown: 'รถเสีย' };
+const CLOSURE_COLOR = { closed: '#b91c1c', diversion: '#ea580c' };
+const closureTh = (c) => (c.kind === 'diversion' ? 'ปิดบางช่วง / เบี่ยงจราจร' : c.reason === 'flood' ? 'ถนนปิด (น้ำท่วม ผ่านไม่ได้)' : 'ถนนปิด');
+const sourceTh = (i) => (i.source === 'camera' ? 'กล้อง AI เห็น' : i.source === 'bma' ? 'ศูนย์จราจร กทม.' : 'ข่าวจราจร');
+// "เขตวัฒนา กรุงเทพฯ" / "อ.เสนา จ.พระนครศรีอยุธยา", from the province and district the server found
+const placeTh = (i) => {
+  if (!i.province) return '';
+  const bkk = i.province === 'กรุงเทพมหานคร';
+  return `${i.amphoe ? `${bkk ? 'เขต' : 'อ.'}${i.amphoe} ` : ''}${bkk ? 'กรุงเทพฯ' : `จ.${i.province}`}`;
+};
+const TH_MON = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+// Longdo 'YYYY-MM-DD HH:MM:SS' -> "4 ต.ค. 09:30 น."
+const feedTimeTh = (t) => {
+  const d = t ? new Date(t.replace(' ', 'T')) : null;
+  if (!d || Number.isNaN(d.getTime())) return '';
+  return `${d.getDate()} ${TH_MON[d.getMonth()]} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} น.`;
+};
+const THAILAND = [[97.3, 5.6], [105.7, 20.5]];
+const NATION_FLOOD_COLOR = { road: '#0284c7', river: '#1e3a8a' };
+
+// Flooded road: a sky-blue drop-shaped pin with waves; river over the bank: a navy square
+function nationFloodEl(f) {
+  const el = document.createElement('button');
+  el.type = 'button';
+  el.className = 'cursor-pointer';
+  el.setAttribute('aria-label', f.kind === 'river' ? 'แม่น้ำล้นตลิ่ง' : 'ถนนน้ำท่วม');
+  const color = NATION_FLOOD_COLOR[f.kind];
+  const shape = f.kind === 'river' ? 'border-radius:5px' : 'border-radius:999px 999px 999px 3px';
+  el.style.cssText = `width:22px;height:22px;${shape};background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(15,23,42,.35);color:#fff;font:700 13px/1 var(--font-sans);display:flex;align-items:center;justify-content:center;padding:0`;
+  el.textContent = '≈';
+  return el;
+}
 const METRO_PROVINCES = ['กรุงเทพมหานคร', 'นนทบุรี', 'ปทุมธานี', 'สมุทรปราการ', 'นครปฐม', 'สมุทรสาคร'];
 const agoTh = (ts) => {
   const m = Math.round((Date.now() / 1000 - ts) / 60);
   return m < 1 ? 'เมื่อสักครู่' : m < 60 ? `${m} นาทีก่อน` : `${Math.round(m / 60)} ชม.ก่อน`;
 };
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// Closed road: a no-entry sign; diversion: an orange square with an arrow
+function closureEl(c) {
+  const el = document.createElement('button');
+  el.type = 'button';
+  el.className = 'cursor-pointer';
+  el.setAttribute('aria-label', closureTh(c));
+  const color = CLOSURE_COLOR[c.kind];
+  if (c.kind === 'diversion') {
+    el.style.cssText = `width:24px;height:24px;border-radius:6px;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(15,23,42,.35);color:#fff;font:700 14px/1 var(--font-sans);display:flex;align-items:center;justify-content:center;padding:0`;
+    el.textContent = '↪';
+  } else {
+    el.style.cssText = `width:26px;height:26px;border-radius:999px;background:${color};border:2px solid #fff;box-shadow:0 0 0 4px ${color}33,0 1px 4px rgba(15,23,42,.35);display:flex;align-items:center;justify-content:center;padding:0`;
+    const bar = document.createElement('span');
+    bar.style.cssText = 'display:block;width:13px;height:4px;border-radius:2px;background:#fff';
+    el.appendChild(bar);
+  }
+  return el;
+}
 
 // Pulsing warning marker for an incident
 function incidentEl(kind) {
@@ -247,6 +297,12 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const markersRef = useRef({});
   const incidentMarkersRef = useRef([]);
   const incidentByIdRef = useRef({});
+  const closureMarkersRef = useRef([]);
+  const nationFloodMarkersRef = useRef([]);
+  const [nationFloods, setNationFloods] = useState(null);
+  const closureByIdRef = useRef({});
+  // Accidents and closed roads in every province (/api/road/events); null until loaded
+  const [roadEvents, setRoadEvents] = useState(null);
   const [longdoCameras, setLongdoCameras] = useState([]);
   const [showTraffic, setShowTraffic] = useState(true);
   const [showRail, setShowRail] = useState(false);
@@ -255,7 +311,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const [showRainRadar, setShowRainRadar] = useState(false);
   // Map legend check boxes: which pin kinds are drawn (the rain radar box is showRainRadar)
   // cctv draws every camera; floodcam marks the flood-watch ones (and draws just those when cctv is off)
-  const [pinsOn, setPinsOn] = useState({ cctv: true, floodcam: false, accident: false, breakdown: false });
+  const [pinsOn, setPinsOn] = useState({ cctv: true, floodcam: false, accident: true, breakdown: false, closure: true, flood: true });
   const togglePins = (k) => setPinsOn((p) => ({ ...p, [k]: !p[k] }));
   const [radarOpacity, setRadarOpacity] = useState(0.65);
   const [radarTileUrl, setRadarTileUrl] = useState(null);
@@ -1148,20 +1204,39 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
       });
   }, [currentCameras, active, isActive, pinsOn.cctv, pinsOn.floodcam]);
 
-  // Sync incident markers (camera-confirmed + Longdo reports)
+  useEffect(() => {
+    if (!isActive) return undefined;
+    const load = () => {
+      fetchRoadEvents().then(setRoadEvents).catch(() => {});
+      fetchNationalFloods().then(setNationFloods).catch(() => {});
+    };
+    load();
+    const id = setInterval(load, 60000);
+    return () => clearInterval(id);
+  }, [isActive]);
+
+  // Camera-confirmed incidents + reported ones in every province (Bangkok's Longdo list until those load)
+  const incidentList = useMemo(
+    () => [...(incidents?.camera || []), ...(roadEvents?.incidents || incidents?.longdo || [])],
+    [incidents, roadEvents],
+  );
+  const closures = useMemo(() => (roadEvents?.closures || []).filter((c) => c.latitude && c.longitude), [roadEvents]);
+
+  // Sync incident markers
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     incidentMarkersRef.current.forEach((m) => m.remove());
     incidentMarkersRef.current = [];
     incidentByIdRef.current = {};
-    const all = [...(incidents?.camera || []), ...(incidents?.longdo || [])]
+    const all = incidentList
       .filter((i) => i.latitude && i.longitude && (i.kind === 'breakdown' ? pinsOn.breakdown : pinsOn.accident));
     all.forEach((i) => {
       const when = i.source === 'camera' ? agoTh(i.ts) : i.start ? `เริ่ม ${esc(i.start).slice(11, 16)}` : '';
       const html = `<div style="width:260px">
-          <p style="margin:0 0 4px;font-weight:600;color:${i.kind === 'breakdown' ? '#b85f41' : '#d9534f'};font-size:13px">${KIND_TH[i.kind] || 'เหตุบนถนน'} · ${i.source === 'camera' ? 'กล้อง AI เห็น' : 'ข่าวจราจร'}</p>
+          <p style="margin:0 0 4px;font-weight:600;color:${i.kind === 'breakdown' ? '#b85f41' : '#d9534f'};font-size:13px">${KIND_TH[i.kind] || 'เหตุบนถนน'} · ${sourceTh(i)}</p>
           <p style="margin:0 0 6px;color:#0f172a;font-size:13px;line-height:1.35">${esc(i.title)}</p>
+          ${placeTh(i) ? `<p style="margin:0 0 6px;color:#475569;font-size:12px">${esc(placeTh(i))}</p>` : ''}
           ${i.image ? `<img src="${i.image}" alt="" style="display:block;width:100%;border-radius:8px;margin-bottom:6px" />` : ''}
           ${i.description ? `<p style="margin:0 0 6px;color:#475569;font-size:12px;line-height:1.4">${esc(i.description)}</p>` : ''}
           <p style="margin:0;color:#94a3b8;font-size:11px">${when}${i.stopped_s ? ` · รถจอดนิ่งมา ${Math.max(1, Math.round(i.stopped_s / 60))} นาที` : ''}</p>
@@ -1172,7 +1247,65 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
  incidentMarkersRef.current.push(m);
  incidentByIdRef.current[i.id] = m;
     });
-  }, [incidents, isActive, pinsOn.accident, pinsOn.breakdown]);
+  }, [incidentList, isActive, pinsOn.accident, pinsOn.breakdown]);
+
+  // Sync closed-road markers
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    closureMarkersRef.current.forEach((m) => m.remove());
+    closureMarkersRef.current = [];
+    closureByIdRef.current = {};
+    if (!pinsOn.closure) return;
+    closures.forEach((c) => {
+      const until = feedTimeTh(c.stop);
+      const html = `<div style="width:260px">
+          <p style="margin:0 0 4px;font-weight:600;color:${CLOSURE_COLOR[c.kind]};font-size:13px">${closureTh(c)}</p>
+          <p style="margin:0 0 4px;color:#0f172a;font-size:13px;line-height:1.35">${esc(c.title)}</p>
+          ${placeTh(c) ? `<p style="margin:0 0 6px;color:#475569;font-size:12px">${esc(placeTh(c))}</p>` : ''}
+          ${c.description ? `<p style="margin:0 0 6px;color:#475569;font-size:12px;line-height:1.4">${esc(c.description)}</p>` : ''}
+          <p style="margin:0;color:#94a3b8;font-size:11px">${until ? `ถึง ${until} · ` : ''}${sourceTh(c)}</p>
+        </div>`;
+      const popup = new maplibregl.Popup({ offset: 16, closeButton: true, maxWidth: '300px', anchor: 'bottom' }).setHTML(html);
+      const m = new maplibregl.Marker({ element: closureEl(c) }).setLngLat([c.longitude, c.latitude]).setPopup(popup).addTo(map);
+      closureMarkersRef.current.push(m);
+      closureByIdRef.current[c.id] = m;
+    });
+  }, [closures, isActive, pinsOn.closure]);
+
+  // Flooded places in every province. An impassable road is already a closed-road pin while those are shown.
+  const nationFloodPoints = useMemo(
+    () => (nationFloods?.items || []).filter((f) => f.lat && f.lng && !(pinsOn.closure && f.passable === false)),
+    [nationFloods, pinsOn.closure],
+  );
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    nationFloodMarkersRef.current.forEach((m) => m.remove());
+    nationFloodMarkersRef.current = [];
+    if (!pinsOn.flood) return;
+    nationFloodPoints.forEach((f) => {
+      const label = f.kind === 'river' ? 'แม่น้ำล้นตลิ่ง' : f.passable === false ? 'ถนนน้ำท่วม รถผ่านไม่ได้' : f.passable ? 'ถนนน้ำท่วม รถยังผ่านได้' : 'ถนนน้ำท่วม';
+      const html = `<div style="width:260px">
+          <p style="margin:0 0 4px;font-weight:600;color:${NATION_FLOOD_COLOR[f.kind]};font-size:13px">${label}${f.depth_cm ? ` · น้ำลึก ${esc(f.depth_cm)} ซม.` : ''}</p>
+          <p style="margin:0 0 4px;color:#0f172a;font-size:13px;line-height:1.35">${esc(f.title)}</p>
+          ${placeTh(f) ? `<p style="margin:0 0 6px;color:#475569;font-size:12px">${esc(placeTh(f))}</p>` : ''}
+          ${f.description ? `<p style="margin:0 0 6px;color:#475569;font-size:12px;line-height:1.4">${esc(f.description)}</p>` : ''}
+          <p style="margin:0;color:#94a3b8;font-size:11px">${f.ts ? `${agoTh(f.ts)} · ` : ''}${esc(f.source)}</p>
+        </div>`;
+      const popup = new maplibregl.Popup({ offset: 14, closeButton: true, maxWidth: '300px', anchor: 'bottom' }).setHTML(html);
+      nationFloodMarkersRef.current.push(new maplibregl.Marker({ element: nationFloodEl(f) }).setLngLat([f.lng, f.lat]).setPopup(popup).addTo(map));
+    });
+  }, [nationFloodPoints, isActive, pinsOn.flood]);
+
+  const flyToClosure = (c) => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.flyTo({ center: [c.longitude, c.latitude], zoom: 14, duration: 800 });
+    if (!pinsOn.closure) setPinsOn((p) => ({ ...p, closure: true }));
+    setTimeout(() => closureByIdRef.current[c.id]?.togglePopup(), 850);
+  };
+  const showThailand = () => mapRef.current?.fitBounds(THAILAND, { padding: 30, duration: 800 });
 
  const flyToIncident = (i) => {
  const map = mapRef.current;
@@ -1234,7 +1367,6 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const updated = summary?.updated_at ? new Date(summary.updated_at * 1000).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : null;
 
   const trafficOn = (showTraffic ? 1 : 0) + (showRail ? 1 : 0) + Object.values(pinsOn).filter(Boolean).length;
-  const incidentList = [...(incidents?.camera || []), ...(incidents?.longdo || [])];
   const waterOn = [showRainRadar, showCamFlood, showUserReports, showFlood, showReports, showHdms, showGauges].filter(Boolean).length;
   const optionsOn = trafficOn + waterOn + (showPm ? 1 : 0) + (showWind ? 1 : 0) + (showPlaces ? 1 : 0);
   const camCounts = camFlood?.counts || {};
@@ -1338,8 +1470,41 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                 !
               </span>
               <div className="flex flex-col min-w-0">
-                <span className="font-medium text-ink-900">อุบัติเหตุ</span>
-                <span className="text-[11px] text-ink-600 leading-tight">จากกล้อง AI และข่าวจราจร</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium text-ink-900">อุบัติเหตุ</span>
+                  <span className="text-[10px] bg-red-50 text-red-700 px-1.5 py-0.5 rounded font-medium">{incidentList.filter((i) => i.kind !== 'breakdown').length} จุด</span>
+                </div>
+                <span className="text-[11px] text-ink-600 leading-tight">ทั่วประเทศ จากกล้อง AI และข่าวจราจร</span>
+              </div>
+            </label>
+
+            {/* น้ำท่วมทั่วประเทศ */}
+            <label className={`flex items-center gap-2.5 cursor-pointer ${pinsOn.flood ? '' : 'opacity-50'}`}>
+              <input type="checkbox" checked={pinsOn.flood} onChange={() => togglePins('flood')} className="accent-blue-600 w-4 h-4 shrink-0" />
+              <span className="w-5 h-5 border-2 border-white/90 shadow-xs text-white font-bold text-[12px] flex items-center justify-center shrink-0 leading-none" style={{ background: NATION_FLOOD_COLOR.road, borderRadius: '999px 999px 999px 3px' }}>
+                ≈
+              </span>
+              <div className="flex flex-col min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium text-ink-900">น้ำท่วม</span>
+                  <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-medium">{nationFloods?.counts?.road ?? 0} ถนน · {nationFloods?.counts?.river ?? 0} แม่น้ำ</span>
+                </div>
+                <span className="text-[11px] text-ink-600 leading-tight">ทั่วประเทศ ถนนน้ำท่วม (หยดฟ้า) และแม่น้ำล้นตลิ่ง (สี่เหลี่ยมน้ำเงิน) · ถนนที่ผ่านไม่ได้ขึ้นเป็นถนนปิด</span>
+              </div>
+            </label>
+
+            {/* ถนนปิด */}
+            <label className={`flex items-center gap-2.5 cursor-pointer ${pinsOn.closure ? '' : 'opacity-50'}`}>
+              <input type="checkbox" checked={pinsOn.closure} onChange={() => togglePins('closure')} className="accent-blue-600 w-4 h-4 shrink-0" />
+              <span className="w-5 h-5 rounded-full border-2 border-white/90 shadow-xs flex items-center justify-center shrink-0" style={{ background: CLOSURE_COLOR.closed }}>
+                <span className="block w-2.5 h-[3px] rounded-sm bg-white" />
+              </span>
+              <div className="flex flex-col min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium text-ink-900">ถนนปิด</span>
+                  <span className="text-[10px] bg-red-50 text-red-700 px-1.5 py-0.5 rounded font-medium">{closures.length} จุด</span>
+                </div>
+                <span className="text-[11px] text-ink-600 leading-tight">ทั่วประเทศ ปิดทั้งสาย ปิดเพราะน้ำท่วม และเบี่ยงจราจร (สี่เหลี่ยมส้ม)</span>
               </div>
             </label>
 
@@ -1686,7 +1851,24 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
               {incidentList.map((i) => (
                 <button key={i.id} type="button" onClick={() => flyToIncident(i)} className="cursor-pointer text-left rounded-lg px-2.5 py-1.5 text-sm text-ink-900 hover:bg-white transition-colors duration-200">
                   <span className="line-clamp-1">{i.title}</span>
-                  <span className="block text-[11px] text-ink-600">{KIND_TH[i.kind] || 'เหตุบนถนน'} · {i.source === 'camera' ? 'กล้อง AI' : 'ข่าวจราจร'}</span>
+                  <span className="block text-[11px] text-ink-600">{KIND_TH[i.kind] || 'เหตุบนถนน'} · {placeTh(i) || sourceTh(i)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {closures.length > 0 && (
+          <div className="rounded-lg bg-orange-50 border border-orange-200 p-3">
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <p className="text-xs font-semibold text-orange-800">ถนนปิดตอนนี้ ({closures.length})</p>
+              <button type="button" onClick={showThailand} className="cursor-pointer text-[11px] font-medium text-blue-700 hover:underline">ดูทั้งประเทศ</button>
+            </div>
+            <div className="max-h-48 overflow-y-auto scroll-soft flex flex-col gap-1">
+              {[...closures].sort((a, b) => (a.province || 'ฮ').localeCompare(b.province || 'ฮ', 'th')).map((c) => (
+                <button key={c.id} type="button" onClick={() => flyToClosure(c)} className="cursor-pointer text-left rounded-lg px-2.5 py-1.5 text-sm text-ink-900 hover:bg-white transition-colors duration-200">
+                  <span className="line-clamp-1">{c.title}</span>
+                  <span className="block text-[11px] text-ink-600">{closureTh(c)}{placeTh(c) ? ` · ${placeTh(c)}` : ''}</span>
                 </button>
               ))}
             </div>
