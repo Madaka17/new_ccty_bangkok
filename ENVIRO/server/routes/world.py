@@ -101,6 +101,59 @@ def earthquakes_history_stats():
     })
 
 
+# Tsunami screen for Thai coasts, from the real quakes above -- a rule of thumb, not an official warning. Tsunami
+# centres start issuing messages from about M6.5; a shallow quake that size under one of the two seas around
+# Thailand (Andaman / Indian Ocean side, Gulf of Thailand / South China Sea side) turns the card to "watch".
+TSUNAMI_MIN_MAGNITUDE = 6.5
+TSUNAMI_MAX_DEPTH_KM = 100
+TSUNAMI_WINDOW_HOURS = 24
+TSUNAMI_SEAS = {
+    "ทะเลอันดามัน": (-10.0, 20.0, 85.0, 99.0),       # minlat, maxlat, minlng, maxlng
+    "อ่าวไทยและทะเลจีนใต้": (0.0, 23.0, 99.0, 121.0),
+}
+
+
+def tsunami_watch(quakes, now_ms):
+    """Quakes of the last TSUNAMI_WINDOW_HOURS big and shallow enough, under a sea next to Thailand, to watch."""
+    out = []
+    for q in quakes:
+        if q.get("time_ms") is None or now_ms - q["time_ms"] > TSUNAMI_WINDOW_HOURS * 3600 * 1000:
+            continue
+        if (q.get("magnitude") or 0) < TSUNAMI_MIN_MAGNITUDE or (q.get("depth_km") or 0) > TSUNAMI_MAX_DEPTH_KM:
+            continue
+        if q.get("lat") is None or q.get("lng") is None:
+            continue
+        sea = next((name for name, (a, b, c, d) in TSUNAMI_SEAS.items()
+                    if a <= q["lat"] <= b and c <= q["lng"] <= d), None)
+        if sea:
+            out.append({**q, "sea": sea})
+    # The same quake comes from several catalogs: keep the strongest reading per hour and place
+    seen, uniq = set(), []
+    for q in sorted(out, key=lambda q: -(q.get("magnitude") or 0)):
+        key = (round(q["lat"]), round(q["lng"]), q["time_ms"] // 3600000)
+        if key not in seen:
+            seen.add(key)
+            uniq.append(q)
+    return uniq
+
+
+@bp.get("/tsunami")
+def tsunami():
+    state = world_quakes.get_state()
+    events = tsunami_watch(state["quakes"], time.time() * 1000)
+    return jsonify({
+        "status": "watch" if events else "none",
+        "events": events,
+        "checked_at": state["checked_at"],
+        "window_hours": TSUNAMI_WINDOW_HOURS,
+        "min_magnitude": TSUNAMI_MIN_MAGNITUDE,
+        "official": [
+            {"name": "ศูนย์เตือนภัยพิบัติแห่งชาติ (สายด่วน 1784)", "url": "https://ndwc.disaster.go.th/"},
+            {"name": "กรมอุตุนิยมวิทยา", "url": "https://earthquake.tmd.go.th/"},
+        ],
+    })
+
+
 @bp.get("/brief")
 def brief():
     """The AI earthquake brief (see quake_brief.py); 202 until the first one is written."""

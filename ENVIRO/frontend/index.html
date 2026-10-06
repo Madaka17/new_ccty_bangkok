@@ -245,6 +245,23 @@
   .callout.wave-p-passed svg{color:#ff4d4d;}
   .callout.wave-p-passed b{color:#ff4d4d;}
   @keyframes wavePPassedBlink{0%,100%{opacity:1;}50%{opacity:.55;}}
+  /* "แผ่นดินไหวตอนนี้" cards (paintNowCards), in the right panel while no simulated event is shown */
+  .now-cards{display:flex;flex-direction:column;gap:12px;}
+  .now-card{border:1px solid var(--border-strong);border-radius:var(--radius-m);padding:12px 14px;background:var(--surface-2);font-size:16px;color:var(--ink-secondary);}
+  .now-card.good{border-color:var(--status-good);background:var(--status-good-soft);}
+  .now-card.watch{border-color:var(--status-warn);background:var(--status-warn-soft);}
+  .now-card h4{margin:0 0 6px;font-size:17px;font-weight:600;color:var(--ink-primary);}
+  .now-card h4 svg{width:18px;height:18px;vertical-align:-3px;margin-right:4px;}
+  .now-card.good h4 svg{color:var(--status-good);}
+  .now-card.watch h4 svg{color:var(--status-warn);}
+  .now-card p{margin:4px 0;}
+  .now-card small{display:block;font-size:14px;color:var(--ink-muted);}
+  .now-card a{color:var(--status-info);}
+  .now-quake{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--border);padding:8px 0;color:inherit;font:inherit;cursor:pointer;}
+  .now-quake:hover b{text-decoration:underline;}
+  .now-mag{flex:none;min-width:50px;text-align:center;border-radius:6px;padding:2px 6px;font-weight:700;color:#0a0d12;}
+  .now-card details summary{cursor:pointer;font-weight:600;color:var(--ink-primary);}
+  .now-card ul{margin:4px 0 8px;padding-left:20px;}
   .callout.extreme{border-color:rgba(128,0,0,.6);background:var(--status-extreme-soft);color:#f0c4c4;}
   .callout.extreme svg{color:#ffb8b8;}
   .callout b{color:var(--ink-primary);}
@@ -2029,6 +2046,105 @@ async function stopSimulatedQuake(){
   }
 }
 
+/* "แผ่นดินไหวตอนนี้": real quakes near Thailand, which provinces would feel them, the tsunami screen and what to
+   do -- in place of the AI-analysis panel while no simulated event is shown. Built from /api/world/brief (the AI
+   brief tab's facts, last 7 days) and /api/world/tsunami, read again every 5 minutes; the 15-second situation
+   repaint reuses the last HTML. */
+let nowCardsHtml = '<div class="panel-sub">กำลังโหลดแผ่นดินไหวล่าสุด…</div>';
+let nowCardsHint = '', nowCardsAt = 0, nowCardsBusy = false;
+const NOW_CARDS_MS = 5 * 60000;
+
+function nowQuakeTime(e){
+  return e.time_ms ? new Date(e.time_ms).toLocaleString('th-TH', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'}) : (e.time || '');
+}
+
+// The map shows the last 7 days, then centres on the quake
+async function focusRealQuake(lat, lng){
+  const rangeSel = document.getElementById('worldQuakeRange');
+  if(rangeSel && rangeSel.value === 'realtime'){ rangeSel.value = '7'; await refreshWorldQuakes(); }
+  if(leafletMap) leafletMap.setView([lat, lng], 6);
+}
+
+function nowCardsMarkup(brief, tsunami){
+  const f = (brief && brief.ready && brief.facts) || null;
+  const days = f ? f.window_days : 7;
+  // 1. Latest real quakes near Thailand
+  const near = f ? f.near.slice().sort((a, b) => (b.time_ms || 0) - (a.time_ms || 0)).slice(0, 5) : [];
+  const quakes = !f ? '<p>ยังโหลดข้อมูลแผ่นดินไหวไม่ได้ ลองใหม่อีกครั้งภายหลัง</p>'
+    : !near.length ? `<p>${days} วันที่ผ่านมา ไม่มีแผ่นดินไหวใกล้ประเทศไทย</p>`
+    : near.map(e => `<button type="button" class="now-quake" onclick="focusRealQuake(${Number(e.lat)},${Number(e.lng)})">
+        <span class="now-mag tabular" style="background:${magColor(e.magnitude)};">M${Number(e.magnitude).toFixed(1)}</span>
+        <span><b>${escHtml(e.place)}</b>
+          <small>${escHtml(nowQuakeTime(e))} · ห่างไทย ${Number(e.dist_th_km).toLocaleString()} กม. (ใกล้${escHtml(e.nearest_province)})</small>
+          <small>${!e.felt_in_th ? 'คนไทยไม่รู้สึก'
+            : e.max_mmi_th >= 3 ? `คนที่${escHtml(e.max_mmi_th_where || '')}รู้สึกได้`
+            : `บางคนที่${escHtml(e.max_mmi_th_where || '')}อาจรู้สึกได้เล็กน้อย`}</small></span>
+      </button>`).join('');
+  // 2. Which provinces would feel them
+  const groups = new Map();
+  (f ? f.provinces : []).forEach(p => {
+    if(!groups.has(p.felt_th)) groups.set(p.felt_th, []);
+    groups.get(p.felt_th).push(p.province);
+  });
+  const felt = !f ? '' : !groups.size ? `<p>${days} วันที่ผ่านมา ไม่มีแผ่นดินไหวที่คนในไทยน่าจะรู้สึกได้</p>`
+    : [...groups].map(([text, names]) => `<p><b>${names.map(escHtml).join(' ')}</b><small>${escHtml(text)}</small></p>`).join('')
+      + `<small>จากแผ่นดินไหว ${escHtml(f.provinces[0].event)} · ประเมินจากขนาดและระยะทาง ไม่ใช่รายงานจากคนในพื้นที่</small>`;
+  // 3. Tsunami
+  let tsu = '';
+  if(tsunami){
+    const links = tsunami.official.map(o => `<a href="${o.url}" target="_blank" rel="noopener">${escHtml(o.name)}</a>`).join(' · ');
+    tsu = tsunami.status === 'watch'
+      ? `<div class="now-card watch"><h4>${icon('warnTri')} สึนามิ: เฝ้าระวัง</h4>
+          ${tsunami.events.map(q => `<p>มีแผ่นดินไหว M${Number(q.magnitude).toFixed(1)} ใต้${escHtml(q.sea)} (${escHtml(q.place || '')}) เมื่อ ${escHtml(nowQuakeTime(q))}</p>`).join('')}
+          <p>คนที่อยู่ริมทะเลให้ติดตามประกาศทางการ ถ้ารู้สึกแผ่นดินไหวแรง หรือเห็นน้ำทะเลลดลงผิดปกติ ให้ขึ้นที่สูงทันที ไม่ต้องรอประกาศ</p>
+          <small>ระบบประเมินเองจากขนาดและตำแหน่ง ไม่ใช่ประกาศเตือนภัยทางการ · ${links}</small></div>`
+      : `<div class="now-card good"><h4>${icon('check')} สึนามิ: ไม่มีสัญญาณ</h4>
+          <p>${tsunami.window_hours} ชั่วโมงที่ผ่านมา ไม่มีแผ่นดินไหวใหญ่ใต้ทะเลรอบไทยที่อาจทำให้เกิดสึนามิ</p>
+          <small>ระบบประเมินเองจากแผ่นดินไหว M${tsunami.min_magnitude} ขึ้นไป ไม่ใช่ประกาศทางการ · ${links}</small></div>`;
+  }
+  return `<div class="now-card"><h4>แผ่นดินไหวล่าสุดใกล้ไทย</h4>${quakes}<small>แตะเพื่อดูบนแผนที่ · ${days} วันที่ผ่านมา</small></div>
+    ${f ? `<div class="now-card"><h4>ไทยรู้สึกไหม</h4>${felt}</div>` : ''}
+    ${tsu}`;
+}
+
+// 4. What to do: outside #nowCards, and drawn open again after each repaint if the viewer opened it
+let nowGuideOpen = false;
+function nowGuideHtml(){
+  return `<div class="now-card"><details${nowGuideOpen ? ' open' : ''} ontoggle="nowGuideOpen = this.open">
+      <summary>ทำอย่างไรเมื่อเกิดแผ่นดินไหว</summary>
+      <b>เตรียมไว้ก่อน</b>
+      <ul><li>ยึดตู้ ชั้นวางของสูง และของหนักไว้กับผนัง</li><li>รู้ไว้ว่าในบ้านและที่ทำงาน ตรงไหนหลบได้ เช่น ใต้โต๊ะที่แข็งแรง</li>
+        <li>เตรียมไฟฉาย น้ำดื่ม ยาประจำตัว และเบอร์โทรฉุกเฉินไว้ในที่หยิบง่าย</li></ul>
+      <b>ระหว่างสั่น</b>
+      <ul><li>หมอบลง หาที่กำบัง แล้วจับไว้ให้มั่น จนกว่าจะหยุดสั่น</li><li>อยู่ห่างกระจก หน้าต่าง และของที่อาจตกใส่</li>
+        <li>อย่าใช้ลิฟต์ อย่าวิ่งออกจากอาคารขณะยังสั่น</li><li>ถ้าอยู่นอกอาคาร ไปที่โล่ง ห่างตึก เสาไฟ และป้ายโฆษณา</li></ul>
+      <b>หลังหยุดสั่น</b>
+      <ul><li>ระวังแผ่นดินไหวตามมา (อาฟเตอร์ช็อก)</li><li>ถ้าได้กลิ่นแก๊ส อย่าจุดไฟหรือเปิดสวิตช์ไฟ ให้ปิดวาล์วแล้วออกจากอาคาร</li>
+        <li>ถ้าอาคารร้าว ให้ออกทางบันได แล้วรอข้างนอก</li><li>ถ้าอยู่ริมทะเลและสั่นแรง ให้ขึ้นที่สูงทันที</li></ul>
+      <small>เบอร์ฉุกเฉิน: ปภ. 1784 · ตำรวจ 191 · เจ็บป่วยฉุกเฉิน 1669</small>
+    </details></div>`;
+}
+
+async function refreshNowCards(){
+  if(nowCardsBusy || Date.now() - nowCardsAt < NOW_CARDS_MS) return;
+  nowCardsBusy = true;
+  try{
+    const [brief, tsunami] = await Promise.all([
+      api('/api/world/brief').catch(() => null),
+      api('/api/world/tsunami').catch(() => null),   // an older server has no tsunami screen: the card is left out
+    ]);
+    nowCardsHtml = nowCardsMarkup(brief, tsunami);
+    nowCardsAt = brief && brief.ready ? Date.now() : 0;   // not ready yet: ask again on the next repaint
+    const el = document.getElementById('nowCards');
+    if(el) el.innerHTML = nowCardsHtml;
+    if(brief && brief.updated_at) nowCardsHint = 'อัปเดต ' + new Date(brief.updated_at * 1000).toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'});
+    const hint = document.getElementById('nowCardsHint');
+    if(hint) hint.textContent = nowCardsHint;
+  }finally{
+    nowCardsBusy = false;
+  }
+}
+
 async function loadSituation(){
   situationData = await api('/api/situation');
   await paintSituation();
@@ -2046,9 +2162,9 @@ function situationShell(){
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
           <label for="worldQuakeRange" style="font-size:15.5px;color:var(--ink-muted);">ตำแหน่งจุดแผ่นดินไหว</label>
           <select class="field" id="worldQuakeRange" style="width:auto;padding:5px 10px;font-size:15.5px;">
-            <option value="realtime" selected>สถานการณ์ปัจจุบัน (Realtime)</option>
+            <option value="realtime">สถานการณ์ปัจจุบัน (Realtime)</option>
             <option value="90">90 วันที่ผ่านมา</option>
-            <option value="7">7 วันที่ผ่านมา</option>
+            <option value="7" selected>7 วันที่ผ่านมา</option>
             <option value="1">24 ชั่วโมงที่ผ่านมา (รอบวัน)</option>
           </select>
         </div>
@@ -2262,7 +2378,8 @@ async function paintSituation(){
     </div>` : '';
 
   document.getElementById('eventDetailPanel').innerHTML = `
-    <div class="panel-head"><h3>วิเคราะห์ผลกระทบด้วย Edge AI</h3><span class="badge info">AI Analysis</span></div>
+    ${ev ? `<div class="panel-head"><h3>วิเคราะห์ผลกระทบด้วย Edge AI</h3><span class="badge info">AI Analysis</span></div>`
+         : `<div class="panel-head"><h3>แผ่นดินไหวตอนนี้</h3><span class="hint" id="nowCardsHint">${nowCardsHint}</span></div>`}
     ${ev && data.speed_multiplier > 1 ? `<div class="badge warn" style="align-self:flex-start;">${icon('warnTri')} โหมดสาธิตเร่งเวลา ${data.speed_multiplier}x (ไม่ใช่ความเร็วคลื่นจริง)</div>` : ''}
     ${ev ? `
     ${tsunamiBanner}
@@ -2308,9 +2425,9 @@ async function paintSituation(){
       <button type="button" class="mmi-explain-btn" id="mmiExplainToggle">${icon('info')}<span>ทำไมความรุนแรงถึงต่างกันในแต่ละพื้นที่?</span></button>
       <p class="panel-sub mmi-explain-body" hidden>ระดับจัดตาม<b>ความรุนแรงที่คาดการณ์ ณ ตำแหน่งอ้างอิง (Predicted MMI)</b> ไม่ใช่ขนาดแผ่นดินไหว (Magnitude) โดยตรง — เหตุการณ์เดียวกันให้ความรุนแรงต่างกันในแต่ละพื้นที่ตามระยะทาง ความลึก และสภาพพื้นที่ (อ้างอิงแนวทาง USGS: Magnitude vs. Intensity) ส่วนจำนวนสถานียืนยันร่วมมีผลต่อ "ความเชื่อมั่น" เท่านั้น ทั้งขนาดและ MMI คำนวณจริงฝั่งเซิร์ฟเวอร์จากระยะทางจริงถึงศูนย์กลาง ไม่ใช่ค่าคงที่</p>
     </div>
-    ` : `<div class="callout">${icon('check')}<div>ไม่มีเหตุการณ์ที่ยืนยันในขณะนี้ เครือข่ายสถานีกำลังเฝ้าระวังต่อเนื่องด้วยอัลกอริทึม STA/LTA</div></div>
-    <div id="levelGuidancePanel" style="margin-top:8px;"></div>`}`;
+    ` : `<div class="now-cards"><div id="nowCards" class="now-cards">${nowCardsHtml}</div>${nowGuideHtml()}</div>`}`;
   renderLevelGuidance(evForGuidance, ev);
+  if(!ev) refreshNowCards();
 
   const regionsForStatus = await api('/api/stations/regions').catch(()=>[]);
   const totalSt = regionsForStatus.reduce((s,r)=>s+r.total,0) || 1;

@@ -253,8 +253,13 @@ def _events(quakes, now_ms):
 def _public(e):
     """The fields the page and the model see for one event."""
     depth = e["depth_km"]
+    mmi_th = e.get("max_mmi_th")
     return {
         "id": e["id"], "time": datetime.fromtimestamp(e["time_ms"] / 1000, ICT).strftime("%d/%m/%Y %H:%M"),
+        "time_ms": e["time_ms"],
+        # Whether anyone in Thailand would feel it, in words (near events only: world events carry no MMI)
+        "felt_in_th": mmi_th is not None and mmi_th >= FELT_MMI_THRESHOLD,
+        "felt_th": _felt_th(mmi_th) if mmi_th is not None else None,
         "place": e.get("place") or "-", "lat": round(e["lat"], 2), "lng": round(e["lng"], 2),
         "magnitude": round(e["magnitude"], 1), "depth_km": round(depth) if depth is not None else None,
         "source": e.get("source"), "url": e.get("url"),
