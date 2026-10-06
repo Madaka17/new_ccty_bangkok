@@ -18,6 +18,13 @@ export async function fetchAllCameras() {
   return (await res.json()).items || [];
 }
 
+// { checked_at, items: [camid] }: cameras the newest status check (every 5 minutes) could not pull from
+export async function fetchDownCameras() {
+  const res = await fetch('/api/cameras/down');
+  if (!res.ok) throw new Error('down_cameras');
+  return res.json();
+}
+
 // { checked_at, items: { camid: 'online' | 'offline' } } for the live-AI cameras
 export async function fetchCameraHealth() {
   const res = await fetch('/api/cameras/health');

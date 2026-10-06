@@ -412,6 +412,28 @@ def get_all_cameras(request: Request):
                         headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
     return Response(body, media_type="application/json")
 
+CAMERA_STATUS_FILE = os.path.join(DATA_DIR, "camera_status.json")   # written by launch\camera_status.py every 5 minutes
+CAMERA_STATUS_MAX_AGE = 20 * 60
+_down_cache = {"mtime": 0, "checked_at": 0, "items": []}
+
+@app.get("/api/cameras/down")
+def get_down_cameras():
+    """Cameras the newest launch\\camera_status.py round could not pull from, for the live camera page to hide until
+    a later round finds them working again. Empty when that round is over 20 minutes old (the status window is
+    closed), so a stopped check never hides a camera."""
+    try:
+        mtime = os.path.getmtime(CAMERA_STATUS_FILE)
+        if mtime != _down_cache["mtime"]:
+            with open(CAMERA_STATUS_FILE, encoding="utf-8") as f:
+                data = json.load(f)
+            _down_cache.update(mtime=mtime, checked_at=int(data.get("checked_at") or 0),
+                               items=[camid for camid, r in (data.get("cameras") or {}).items() if r.get("state") == "down"])
+    except (OSError, ValueError):
+        return {"checked_at": 0, "items": []}
+    if time.time() - _down_cache["checked_at"] > CAMERA_STATUS_MAX_AGE:
+        return {"checked_at": _down_cache["checked_at"], "items": []}
+    return {"checked_at": _down_cache["checked_at"], "items": _down_cache["items"]}
+
 @app.get("/api/cameras/image/{camid}")
 def get_camera_image(camid: str):
     """Newest picture of a DWR, DDPM or Nonthaburi camera, which the browser cannot fetch itself: see world_cameras.py."""

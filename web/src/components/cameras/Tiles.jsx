@@ -140,6 +140,9 @@ function IticTile({ cam, pinned, flood, onOpen }) {
   );
 }
 
+// What a camera shows: live video, a refreshed picture, or only a link to its owner's site
+export const kindOf = (c) => (c.media === 'link' ? 'link' : c.source === 'bma' || c.media === 'image' ? 'still' : 'live');
+
 // A refreshed picture: the BMA scanner's last frame, or another source's JPEG (media "image")
 const stillUrl = (cam, t) => (cam.source === 'bma'
   ? getBmaSnapshotUrl(cam.bma_id, false, t || null, false)
