@@ -414,7 +414,7 @@ def get_all_cameras(request: Request):
 
 @app.get("/api/cameras/image/{camid}")
 def get_camera_image(camid: str):
-    """Newest picture of a DWR river camera, which takes two calls the browser cannot make: see world_cameras.py."""
+    """Newest picture of a DWR, DDPM or Nonthaburi camera, which the browser cannot fetch itself: see world_cameras.py."""
     if not SAFE_ID.fullmatch(camid):
         raise HTTPException(400, "bad camera id")
     data = world_cameras.image_bytes(camid)
