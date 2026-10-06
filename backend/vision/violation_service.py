@@ -35,6 +35,7 @@ from collections import defaultdict
 import cv2
 import numpy as np
 
+from backend.core import local_llm
 from backend.core.instance import DEFAULT_BMA_DATA_DIR
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
@@ -482,12 +483,14 @@ class ViolationMonitor:
         vis = self.vision
         if vis.provider == "gemini":
             from google.genai import types as genai_types
+            model = os.environ.get("GEMINI_VISION_MODEL", "gemini-3.6-flash")
             resp = vis.client.models.generate_content(
-                model=os.environ.get("GEMINI_VISION_MODEL", "gemini-3.6-flash"),
+                model=model,
                 contents=[genai_types.Part.from_bytes(data=jpeg, mime_type="image/jpeg"), genai_types.Part(text=context)],
                 config=genai_types.GenerateContentConfig(system_instruction=HELMET_PROMPT, temperature=0.1,
                                                          max_output_tokens=300, response_mime_type="application/json"),
             )
+            local_llm.note_cloud(model, resp)
             return (resp.text or "").strip()
         response = vis.client.messages.create(
             model=os.environ.get("CLAUDE_VISION_MODEL", "claude-opus-5-5"),
@@ -500,4 +503,5 @@ class ViolationMonitor:
                 {"type": "text", "text": context},
             ]}],
         )
+        local_llm.note_cloud(response.model, response)
         return "".join(b.text for b in response.content if b.type == "text").strip()

@@ -354,6 +354,7 @@ class RoadRisk:
             model=AI_MODEL, contents=prompt,
             config=genai_types.GenerateContentConfig(temperature=0.2, max_output_tokens=1500,
                                                      response_mime_type="application/json"))
+        local_llm.note_cloud(AI_MODEL, resp)
         return json.loads(resp.text or "{}"), AI_MODEL
 
     def _analyse(self, items, force=False, ai=True):

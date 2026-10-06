@@ -552,6 +552,7 @@ class HelmetPatrol:
                                                                  max_output_tokens=300, response_mime_type="application/json",
                                                                  http_options=genai_types.HttpOptions(timeout=AGENT_TIMEOUT_MS)),
                     )
+                    local_llm.note_cloud(model, resp)
                     return (resp.text or "").strip()
                 except Exception as e:  # noqa: BLE001
                     # 503 = model overloaded right now: try the lite model once before giving up
@@ -571,6 +572,7 @@ class HelmetPatrol:
                 {"type": "text", "text": context},
             ]}],
         )
+        local_llm.note_cloud(response.model, response)
         return "".join(b.text for b in response.content if b.type == "text").strip()
 
     # ------------------------------------------------------------ API

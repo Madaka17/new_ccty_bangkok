@@ -20,6 +20,8 @@ import urllib.request
 
 import cv2
 
+from backend.core import local_llm
+
 try:
     import anthropic
 except ImportError:  # chat_service already tolerates a missing SDK
@@ -174,6 +176,7 @@ class IncidentManager:
                 config=genai_types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, temperature=0.1,
                                                          max_output_tokens=1500, response_mime_type='application/json'),
             )
+            local_llm.note_cloud(GEMINI_MODEL, resp)
             text = (resp.text or '').strip()
         else:
             text = self._ask_claude(jpeg, context)
@@ -195,6 +198,7 @@ class IncidentManager:
                 ],
             }],
         )
+        local_llm.note_cloud(response.model, response)
         return "".join(b.text for b in response.content if b.type == "text").strip()
 
     def _open(self, camid, title, cand, jpeg, verdict):

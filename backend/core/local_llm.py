@@ -66,6 +66,20 @@ def _record(caller, model, prompt, reply, seconds, ok):
             _usage.popleft()
 
 
+def note_cloud(model, resp):
+    """Count a Gemini or Claude reply made outside Client.chat under the calling module, so /api/ai/usage
+    shows the cloud tokens too (Gemini: usage_metadata, thinking counted as reply; Claude: usage)."""
+    caller = sys._getframe(1).f_globals.get("__name__", "?")
+    gem = getattr(resp, "usage_metadata", None)
+    if gem is not None:
+        prompt = gem.prompt_token_count or 0
+        reply = (gem.candidates_token_count or 0) + (getattr(gem, "thoughts_token_count", 0) or 0)
+    else:
+        used = getattr(resp, "usage", None)
+        prompt, reply = getattr(used, "input_tokens", 0) or 0, getattr(used, "output_tokens", 0) or 0
+    _record(caller, model, int(prompt), int(reply), 0.0, True)
+
+
 def usage(minutes=30):
     """Requests and tokens per calling module over the last `minutes` (as far back as the server has run)."""
     now = time.time()
