@@ -115,7 +115,7 @@ from backend.water.north_route import NorthRoute
 from backend.water.bkk_districts import BkkDistricts
 from backend.traffic.road_service import road_risk
 from backend.agents import chat_service
-from backend.water import water_service, north_flow, river_roads
+from backend.water import water_service, north_flow, river_roads, wind_field
 from backend.traffic import rsc_service
 from backend.bma.bma_events import bma_feed
 from backend.bma.bma_service import BmaScanner, RAW_DIR as BMA_RAW_DIR
@@ -848,6 +848,11 @@ def road_events():
 def weather_wind():
     """Current wind / rain / cloud on a 7x7 grid over Bangkok (Open-Meteo) for the map overlay."""
     return water_service.get_wind_grid()
+
+@app.get("/api/weather/wind_field")
+def weather_wind_field():
+    """Hourly 10 m wind (u, v in m/s) on a 1 degree grid over Thailand (Open-Meteo) for the moving wind lines."""
+    return wind_field.get()
 
 @app.get("/api/air/stations")
 def air_stations():

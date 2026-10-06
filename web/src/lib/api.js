@@ -144,6 +144,13 @@ export async function fetchWindGrid() {
   return res.json();
 }
 
+// Hourly wind (u, v in m/s) on a 1 degree grid over Thailand, for the moving wind lines on the camera map
+export async function fetchWindField() {
+  const res = await fetch('/api/weather/wind_field');
+  if (!res.ok) throw new Error('wind_field');
+  return res.json();
+}
+
 // Per-road flood risk: rain + canal level + road sensors + traffic, scored and ranked
 export async function fetchRoadRisk({ level = null, province = null, q = null, measured = null, limit = 400 } = {}) {
   const params = new URLSearchParams({ limit: String(limit) });
