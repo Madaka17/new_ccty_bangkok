@@ -179,6 +179,13 @@ export async function fetchFloodAnalysis() {
   return res.json();
 }
 
+// One plain-Thai notice per flooded Bangkok road, advice from the depth rule table (flood_service.notices)
+export async function fetchFloodNotices() {
+  const res = await fetch('/api/flood/notices');
+  if (!res.ok) throw new Error('flood_notices');
+  return res.json();
+}
+
 // Flood complaints residents filed on Traffy Fondue in the last few hours (flood_feeds.py)
 // Flooded-road reports on the Longdo Traffic feed (iTIC / FM91), newest first (incident_service.floods)
 export async function fetchLongdoFloods({ national = false } = {}) {
@@ -244,6 +251,19 @@ export async function postUserReport(body) {
     throw new Error(byStatus[res.status] || data.detail || 'ส่งไม่สำเร็จ ลองใหม่อีกครั้ง');
   }
   return data;
+}
+
+// Announced flood car parks (flood_parking.py) with the public's recent "full" reports
+export async function fetchFloodParking() {
+  const res = await fetch('/api/flood/parking');
+  if (!res.ok) throw new Error('flood_parking');
+  return res.json();
+}
+
+export async function postParkingFull(id) {
+  const res = await fetch(`/api/flood/parking/${encodeURIComponent(id)}/full`, { method: 'POST' });
+  if (!res.ok) throw new Error(res.status === 429 ? 'แจ้งถี่เกินไป ลองใหม่ภายหลัง' : 'ส่งไม่สำเร็จ ลองใหม่อีกครั้ง');
+  return res.json();
 }
 
 // AI flood watch on every BMA camera (flood_cam_service.py): counts + the cameras with water (all: every checked one)

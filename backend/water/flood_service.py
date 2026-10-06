@@ -79,6 +79,34 @@ AI_SCHEMA = {
     },
 }
 
+# Depth over the road -> what a vehicle can do, checked in order: under 10 cm, under 20 cm, up to 30 cm, deeper.
+# Starting values, to be tuned with the drainage experts. The advice comes from here, never from the AI.
+VEHICLE_RULES = (
+    (lambda cm: cm < 10, "passable", "ผ่านได้ตามปกติ"),
+    (lambda cm: cm < 20, "careful", "มอเตอร์ไซค์ระวัง รถเก๋งผ่านช้าๆ"),
+    (lambda cm: cm <= 30, "no_car", "รถเก๋งไม่ควรผ่าน"),
+    (lambda cm: True, "avoid", "ควรเลี่ยงทุกประเภท"),
+)
+SOURCE_NAME = "สำนักการระบายน้ำ กทม."
+_NUM = re.compile(r"\d+(?:\.\d+)?")
+_THAI_DIGITS = str.maketrans("๐๑๒๓๔๕๖๗๘๙", "0123456789")
+
+
+def vehicle_advice(cm):
+    """(code, Thai advice) for a depth over the road in cm, from VEHICLE_RULES."""
+    return next((code, text) for test, code, text in VEHICLE_RULES if test(cm or 0))
+
+
+def unsupported_numbers(texts, *sources):
+    """Numbers in the AI's texts that appear in none of the sources (the facts it was given, the prompt).
+    A source number also allows its rounding, so 12.6 in the facts lets the AI write 13."""
+    allowed = set()
+    for n in _NUM.findall(" ".join(sources).translate(_THAI_DIGITS)):
+        allowed |= {float(n), float(round(float(n))), float(int(float(n)))}
+    said = {float(n) for n in _NUM.findall(" ".join(texts).translate(_THAI_DIGITS))}
+    return sorted(said - allowed)
+
+
 STATUS_TH = {"flood": "น้ำท่วม", "slight": "น้ำท่วมเล็กน้อย", "normal": "ปกติ", "offline": "เครื่องวัดขัดข้อง"}
 TREND_TH = {"rising": "กำลังเพิ่มขึ้น", "falling": "กำลังลดลง", "steady": "ทรงตัว"}
 STATUS_EN = {"flood": "flooding", "slight": "slight flooding", "normal": "normal", "offline": "offline"}
@@ -308,6 +336,7 @@ class FloodRoads:
             "points": [{"where": i["short_name"], "road": i["road"], "district": i["district"],
                         "level_cm": i["level_cm"], "trend": i["trend"], "change_cm": i["delta_cm"],
                         "since": i["started"], "max_cm": i["max_cm"],
+                        "advice": vehicle_advice(i["level_cm"])[0], "advice_th": vehicle_advice(i["level_cm"])[1],
                         "tunnel": i["kind"] == "tunnel"} for i in wet[:25]],
             "rising_count": len(rising),
             "districts": sorted(districts.values(), key=lambda d: -d["max_cm"])[:12],
@@ -337,8 +366,8 @@ class FloodRoads:
                       + (f" · ระดับยังเพิ่มขึ้น {rising} จุด" if rising else " · ระดับทรงตัวหรือลดลงทุกจุด"),
             "hotspots": [{"where": p["where"], "note": f"{p['level_cm']} ซม."
                           + (f" {TREND_TH.get(p['trend'])}" if p.get("trend") else "")} for p in pts[:5]],
-            "advice": ["เลี่ยงจุดที่ระดับน้ำเกิน 20 ซม. รถเก๋งมีโอกาสเครื่องดับ",
-                       "เผื่อเวลาเดินทางและตรวจเส้นทางก่อนออกจากบ้าน"],
+            "advice": [f"{p['where']}: {p['advice_th']}" for p in pts[:3] if p["advice"] != "passable"]
+                      + ["เผื่อเวลาเดินทางและตรวจเส้นทางก่อนออกจากบ้าน"],
             "outlook": "", "source": "template",
         }
 
@@ -373,7 +402,8 @@ class FloodRoads:
             f"(level_cm = ความลึกของน้ำบนผิวถนนหน่วยเซนติเมตร, เกิน {int(FLOOD_CM)} ซม. ถือว่าน้ำท่วม, "
             f"{int(SLIGHT_CM)}-{int(FLOOD_CM)} ซม. ท่วมเล็กน้อย, trend = แนวโน้มเทียบ 25 นาทีก่อน)\n"
             "เขียนบทวิเคราะห์ภาษาไทยจากตัวเลขที่ให้เท่านั้น ห้ามแต่งชื่อถนน จุด หรือตัวเลขที่ไม่มีในข้อมูล "
-            "ห้ามพยากรณ์ฝนหรืออ้างข้อมูลที่ไม่ได้ให้มา\n"
+            "ห้ามพยากรณ์ฝนหรืออ้างข้อมูลที่ไม่ได้ให้มา "
+            "คำแนะนำว่ารถแบบไหนผ่านได้ ให้ใช้ตาม advice_th ของแต่ละจุดเท่านั้น ห้ามตั้งเกณฑ์ความลึกเอง\n"
             "ตอบเป็น JSON object เท่านั้น:\n"
             '{"severity":"normal|watch|alert",'
             '"headline":"<1 ประโยค สรุปภาพรวมตอนนี้ ไม่เกิน 30 คำ>",'
@@ -402,6 +432,12 @@ class FloodRoads:
                     "outlook": str(d.get("outlook") or "").strip(),
                     "source": source,
                 }
+                texts = [out["headline"], out["detail"], out["outlook"], *out["advice"],
+                         *(h["where"] + " " + h["note"] for h in out["hotspots"])]
+                bad = unsupported_numbers(texts, prompt)   # the prompt holds the facts and every threshold it names
+                if bad:
+                    print(f"[Flood] AI analysis has numbers not in the data {bad[:5]}, using template")
+                    out = dict(base)
         except Exception as e:  # noqa: BLE001
             print(f"[Flood] AI analysis failed, using template: {str(e)[:140]}")
         with self.lock:
@@ -478,6 +514,29 @@ class FloodRoads:
             by_road[name]["points"] += 1
         out = sorted(by_road.values(), key=lambda r: -(r["level_cm"] or 0))
         return {"updated_at": self.updated_at, "feed_time": self.feed_time, "total": len(out), "items": out[:limit]}
+
+    def notices(self, limit=30):
+        """One plain-Thai notice per flooded road, always in the same order: what, where, when, what to do,
+        then the source and the reading time. Built from the sensor numbers and VEHICLE_RULES only (no AI)."""
+        items = []
+        for r in self.roads(limit)["items"]:
+            code, action = vehicle_advice(r["level_cm"])
+            at = datetime.fromtimestamp(r["ts"], BKK_TZ).strftime("%H:%M") if r["ts"] else None
+            trend = {"rising": " ระดับกำลังเพิ่มขึ้น", "falling": " ระดับกำลังลดลง"}.get(r.get("trend"), "")
+            items.append({
+                "road": r["road"], "district": r["district"], "level_cm": r["level_cm"], "advice": code,
+                "lat": r["lat"], "lng": r["lng"], "ts": r["ts"],
+                "what": f"น้ำท่วมขังประมาณ {round(r['level_cm'] or 0)} ซม.{trend}",
+                "where": r["at"] + (f" เขต{r['district']}" if r["district"] else ""),
+                "when": f"ท่วมตั้งแต่ {r['started']}" if r.get("started") else (f"วัดได้เมื่อ {at} น." if at else ""),
+                "action": action,
+                "source": SOURCE_NAME + (f" · อัปเดต {at} น." if at else ""),
+            })
+        with self.lock:
+            sensors, error = len(self.items), self.error
+        # sensors 0 = the feed is down: the page must not read that as "no flooding"
+        return {"updated_at": self.updated_at, "feed_time": self.feed_time, "sensors": sensors, "error": error,
+                "total": len(items), "items": items}
 
 
 flood_roads = FloodRoads()

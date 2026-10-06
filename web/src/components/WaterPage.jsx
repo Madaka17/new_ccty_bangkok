@@ -6,6 +6,8 @@ import ViewSwitch from './ViewSwitch.jsx';
 import BkkDistrictSection from './water/BkkDistrictSection.jsx';
 import CitizenReportsSection from './water/CitizenReportsSection.jsx';
 import ShelterSection from './water/ShelterSection.jsx';
+import FloodParkingSection from './water/FloodParkingSection.jsx';
+import RoadFloodNotices from './water/RoadFloodNotices.jsx';
 import NorthFlowSection from './water/NorthFlowSection.jsx';
 import NationalWaterSection from './water/NationalWaterSection.jsx';
 import FloodForecastSection from './water/FloodForecastSection.jsx';
@@ -20,6 +22,7 @@ const TABS = [
   { id: 'north', label: 'เส้นทางน้ำเหนือ', hint: 'น้ำจากภาคเหนือไหลผ่านจังหวัดไหน ต้องระวังที่ไหน และ 7 วันข้างหน้า', icon: 'water' },
   { id: 'watch', label: 'เขตเสี่ยงน้ำท่วมในกรุงเทพมหานคร', hint: 'สรุปทั้ง 50 เขต น้ำในคลอง แม่น้ำ ถนน และฝน', icon: 'alerts' },
   { id: 'shelter', label: 'จุดพักพิงใกล้ฉัน', hint: 'จุดพักพิงชั่วคราวของ กทม. ใกล้คุณ พร้อมเบอร์โทรและเส้นทาง', icon: 'map' },
+  { id: 'parking', label: 'จุดจอดรถหนีน้ำ', hint: 'ที่จอดรถที่ กทม. ห้าง หรืออาคารเปิดให้จอดหนีน้ำ', icon: 'map' },
   { id: 'reports', label: 'เรื่องที่คนแจ้ง', hint: 'เรื่องน้ำท่วมที่คนแจ้งผ่าน Traffy Fondue และข่าวจราจร', icon: 'visitors' },
 ];
 
@@ -40,6 +43,7 @@ export default function WaterPage({ isActive }) {
 
       {tab === 'provinces' && <FloodForecastSection isActive={isActive} />}
 
+      {tab === 'roads' && <RoadFloodNotices isActive={isActive} />}
       {tab === 'roads' && <NationalRoadsSection isActive={isActive} />}
 
       {tab === 'summary' && <FloodSummarySection isActive={isActive} onPickTab={pickTab} />}
@@ -51,6 +55,8 @@ export default function WaterPage({ isActive }) {
       {tab === 'reports' && <CitizenReportsSection isActive={isActive} />}
 
       {tab === 'shelter' && <ShelterSection isActive={isActive} />}
+
+      {tab === 'parking' && <FloodParkingSection isActive={isActive} />}
     </div>
   );
 }

@@ -9,6 +9,8 @@
 - ``POST /api/flood/user-reports`` (a flood report with a photo from the public) is the one other public
   write: that exact path and method only (deleting a report stays operator-only), body capped at
   ``USER_REPORT_MAX_BODY`` and ``USER_REPORT_RATE_PER_HOUR`` / ``USER_REPORT_RATE_PER_DAY`` per IP.
+- ``POST /api/flood/parking/{id}/full`` ("this flood car park is full", no body) is public too,
+  ``PARKING_FULL_RATE_PER_HOUR`` per IP.
 - Any other request is soft rate limited to stop scripted floods (per minute and per day).
 - Paths with a backslash, ``..`` or ``:`` are refused before routing: ids in the URL end up in file
   paths (``/api/helmet/{hid}/crop``), and on Windows those let a request read any .jpg on the disk.
@@ -54,6 +56,8 @@ USER_REPORT_PATH = "/api/flood/user-reports"
 USER_REPORT_MAX_BODY = int(os.getenv("USER_REPORT_MAX_BODY", str(6 * 2**20)))   # bytes: one photo as a data: URL
 USER_REPORT_RATE_PER_HOUR = int(os.getenv("USER_REPORT_RATE_PER_HOUR", "5"))
 USER_REPORT_RATE_PER_DAY = int(os.getenv("USER_REPORT_RATE_PER_DAY", "20"))
+PARKING_FULL_PATH = re.compile(r"/api/flood/parking/[^/]+/full")
+PARKING_FULL_RATE_PER_HOUR = int(os.getenv("PARKING_FULL_RATE_PER_HOUR", "10"))
 API_BROWSER_ONLY = os.getenv("API_BROWSER_ONLY", "1").strip() != "0"
 API_SESSION = os.getenv("API_SESSION", "1").strip() != "0"
 SESSION_COOKIE = "bkk_s"
@@ -136,6 +140,7 @@ general_min = _Window(GENERAL_RATE_PER_MIN, 60)
 general_day = _Window(GENERAL_RATE_PER_DAY, 86400)
 report_hour = _Window(USER_REPORT_RATE_PER_HOUR, 3600)
 report_day = _Window(USER_REPORT_RATE_PER_DAY, 86400)
+parking_hour = _Window(PARKING_FULL_RATE_PER_HOUR, 3600)
 
 
 def _is_trusted_ip(ip):
@@ -275,9 +280,13 @@ async def guard(request: Request, call_next):
     ip = client_ip(request)
 
     user_report = path == USER_REPORT_PATH and request.method == "POST"
-    if request.method in ("POST", "PUT", "DELETE") and not path.startswith(PUBLIC_WRITE_PREFIXES) and not user_report:
+    parking_full = request.method == "POST" and PARKING_FULL_PATH.fullmatch(path) is not None
+    if request.method in ("POST", "PUT", "DELETE") and not path.startswith(PUBLIC_WRITE_PREFIXES) and not user_report             and not parking_full:
         if not trusted:
             return _deny(403, "control endpoints are limited to the operator")
+
+    if parking_full and not trusted and not parking_hour.allow(ip):
+        return _deny(429, "too many reports, try again later")
 
     if user_report and not trusted:
         try:

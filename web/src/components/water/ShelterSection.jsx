@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Card, Badge, Button, SectionHeader, Skeleton, EmptyState, ErrorState } from '../dashboard/ui.jsx';
 import { fmtNum } from '../dashboard/format.js';
+import { distanceKm, fmtKm } from '../../lib/geo.js';
 
 const SHOWN = 10;   // nearest shelters listed before "แสดงเพิ่ม"
 const SELECT = 'h-10 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700';
@@ -14,15 +15,6 @@ const GEO_ERROR = {
   2: 'หาตำแหน่งไม่ได้ ลองเปิด GPS แล้วกดใหม่ หรือเลือกเขตด้านล่างแทน',
   3: 'หาตำแหน่งนานเกินไป ลองกดใหม่ หรือเลือกเขตด้านล่างแทน',
 };
-
-// Great-circle distance in km
-function distanceKm(lat1, lng1, lat2, lng2) {
-  const rad = (d) => (d * Math.PI) / 180;
-  const a = Math.sin(rad(lat2 - lat1) / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(rad(lng2 - lng1) / 2) ** 2;
-  return 6371 * 2 * Math.asin(Math.sqrt(a));
-}
-
-const fmtKm = (km) => (km < 1 ? `${Math.round(km * 1000)} ม.` : `${km.toFixed(1)} กม.`);
 
 function ShelterRow({ s }) {
   const [lng, lat] = s.geometry.coordinates;

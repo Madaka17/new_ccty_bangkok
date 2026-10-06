@@ -83,6 +83,14 @@ def _app():
     def chat():
         return {"ok": True}
 
+    @app.post("/api/flood/parking/{sid}/full")
+    def parking_full(sid: str):
+        return {"ok": True}
+
+    @app.post("/api/flood/parking/{sid}/other")
+    def parking_other(sid: str):
+        return {"ok": True}
+
     return app
 
 
@@ -143,3 +151,12 @@ def test_session_age_rejects_old_and_forged(monkeypatch, tmp_path):
     assert access_guard.session_age(good, now=1000 + access_guard.SESSION_MAX_AGE + 1) is None
     assert access_guard.session_age("1000.0000", now=1060) is None
     assert access_guard.session_age(None) is None
+
+
+def test_parking_full_is_public_and_rate_limited(monkeypatch, tmp_path):
+    monkeypatch.setattr(access_guard, "parking_hour", _Window(2, 3600))
+    c = _visitor(monkeypatch, tmp_path)
+    codes = [c.post("/api/flood/parking/a/full", headers=SAME_ORIGIN).status_code for _ in range(3)]
+    assert codes == [200, 200, 429]
+    # only the exact "full" path is public
+    assert c.post("/api/flood/parking/a/other", headers=SAME_ORIGIN).status_code == 403
