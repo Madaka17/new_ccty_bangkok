@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, SectionHeader, Badge, Segmented, Skeleton, EmptyState, Truncate } from '../dashboard/ui.jsx';
 import { StatTile, StatusBanner } from '../dashboard/primitives.jsx';
 import { fmtNum, fmtTime } from '../dashboard/format.js';
@@ -7,6 +7,19 @@ const PERIODS = [
   ['day', 'รายวัน'],
   ['week', 'รายสัปดาห์'],
   ['month', 'รายเดือน'],
+];
+const MODES = [
+  ['grouped', 'แยกตามประเภทรถ'],
+  ['stacked', 'ยอดรวม'],
+];
+const TYPES = [
+  { key: 'cars', name: 'รถยนต์', short: 'รถยนต์', bar: 'bg-blue-600 dark:bg-blue-500', text: 'text-blue-700 dark:text-blue-300', dot: 'bg-blue-500' },
+  { key: 'motorcycles', name: 'มอเตอร์ไซค์', short: 'มอไซ', bar: 'bg-amber-500 dark:bg-amber-400', text: 'text-amber-700 dark:text-amber-300', dot: 'bg-amber-500' },
+  { key: 'trucks', name: 'บรรทุก/บัส', short: 'บรรทุก', bar: 'bg-slate-500 dark:bg-slate-400', text: 'text-slate-600 dark:text-slate-300', dot: 'bg-slate-500' },
+];
+const TYPE_FILTERS = [
+  ['all', 'ทั้งหมด'],
+  ...TYPES.map((t) => [t.key, <span key={t.key} className="inline-flex items-center gap-1.5"><span aria-hidden="true" className={`w-2 h-2 rounded-full ${t.dot}`} />{t.short}</span>]),
 ];
 const pct = (v) => (v == null ? '–' : `${v >= 0 ? '+' : ''}${v}%`);
 const diffTone = (d) => (d == null ? 'neutral' : d > 0 ? 'red' : d < 0 ? 'green' : 'neutral');
@@ -45,6 +58,13 @@ export default function BmaComparison({ data, period, onPeriod, cycle, files, lo
   }, [chart, chartMode, filterType]);
 
   const shown = hover ?? chart[chart.length - 1];
+
+  // Many periods scroll sideways: open at the newest, on the right
+  const scrollRef = useRef(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [chart, chartMode, filterType]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -88,80 +108,10 @@ export default function BmaComparison({ data, period, onPeriod, cycle, files, lo
               )}
             </p>
 
-            {/* View Mode & Filter Controls */}
+            {/* View mode, and which type to show (the dots are the chart's legend) */}
             <div className="flex items-center gap-2 flex-wrap">
-              <div className="inline-flex rounded-lg border border-cream-200 dark:border-slate-700 bg-cream-50 dark:bg-slate-800 p-0.5 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setChartMode('grouped')}
-                  className={`cursor-pointer px-2.5 py-1 rounded-md font-medium transition-colors ${
-                    chartMode === 'grouped'
-                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                  }`}
-                >
-                  แยกตามประเภทรถ
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setChartMode('stacked')}
-                  className={`cursor-pointer px-2.5 py-1 rounded-md font-medium transition-colors ${
-                    chartMode === 'stacked'
-                      ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                  }`}
-                >
-                  ยอดรวม
-                </button>
-              </div>
-
-              {/* Filter chips */}
-              <div className="flex items-center gap-1 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setFilterType('all')}
-                  className={`cursor-pointer px-2 py-1 rounded-md font-medium transition-colors ${
-                    filterType === 'all'
-                      ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                  }`}
-                >
-                  ทั้งหมด
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilterType('cars')}
-                  className={`cursor-pointer inline-flex items-center gap-1 px-2 py-1 rounded-md font-medium transition-colors ${
-                    filterType === 'cars'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100'
-                  }`}
-                >
-                  <span className="w-2 h-2 rounded-full bg-blue-500" /> รถยนต์
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilterType('motorcycles')}
-                  className={`cursor-pointer inline-flex items-center gap-1 px-2 py-1 rounded-md font-medium transition-colors ${
-                    filterType === 'motorcycles'
-                      ? 'bg-amber-500 text-white'
-                      : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100'
-                  }`}
-                >
-                  <span className="w-2 h-2 rounded-full bg-amber-500" /> มอไซ
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilterType('trucks')}
-                  className={`cursor-pointer inline-flex items-center gap-1 px-2 py-1 rounded-md font-medium transition-colors ${
-                    filterType === 'trucks'
-                      ? 'bg-slate-600 text-white'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
-                  }`}
-                >
-                  <span className="w-2 h-2 rounded-full bg-slate-500" /> บรรทุก
-                </button>
-              </div>
+              <Segmented label="แบบกราฟ" value={chartMode} onChange={setChartMode} options={MODES} />
+              {chartMode === 'grouped' && <Segmented label="ประเภทรถ" value={filterType} onChange={setFilterType} options={TYPE_FILTERS} />}
             </div>
           </div>
 
@@ -172,97 +122,42 @@ export default function BmaComparison({ data, period, onPeriod, cycle, files, lo
               <EmptyState title="ยังไม่มีข้อมูลให้เทียบ" description="ระบบจะเก็บยอดแรกเมื่อครบรอบ" />
             </div>
           ) : chartMode === 'grouped' ? (
-            /* GROUPED BARS: 3 separate bars side by side per date */
-            <div className="mt-4 pt-2 pb-1 border-b border-slate-200 dark:border-slate-800" onMouseLeave={() => setHover(null)}>
-              <div className="flex items-end justify-around gap-2 sm:gap-6 min-h-[220px]">
+            /* GROUPED BARS: one column per period, scrolls sideways inside the card when there are many,
+               opened at the newest; the date sits under its bars like an axis */
+            <div ref={scrollRef} className="mt-4 overflow-x-auto scroll-soft pb-1" onMouseLeave={() => setHover(null)}>
+              <div className="grid grid-flow-col auto-cols-[minmax(92px,1fr)] gap-1 border-b border-slate-200 dark:border-slate-800">
                 {chart.map((c) => {
                   const isCur = c.period_key === data.current_key;
-                  const cTot = c.total || 1;
-                  const carsH = Math.max(4, Math.round(((c.cars || 0) / max) * 155));
-                  const motosH = Math.max(4, Math.round(((c.motorcycles || 0) / max) * 155));
-                  const trucksH = Math.max(4, Math.round(((c.trucks || 0) / max) * 155));
-
-                  const showCars = filterType === 'all' || filterType === 'cars';
-                  const showMotos = filterType === 'all' || filterType === 'motorcycles';
-                  const showTrucks = filterType === 'all' || filterType === 'trucks';
-
+                  const bars = TYPES.filter((t) => filterType === 'all' || filterType === t.key);
                   return (
-                    <div
+                    <button
                       key={c.period_key}
+                      type="button"
                       onMouseEnter={() => setHover(c)}
-                      className={`flex-1 flex flex-col items-center p-2 sm:p-3 rounded-xl transition-all ${
-                        isCur
-                          ? 'bg-blue-50/50 dark:bg-blue-950/20 ring-1 ring-blue-500/40'
-                          : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                      onFocus={() => setHover(c)}
+                      aria-label={`${c.label} ${fmtNum(c.total)} คัน`}
+                      className={`cursor-default flex flex-col items-center gap-1.5 rounded-lg px-1.5 pt-2 pb-2.5 transition-colors ${
+                        isCur ? 'bg-blue-50/60 dark:bg-blue-950/25' : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
                       }`}
                     >
-                      {/* Top Total Header */}
-                      <div className="text-center mb-3">
-                        <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                          {c.label} {isCur && <span className="text-[11px] text-blue-600 dark:text-blue-400">({data.curr_label})</span>}
-                        </span>
-                        <span className="text-[11px] text-slate-500 block font-medium">
-                          รวม {fmtNum(c.total)} คัน
-                        </span>
+                      <div className="w-full h-44 flex items-end justify-center gap-1">
+                        {bars.map((t) => (
+                          <div key={t.key} className={`flex-1 ${bars.length === 1 ? 'max-w-[40px]' : 'max-w-[24px]'} flex flex-col items-center`}>
+                            <span className={`text-[10px] font-semibold tabular-nums whitespace-nowrap mb-1 ${t.text}`}>{fmtCompact(c[t.key])}</span>
+                            <div
+                              style={{ height: `${Math.max(3, Math.round(((c[t.key] || 0) / max) * 150))}px` }}
+                              className={`w-full rounded-t ${t.bar}`}
+                              title={`${t.name}: ${fmtNum(c[t.key])} คัน (${Math.round(((c[t.key] || 0) / (c.total || 1)) * 100)}%)`}
+                            />
+                          </div>
+                        ))}
                       </div>
-
-                      {/* Side-by-side grouped bars */}
-                      <div className="w-full flex items-end justify-center gap-1.5 sm:gap-3 h-44">
-                        {/* 1. Cars */}
-                        {showCars && (
-                          <div className="flex-1 max-w-[52px] h-full flex flex-col justify-end items-center group">
-                            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 mb-1 tabular-nums whitespace-nowrap">
-                              {fmtCompact(c.cars)}
-                            </span>
-                            <div
-                              style={{ height: `${carsH}px` }}
-                              className="w-full rounded-t-md bg-blue-600 dark:bg-blue-500 transition-all group-hover:brightness-110 shadow-xs"
-                              title={`${c.label} รถยนต์: ${fmtNum(c.cars)} คัน (${Math.round((c.cars / cTot) * 100)}%)`}
-                            />
-                            <span className="text-[10px] text-slate-500 mt-1.5 leading-none">รถยนต์</span>
-                            <span className="text-[9px] text-blue-600 dark:text-blue-400 font-medium leading-none mt-0.5">
-                              {Math.round((c.cars / cTot) * 100)}%
-                            </span>
-                          </div>
-                        )}
-
-                        {/* 2. Motorcycles */}
-                        {showMotos && (
-                          <div className="flex-1 max-w-[52px] h-full flex flex-col justify-end items-center group">
-                            <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 mb-1 tabular-nums whitespace-nowrap">
-                              {fmtCompact(c.motorcycles)}
-                            </span>
-                            <div
-                              style={{ height: `${motosH}px` }}
-                              className="w-full rounded-t-md bg-amber-500 dark:bg-amber-400 transition-all group-hover:brightness-110 shadow-xs"
-                              title={`${c.label} มอเตอร์ไซค์: ${fmtNum(c.motorcycles)} คัน (${Math.round((c.motorcycles / cTot) * 100)}%)`}
-                            />
-                            <span className="text-[10px] text-slate-500 mt-1.5 leading-none">มอไซ</span>
-                            <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium leading-none mt-0.5">
-                              {Math.round((c.motorcycles / cTot) * 100)}%
-                            </span>
-                          </div>
-                        )}
-
-                        {/* 3. Trucks */}
-                        {showTrucks && (
-                          <div className="flex-1 max-w-[52px] h-full flex flex-col justify-end items-center group">
-                            <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 mb-1 tabular-nums whitespace-nowrap">
-                              {fmtCompact(c.trucks)}
-                            </span>
-                            <div
-                              style={{ height: `${trucksH}px` }}
-                              className="w-full rounded-t-md bg-slate-500 dark:bg-slate-400 transition-all group-hover:brightness-110 shadow-xs"
-                              title={`${c.label} บรรทุก/บัส: ${fmtNum(c.trucks)} คัน (${Math.round((c.trucks / cTot) * 100)}%)`}
-                            />
-                            <span className="text-[10px] text-slate-500 mt-1.5 leading-none">บรรทุก</span>
-                            <span className="text-[9px] text-slate-600 dark:text-slate-400 font-medium leading-none mt-0.5">
-                              {Math.round((c.trucks / cTot) * 100)}%
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                      <span className={`text-xs leading-tight text-center ${isCur ? 'font-semibold text-blue-700 dark:text-blue-300' : 'font-medium text-slate-700 dark:text-slate-300'}`}>
+                        {c.label}
+                        {isCur && <span className="block text-[11px]">{data.curr_label}</span>}
+                      </span>
+                      <span className="text-[11px] text-slate-500 tabular-nums">รวม {fmtCompact(c.total)}</span>
+                    </button>
                   );
                 })}
               </div>
