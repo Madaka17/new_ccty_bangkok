@@ -56,8 +56,8 @@
   --color-gold-600: #d97706;
   --color-gold-700: #b45309;
 
-  --shadow-soft: 0 0 0 1px #e2e8f0;
-  --shadow-lift: 0 0 0 1px #e2e8f0, 0 4px 12px -4px rgba(15, 23, 42, 0.08);
+  --shadow-soft: 0 0 0 1px var(--c-border);
+  --shadow-lift: 0 0 0 1px var(--c-border), 0 8px 22px -12px rgba(15, 110, 116, 0.25);
 }
 
 /* ---------------------------------------------------------------- city look (light and dark)
@@ -65,64 +65,105 @@
    the summary card. The station line is --c-line, the page you are on is --c-here. Status tones:
    ok = fine, watch = keep an eye on it, act = take care, none = no data yet. */
 :root {
-  --c-ground: #eef1f4;
-  --c-surface: #ffffff;
-  --c-raised: #f6f7f9;
-  --c-border: #dde2e8;
-  --c-border-strong: #c9d0d9;
-  --c-ink: #12161d;
-  --c-muted: #4a5361;
-  --c-line: #183153;
-  --c-here: #e8590c;
-  --c-here-tint: #fff1e8;
-  --c-here-text: #a33e06;
-  --c-primary: #c2410c;
-  --c-primary-hover: #9a3412;
+  /* River look: light is warm paper by the water (no pure white), dark is the Chao Phraya at night (no pure
+     black). Primary = canal teal, here = evening light on the water. */
+  --c-ground: #f4f1ea;
+  --c-surface: #fffdf8;
+  --c-raised: #f9f6ef;
+  --c-border: #e4ded2;
+  --c-border-strong: #d3cbbb;
+  --c-ink: #1a2228;
+  --c-muted: #4e5a62;
+  --c-line: #12424a;
+  --c-here: #c2691a;
+  --c-here-tint: #fbeedd;
+  --c-here-text: #8f4a0c;
+  --c-primary: #0f6e74;
+  --c-primary-hover: #0b5a5f;
+  --c-primary-tint: #e3f1ef;
   --c-on-primary: #ffffff;
-  --c-sel-bg: #183153;
+  --c-sel-bg: #0f6e74;
   --c-sel-text: #ffffff;
-  --line-1: #1d3e73;
-  --line-2: #0b6b6b;
-  --line-3: #6a2c8f;
-  --line-4: #7a4b1e;
+  --c-wave: #5fa8a6;
+  --c-shadow: 0 1px 2px rgba(26, 34, 40, 0.04), 0 8px 22px -14px rgba(15, 110, 116, 0.28);
+  --line-1: #1f4e79;
+  --line-2: #0f6e74;
+  --line-3: #6a4c93;
+  --line-4: #a15c1e;
 
-  --ok-ring: #1e9e57;   --ok-fill: var(--c-surface);   --ok-text: #17733f;   --ok-tint: #e3f4ea;
-  --watch-ring: #e09a0b; --watch-fill: #fce7b8;        --watch-text: #8a5300; --watch-tint: #fdf0d5;
-  --act-ring: #d63a2c;  --act-fill: #d63a2c;           --act-text: #b42318;  --act-tint: #fbe1de;
-  --none-ring: #9aa3af; --none-fill: var(--c-surface); --none-text: #4a5361; --none-tint: #e9ecf0;
+  --ok-ring: #1e9e57;   --ok-fill: var(--c-surface);   --ok-text: #17733f;   --ok-tint: #e3f2e6;
+  --watch-ring: #e09a0b; --watch-fill: #fce7b8;        --watch-text: #8a5300; --watch-tint: #fbefd6;
+  --act-ring: #d63a2c;  --act-fill: #d63a2c;           --act-text: #b42318;  --act-tint: #f9e1dc;
+  --none-ring: #9a9f9f; --none-fill: var(--c-surface); --none-text: #4e5a62; --none-tint: #ebe7de;
 }
 .dark {
-  --c-ground: #0b0e13;
-  --c-surface: #141922;
-  --c-raised: #1b212b;
-  --c-border: #2a323e;
-  --c-border-strong: #3a4352;
-  --c-ink: #eef1f5;
-  --c-muted: #a7b0bd;
-  --c-line: #6f93c8;
-  --c-here: #f07a35;
-  --c-here-tint: rgba(240, 122, 53, 0.16);
-  --c-here-text: #ffb487;
-  --c-primary: #f07a35;
-  --c-primary-hover: #f49456;
-  --c-on-primary: #12161d;
-  --c-sel-bg: #dce6f5;
-  --c-sel-text: #12161d;
-  --line-1: #7ea3dc;
-  --line-2: #4fbcb5;
-  --line-3: #b98ae0;
-  --line-4: #d9a066;
+  --c-ground: #0e1a22;
+  --c-surface: #15242e;
+  --c-raised: #1b2c37;
+  --c-border: #263a46;
+  --c-border-strong: #34505e;
+  --c-ink: #e6eef0;
+  --c-muted: #a3b5bd;
+  --c-line: #5fa8b0;
+  --c-here: #f2a65a;
+  --c-here-tint: rgba(242, 166, 90, 0.16);
+  --c-here-text: #f7c08a;
+  --c-primary: #4fc1b9;
+  --c-primary-hover: #6fd0c9;
+  --c-primary-tint: rgba(79, 193, 185, 0.14);
+  --c-on-primary: #0b1a1f;
+  --c-sel-bg: #4fc1b9;
+  --c-sel-text: #0b1a1f;
+  --c-wave: #3f8f92;
+  --c-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02), 0 10px 24px -14px rgba(0, 0, 0, 0.7);
+  --line-1: #7fb0e0;
+  --line-2: #4fc1b9;
+  --line-3: #b9a0e0;
+  --line-4: #e8a866;
 
   --ok-text: #6ee7a0;   --ok-tint: rgba(30, 158, 87, 0.16);
   --watch-ring: #f2b33d; --watch-fill: #5c4210; --watch-text: #fcd34d; --watch-tint: rgba(242, 179, 61, 0.14);
   --act-ring: #f0564a;  --act-fill: #f0564a;  --act-text: #fca5a5;  --act-tint: rgba(240, 86, 74, 0.16);
-  --none-ring: #6a7381; --none-text: #a7b0bd; --none-tint: #1b212b;
+  --none-ring: #6a7d88; --none-text: #a3b5bd; --none-tint: #1b2c37;
 }
 /* A status colour set on one element, read by its children as --t-* */
 .tone-green { --t-ring: var(--ok-ring); --t-fill: var(--ok-fill); --t-text: var(--ok-text); --t-tint: var(--ok-tint); --t-band: #1e7d49; --t-on: #ffffff; }
 .tone-yellow { --t-ring: var(--watch-ring); --t-fill: var(--watch-fill); --t-text: var(--watch-text); --t-tint: var(--watch-tint); --t-band: #f2b33d; --t-on: #12161d; }
 .tone-red { --t-ring: var(--act-ring); --t-fill: var(--act-fill); --t-text: var(--act-text); --t-tint: var(--act-tint); --t-band: #c62f22; --t-on: #ffffff; }
 .tone-neutral { --t-ring: var(--none-ring); --t-fill: var(--none-fill); --t-text: var(--none-text); --t-tint: var(--none-tint); --t-band: #5f6875; --t-on: #ffffff; }
+
+/* Light: Tailwind's cool slate and blue are moved onto the warm paper neutrals and the canal teal, so every
+   page follows the river look without editing its classes. Dark remaps the same names further down. */
+:root:not(.dark) {
+  --color-slate-50: #f9f6ef;
+  --color-slate-100: #f1ece2;
+  --color-slate-200: #e4ded2;
+  --color-slate-300: #d3cbbb;
+  --color-slate-400: #9a9d98;
+  --color-slate-500: #5f6b73;
+  --color-slate-600: #4e5a62;
+  --color-slate-700: #3a454c;
+  --color-slate-800: #232d33;
+  --color-slate-900: #1a2228;
+}
+:root {
+  --color-blue-50: #e6f3f2;
+  --color-blue-100: #cce7e5;
+  --color-blue-200: #a6d5d2;
+  --color-blue-300: #79bfbb;
+  --color-blue-400: #3fa7a2;
+  --color-blue-500: #178a88;
+  --color-blue-600: #0f6e74;
+  --color-blue-700: #0b5a5f;
+  --color-blue-800: #0a4a4e;
+  --color-blue-900: #0a3c40;
+  --color-lavender-50: #e6f3f2;
+  --color-lavender-100: #cce7e5;
+  --color-lavender-200: #a6d5d2;
+  --color-lavender-400: #3fa7a2;
+  --color-lavender-600: #0f6e74;
+  --color-lavender-700: #0b5a5f;
+}
 
 html, body, #root { height: 100%; }
 
@@ -136,29 +177,35 @@ body {
 /* Every page, in the look of station signs: headings in the display face, small square-ish corners,
    the selected tab a filled block, the main button in the action colour */
 h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.005em; }
-.rounded-xl.border, .rounded-2xl.border { border-radius: 6px; }
+/* Cards: soft rounded panels resting on the paper / water, a thin border and a low shadow */
+.rounded-xl.border, .rounded-2xl.border { border-radius: 14px; }
+.rounded-xl.border.bg-white, .rounded-2xl.border.bg-white { box-shadow: var(--c-shadow); }
 [role="tab"][aria-selected="true"] {
   background: var(--c-sel-bg);
   color: var(--c-sel-text);
   border-color: transparent;
-  border-radius: 4px;
+  border-radius: 999px;
 }
+::selection { background: var(--c-primary-tint); color: var(--c-ink); }
+
+/* Signature: a thin wave under each page title (PageHeader) */
+.wave-rule { display: block; width: 88px; height: 8px; margin-top: 6px; color: var(--c-wave); }
 .bg-blue-600, .bg-lavender-600 { background-color: var(--c-primary); color: var(--c-on-primary); }
 .border-blue-600 { border-color: var(--c-primary); }
 .hover\:bg-blue-700:hover, .hover\:bg-lavender-700:hover { background-color: var(--c-primary-hover); }
 .hover\:border-blue-700:hover { border-color: var(--c-primary-hover); }
 
 /* Flat panel (name kept for older pages) */
+.bg-white, .glass, .glass-strong { background-color: var(--c-surface); }
 .glass,
 .glass-strong {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--c-border);
 }
 
 .scroll-soft::-webkit-scrollbar { width: 8px; }
 .scroll-soft::-webkit-scrollbar-track { background: transparent; }
-.scroll-soft::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 999px; }
-.scroll-soft::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+.scroll-soft::-webkit-scrollbar-thumb { background: var(--c-border); border-radius: 999px; }
+.scroll-soft::-webkit-scrollbar-thumb:hover { background: var(--c-border-strong); }
 
 :focus-visible {
   outline: 2px solid var(--c-here);
@@ -195,9 +242,9 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.005em; }
 
 /* MapLibre soft look */
 .maplibregl-map { font-family: var(--font-sans); }
-.maplibregl-popup-content { border-radius: 10px; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px -4px rgba(15, 23, 42, 0.12); padding: 12px 14px; font-family: var(--font-sans); }
+.maplibregl-popup-content { border-radius: 12px; border: 1px solid var(--c-border); box-shadow: 0 4px 12px -4px rgba(15, 23, 42, 0.12); padding: 12px 14px; font-family: var(--font-sans); }
 .maplibregl-popup-close-button { font-size: 18px; color: var(--color-ink-600); right: 6px; top: 4px; }
-.maplibregl-ctrl-group { border-radius: 8px !important; overflow: hidden; box-shadow: 0 0 0 1px #e2e8f0 !important; }
+.maplibregl-ctrl-group { border-radius: 8px !important; overflow: hidden; box-shadow: 0 0 0 1px var(--c-border) !important; }
 .maplibregl-ctrl-group button { width: 36px; height: 36px; }
 .maplibregl-ctrl-attrib { border-radius: 6px 0 0 0; font-size: 10px; }
 
@@ -215,10 +262,10 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.005em; }
    same token (slate-900) is a dark surface in one place and dark text in another. */
 .dark {
   color-scheme: dark;
-  --color-slate-50: #1b212b;
-  --color-slate-100: #222935;
-  --color-slate-200: #2a323e;
-  --color-slate-300: #3a4352;
+  --color-slate-50: #1b2c37;
+  --color-slate-100: #20333f;
+  --color-slate-200: #263a46;
+  --color-slate-300: #34505e;
   --color-emerald-50: #052e16;
   --color-emerald-100: #064e3b;
   --color-emerald-200: #065f46;
@@ -228,20 +275,20 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.005em; }
   --color-red-50: #450a0a;
   --color-red-100: #7f1d1d;
   --color-red-200: #991b1b;
-  --color-blue-50: #172554;
-  --color-blue-100: #1e3a8a;
-  --color-blue-200: #1e40af;
-  --color-cream: #141922;
-  --color-cream-100: #1b212b;
-  --color-cream-200: #2a323e;
-  --color-ink-900: #eef1f5;
-  --color-ink-600: #c9d1dc;
+  --color-blue-50: #10343a;
+  --color-blue-100: #13444a;
+  --color-blue-200: #1a5a5f;
+  --color-cream: #15242e;
+  --color-cream-100: #1b2c37;
+  --color-cream-200: #263a46;
+  --color-ink-900: #e6eef0;
+  --color-ink-600: #bccbd1;
   --color-sage-50: #052e16;
   --color-sage-100: #064e3b;
   --color-sage-200: #065f46;
-  --color-lavender-50: #172554;
-  --color-lavender-100: #1e3a8a;
-  --color-lavender-200: #1e40af;
+  --color-lavender-50: #10343a;
+  --color-lavender-100: #13444a;
+  --color-lavender-200: #1a5a5f;
   --color-apricot-50: #450a0a;
   --color-apricot-100: #7f1d1d;
   --color-apricot-200: #991b1b;
@@ -250,38 +297,32 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.005em; }
   --color-gold-200: #92400e;
 }
 .dark body { background: var(--c-ground); color: var(--c-ink); }
-.dark .bg-white, .dark .glass, .dark .glass-strong { background-color: var(--c-surface); }
 .dark .glass, .dark .glass-strong { border-color: var(--c-border); }
 .dark .text-slate-900, .dark .text-slate-800 { color: var(--c-ink); }
-.dark .text-slate-700 { color: #e2e8f0; }
-.dark .text-slate-600 { color: #cbd5e1; }
-.dark .text-slate-500 { color: #94a3b8; }
+.dark .text-slate-700 { color: #d6e2e6; }
+.dark .text-slate-600 { color: #bccbd1; }
+.dark .text-slate-500 { color: #93a6ae; }
 .dark .text-emerald-700, .dark .text-emerald-800, .dark .text-emerald-900 { color: #6ee7b7; }
 .dark .text-amber-700, .dark .text-amber-800, .dark .text-amber-900 { color: #fcd34d; }
 .dark .text-red-700, .dark .text-red-800, .dark .text-red-900 { color: #fca5a5; }
-.dark .text-blue-700, .dark .text-blue-800, .dark .text-blue-900 { color: #93c5fd; }
+.dark .text-blue-700, .dark .text-blue-800, .dark .text-blue-900 { color: #7fd6cf; }
 .dark .hover\:text-slate-900:hover { color: #ffffff; }
-.dark .hover\:bg-slate-50:hover, .dark .hover\:bg-slate-100:hover { background-color: #222935; }
+.dark .hover\:bg-slate-50:hover, .dark .hover\:bg-slate-100:hover { background-color: #20333f; }
 .dark .hover\:bg-white:hover { background-color: var(--c-raised); }
-.dark .bg-slate-900\/80 { background-color: rgba(2, 6, 23, 0.8); }
-.dark .bg-slate-900\/60, .dark .bg-slate-900\/50 { background-color: rgba(2, 6, 23, 0.7); }
+.dark .bg-slate-900\/80 { background-color: rgba(4, 12, 17, 0.8); }
+.dark .bg-slate-900\/60, .dark .bg-slate-900\/50 { background-color: rgba(4, 12, 17, 0.7); }
 .dark .scroll-soft::-webkit-scrollbar-thumb { background: var(--c-border-strong); }
 .dark .maplibregl-popup-content { background: var(--c-surface); color: var(--c-ink); border-color: var(--c-border); }
-.dark svg text { fill: #94a3b8; }
+.dark svg text { fill: #93a6ae; }
 
 /* Camera AI & Analysis view switch (CameraAiPage.jsx) */
-.seg-tray { background: #eef2f7; border: 1px solid #e2e8f0; }
-.seg-off { color: #475569; }
-.seg-off:hover { background: rgba(255, 255, 255, 0.7); color: #0f172a; }
-.seg-on { background: #ffffff; color: #1d4ed8; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.08); }
-.seg-icon { background: #e2e8f0; color: #64748b; }
-.seg-hint { color: #64748b; font-weight: 400; }
-.dark .seg-tray { background: var(--c-ground); border-color: var(--c-border); }
-.dark .seg-off { color: #94a3b8; }
-.dark .seg-off:hover { background: var(--c-raised); color: var(--c-ink); }
-.dark .seg-on { background: var(--c-raised); color: #93c5fd; box-shadow: 0 0 0 1px var(--c-border-strong), 0 6px 16px rgba(0, 0, 0, 0.35); }
-.dark .seg-icon { background: var(--c-raised); color: #94a3b8; }
-.dark .seg-hint { color: #94a3b8; }
+.seg-tray { background: var(--c-ground); border: 1px solid var(--c-border); }
+.seg-off { color: var(--c-muted); }
+.seg-off:hover { background: var(--c-raised); color: var(--c-ink); }
+.seg-on { background: var(--c-surface); color: var(--c-primary); box-shadow: var(--c-shadow); }
+.seg-icon { background: var(--c-raised); color: var(--c-muted); }
+.seg-hint { color: var(--c-muted); font-weight: 400; }
+.dark .seg-on { background: var(--c-raised); color: var(--c-primary); box-shadow: 0 0 0 1px var(--c-border-strong), 0 6px 16px rgba(0, 0, 0, 0.35); }
 
 /* Floating AI button robot (BotFace.jsx): blink every few seconds, antenna bulb glows */
 .bot-eyes { transform-box: fill-box; transform-origin: center; animation: bot-blink 4.5s infinite; }

@@ -106,6 +106,7 @@ from backend.vision.wrongway_service import WrongWayPatrol
 from backend.water.air_service import air
 from backend.water.flood_service import flood_roads
 from backend.water.user_reports import UserReports, report_locations
+from backend.water.flood_parking import flood_parking
 from backend.water.flood_feeds import traffy_reports, tmd_warnings, hdms_floods, js100_floods
 from backend.core.news_feed import news_feed
 from backend.water.province_flood import ProvinceFlood
@@ -114,7 +115,7 @@ from backend.water.north_route import NorthRoute
 from backend.water.bkk_districts import BkkDistricts
 from backend.traffic.road_service import road_risk
 from backend.agents import chat_service
-from backend.water import water_service, north_flow, river_roads
+from backend.water import water_service, north_flow, river_roads, wind_field
 from backend.traffic import rsc_service
 from backend.bma.bma_events import bma_feed
 from backend.bma.bma_service import BmaScanner, RAW_DIR as BMA_RAW_DIR
@@ -848,6 +849,11 @@ def weather_wind():
     """Current wind / rain / cloud on a 7x7 grid over Bangkok (Open-Meteo) for the map overlay."""
     return water_service.get_wind_grid()
 
+@app.get("/api/weather/wind_field")
+def weather_wind_field():
+    """Hourly 10 m wind (u, v in m/s) on a 1 degree grid over Thailand (Open-Meteo) for the moving wind lines."""
+    return wind_field.get()
+
 @app.get("/api/air/stations")
 def air_stations():
     """PM2.5 / AQI per monitoring station in Bangkok + surrounding provinces (Air4Thai)."""
@@ -995,10 +1001,28 @@ def user_report_delete(rid: str):
         raise HTTPException(400, "bad id")
     return {"deleted": rid}
 
+@app.get("/api/flood/parking")
+def flood_parking_list():
+    """Announced flood car parks (config/flood_parking.json) with the public's recent "full" reports."""
+    return flood_parking.status()
+
+@app.post("/api/flood/parking/{spot_id}/full")
+def flood_parking_full(spot_id: str, request: Request):
+    """A "เต็มแล้ว" press from the public (rate limited in access_guard). Shows for PARKING_FULL_MINUTES."""
+    try:
+        return {"id": spot_id, "user_full": flood_parking.report_full(spot_id, access_guard.client_ip(request))}
+    except KeyError:
+        raise HTTPException(404, "no such spot") from None
+
 @app.get("/api/flood/analysis")
 def flood_analysis():
     """AI read of the current flooding: severity, what is happening, spots to watch, what to do."""
     return flood_roads.report()
+
+@app.get("/api/flood/notices")
+def flood_notices():
+    """Plain-Thai notice per flooded road: what, where, when, what to do (VEHICLE_RULES), source and time."""
+    return flood_roads.notices()
 
 @app.get("/api/flood/roads")
 def flood_roads_list(limit: int = Query(60, ge=1, le=300)):

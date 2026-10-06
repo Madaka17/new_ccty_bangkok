@@ -1,0 +1,12 @@
+{
+  "spots": [
+    {"id": "mrta-khu-khot", "name": "อาคารจอดรถ สถานีคูคต (รถไฟฟ้าสายสีเขียว)", "lat": 13.93235, "lng": 100.64652, "fee": "ฟรี", "until": "2026-10-09T23:59", "source": "รฟม. (ข่าว 1 ต.ค. 69)", "source_url": "https://www.bangkokbiznews.com/news/news-update/1254600"},
+    {"id": "mrta-yaek-kor-por-aor", "name": "อาคารจอดรถ สถานีแยก คปอ. (รถไฟฟ้าสายสีเขียว)", "lat": 13.925, "lng": 100.62585, "fee": "ฟรี", "until": "2026-10-09T23:59", "source": "รฟม. (ข่าว 1 ต.ค. 69)", "source_url": "https://www.bangkokbiznews.com/news/news-update/1254600"},
+    {"id": "mrta-khlong-ban-ma", "name": "อาคารจอดรถ สถานีคลองบ้านม้า (รถไฟฟ้าสายสีส้ม)", "lat": 13.77378, "lng": 100.66777, "fee": "ฟรี", "until": "2026-10-09T23:59", "source": "รฟม. (ข่าว 1 ต.ค. 69)", "source_url": "https://www.bangkokbiznews.com/news/news-update/1254600"},
+    {"id": "mrta-khlong-bang-phai", "name": "อาคารจอดรถ สถานีคลองบางไผ่ (รถไฟฟ้าสายสีม่วง)", "lat": 13.89244, "lng": 100.40828, "fee": "ฟรี", "until": "2026-10-09T23:59", "source": "รฟม. (ข่าว 1 ต.ค. 69)", "source_url": "https://www.bangkokbiznews.com/news/news-update/1254600"},
+    {"id": "mrta-sam-yaek-bang-yai", "name": "อาคารจอดรถ สถานีสามแยกบางใหญ่ (รถไฟฟ้าสายสีม่วง)", "lat": 13.87474, "lng": 100.41936, "fee": "ฟรี", "until": "2026-10-09T23:59", "source": "รฟม. (ข่าว 1 ต.ค. 69)", "source_url": "https://www.bangkokbiznews.com/news/news-update/1254600"},
+    {"id": "mrta-bang-rak-noi-tha-it", "name": "อาคารจอดรถ สถานีบางรักน้อยท่าอิฐ (รถไฟฟ้าสายสีม่วง)", "lat": 13.87487, "lng": 100.456, "fee": "ฟรี", "until": "2026-10-09T23:59", "source": "รฟม. (ข่าว 1 ต.ค. 69)", "source_url": "https://www.bangkokbiznews.com/news/news-update/1254600"},
+    {"id": "mrta-min-buri-pink", "name": "อาคารจอดรถ สถานีมีนบุรี (รถไฟฟ้าสายสีชมพู)", "lat": 13.8084, "lng": 100.73267, "fee": "ฟรี", "until": "2026-10-09T23:59", "source": "รฟม. (ข่าว 1 ต.ค. 69)", "source_url": "https://www.bangkokbiznews.com/news/news-update/1254600"},
+    {"id": "mrta-si-iam", "name": "อาคารจอดรถ สถานีศรีเอี่ยม (รถไฟฟ้าสายสีเหลือง)", "lat": 13.66766, "lng": 100.64508, "fee": "ฟรี", "until": "2026-10-09T23:59", "source": "รฟม. (ข่าว 1 ต.ค. 69)", "source_url": "https://www.bangkokbiznews.com/news/news-update/1254600"}
+  ]
+}

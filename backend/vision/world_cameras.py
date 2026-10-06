@@ -141,7 +141,9 @@ def read_dwr():
 
 def read_pakkred():
     page = _get(PAKKRED_PAGE).decode("utf-8", "replace")
-    codes = dict(re.findall(r"view_cctv\(\"(CAMPK\d+)\",\s*\"(\d+)\.", page))   # CAMPK001 -> "1"
+    # CAMPK001 -> "1": view_cctv("CAMPK001", "1. ...") until Oct 2026, now data-camera / data-title attributes
+    codes = dict(re.findall(r"view_cctv\(\"(CAMPK\d+)\",\s*\"(\d+)\.", page))
+    codes.update(re.findall(r'data-camera="(CAMPK\d+)"\s+data-title="(\d+)\.', page))
     by_number = {n: code for code, n in codes.items()}
     out = []
     for lat, lng, name, n in re.findall(r'\[\{"lat":(-?[\d.]+),"lng":(-?[\d.]+)\},"((?:[^"\\]|\\.)*)",(\d+)\]', page):

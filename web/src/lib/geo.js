@@ -16,6 +16,15 @@ export function circlePolygon(lng, lat, meters) {
   return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [pts] }, properties: {} };
 }
 
+// Great-circle distance in km
+export function distanceKm(lat1, lng1, lat2, lng2) {
+  const rad = (d) => (d * Math.PI) / 180;
+  const a = Math.sin(rad(lat2 - lat1) / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(rad(lng2 - lng1) / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.sqrt(a));
+}
+
+export const fmtKm = (km) => (km < 1 ? `${Math.round(km * 1000)} ม.` : `${km.toFixed(1)} กม.`);
+
 export function accuracyText(m) {
   return m >= 1000 ? `~${(m / 1000).toFixed(m >= 10000 ? 0 : 1)} กม.` : `~${Math.round(m)} ม.`;
 }

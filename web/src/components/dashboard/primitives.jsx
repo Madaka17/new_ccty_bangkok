@@ -19,6 +19,11 @@ export function PageHeader({ title, description, actions, children }) {
     <header className={`flex flex-wrap items-end justify-between gap-3 ${nested ? '' : 'pt-1'}`}>
       <div className="min-w-0">
         <H className={`${nested ? 'text-lg leading-7 font-bold' : 'text-[28px] leading-9 font-bold'} text-slate-900`}>{title}</H>
+        {!nested && (
+          <svg className="wave-rule" viewBox="0 0 88 8" fill="none" aria-hidden="true">
+            <path d="M0 4c5.5 0 5.5-3 11-3s5.5 3 11 3 5.5-3 11-3 5.5 3 11 3 5.5-3 11-3 5.5 3 11 3 5.5-3 11-3 5.5 3 11 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        )}
         {description && <p className="text-sm text-slate-600 mt-0.5">{description}</p>}
         {children}
       </div>

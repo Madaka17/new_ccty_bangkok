@@ -8,6 +8,7 @@ import NavIcon from './components/NavIcons.jsx';
 import BotFace from './components/BotFace.jsx';
 import ThemeToggle from './components/ThemeToggle.jsx';
 import AlertPopups from './components/AlertPopups.jsx';
+import EmergencyButton from './components/EmergencyButton.jsx';
 import { fetchCameras, fetchAllCameras, fetchAIStats, fetchIncidents, fetchSurveyRanking, fetchRoadCameras } from './lib/api.js';
 import { useActiveCameras, useFavorites } from './lib/store.js';
 import { trackView, startHeartbeat } from './lib/telemetry.js';
@@ -308,6 +309,7 @@ export default function App() {
         </div>
       )}
       <BottomNav page={page} onNavigate={navigate} onMenu={() => setMenuOpen(true)} onReport={openFloodReport} />
+      <EmergencyButton />
 
       {/* Earthquake scrolls inside its frame, so on desktop the page itself must fit the screen */}
       <div className={`min-h-full flex flex-col pt-4 pb-24 min-w-0 ${page === 'enviro' ? 'lg:pb-4' : ''}`}>

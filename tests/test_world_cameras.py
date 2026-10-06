@@ -17,6 +17,16 @@ def test_pakkred(monkeypatch):
     assert cams[0]["imgurl"].endswith("name=CAMPK001_thumb.jpg")
 
 
+def test_pakkred_data_attributes(monkeypatch):
+    # The page since Oct 2026: the code and number sit in data-camera / data-title
+    page = PAKKRED.split("<a")[0] + '''
+<button class="camera-item" data-camera="CAMPK001" data-title="1. ถนน 1 " onclick="view_cctv(this.dataset.camera, this.dataset.title)">
+<button class="camera-item" data-camera="CAMPK002" data-title="2. x " onclick="view_cctv(this.dataset.camera, this.dataset.title)">
+'''
+    monkeypatch.setattr(w, "_get", lambda url, *a, **k: page.encode())
+    assert [c["camid"] for c in w.read_pakkred()] == ["pakkred-CAMPK001", "pakkred-CAMPK002"]
+
+
 def test_samui(monkeypatch):
     monkeypatch.setattr(w, "_get", lambda url, *a, **k: SAMUI.encode())
     cams = w.read_samui()

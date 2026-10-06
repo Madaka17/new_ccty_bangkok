@@ -144,6 +144,13 @@ export async function fetchWindGrid() {
   return res.json();
 }
 
+// Hourly wind (u, v in m/s) on a 1 degree grid over Thailand, for the moving wind lines on the camera map
+export async function fetchWindField() {
+  const res = await fetch('/api/weather/wind_field');
+  if (!res.ok) throw new Error('wind_field');
+  return res.json();
+}
+
 // Per-road flood risk: rain + canal level + road sensors + traffic, scored and ranked
 export async function fetchRoadRisk({ level = null, province = null, q = null, measured = null, limit = 400 } = {}) {
   const params = new URLSearchParams({ limit: String(limit) });
@@ -176,6 +183,13 @@ export async function fetchFloodStations({ status = null, district = null, kind 
 export async function fetchFloodAnalysis() {
   const res = await fetch('/api/flood/analysis');
   if (!res.ok) throw new Error('flood_analysis');
+  return res.json();
+}
+
+// One plain-Thai notice per flooded Bangkok road, advice from the depth rule table (flood_service.notices)
+export async function fetchFloodNotices() {
+  const res = await fetch('/api/flood/notices');
+  if (!res.ok) throw new Error('flood_notices');
   return res.json();
 }
 
@@ -244,6 +258,19 @@ export async function postUserReport(body) {
     throw new Error(byStatus[res.status] || data.detail || 'ส่งไม่สำเร็จ ลองใหม่อีกครั้ง');
   }
   return data;
+}
+
+// Announced flood car parks (flood_parking.py) with the public's recent "full" reports
+export async function fetchFloodParking() {
+  const res = await fetch('/api/flood/parking');
+  if (!res.ok) throw new Error('flood_parking');
+  return res.json();
+}
+
+export async function postParkingFull(id) {
+  const res = await fetch(`/api/flood/parking/${encodeURIComponent(id)}/full`, { method: 'POST' });
+  if (!res.ok) throw new Error(res.status === 429 ? 'แจ้งถี่เกินไป ลองใหม่ภายหลัง' : 'ส่งไม่สำเร็จ ลองใหม่อีกครั้ง');
+  return res.json();
 }
 
 // AI flood watch on every BMA camera (flood_cam_service.py): counts + the cameras with water (all: every checked one)

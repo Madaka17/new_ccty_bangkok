@@ -113,7 +113,7 @@ export default function CameraWall({
         onChange={pickView}
         tabs={[
           { id: 'wall', label: 'ช่องกล้อง', icon: 'cameras', hint: 'กล้องทุกตัวเรียงเป็นช่อง' },
-          { id: 'map', label: 'แผนที่', icon: 'cammap', hint: 'กล้องบนแผนที่ พร้อมเรดาร์ฝน และช่องกล้องในกรอบแผนที่' },
+          { id: 'map', label: 'แผนที่', icon: 'cammap', hint: 'กล้องบนแผนที่ พร้อมเรดาร์ฝน เส้นลม และช่องกล้องในกรอบแผนที่' },
         ]}
       />
       <div className="glass rounded-xl p-4 flex flex-col gap-3">

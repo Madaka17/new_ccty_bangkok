@@ -2,13 +2,16 @@
 // (a tap zooms in); a single camera is a dot coloured by what it shows (live video, a picture, or only on its
 // owner's site), ringed pink where our AI flood watch sees water. A tap on a dot opens the camera large.
 // RainViewer's newest rain radar picture always lies under the dots (one every 10 minutes; its free service has
-// no forecast and no detail past zoom 7). The map frames the cameras again whenever frameKey changes, and tells
-// onView what part of the map is on screen after every move.
+// no forecast and no detail past zoom 7). Moving wind lines (Open-Meteo's hourly wind through our server) drift
+// over it; a button turns them off, and the choice is remembered. The map frames the cameras again whenever
+// frameKey changes, and tells onView what part of the map is on screen after every move.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { baseStyle, bounds } from '../water/WaterMap.jsx';
 import { FOCUS } from '../dashboard/ui.jsx';
+import { fetchWindField } from '../../lib/api.js';
+import { WindLayer } from './windLayer.js';
 
 export const KINDS = [
   { id: 'live', label: 'กล้องสด', color: '#22c55e' },
@@ -26,6 +29,19 @@ const radarTiles = (host, frame) => [`${host}${frame.path}/256/{z}/{x}/{y}/2/1_1
 const clock = (t) => new Date(t * 1000).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 const BTN = `h-8 px-3 rounded-lg bg-white border border-slate-300 text-xs font-medium text-slate-800 shadow-sm hover:bg-slate-50 ${FOCUS}`;
 const isDark = () => document.documentElement.classList.contains('dark');
+const WIND_REFRESH_MS = 30 * 60000;   // the server refreshes its copy every 3 hours
+const WIND_KEY = 'cameraMap.wind';
+const windColor = () => (isDark() ? '#f8fafc' : '#1e3a8a');
+const EMPTY = { type: 'FeatureCollection', features: [] };
+
+// Wind lines on unless this viewer turned them off, or asks for less motion
+function windDefault() {
+  try {
+    const saved = localStorage.getItem(WIND_KEY);
+    if (saved) return saved === '1';
+  } catch { /* storage blocked: use the default */ }
+  return !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+}
 
 // The style has no glyphs, so cluster counts are small DOM labels over the circles
 function clusterLabels(map) {
@@ -71,6 +87,10 @@ export default function CameraMap({ cameras, flood, onOpen, onView, frameKey, cl
   const floodRef = useRef(flood);
   floodRef.current = flood;
   const [radar, setRadar] = useState(null);   // { host, time, path }: the newest rain radar picture
+  const windRef = useRef(null);
+  const [wind, setWind] = useState(null);       // /api/weather/wind_field answer
+  const [windOn, setWindOn] = useState(windDefault);
+  const [windHour, setWindHour] = useState(null);
   const counts = useMemo(() => {
     const n = { flood: 0 };
     for (const c of points) {
@@ -172,9 +192,13 @@ export default function CameraMap({ cameras, flood, onOpen, onView, frameKey, cl
       map.on('mouseleave', 'clusters', () => (map.getCanvas().style.cursor = ''));
       map.on('render', labels.update);
       map.on('moveend', tellView);
+      // no drawing of its own: only carries the wind credit into the attribution while the lines show
+      map.addSource('wind-credit', { type: 'geojson', data: EMPTY, attribution: 'ลม © Open-Meteo' });
+      windRef.current = new WindLayer(map, { color: windColor });
       readyRef.current = true;
       theme();
       putRadarRef.current();
+      putWindRef.current();
       push();
       frame();
     });
@@ -184,6 +208,8 @@ export default function CameraMap({ cameras, flood, onOpen, onView, frameKey, cl
     mapRef.current = map;
     return () => {
       watchTheme.disconnect();
+      windRef.current?.remove();
+      windRef.current = null;
       labels.clear();
       popup.remove();
       map.remove();
@@ -217,6 +243,42 @@ export default function CameraMap({ cameras, flood, onOpen, onView, frameKey, cl
   putRadarRef.current = putRadar;
   useEffect(putRadar, [putRadar]);
 
+  // Wind field from our server, asked for again every half hour while the lines show
+  useEffect(() => {
+    if (!windOn) return undefined;
+    const load = () => fetchWindField().then((d) => d.frames?.length && setWind(d)).catch(() => {});
+    load();
+    const id = setInterval(load, WIND_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [windOn]);
+  const putWind = useCallback(() => {
+    const map = mapRef.current;
+    const layer = windRef.current;
+    if (!map || !readyRef.current || !layer) return;
+    if (wind && layer.data !== wind) layer.setData(wind);
+    const show = windOn && !!wind;
+    if (layer.on !== show) layer.setOn(show);
+    setWindHour(show ? layer.hour : null);
+    const credit = !!map.getLayer('wind-credit');
+    if (show && !credit) map.addLayer({ id: 'wind-credit', type: 'line', source: 'wind-credit' });
+    if (!show && credit) map.removeLayer('wind-credit');
+  }, [wind, windOn]);
+  const putWindRef = useRef(putWind);
+  putWindRef.current = putWind;
+  useEffect(putWind, [putWind]);
+  // the hour on the badge moves on with the clock
+  useEffect(() => {
+    if (!windOn) return undefined;
+    const id = setInterval(() => setWindHour(windRef.current?.hour ?? null), 60000);
+    return () => clearInterval(id);
+  }, [windOn]);
+  const toggleWind = () => setWindOn((on) => {
+    try {
+      localStorage.setItem(WIND_KEY, on ? '0' : '1');
+    } catch { /* storage blocked: the choice lasts this visit only */ }
+    return !on;
+  });
+
   useEffect(push, [points, flood, push]);
   useEffect(frame, [frameKey, frame]);
 
@@ -225,11 +287,16 @@ export default function CameraMap({ cameras, flood, onOpen, onView, frameKey, cl
       {/* inline position: maplibre-gl.css sets .maplibregl-map { position: relative } over a class */}
       <div ref={el} style={{ position: 'absolute', inset: 0 }} />
       <button type="button" onClick={frame} className={`absolute top-2.5 right-2.5 ${BTN}`}>ดูทุกจุด</button>
-      {radar && (
-        <span className="absolute top-12 right-2.5 rounded-lg bg-white border border-slate-300 px-2 py-1 text-xs text-slate-800 shadow-sm tabular-nums">
-          เรดาร์ฝน {clock(radar.time)} น.
-        </span>
-      )}
+      <div className="absolute top-12 right-2.5 flex flex-col items-end gap-1.5">
+        {radar && (
+          <span className="rounded-lg bg-white border border-slate-300 px-2 py-1 text-xs text-slate-800 shadow-sm tabular-nums">
+            เรดาร์ฝน {clock(radar.time)} น.
+          </span>
+        )}
+        <button type="button" onClick={toggleWind} aria-pressed={windOn} className={`${BTN} tabular-nums`}>
+          {windOn ? (windHour ? `ลม ${clock(windHour)} น. · ปิด` : 'กำลังโหลดลม…') : 'แสดงลม'}
+        </button>
+      </div>
       <div className="absolute bottom-2 left-2 flex flex-col gap-1 rounded-lg bg-white border border-slate-200 px-2.5 py-2 text-[11px] text-slate-700">
         {KINDS.filter((k) => counts[k.id]).map((k) => (
           <span key={k.id} className="inline-flex items-center gap-1.5">
@@ -245,6 +312,12 @@ export default function CameraMap({ cameras, flood, onOpen, onView, frameKey, cl
           <span className="w-2.5 h-2.5 rounded-full" style={{ background: CLUSTER }} />
           กลุ่มกล้อง แตะเพื่อซูม
         </span>
+        {windOn && windHour && (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-2.5 h-0.5 rounded-full" style={{ background: windColor() }} />
+            เส้นลม ไหลไปทางที่ลมพัด
+          </span>
+        )}
       </div>
     </div>
   );
