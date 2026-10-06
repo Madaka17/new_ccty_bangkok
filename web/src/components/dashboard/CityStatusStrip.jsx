@@ -6,11 +6,13 @@ import { flowLevel, fmtTime } from './format.js';
 
 // One glance, six answers: traffic / weather where the viewer is / rain-water / flood reports / dust / incidents.
 // Shown three ways: a summary sign on top (verdict band + one plain sentence + ask AI), then on a wide screen a
-// "station line" (one dot per answer, the same rail look as the menu), on a phone question cards with the ones
-// that need care first. Every answer is a link to its page.
+// grid of cards (icon, tone chip, answer), on a phone question cards with the ones that need care first.
+// Every answer is a link to its page.
 // tone: green = fine, yellow = watch, red = act, neutral = no data (colours: .tone-* in index.css).
 // `known` = the answer has data. An answer without data is never counted as fine: the summary says the data is
 // not all in yet instead of "ปกติ", while a danger already known is shown at once.
+
+const TONE_LABEL = { green: 'ปกติ', yellow: 'เฝ้าดู', red: 'ควรระวัง', neutral: 'รอข้อมูล' };
 
 const ICONS = {
   traffic: (
@@ -189,29 +191,42 @@ export default function CityStatusStrip({ summary, incidents, flood, avoid, onNa
     <>
       <CityHero verdict={verdict} headline={headline} detail={detail} onAskText={onAskText} />
 
-      {/* wide screens: the station line */}
-      <section aria-labelledby="city-now" className="hidden md:block rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] py-6">
-        <div className="flex flex-wrap items-baseline justify-between gap-2 px-6 pb-5">
+      {/* wide screens: one card per answer, in a fixed order; the chip names the tone so colour is never the only sign */}
+      <section aria-labelledby="city-now" className="hidden md:block rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] p-5 lg:p-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 pb-4">
           <h2 id="city-now" className="text-xl font-bold">เมืองตอนนี้</h2>
-          <p className="text-sm text-[var(--c-muted)]">แตะจุดเพื่อดูรายละเอียด</p>
+          <p className="text-sm text-[var(--c-muted)]">แตะเพื่อดูรายละเอียด</p>
         </div>
-        <ul className="grid grid-cols-3 xl:grid-cols-6 gap-y-6">
+        <ul className="grid grid-cols-3 xl:grid-cols-6 gap-3">
           {items.map((i) => (
             <li key={i.id} className={`tone-${i.tone}`}>
-              <button type="button" onClick={i.go} className="group relative cursor-pointer w-full flex flex-col items-center gap-1 px-2.5 text-center">
-                <span aria-hidden="true" className="absolute inset-x-0 top-5 h-1.5 bg-[var(--c-line)]" />
-                <span aria-hidden="true" className="relative w-[46px] h-[46px] rounded-full border-[7px] border-[var(--t-ring)] bg-[var(--t-fill)] mb-1.5 transition-transform duration-200 group-hover:scale-110" />
-                <span className="text-[15px] leading-snug text-[var(--c-muted)]">
-                  {i.q}
-                  {i.sub && <span className="block text-xs">{i.sub}</span>}
+              <button
+                type="button"
+                onClick={i.go}
+                className="group relative cursor-pointer w-full h-full overflow-hidden rounded-md border border-[var(--c-border)] bg-[var(--c-raised)] px-4 pt-5 pb-4 flex flex-col gap-3 text-left transition duration-200 hover:-translate-y-0.5 hover:border-[var(--t-ring)] hover:shadow-[var(--c-shadow)] focus-visible:outline-2 focus-visible:outline-[var(--t-ring)]"
+              >
+                <span aria-hidden="true" className="absolute inset-x-0 top-0 h-1 bg-[var(--t-ring)]" />
+                <span className="flex items-center justify-between gap-2">
+                  <span aria-hidden="true" className="w-10 h-10 shrink-0 rounded-full bg-[var(--t-tint)] text-[var(--t-text)] grid place-items-center">
+                    <span className="w-5 h-5">{i.icon}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--t-tint)] px-2.5 py-0.5 text-xs font-semibold text-[var(--t-text)]">
+                    <span aria-hidden="true" className="w-2 h-2 rounded-full bg-[var(--t-ring)]" />
+                    {TONE_LABEL[i.tone]}
+                  </span>
                 </span>
-                <span className="font-display text-xl font-bold leading-tight text-[var(--t-text)]">{i.a}</span>
-                {i.note && <span className="text-xs text-amber-700">{i.note}</span>}
+                <span className="flex flex-col gap-0.5">
+                  <span className="text-[15px] leading-snug text-[var(--c-muted)]">
+                    {i.q}
+                    {i.sub && <span className="text-xs"> · {i.sub}</span>}
+                  </span>
+                  <span className="font-display text-[22px] font-bold leading-tight text-[var(--t-text)]">{i.a}</span>
+                  {i.note && <span className="text-xs text-amber-700 dark:text-amber-400">{i.note}</span>}
+                </span>
               </button>
             </li>
           ))}
         </ul>
-        <Legend />
       </section>
 
       {/* phones: questions, the ones that need care first and big */}
@@ -315,16 +330,5 @@ function CityHero({ verdict, headline, detail, onAskText }) {
         )}
       </div>
     </section>
-  );
-}
-
-function Legend() {
-  const dot = 'w-3.5 h-3.5 rounded-full border-3 border-[var(--t-ring)] bg-[var(--t-fill)]';
-  return (
-    <ul className="flex flex-wrap justify-center gap-5 px-6 pt-6 text-sm text-[var(--c-muted)]">
-      <li className="tone-green inline-flex items-center gap-1.5"><span className={dot} aria-hidden="true" />ปกติ</li>
-      <li className="tone-yellow inline-flex items-center gap-1.5"><span className={dot} aria-hidden="true" />เฝ้าดู</li>
-      <li className="tone-red inline-flex items-center gap-1.5"><span className={dot} aria-hidden="true" />ควรระวัง</li>
-    </ul>
   );
 }
