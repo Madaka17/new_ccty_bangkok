@@ -223,10 +223,13 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
         isActive={isActive}
       />
 
-      {/* roads to avoid on the left, the country's flood and accident news beside them */}
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-4 items-start">
-        <AvoidRoadsCard summary={summary} onOpenRoad={onOpenRoad} onNavigate={onNavigate} />
-        <NewsCard isActive={isActive} />
+      {/* roads to avoid on the left, the country's flood and accident news beside them. On wide screens the two
+          cards are one height: the roads card sets it and the news list scrolls inside the news card. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-4">
+        <AvoidRoadsCard summary={summary} onNavigate={onNavigate} />
+        <div className="relative min-w-0 lg:min-h-[28rem]">
+          <NewsCard isActive={isActive} />
+        </div>
       </div>
 
       <Tabs

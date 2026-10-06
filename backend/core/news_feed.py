@@ -2,8 +2,8 @@
 Flood and road-accident news from the whole country, for the overview page.
 
 Read from the RSS feeds the news outlets publish themselves (Matichon, Khaosod, Prachachat, Thairath): every
-headline that names a flood or a road accident, with its outlet, time and link. Only the headline is kept and
-shown, and it links to the outlet's own page. Google News is not used: its feed may only be read in a
+headline that names a flood or a road accident, with its outlet, time, link and the cover picture the outlet
+puts in its own feed. Only the headline and that picture are kept and shown, and they link to the outlet's own page. Google News is not used: its feed may only be read in a
 personal feed reader.
 
 Polls in a background thread and keeps the last good answer when every feed fails. Served by /api/news.
@@ -27,6 +27,7 @@ FEEDS = (
 REFRESH = 300
 KEEP_HOURS = 48
 MAX_ITEMS = 60
+MRSS = "{http://search.yahoo.com/mrss/}"
 
 # Headline words. "ท่วม" alone is not enough ("ท่วมท้น" = overwhelming); a flood needs water words with it.
 FLOOD = re.compile(r"น้ำท่วม|ท่วมขัง|ท่วมสูง|ท่วมหนัก|ท่วมบ้าน|ท่วมถนน|น้ำป่า|น้ำหลาก|อุทกภัย|ล้นตลิ่ง|น้ำล้น|"
@@ -46,8 +47,22 @@ def kind_of(title):
     return ""
 
 
+def cover_of(item):
+    """The story's cover picture from its feed item, or "": Matichon, Khaosod and Prachachat give media:thumbnail /
+    media:content, Thairath an image enclosure. Only https / http addresses are kept."""
+    for el in (item.find(MRSS + "thumbnail"), item.find(MRSS + "content"), item.find("enclosure")):
+        if el is None:
+            continue
+        url = (el.get("url") or "").strip()
+        kind = el.get("type") or el.get("medium") or "image"
+        if url.startswith(("https://", "http://")) and kind.startswith("image"):
+            return url
+    return ""
+
+
 def parse_rss(xml_text, source, now=None):
-    """RSS 2.0 text -> flood / accident items of the last KEEP_HOURS: {id, kind, title, link, source, ts, province}."""
+    """RSS 2.0 text -> flood / accident items of the last KEEP_HOURS: {id, kind, title, link, image, source, ts,
+    province}."""
     now = now or time.time()
     out = []
     for it in ET.fromstring(xml_text.strip().encode("utf-8")).iter("item"):
@@ -63,7 +78,7 @@ def parse_rss(xml_text, source, now=None):
         if now - ts > KEEP_HOURS * 3600 or ts > now + 3600:
             continue
         out.append({"id": f"news-{zlib.crc32(link.encode())}", "kind": kind, "title": title[:240], "link": link,
-                    "source": source, "ts": ts, "province": thai_regions.find_in_text(title)})
+                    "image": cover_of(it), "source": source, "ts": ts, "province": thai_regions.find_in_text(title)})
     return out
 
 
