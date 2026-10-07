@@ -79,7 +79,7 @@ class BmaSession:
     show.aspx serves the camera the ASP.NET session last opened in PlayVideo.aspx and ignores its image=
     (asked for camera 420 while bound to 310, it sends 310's picture). A session per camera stays bound,
     so a frame costs one request (show.aspx, ~1.3 s) instead of PlayVideo + show; a camera's first frame,
-    or one after its session expired, costs index.aspx + PlayVideo + show (5-6 s). Tested 2026-09-28/29:
+    or one after its session expired, costs the home page + PlayVideo + show (5-6 s). Tested 2026-09-28/29:
     a jar bound once kept serving that camera's live frame on later calls, and was still bound after
     8 min idle (a scan cycle revisits it every 3-4 min).
 
@@ -141,15 +141,16 @@ class BmaSession:
         if time.time() < self._rebind_after.get(camid_str, 0):
             return None
         # No session for this camera yet, it expired, or the camera is offline: start a new ASP.NET
-        # session (index.aspx; PlayVideo.aspx alone gets a placeholder) and bind it to this camera
-        # index.aspx is a big page (416 KB, 2.5-7 s, longer while other workers ask too): more time than one frame
+        # session (the home page; PlayVideo.aspx alone gets a placeholder) and bind it to this camera.
+        # The home page is the site root: index.aspx itself answers 404 since 2026-10-07.
+        # It is a big page (386-416 KB, 2.5-7 s, longer while other workers ask too): more time than one frame
         s.cookies = requests.cookies.RequestsCookieJar()
         bind_timeout = max(timeout, 15.0)
         try:
-            s.get(f'{bma_site.base()}index.aspx', timeout=bind_timeout)
-            s.get(f'{bma_site.base()}PlayVideo.aspx?ID={camid_str}', headers={'Referer': f'{bma_site.base()}index.aspx'}, timeout=bind_timeout)
+            s.get(bma_site.base(), timeout=bind_timeout)
+            s.get(f'{bma_site.base()}PlayVideo.aspx?ID={camid_str}', headers={'Referer': bma_site.base()}, timeout=bind_timeout)
         except Exception:
-            return None   # index.aspx (416 KB) timed out: BMA is busy, not this camera, so no backoff
+            return None   # the home page (~400 KB) timed out: BMA is busy, not this camera, so no backoff
         raw = self._show(s, camid_str, timeout)
         self._jars[camid_str] = s.cookies
         if raw:

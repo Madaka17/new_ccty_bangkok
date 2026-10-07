@@ -4,14 +4,16 @@ Where the BMA Traffic site answers: the camera pictures (bma_service.py) and the
 
 On 2026-10-03 cpudapp.bangkok.go.th/bmatraffic/ began answering 404 on every page while the same site kept running
 at www.bmatraffic.com (http only). The scanner calls failover() after a scan cycle with almost no pictures, which
-moves both readers to the first address whose index.aspx answers, so the next move needs no code change.
+moves both readers to the first address whose home page answers, so the next move needs no code change.
+On 2026-10-07 www.bmatraffic.com/index.aspx began answering 404 too, while the site root still serves that same
+home page, so the home page is asked for by the root address.
 """
 from urllib.parse import urlparse
 
 import requests
 
 SITES = ("http://www.bmatraffic.com/", "https://cpudapp.bangkok.go.th/bmatraffic/")
-INDEX_MIN_BYTES = 50_000     # the real index.aspx is ~400 KB; an error or parking page is far smaller
+INDEX_MIN_BYTES = 50_000     # the real home page is ~400 KB; an error or parking page is far smaller
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) BKK-Traffic-CCTV/2.0"
 
 _current = SITES[0]
@@ -27,11 +29,11 @@ def host():
 
 
 def failover(timeout=20):
-    """Use the first address whose index.aspx answers. True when the address changed."""
+    """Use the first address whose home page answers. True when the address changed."""
     global _current
     for url in SITES:
         try:
-            r = requests.get(f"{url}index.aspx", timeout=timeout, headers={"User-Agent": USER_AGENT})
+            r = requests.get(url, timeout=timeout, headers={"User-Agent": USER_AGENT})
         except requests.RequestException:
             continue
         if r.status_code == 200 and len(r.content) >= INDEX_MIN_BYTES:
