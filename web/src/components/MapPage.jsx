@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import Hls from 'hls.js';
-import { fetchTrafficSummary, fetchLongdoCameras, fetchWaterSummary, fetchAirStations, fetchWindGrid, fetchFloodStatus, fetchFloodStations, fetchFloodReports, fetchHdmsFloods, fetchFloodCameras, fetchUserReports, fetchRoadEvents, fetchNationalFloods, fetchNasaFires, fetchNasaEvents } from '../lib/api.js';
+import { fetchTrafficSummary, fetchLongdoCameras, fetchWaterSummary, fetchFloodStatus, fetchFloodStations, fetchFloodReports, fetchHdmsFloods, fetchFloodCameras, fetchUserReports, fetchRoadEvents, fetchNationalFloods } from '../lib/api.js';
 import { enrichCamerasWithFloodRisk } from '../lib/floodRisk.js';
 import { fmtTime } from './dashboard/format.js';
 import { accuracyText, roughWarning, showAccuracy, frameFix } from '../lib/geo.js';
@@ -10,294 +10,15 @@ import { Icon } from './dashboard/icons.jsx';
 import { Button } from './dashboard/ui.jsx';
 import { PageHeader } from './dashboard/primitives.jsx';
 import { PAGE_TITLES } from './Sidebar.jsx';
-
+import { mapStyle } from './map/mapStyle.js';
+import { POI_MAX, POI_MIN_ZOOM, POI_TIER_MAX, poiKindOf, poiTierOf } from './map/places.js';
+import { PIN, PIN_COLOR, FLOOD_STYLE, GAUGE_STYLE, CAM_FLOOD_STYLE, CAM_WET, USER_REPORT_COLOR, REPORT_COLOR, REPORT_FRESH_S, HDMS_COLOR, KIND_TH, CLOSURE_COLOR, closureTh, sourceTh, placeTh, feedTimeTh, THAILAND, NATION_FLOOD_COLOR, nationFloodEl, METRO_PROVINCES, agoTh, esc, closureEl, incidentEl, pinEl } from './map/markers.js';
+import { LayerGroup } from './map/LayerGroup.jsx';
+import { AirPanel, useAirLayers } from './map/AirLayers.jsx';
+import { NasaPanel, useNasaLayers } from './map/NasaLayers.jsx';
 
 // Vite bundles maplibre into one chunk, so its worker module must be served separately (see public/assets/)
 maplibregl.setWorkerUrl(`${window.location.origin}/assets/maplibre-gl-worker.mjs`);
-
-// Pin color
-const PIN = '#2563eb';
-const PIN_COLOR = {
-  กรุงเทพมหานคร: '#2563eb',
-  นนทบุรี: '#0891b2',
-  นครปฐม: '#059669',
-  สมุทรปราการ: '#7c3aed',
-  ปทุมธานี: '#d97706',
-  ชลบุรี: '#ea580c',
-  ฉะเชิงเทรา: '#4f46e5',
-};
-
-// Traffic line widths follow Longdo's own style (r_char = road class, 1 = biggest)
-const CLASS = ['to-number', ['coalesce', ['get', 'r_char'], 4]];
-const LINE_WIDTH = ['interpolate', ['linear'], ['zoom'], 9, 1.5, 12, ['case', ['<=', CLASS, 2], 4, ['<=', CLASS, 5], 2.5, 1.5], 14, ['case', ['<=', CLASS, 2], 7, ['<=', CLASS, 5], 4, 2.5]];
-const OFFSET = (dir) => ['interpolate', ['linear'], ['zoom'], 9, 1.5 * dir, 13, 3 * dir];
-
-function mapStyle() {
-  const origin = window.location.origin;
-  return {
-    version: 8,
-    sources: {
-      base: { type: 'raster', tiles: [`${origin}/api/tiles/base/{z}/{x}/{y}.png`], tileSize: 256, maxzoom: 19, attribution: '© OpenStreetMap contributors' },
-      traffic: { type: 'vector', tiles: [`${origin}/api/traffic/tile/{z}/{x}/{y}.pbf`], minzoom: 5, maxzoom: 12, attribution: 'Traffic © Longdo' },
-      // OpenFreeMap (OpenMapTiles schema) only for the 3D building footprints + heights
-      omt: { type: 'vector', url: 'https://tiles.openfreemap.org/planet', attribution: '© OpenFreeMap' },
-      // BTS / MRT / ARL / SRT Red lines + stations, a static snapshot of OSM route relations
-      rail: { type: 'geojson', data: `${origin}/rail_bkk.geojson`, attribution: 'Rail © OpenStreetMap' },
-    },
-    layers: [
-      { id: 'base', type: 'raster', source: 'base', paint: { 'raster-saturation': -0.45, 'raster-brightness-min': 0.05, 'raster-contrast': -0.08 } },
-      // Flat building footprints for the "รายละเอียดสิ่งปลูกสร้าง" toggle
-      {
-        id: 'buildings-2d',
-        type: 'fill',
-        source: 'omt',
-        'source-layer': 'building',
-        minzoom: 14,
-        layout: { visibility: 'none' },
-        paint: {
-          'fill-color': ['interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 8], 0, '#dbe4ee', 40, '#b6c4d6', 120, '#8fa3bd', 250, '#6b82a3'],
-          'fill-opacity': 0.55,
-          'fill-outline-color': '#64748b',
-        },
-      },
-      {
-        id: 'traffic-forward',
-        type: 'line',
-        source: 'traffic',
-        'source-layer': 'traffic',
-        filter: ['!=', ['get', 'fillcolor'], ''],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-opacity': 0.9, 'line-color': ['concat', '#', ['get', 'fillcolor']], 'line-width': LINE_WIDTH, 'line-offset': OFFSET(-1) },
-      },
-      {
-        id: 'traffic-reverse',
-        type: 'line',
-        source: 'traffic',
-        'source-layer': 'traffic',
-        filter: ['!=', ['get', 'fillcolor_r'], ''],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-opacity': 0.9, 'line-color': ['concat', '#', ['get', 'fillcolor_r']], 'line-width': LINE_WIDTH, 'line-offset': OFFSET(1) },
-      },
-      // Rail: a white casing under each coloured line so it reads apart from the traffic colours
-      { id: 'rail-casing', type: 'line', source: 'rail', filter: ['==', ['get', 'kind'], 'line'], layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 9, 4, 14, 8] } },
-      { id: 'rail-line', type: 'line', source: 'rail', filter: ['==', ['get', 'kind'], 'line'], layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'colour'], 'line-width': ['interpolate', ['linear'], ['zoom'], 9, 2, 14, 4.5] } },
-      {
-        id: 'rail-station',
-        type: 'circle',
-        source: 'rail',
-        filter: ['==', ['get', 'kind'], 'station'],
-        layout: { visibility: 'none' },
-        paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 2.5, 14, 6], 'circle-color': '#ffffff', 'circle-stroke-color': ['get', 'colour'], 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 14, 3] },
-      },
-      // 3D buildings (OpenFreeMap heights) from zoom 15, drawn over the flat buildings baked into the base
-      // raster; the map tilts itself when zoomed in (auto-tilt effect). Overlay layers (risk layers,
-      // heatmaps) are inserted below it.
-      {
-        id: 'buildings-3d',
-        type: 'fill-extrusion',
-        source: 'omt',
-        'source-layer': 'building',
-        minzoom: 15,
-        filter: ['!', ['coalesce', ['get', 'hide_3d'], false]],
-        paint: {
-          'fill-extrusion-color': ['interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 8], 0, '#cbd5e1', 40, '#94a3b8', 120, '#64748b', 250, '#334155'],
-          'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 15, 0, 15.6, ['coalesce', ['get', 'render_height'], 8]],
-          'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 15, 0, 15.6, ['coalesce', ['get', 'render_min_height'], 0]],
-          'fill-extrusion-opacity': 0.85,
-        },
-      },
-      // Invisible points so the OpenFreeMap POIs (hospitals, schools, malls, temples ...) are loaded
-      // and queryable; their Thai names are drawn as DOM markers (the style has no glyphs for text)
-      { id: 'poi-pts', type: 'circle', source: 'omt', 'source-layer': 'poi', minzoom: 14, paint: { 'circle-radius': 1, 'circle-opacity': 0 } },
-    ],
-  };
-}
-
-// OpenMapTiles poi classes worth a label, with an icon and a Thai name
-const POI_KIND = {
-  hospital: ['🏥', 'โรงพยาบาล', '#dc2626'], clinic: ['🏥', 'คลินิก', '#dc2626'], doctors: ['🏥', 'คลินิก', '#dc2626'], pharmacy: ['💊', 'ร้านขายยา', '#dc2626'],
-  school: ['🏫', 'โรงเรียน', '#2563eb'], college: ['🏫', 'วิทยาลัย', '#2563eb'], university: ['🎓', 'มหาวิทยาลัย', '#2563eb'], kindergarten: ['🏫', 'อนุบาล', '#2563eb'],
-  shop: ['🛍️', 'ร้านค้า', '#7c3aed'], grocery: ['🛒', 'ซูเปอร์มาร์เก็ต', '#7c3aed'], mall: ['🏬', 'ห้างสรรพสินค้า', '#7c3aed'], department_store: ['🏬', 'ห้างสรรพสินค้า', '#7c3aed'],
-  town_hall: ['🏛️', 'หน่วยงานราชการ', '#b45309'], townhall: ['🏛️', 'หน่วยงานราชการ', '#b45309'], police: ['🚓', 'สถานีตำรวจ', '#b45309'], fire_station: ['🚒', 'สถานีดับเพลิง', '#b45309'], post: ['📮', 'ไปรษณีย์', '#b45309'], bank: ['🏦', 'ธนาคาร', '#b45309'], embassy: ['🏛️', 'สถานทูต', '#b45309'],
-  place_of_worship: ['🛕', 'ศาสนสถาน', '#d97706'],
-  railway: ['🚉', 'สถานีรถไฟ', '#059669'], bus: ['🚌', 'ป้ายรถเมล์', '#059669'], ferry_terminal: ['⛴️', 'ท่าเรือ', '#059669'], airport: ['✈️', 'สนามบิน', '#059669'], aerodrome: ['✈️', 'สนามบิน', '#059669'],
-  lodging: ['🏨', 'โรงแรม', '#0891b2'], hotel: ['🏨', 'โรงแรม', '#0891b2'],
-  park: ['🌳', 'สวนสาธารณะ', '#16a34a'], stadium: ['🏟️', 'สนามกีฬา', '#16a34a'], sports_centre: ['🏟️', 'ศูนย์กีฬา', '#16a34a'], golf: ['⛳', 'สนามกอล์ฟ', '#16a34a'],
-  museum: ['🏛️', 'พิพิธภัณฑ์', '#9333ea'], attraction: ['📍', 'สถานที่ท่องเที่ยว', '#9333ea'], monument: ['🗿', 'อนุสาวรีย์', '#9333ea'], theatre: ['🎭', 'โรงละคร', '#9333ea'], cinema: ['🎬', 'โรงภาพยนตร์', '#9333ea'],
-  parking: ['🅿️', 'ที่จอดรถ', '#475569'], fuel: ['⛽', 'ปั๊มน้ำมัน', '#475569'], charging_station: ['🔌', 'จุดชาร์จ EV', '#475569'],
-  market: ['🧺', 'ตลาด', '#ea580c'],
-};
-// Water layer. Two different measurements share it, so they get two different marker shapes:
-//  * road sensors (BMA drainage, Bangkok only) - centimetres of water ON the road, a depth badge
-//  * river / canal gauges (ThaiWater, whole metro area) - % of bank capacity, a round dot
-const FLOOD_STYLE = {
-  flood: { color: '#dc2626', ring: 'rgba(220,38,38,.28)', label: 'น้ำท่วม' },
-  slight: { color: '#f59e0b', ring: 'rgba(245,158,11,.28)', label: 'น้ำท่วมเล็กน้อย' },
-  normal: { color: '#0ea5e9', ring: 'rgba(14,165,233,.18)', label: 'ปกติ' },
-  offline: { color: '#94a3b8', ring: 'rgba(148,163,184,.18)', label: 'เครื่องวัดขัดข้อง' },
-};
-const GAUGE_STYLE = {
-  overflow: { color: '#dc2626', label: 'ล้นตลิ่ง' },
-  high: { color: '#f59e0b', label: 'น้ำมาก' },
-  normal: { color: '#0284c7', label: 'ปกติ' },
-  low: { color: '#94a3b8', label: 'น้ำน้อย' },
-};
-
-// AI flood watch on the BMA cameras (flood_cam_service.py): a camera pill, the colour is what the AI saw
-const CAM_FLOOD_STYLE = {
-  severe: { color: '#7f1d1d', label: 'น้ำท่วมหนัก' },
-  flooded: { color: '#dc2626', label: 'น้ำท่วมถนน' },
-  puddle: { color: '#f59e0b', label: 'น้ำขังเล็กน้อย' },
-  none: { color: '#16a34a', label: 'ไม่มีน้ำท่วม' },
-  unclear: { color: '#94a3b8', label: 'มองไม่ชัด' },
-};
-const CAM_WET = ['severe', 'flooded', 'puddle'];
-// Flood reports sent by the public from the Water Forecast map (user_reports.py)
-const USER_REPORT_COLOR = '#0891b2';
-
-// Citizen flood reports (Traffy Fondue): a speech-bubble pin, hotter the fresher the report
-const REPORT_COLOR = '#7c3aed';
-const REPORT_FRESH_S = 3600;
-// Flooded highways from the Department of Highways (HDMS): a road-sign pin, faded once the ticket is closed
-const HDMS_COLOR = '#be185d';
-
-const POI_MAX = 70;
-const POI_MIN_ZOOM = 15;
-// Label priority: public buildings first, then services, shops last (and capped) so a mall's
-// tenants do not crowd out the hospital next door
-const POI_TIER = (cls) => (['shop', 'grocery', 'clothing_store', 'department_store', 'lodging', 'hotel', 'parking', 'fuel', 'charging_station', 'bank', 'pharmacy', 'clinic', 'doctors'].includes(cls) ? 2
-  : ['mall', 'market', 'park', 'museum', 'attraction', 'monument', 'theatre', 'cinema', 'stadium', 'sports_centre', 'golf', 'post', 'embassy'].includes(cls) ? 1 : 0);
-const POI_TIER_MAX = [POI_MAX, 30, 15];
-const poiKindOf = (p) => POI_KIND[p.class] || POI_KIND[p.subclass];
-const poiTierOf = (p) => POI_TIER(POI_KIND[p.class] ? p.class : p.subclass);
-
-const KIND_TH = { accident: 'อุบัติเหตุ', breakdown: 'รถเสีย' };
-const CLOSURE_COLOR = { closed: '#b91c1c', diversion: '#ea580c' };
-const closureTh = (c) => (c.kind === 'diversion' ? 'ปิดบางช่วง / เบี่ยงจราจร' : c.reason === 'flood' ? 'ถนนปิด (น้ำท่วม ผ่านไม่ได้)' : 'ถนนปิด');
-const sourceTh = (i) => (i.source === 'camera' ? 'กล้อง AI เห็น' : i.source === 'bma' ? 'ศูนย์จราจร กทม.' : 'ข่าวจราจร');
-// "เขตวัฒนา กรุงเทพฯ" / "อ.เสนา จ.พระนครศรีอยุธยา", from the province and district the server found
-const placeTh = (i) => {
-  if (!i.province) return '';
-  const bkk = i.province === 'กรุงเทพมหานคร';
-  return `${i.amphoe ? `${bkk ? 'เขต' : 'อ.'}${i.amphoe} ` : ''}${bkk ? 'กรุงเทพฯ' : `จ.${i.province}`}`;
-};
-const TH_MON = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-// Longdo 'YYYY-MM-DD HH:MM:SS' -> "4 ต.ค. 09:30 น."
-const feedTimeTh = (t) => {
-  const d = t ? new Date(t.replace(' ', 'T')) : null;
-  if (!d || Number.isNaN(d.getTime())) return '';
-  return `${d.getDate()} ${TH_MON[d.getMonth()]} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} น.`;
-};
-const THAILAND = [[97.3, 5.6], [105.7, 20.5]];
-const NATION_FLOOD_COLOR = { road: '#0284c7', river: '#1e3a8a' };
-
-// Flooded road: a sky-blue drop-shaped pin with waves; river over the bank: a navy square
-function nationFloodEl(f) {
-  const el = document.createElement('button');
-  el.type = 'button';
-  el.className = 'cursor-pointer';
-  el.setAttribute('aria-label', f.kind === 'river' ? 'แม่น้ำล้นตลิ่ง' : 'ถนนน้ำท่วม');
-  const color = NATION_FLOOD_COLOR[f.kind];
-  const shape = f.kind === 'river' ? 'border-radius:5px' : 'border-radius:999px 999px 999px 3px';
-  el.style.cssText = `width:22px;height:22px;${shape};background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(15,23,42,.35);color:#fff;font:700 13px/1 var(--font-sans);display:flex;align-items:center;justify-content:center;padding:0`;
-  el.textContent = '≈';
-  return el;
-}
-const METRO_PROVINCES = ['กรุงเทพมหานคร', 'นนทบุรี', 'ปทุมธานี', 'สมุทรปราการ', 'นครปฐม', 'สมุทรสาคร'];
-const agoTh = (ts) => {
-  const m = Math.round((Date.now() / 1000 - ts) / 60);
-  return m < 1 ? 'เมื่อสักครู่' : m < 60 ? `${m} นาทีก่อน` : `${Math.round(m / 60)} ชม.ก่อน`;
-};
-const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-
-// Closed road: a no-entry sign; diversion: an orange square with an arrow
-function closureEl(c) {
-  const el = document.createElement('button');
-  el.type = 'button';
-  el.className = 'cursor-pointer';
-  el.setAttribute('aria-label', closureTh(c));
-  const color = CLOSURE_COLOR[c.kind];
-  if (c.kind === 'diversion') {
-    el.style.cssText = `width:24px;height:24px;border-radius:6px;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(15,23,42,.35);color:#fff;font:700 14px/1 var(--font-sans);display:flex;align-items:center;justify-content:center;padding:0`;
-    el.textContent = '↪';
-  } else {
-    el.style.cssText = `width:26px;height:26px;border-radius:999px;background:${color};border:2px solid #fff;box-shadow:0 0 0 4px ${color}33,0 1px 4px rgba(15,23,42,.35);display:flex;align-items:center;justify-content:center;padding:0`;
-    const bar = document.createElement('span');
-    bar.style.cssText = 'display:block;width:13px;height:4px;border-radius:2px;background:#fff';
-    el.appendChild(bar);
-  }
-  return el;
-}
-
-// Pulsing warning marker for an incident
-function incidentEl(kind) {
-  const el = document.createElement('button');
-  el.type = 'button';
-  el.className = 'cursor-pointer incident-pin';
-  el.setAttribute('aria-label', KIND_TH[kind] || 'เหตุบนถนน');
-  const color = kind === 'breakdown' ? '#d97706' : '#dc2626';
-  el.style.cssText = `width:30px;height:30px;border-radius:999px;background:${color};border:3px solid #fff;box-shadow:0 0 0 6px ${color}33,0 2px 8px rgba(15,23,42,.3);color:#fff;font-weight:700;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;animation:incident-pulse 1.6s ease-out infinite`;
-  el.textContent = '!';
-  return el;
-}
-
-function pinEl(color, active, floodRisk) {
-  const el = document.createElement('button');
-  el.type = 'button';
-  el.className = 'cursor-pointer';
-  if (floodRisk) {
-    const borderCol = floodRisk.isOverflow ? '#ef4444' : '#f59e0b';
-    const shadow = floodRisk.isOverflow
-      ? '0 0 0 4px rgba(239,68,68,0.4), 0 2px 6px rgba(0,0,0,0.3)'
-      : '0 0 0 3px rgba(245,158,11,0.4), 0 2px 6px rgba(0,0,0,0.3)';
-    el.style.cssText = `width:22px;height:22px;border-radius:999px;background:${color};border:3px solid ${borderCol};box-shadow:${shadow};position:relative;${active ? 'outline:3px solid #0f172a;outline-offset:1px;' : ''}`;
-    const badge = document.createElement('span');
-    badge.textContent = '🌊';
-    badge.style.cssText = 'position:absolute;top:-10px;right:-9px;font-size:11px;line-height:1;pointer-events:none;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.4));';
-    el.appendChild(badge);
-  } else {
-    el.style.cssText = `width:20px;height:20px;border-radius:999px;background:${color};border:3px solid #fff;box-shadow:0 1px 4px rgba(15,23,42,.3);${active ? 'outline:3px solid #0f172a;outline-offset:1px;' : ''}`;
-  }
-  return el;
-}
-
-// Collapsible block of layers in the map side panel; the header says how many of its layers are on,
-// so a closed group still shows what is drawn on the map.
-// One line about a NASA EONET event: wind (storms report knots), distance to Thailand and which way it moves
-const TREND_TH = { closer: 'กำลังเข้าใกล้ไทย', away: 'กำลังออกห่างจากไทย', steady: 'ระยะห่างจากไทยพอ ๆ เดิม' };
-function nasaEventLine(e) {
-  const wind = e.unit === 'kts' && e.magnitude ? `ลม ${Math.round(e.magnitude * 1.852)} กม./ชม. · ` : '';
-  const where = e.km_to_thailand ? `ห่างไทย ${e.km_to_thailand.toLocaleString()} กม.` : 'อยู่ในประเทศไทย';
-  return `${wind}${where}${TREND_TH[e.trend] ? ` · ${TREND_TH[e.trend]}` : ''}`;
-}
-
-function LayerGroup({ title, hint, on = 0, defaultOpen = false, children }) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <div className="rounded-lg border border-cream-200 bg-white shrink-0">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className="cursor-pointer w-full flex items-center gap-2 px-3 py-2.5 text-left rounded-lg hover:bg-slate-50 transition-colors duration-150"
-      >
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold text-ink-900">{title}</span>
-          {hint && <span className="block text-[11px] text-slate-500 truncate" title={hint}>{hint}</span>}
-        </span>
-        {on > 0 && <span className="shrink-0 rounded-md bg-blue-50 text-blue-700 px-1.5 text-[11px] font-medium tabular-nums">เปิด {on}</span>}
-        <svg viewBox="0 0 20 20" fill="currentColor" className={`w-4 h-4 shrink-0 text-slate-500 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} aria-hidden="true">
-          <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-        </svg>
-      </button>
-      {open && (
-        <div className="px-3 pb-3 pt-3 border-t border-cream-200 flex flex-col divide-y divide-slate-100 [&>*]:py-3 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function MapPage({ isActive, cameras, active, incidents, onToggle, onOpenAI, onToast }) {
   const mapEl = useRef(null);
@@ -324,7 +45,6 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const [radarOpacity, setRadarOpacity] = useState(0.65);
   const [radarTileUrl, setRadarTileUrl] = useState(null);
   const [radarTime, setRadarTime] = useState(null);
-  const [showPm, setShowPm] = useState(false);
   // Water layer: BMA road-flood sensors (Bangkok) + ThaiWater river / canal gauges (metro area)
   const [showFlood, setShowFlood] = useState(false);
   const [floodDry, setFloodDry] = useState(false);
@@ -355,59 +75,9 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const [panelOpen, setPanelOpen] = useState(false);
   const showPlacesRef = useRef(false);
   const poiMarkersRef = useRef([]);
-  // Wind overlay drawn by us (Open-Meteo grid) so nothing sits on top of the traffic map
-  const [showWind, setShowWind] = useState(false);
-  const [wind, setWind] = useState(null);
-  const windMarkersRef = useRef([]);
-
-  useEffect(() => {
-    if (!isActive) return;
-    let alive = true;
-    const tick = () => fetchWindGrid().then((w) => alive && setWind(w)).catch(() => {});
-    tick();
-    const id = setInterval(tick, 900000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, [isActive]);
-
-  // Arrow per grid point: rotation = direction the wind blows TO, length/colour = speed
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !wind) return;
-    for (const m of windMarkersRef.current) m.remove();
-    windMarkersRef.current = [];
-    if (!showWind) return;
-    for (const p of wind.points || []) {
-      if (p.speed == null || p.dir == null) continue;
-      const kmh = p.speed;
-      const color = kmh < 10 ? '#60a5fa' : kmh < 20 ? '#22c55e' : kmh < 35 ? '#f59e0b' : '#ef4444';
-      const len = Math.min(34, 14 + kmh * 0.7);
-      const el = document.createElement('div');
-      el.style.cssText = 'pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:1px';
-      el.innerHTML =
-        `<svg width="36" height="36" viewBox="-18 -18 36 36" style="transform:rotate(${(p.dir + 180) % 360}deg);opacity:.85">` +
-        `<line x1="0" y1="${len / 2}" x2="0" y2="${-len / 2}" stroke="${color}" stroke-width="3" stroke-linecap="round"/>` +
-        `<path d="M -5 ${-len / 2 + 7} L 0 ${-len / 2} L 5 ${-len / 2 + 7}" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>` +
-        `<span style="font:600 10px/1 var(--font-sans);color:#0f172a;background:rgba(255,255,255,.75);padding:1px 4px;border-radius:4px">${Math.round(kmh)}</span>`;
-      windMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map));
-    }
-  }, [wind, showWind]);
-  const [air, setAir] = useState(null);
-
-  // PM2.5 stations (Air4Thai) every 10 min while the page is open
-  useEffect(() => {
-    if (!isActive) return;
-    let alive = true;
-    const tick = () => fetchAirStations().then((a) => alive && setAir(a)).catch(() => {});
-    tick();
-    const id = setInterval(tick, 600000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, [isActive]);
+  // PM2.5 and wind (map/AirLayers.jsx)
+  const airLayers = useAirLayers(mapRef, isActive);
+  const { showPm, showWind } = airLayers;
 
   // Load Longdo cameras exclusively
   useEffect(() => {
@@ -1010,123 +680,9 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
     }
   }, [gauges, showGauges]);
 
-  // PM2.5 stations as DOM markers (rounded square with the µg/m³ value; the map style ships no
-  // glyphs so a symbol layer cannot draw text). Colour = Thai AQI band.
-  const pmMarkersRef = useRef([]);
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !air) return;
-    for (const m of pmMarkersRef.current) m.remove();
-    pmMarkersRef.current = [];
-    if (!showPm) return;
-    for (const s of air.items || []) {
-      const el = document.createElement('button');
-      el.type = 'button';
-      el.title = `${s.name}: ฝุ่น PM2.5 ${s.pm25} (${s.label})`;
-      el.style.cssText = `display:flex;align-items:center;justify-content:center;width:30px;height:22px;border-radius:7px;background:${s.color};color:#0f172a;font:700 11px/1 var(--font-sans);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);cursor:pointer;padding:0`;
-      el.textContent = Math.round(s.pm25);
-      const t = s.ts ? new Date(s.ts * 1000).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '';
-      const popup = new maplibregl.Popup({ offset: 14, closeButton: true, maxWidth: '260px' }).setHTML(
-        `<div style="font-size:13px;line-height:1.4"><b>${s.name}</b><br><span style="color:#64748b">${s.area} ${s.province}</span><br>` +
-          `ฝุ่น PM2.5 <b style="color:${s.color}">${s.pm25}</b> · ${s.label}` +
-          (t ? `<br><span style="color:#64748b;font-size:11px">ข้อมูล ${t} น. · ${s.source_label || 'Air4Thai (คพ.)'}</span>` : '') +
-          '</div>'
-      );
-      pmMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([s.lng, s.lat]).setPopup(popup).addTo(map));
-    }
-  }, [air, showPm]);
 
-  // NASA satellite layers (nasa_feeds.py): FIRMS fire hotspots and EONET storms / natural events. Read when a
-  // layer is first turned on, then every 30 minutes while the page is open (the server reads NASA hourly).
-  const [showFires, setShowFires] = useState(false);
-  const [showStorms, setShowStorms] = useState(false);
-  const [nasaFires, setNasaFires] = useState(null);
-  const [nasaEvents, setNasaEvents] = useState(null);
-  const nasaEventsRef = useRef(null);   // for the event popup, which is wired once
-  nasaEventsRef.current = nasaEvents;
-  const nasaWanted = showFires || showStorms;
-  useEffect(() => {
-    if (!isActive || !nasaWanted) return;
-    let alive = true;
-    const tick = () => {
-      fetchNasaFires().then((d) => alive && d && setNasaFires(d)).catch(() => {});
-      fetchNasaEvents().then((d) => alive && d && setNasaEvents(d)).catch(() => {});
-    };
-    tick();
-    const id = setInterval(tick, 1800000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, [isActive, nasaWanted]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const apply = () => {
-      const fires = {
-        type: 'FeatureCollection',
-        features: (nasaFires?.points || []).map(([lat, lng, frp, conf, ts, province]) => ({
-          type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: { frp, conf, ts, province },
-        })),
-      };
-      const storms = (nasaEvents?.items || []);
-      const events = {
-        type: 'FeatureCollection',
-        features: [
-          ...storms.filter((e) => e.track.length > 1).map((e) => ({
-            type: 'Feature', geometry: { type: 'LineString', coordinates: e.track.map(([a, b]) => [b, a]) }, properties: { id: e.id },
-          })),
-          ...storms.map((e) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [e.lng, e.lat] }, properties: { id: e.id, kind: e.kind } })),
-        ],
-      };
-      for (const [id, data] of [['nasa-fires', fires], ['nasa-events', events]]) {
-        if (map.getSource(id)) map.getSource(id).setData(data);
-        else map.addSource(id, { type: 'geojson', data });
-      }
-      if (!map.getLayer('nasa-fires')) {
-        map.addLayer({
-          id: 'nasa-fires', type: 'circle', source: 'nasa-fires',
-          paint: {
-            'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 3, 10, 6, 14, 9],
-            'circle-color': ['case', ['>=', ['get', 'frp'], 20], '#dc2626', ['>=', ['get', 'frp'], 5], '#f97316', '#fbbf24'],
-            'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1, 'circle-opacity': 0.9,
-          },
-        });
-        map.addLayer({ id: 'nasa-track', type: 'line', source: 'nasa-events', filter: ['==', ['geometry-type'], 'LineString'],
-          paint: { 'line-color': '#7c3aed', 'line-width': 2, 'line-dasharray': [2, 1.5] } });
-        map.addLayer({ id: 'nasa-event', type: 'circle', source: 'nasa-events', filter: ['==', ['geometry-type'], 'Point'],
-          paint: { 'circle-radius': 8, 'circle-color': ['match', ['get', 'kind'], 'severeStorms', '#7c3aed', 'floods', '#2563eb', 'volcanoes', '#b91c1c', '#64748b'],
-            'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 } });
-        map.on('click', 'nasa-fires', (ev) => {
-          const p = ev.features[0].properties;
-          const when = new Date(p.ts * 1000).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-          new maplibregl.Popup({ maxWidth: '260px' }).setLngLat(ev.lngLat).setHTML(
-            `<div style="font-size:13px;line-height:1.45"><b>จุดความร้อนจากดาวเทียม</b><br>${p.province ? `จ.${p.province}` : 'นอกประเทศไทย'} · ${when} น.<br>` +
-            `ความแรงของไฟ ${p.frp} MW${p.frp >= 20 ? ' (ไฟแรง)' : p.frp >= 5 ? ' (ปานกลาง)' : ' (เล็ก)'} · ความมั่นใจ${p.conf === 'h' ? 'สูง' : 'ปกติ'}<br>` +
-            '<span style="color:#64748b;font-size:11px">NASA FIRMS (VIIRS) · อาจเป็นไฟป่า การเผาในไร่ หรือโรงงาน</span></div>'
-          ).addTo(map);
-        });
-        map.on('click', 'nasa-event', (ev) => {
-          const e = (nasaEventsRef.current?.items || []).find((x) => x.id === ev.features[0].properties.id);
-          if (!e) return;
-          new maplibregl.Popup({ maxWidth: '280px' }).setLngLat(ev.lngLat).setHTML(
-            `<div style="font-size:13px;line-height:1.45"><b>${e.kind_th}: ${e.title}</b><br>${nasaEventLine(e)}` +
-            (e.link ? `<br><a href="${e.link}" target="_blank" rel="noopener" style="color:#2563eb">ที่มาของข้อมูล</a>` : '') +
-            '<br><span style="color:#64748b;font-size:11px">NASA EONET</span></div>'
-          ).addTo(map);
-        });
-        for (const id of ['nasa-fires', 'nasa-event']) {
-          map.on('mouseenter', id, () => { map.getCanvas().style.cursor = 'pointer'; });
-          map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; });
-        }
-      }
-      map.setLayoutProperty('nasa-fires', 'visibility', showFires ? 'visible' : 'none');
-      for (const id of ['nasa-track', 'nasa-event']) map.setLayoutProperty(id, 'visibility', showStorms ? 'visible' : 'none');
-    };
-    if (map.isStyleLoaded()) apply();
-    else map.once('load', apply);
-  }, [nasaFires, nasaEvents, showFires, showStorms]);
+  const nasa = useNasaLayers(mapRef, isActive);
+  const { showFires, showStorms } = nasa;
 
   // Sync Rain Radar tile layer to MapLibre with maxzoom: 7 (prevents Zoom Level Not Supported)
   useEffect(() => {
@@ -1469,21 +1025,6 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const trafficOn = (showTraffic ? 1 : 0) + (showRail ? 1 : 0) + Object.values(pinsOn).filter(Boolean).length;
   const waterOn = [showRainRadar, showCamFlood, showUserReports, showFlood, showReports, showHdms, showGauges].filter(Boolean).length;
   const optionsOn = trafficOn + waterOn + (showPm ? 1 : 0) + (showWind ? 1 : 0) + (showPlaces ? 1 : 0) + (showFires ? 1 : 0) + (showStorms ? 1 : 0);
-  // What the NASA numbers mean, in plain words (the panel's analysis lines)
-  const fireNotes = [];
-  if (nasaFires) {
-    const { th_24h: now, th_prev_24h: prev, near_bkk_24h: nearBkk, border_24h: border, regions } = nasaFires;
-    if (!now) fireNotes.push('ไม่พบไฟในประเทศไทยใน 24 ชั่วโมงที่ผ่านมา');
-    else {
-      const change = prev ? Math.round(((now - prev) / prev) * 100) : null;
-      fireNotes.push(`${now.toLocaleString()} จุดในไทย ${prev ? `(วันก่อน ${prev.toLocaleString()} จุด ${change >= 0 ? `เพิ่มขึ้น ${change}%` : `ลดลง ${-change}%`})` : '(วันก่อนไม่มี)'}`);
-      if (regions?.[0]) fireNotes.push(`มากที่สุดที่${regions[0].region} ${regions[0].count} จุด`);
-    }
-    if (nearBkk) fireNotes.push(`มีไฟห่าง กทม. ไม่เกิน ${nasaFires.near_bkk_km} กม. ${nearBkk} จุด ถ้าลมพัดเข้า กทม. ฝุ่นอาจสูงขึ้น เปิดชั้นลมและฝุ่น PM2.5 ดูประกอบได้`);
-    if (border > now) fireNotes.push(`ฝั่งเพื่อนบ้านใกล้ชายแดนมีไฟมากกว่าในไทย (${border.toLocaleString()} จุด) ควันอาจลอยข้ามมาภาคเหนือและอีสาน`);
-  }
-  const nearStorms = (nasaEvents?.items || []).filter((e) => e.kind === 'severeStorms' && e.km_to_thailand <= (nasaEvents?.near_km || 1500));
-  const flyToNasa = (lat, lng, zoom) => mapRef.current?.flyTo({ center: [lng, lat], zoom, duration: 900 });
   const camCounts = camFlood?.counts || {};
   const camWet = CAM_WET.reduce((n, k) => n + (camCounts[k] || 0), 0);
   const camWetList = (camFlood?.items || []).filter((c) => CAM_WET.includes(c.level));
@@ -1906,104 +1447,9 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
           </div>
         </LayerGroup>
 
-        <LayerGroup title="อากาศ" hint={air?.avg_pm25 != null ? `ฝุ่น PM2.5 เฉลี่ย ${air.avg_pm25} · ลม` : 'ฝุ่น PM2.5 และลม'} on={(showPm ? 1 : 0) + (showWind ? 1 : 0)}>
-          {/* PM2.5 station toggle */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
-                <input type="checkbox" checked={showPm} onChange={(e) => setShowPm(e.target.checked)} className="accent-blue-600 w-4 h-4" />
-                <Icon name="mask" /> ฝุ่น PM2.5
-              </label>
-              {air?.avg_pm25 != null && (
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">เฉลี่ย {air.avg_pm25}</span>
-              )}
-            </div>
-            <p className="text-[11px] text-slate-500 mb-1.5">
-              {air ? `${air.total} จุดวัด · แตะจุดเพื่อดูรายละเอียด` : 'กำลังโหลด ...'}
-            </p>
-            <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-slate-600">
-              {[['#3BA0FF', 'ดีมาก ≤15'], ['#4CC74A', 'ดี ≤25'], ['#FFD400', 'ปานกลาง ≤37.5'], ['#FF8C00', 'เริ่มมีผลต่อสุขภาพ ≤75'], ['#E3272C', 'มีผลต่อสุขภาพ >75']].map(([c, l]) => (
-                <span key={l} className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: c }} />{l}</span>
-              ))}
-            </div>
-          </div>
+        <AirPanel layers={airLayers} />
 
-          {/* Wind overlay toggle (own layer, Open-Meteo) */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
-                <input type="checkbox" checked={showWind} onChange={(e) => setShowWind(e.target.checked)} className="accent-blue-600 w-4 h-4" />
-                <Icon name="wind" /> ลม (สด)
-              </label>
-              {wind?.points?.[24]?.time && <span className="text-[11px] text-slate-500">{wind.points[24].time.slice(11, 16)} น.</span>}
-            </div>
-            <p className="text-[11px] text-slate-500 mb-1.5">ลูกศรชี้ทางที่ลมพัดไป สีบอกความแรงลม (กม./ชม.)</p>
-            <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-slate-600">
-              {[['#60a5fa', '<10 เบา'], ['#22c55e', '10-20'], ['#f59e0b', '20-35 แรง'], ['#ef4444', '>35 พายุ']].map(([c, l]) => (
-                <span key={l} className="inline-flex items-center gap-1"><span className="w-3 h-1 rounded-full" style={{ background: c }} />{l}</span>
-              ))}
-            </div>
-          </div>
-        </LayerGroup>
-
-        <LayerGroup title="ดาวเทียม NASA" hint="ไฟป่าและการเผา · พายุที่กำลังมา" on={(showFires ? 1 : 0) + (showStorms ? 1 : 0)}>
-          {/* FIRMS fire hotspots */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
-                <input type="checkbox" checked={showFires} onChange={(e) => setShowFires(e.target.checked)} className="accent-blue-600 w-4 h-4" />
-                จุดไฟจากดาวเทียม
-              </label>
-              {nasaFires && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-50 text-orange-700">{nasaFires.th_24h} จุดในไทย</span>}
-            </div>
-            <p className="text-[11px] text-slate-500 mb-1.5">จุดที่ดาวเทียมเห็นความร้อนผิดปกติใน 24 ชม. เช่น ไฟป่า การเผาในไร่ หรือโรงงาน หนึ่งจุดคือพื้นที่ราว 1 ตร.กม.</p>
-            {showFires && (nasaFires ? (
-              <>
-                <ul className="text-[12px] text-ink-900 flex flex-col gap-1 mb-1.5 list-disc pl-4">
-                  {fireNotes.map((t) => <li key={t}>{t}</li>)}
-                </ul>
-                {nasaFires.provinces?.length > 0 && (
-                  <p className="text-[11px] text-slate-600 mb-1.5">จังหวัดที่มีไฟมากที่สุด: {nasaFires.provinces.slice(0, 5).map((p) => `${p.province} ${p.count}`).join(' · ')}</p>
-                )}
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-600">
-                  {[['#fbbf24', 'ไฟเล็ก'], ['#f97316', 'ปานกลาง'], ['#dc2626', 'ไฟแรง']].map(([c, l]) => (
-                    <span key={l} className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: c }} />{l}</span>
-                  ))}
-                  <button type="button" onClick={() => mapRef.current?.fitBounds([[97.3, 5.6], [105.7, 20.5]], { padding: 30, duration: 900 })} className="cursor-pointer ml-auto text-blue-700 hover:underline">ดูทั้งประเทศ</button>
-                </div>
-              </>
-            ) : <p className="text-[11px] text-slate-500">กำลังโหลด ... (ครั้งแรกใช้เวลาราว 2 นาที)</p>)}
-          </div>
-
-          {/* EONET storms and other natural events */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="inline-flex items-center gap-2 text-sm text-ink-900 cursor-pointer font-medium">
-                <input type="checkbox" checked={showStorms} onChange={(e) => setShowStorms(e.target.checked)} className="accent-blue-600 w-4 h-4" />
-                พายุและภัยธรรมชาติ
-              </label>
-              {nasaEvents && <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${nearStorms.length ? 'bg-violet-100 text-violet-800' : 'bg-slate-100 text-slate-700'}`}>{nearStorms.length ? `พายุใกล้ไทย ${nearStorms.length}` : 'ไม่มีพายุใกล้ไทย'}</span>}
-            </div>
-            <p className="text-[11px] text-slate-500 mb-1.5">พายุหมุนเขตร้อนตั้งแต่อินเดียถึงแปซิฟิก พร้อมเส้นทางที่ผ่านมา (เส้นประ) ระยะห่างจากไทย และกำลังเข้าใกล้หรือออกห่าง</p>
-            {showStorms && (nasaEvents ? (
-              <>
-                <p className="text-[12px] text-ink-900 mb-1.5">
-                  {nearStorms.length ? `มีพายุ ${nearStorms.length} ลูกในระยะ ${(nasaEvents.near_km || 1500).toLocaleString()} กม. จากไทย ติดตามประกาศกรมอุตุฯ` : `ไม่มีพายุในระยะ ${(nasaEvents.near_km || 1500).toLocaleString()} กม. จากไทย`}
-                </p>
-                <ul className="flex flex-col gap-1.5">
-                  {(nasaEvents.items || []).slice(0, 6).map((e) => (
-                    <li key={e.id} className="text-[12px] flex items-start gap-2">
-                      <span className="min-w-0 flex-1"><b className="text-ink-900">{e.kind_th}: {e.title}</b><span className="block text-[11px] text-slate-500">{nasaEventLine(e)}</span></span>
-                      <button type="button" onClick={() => flyToNasa(e.lat, e.lng, 4)} className="cursor-pointer shrink-0 text-[11px] text-blue-700 hover:underline">ดูบนแผนที่</button>
-                    </li>
-                  ))}
-                  {!nasaEvents.items?.length && <li className="text-[12px] text-slate-500">ตอนนี้ไม่มีพายุหรือภัยธรรมชาติที่ NASA ติดตามในภูมิภาคนี้</li>}
-                </ul>
-              </>
-            ) : <p className="text-[11px] text-slate-500">กำลังโหลด ...</p>)}
-            <p className="text-[10px] text-slate-400 mt-1.5">ข้อมูลจาก NASA FIRMS และ EONET อัปเดตทุกชั่วโมง</p>
-          </div>
-        </LayerGroup>
+        <NasaPanel layers={nasa} mapRef={mapRef} />
 
         <LayerGroup title="อาคารและสถานที่" hint="อาคาร 3 มิติ และชื่อสถานที่เมื่อซูมเข้าใกล้" on={showPlaces ? 1 : 0}>
           {/* Buildings: 3D is automatic from zoom 15; this only adds footprints and names */}
