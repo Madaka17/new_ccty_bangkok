@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { PageHeader, SubPage } from './dashboard/primitives.jsx';
+import { trackView } from '../lib/telemetry.js';
 import { PAGE_TITLES } from './Sidebar.jsx';
 import ViewSwitch from './ViewSwitch.jsx';
 import YoloPage from './YoloPage.jsx';
@@ -19,6 +21,7 @@ const TABS = [
 // helmet / wrong-way patrols, one page with five tabs. Only the open tab is mounted, so the live stream stops while
 // another tab is shown.
 export default function CameraAiPage({ tab, onTab, cameras, favorites, camid, incidents, onPickCamera, onToast, onAsk }) {
+  useEffect(() => trackView(`yolo:${tab}`), [tab]);   // which of the five tabs people use
   return (
     <div className="flex flex-col gap-4">
       <PageHeader title={PAGE_TITLES.yolo} description="ให้ AI ช่วยดูกล้อง: นับรถ ค้นหากล้อง และหาคนไม่สวมหมวกกันน็อกหรือขับย้อนศร" />

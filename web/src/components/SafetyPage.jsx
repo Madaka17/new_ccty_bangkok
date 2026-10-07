@@ -60,10 +60,8 @@ function Accidents({ isActive }) {
 
 export default function SafetyPage({ isActive }) {
   const [tab, setTab] = useState('accidents');
-  const pick = (id) => {
-    setTab(id);
-    trackView(`safety:${id}`);
-  };
+  useEffect(() => trackView(`safety:${tab}`), [tab]);   // the open tab counts as a view, the first one included
+  const pick = setTab;
   return (
     <div className="flex flex-col gap-4">
       <PageHeader title={PAGE_TITLES.safety} description="อุบัติเหตุในกรุงเทพฯ จุดที่เกิดบ่อย และวิธีลดอุบัติเหตุ" />

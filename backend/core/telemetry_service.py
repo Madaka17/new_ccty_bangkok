@@ -32,7 +32,7 @@ TOPIC_OF = {
     "analytics:visitors": "traffic",
     "water": "flood", "dashboard:flood": "flood", "analytics:flood": "flood",
     "dashboard:roads": "road_status", "dashboard:incidents": "road_status", "dashboard:bma-reports": "road_status",
-    "dashboard:safety": "accidents", "analytics:accidents": "accidents",
+    "dashboard:safety": "accidents", "analytics:accidents": "accidents", "safety": "accidents",
 }
 TOPICS = ("traffic", "flood", "road_status", "accidents")
 
@@ -121,7 +121,8 @@ class Telemetry:
 
         by_topic = {t: 0 for t in TOPICS}
         for view, n in by_view:
-            by_topic[TOPIC_OF.get(view, "traffic")] += n
+            # A tab ("water:roads") not listed takes its page's topic
+            by_topic[TOPIC_OF.get(view) or TOPIC_OF.get(view.split(":")[0], "traffic")] += n
         topic_share = [{"topic": t, "views": n, "pct": round(100 * n / views_today) if views_today else 0} for t, n in by_topic.items()]
         topic_share.sort(key=lambda r: -r["views"])
 

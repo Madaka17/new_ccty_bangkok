@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { trackView } from '../lib/telemetry.js';
 import { PageHeader } from './dashboard/primitives.jsx';
 import { PAGE_TITLES } from './Sidebar.jsx';
@@ -28,10 +28,9 @@ const TABS = [
 
 export default function WaterPage({ isActive }) {
   const [tab, setTab] = useState('situation');
-  const pickTab = (id) => {
-    setTab(id);
-    trackView(`water:${id}`);
-  };
+  // The open tab counts as a view, the first one included (it was counted only after a switch until Oct 2026)
+  useEffect(() => trackView(`water:${tab}`), [tab]);
+  const pickTab = setTab;
 
   return (
     <div className="flex flex-col gap-4">

@@ -149,10 +149,8 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
   const avoid = activeSummary?.flow_index != null && activeSummary.flow_index < 75
     ? [...new Set((bma?.top_congested || []).map((c) => c.road).filter(Boolean))].slice(0, 2)
     : [];
-  const pickSection = (id) => {
-    setSection(id);
-    trackView(`dashboard:${id}`);
-  };
+  useEffect(() => trackView(`dashboard:${section}`), [section]);   // the open tab counts, the first one included
+  const pickSection = setSection;
   // The accident answer on the summary opens the accident tab and brings its list into view with the focus on it.
   // Only after that tap: switching tabs or loading the page never scrolls.
   const incidentsRef = useRef(null);
