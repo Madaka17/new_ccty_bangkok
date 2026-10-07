@@ -58,3 +58,30 @@ def test_notices_say_when_the_feed_is_down():
     out = _roads().notices()
     assert out["sensors"] == 0 and out["items"] == []
     assert _roads(_item(25)).notices()["sensors"] == 1
+
+
+def test_feed_since_october_2026_takes_the_position_from_floodtbl(monkeypatch, tmp_path):
+    # dtTbl lost latitude / longitude / site_timestamp; floodTbl has the position per station code
+    feed = {
+        "dtTbl": [{"flood_code": "FL.MBR.01", "flood_id": 7, "flood": 22.0, "status": 1, "chkStatustxt": "น้ำท่วม",
+                   "flood_shortname": "ถ.สุวินทวงศ์ (ถ.หทัยราษฎร์)", "districtName": "มีนบุรี", "road_name": "ถนนสุวินทวงศ์",
+                   "typesite": 1, "site_timestatmpTH": "07/10/2569 21:40"},
+                  {"flood_code": "FL.XX.09", "flood": 3.0, "status": 1, "chkStatustxt": "ปกติ", "site_timestatmpTH": "07/10/2569 21:40"}],
+        "floodTbl": [{"flood_code": "FL.MBR.01", "latitude": 13.81645, "longitude": 100.72226, "flood_max": 25.0}],
+    }
+    monkeypatch.setattr(fs, "CACHE_FILE", str(tmp_path / "flood_roads.json"))
+    r = fs.FloodRoads()
+    monkeypatch.setattr(r, "_fetch", lambda: feed)
+    assert r.refresh() == 1      # the station without a position anywhere is left out
+    item = r.items[0]
+    assert (item["lat"], item["lng"], item["status"], item["max_cm"]) == (13.81645, 100.72226, "flood", 25.0)
+    assert item["ts"] == fs._epoch("2026-10-07T21:40:00") and r.feed_time == item["ts"]
+
+
+def test_no_stations_means_no_ai_call(monkeypatch):
+    r = _roads()
+
+    def ask(prompt):
+        raise AssertionError("the model must not be asked about an empty feed")
+    monkeypatch.setattr(r, "_ask", ask)
+    assert r._analyse(force=True)["source"] == "template"
