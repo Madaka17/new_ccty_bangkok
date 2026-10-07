@@ -61,7 +61,7 @@ export default function Sidebar({ page, onNavigate, aiActive, liveCount = 0, onC
     cameras: liveCount ? `${liveCount}` : null,
   };
   return (
-    <div className="h-full flex flex-col bg-[var(--c-surface)] text-[var(--c-ink)] border-r border-[var(--c-border)]">
+    <div className="sidebar-glass h-full flex flex-col bg-[var(--c-surface)] text-[var(--c-ink)] border-r border-[var(--c-border)]">
       <div className="px-4 pt-5 pb-3 flex items-center gap-3">
         <LogoMark />
         <div className="min-w-0 flex-1">
@@ -113,7 +113,7 @@ export default function Sidebar({ page, onNavigate, aiActive, liveCount = 0, onC
                       >
                         <span className="w-[34px] shrink-0 grid place-items-center" aria-hidden="true">
                           {on ? (
-                            <span className="w-4 h-4 rounded-full bg-[var(--c-here)] border-[3px] border-[var(--c-surface)] ring-4 ring-[var(--c-here-tint)]" />
+                            <span className="here-pulse w-4 h-4 rounded-full bg-[var(--c-here)] border-[3px] border-[var(--c-surface)] ring-4 ring-[var(--c-here-tint)]" />
                           ) : (
                             <span className="w-3 h-3 rounded-full bg-[var(--c-surface)] border-2 border-[var(--c-wave)] transition-colors duration-150 group-hover:border-[var(--c-primary)]" />
                           )}

@@ -197,17 +197,17 @@ export default function CityStatusStrip({ summary, incidents, flood, avoid, onNa
           <h2 id="city-now" className="text-xl font-bold">เมืองตอนนี้</h2>
           <p className="text-sm text-[var(--c-muted)]">แตะเพื่อดูรายละเอียด</p>
         </div>
-        <ul className="grid grid-cols-3 xl:grid-cols-6 gap-3">
+        <ul className="fx-tiles grid grid-cols-3 xl:grid-cols-6 gap-3">
           {items.map((i) => (
             <li key={i.id} className={`tone-${i.tone}`}>
               <button
                 type="button"
                 onClick={i.go}
-                className="group relative cursor-pointer w-full h-full overflow-hidden rounded-md border border-[var(--c-border)] bg-[var(--c-raised)] px-4 pt-5 pb-4 flex flex-col gap-3 text-left transition duration-200 hover:-translate-y-0.5 hover:border-[var(--t-ring)] hover:shadow-[var(--c-shadow)] focus-visible:outline-2 focus-visible:outline-[var(--t-ring)]"
+                className="fx-tile group relative cursor-pointer w-full h-full overflow-hidden rounded-md border border-[var(--c-border)] bg-[var(--c-raised)] px-4 pt-5 pb-4 flex flex-col gap-3 text-left transition duration-200 hover:-translate-y-0.5 hover:border-[var(--t-ring)] hover:shadow-[var(--c-shadow)] focus-visible:outline-2 focus-visible:outline-[var(--t-ring)]"
               >
-                <span aria-hidden="true" className="absolute inset-x-0 top-0 h-1 bg-[var(--t-ring)]" />
+                <span aria-hidden="true" className="fx-tile-line absolute inset-x-0 top-0 h-1 bg-[var(--t-ring)]" />
                 <span className="flex items-center justify-between gap-2">
-                  <span aria-hidden="true" className="w-10 h-10 shrink-0 rounded-full bg-[var(--t-tint)] text-[var(--t-text)] grid place-items-center">
+                  <span aria-hidden="true" className="fx-tile-icon w-10 h-10 shrink-0 rounded-full bg-[var(--t-tint)] text-[var(--t-text)] grid place-items-center">
                     <span className="w-5 h-5">{i.icon}</span>
                   </span>
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--t-tint)] px-2.5 py-0.5 text-xs font-semibold text-[var(--t-text)]">
@@ -285,8 +285,10 @@ function QuietList({ title, titleClass, rows }) {
 function CityHero({ verdict, headline, detail, onAskText }) {
   const [q, setQ] = useState('');
   return (
-    <section aria-label="สรุปตอนนี้" className="rounded-md overflow-hidden border border-[var(--c-border)] bg-[var(--c-surface)]">
-      <div className={`tone-${verdict.tone} flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-5 sm:px-6 py-2.5 bg-[var(--t-band)] text-[var(--t-on)]`}>
+    <section aria-label="สรุปตอนนี้" className={`tone-${verdict.tone} rounded-md overflow-hidden border border-[var(--c-border)] bg-[var(--c-surface)]`}>
+      {/* drops rippling out on the water behind the sentence, in the verdict's colour */}
+      <span className="fx-ripples" aria-hidden="true"><span /><span /><span /></span>
+      <div className={`fx-band relative z-[1] flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-5 sm:px-6 py-2.5 bg-[var(--t-band)] text-[var(--t-on)]`}>
         <span className="inline-flex items-center gap-2 font-display text-xl font-bold">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5" aria-hidden="true">
             {verdict.tone === 'green' ? (
@@ -302,7 +304,7 @@ function CityHero({ verdict, headline, detail, onAskText }) {
         </span>
         <span className="text-sm font-medium">สรุปจาก 6 เรื่องด้านล่าง</span>
       </div>
-      <div className="px-5 sm:px-6 pt-5 pb-6 flex flex-col gap-3">
+      <div className="relative z-[1] px-5 sm:px-6 pt-5 pb-6 flex flex-col gap-3">
         <p className="font-display text-[26px] sm:text-[34px] font-bold leading-tight max-w-[26em]">{headline}</p>
         {detail && <p className="text-base leading-relaxed text-[var(--c-muted)] max-w-[44em]">{detail}</p>}
         {onAskText && (

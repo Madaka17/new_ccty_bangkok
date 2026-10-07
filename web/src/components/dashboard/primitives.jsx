@@ -1,7 +1,9 @@
 // Page-level building blocks shared by every page (header, KPI tile, status banner, tabs, modal, share bar).
 // Same visual language as ui.jsx: white cards, slate text, blue-600 for the one accent.
-import { createContext, useContext, useEffect } from 'react';
+import { createContext, useContext, useEffect, useId } from 'react';
+import { motion } from 'framer-motion';
 import { Card, Badge, Skeleton, Truncate, FOCUS } from './ui.jsx';
+import CountUp from '../fx/CountUp.jsx';
 
 const Nested = createContext(false);
 
@@ -18,10 +20,11 @@ export function PageHeader({ title, description, actions, children }) {
   return (
     <header className={`flex flex-wrap items-end justify-between gap-3 ${nested ? '' : 'pt-1'}`}>
       <div className="min-w-0">
-        <H className={`${nested ? 'text-lg leading-7 font-bold' : 'text-[28px] leading-9 font-bold'} text-slate-900`}>{title}</H>
+        <H className={`${nested ? 'text-lg leading-7 font-bold text-slate-900' : 'page-title text-[28px] leading-9 font-bold'}`}>{title}</H>
         {!nested && (
           <svg className="wave-rule" viewBox="0 0 88 8" fill="none" aria-hidden="true">
-            <path d="M0 4c5.5 0 5.5-3 11-3s5.5 3 11 3 5.5-3 11-3 5.5 3 11 3 5.5-3 11-3 5.5 3 11 3 5.5-3 11-3 5.5 3 11 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            {/* one wavelength (22) longer than the box, so sliding it by 22 loops without a seam */}
+            <path d="M0 4c5.5 0 5.5-3 11-3s5.5 3 11 3 5.5-3 11-3 5.5 3 11 3 5.5-3 11-3 5.5 3 11 3 5.5-3 11-3 5.5 3 11 3 5.5-3 11-3 5.5 3 11 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
         )}
         {description && <p className="text-sm text-slate-600 mt-0.5">{description}</p>}
@@ -42,7 +45,7 @@ export function StatTile({ label, value, sub, badge, loading, tone, className = 
           <p className="text-xs text-slate-600 truncate">{label}</p>
           {badge}
         </div>
-        {loading ? <Skeleton className="h-7 w-20 mt-1" /> : <p className={`text-2xl font-semibold leading-8 tabular-nums ${valueTone}`}>{value}</p>}
+        {loading ? <Skeleton className="h-7 w-20 mt-1" /> : <p className={`text-2xl font-semibold leading-8 tabular-nums ${valueTone}`}><CountUp value={value} /></p>}
         {sub && <Truncate text={sub} className="text-xs text-slate-500 mt-0.5" />}
       </div>
     </Card>
@@ -73,6 +76,7 @@ export function StatusBanner({ tone = 'blue', label, children, action }) {
 
 // Section switcher; `tabs` is [{id, label, badge?}]
 export function Tabs({ tabs, value, onChange, label }) {
+  const pill = useId();   // one sliding pill per tab row
   return (
     <div role="tablist" aria-label={label} className="flex items-center gap-1 overflow-x-auto overflow-y-hidden scroll-soft pb-1 border-b-2 border-[var(--c-ink)]">
       {tabs.map((t) => {
@@ -84,12 +88,13 @@ export function Tabs({ tabs, value, onChange, label }) {
             role="tab"
             aria-selected={on}
             onClick={() => onChange(t.id)}
-            className={`cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap px-4 h-11 rounded-[4px] text-[15px] font-semibold border border-transparent transition-colors duration-150 ${FOCUS} ${
+            className={`tab-slide relative cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap px-4 h-11 rounded-full text-[15px] font-semibold border border-transparent transition-colors duration-150 ${FOCUS} ${
               on ? '' : 'text-slate-600 hover:text-slate-900 hover:bg-[var(--c-raised)]'
             }`}
           >
-            {t.label}
-            {t.badge != null && <span className={`ml-0.5 rounded-[3px] px-1.5 text-xs ${on ? 'bg-[var(--c-sel-text)]/15' : 'bg-slate-100 text-slate-600'}`}>{t.badge}</span>}
+            {on && <motion.span layoutId={pill} className="tab-pill" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />}
+            <span className="relative">{t.label}</span>
+            {t.badge != null && <span className={`relative ml-0.5 rounded-[3px] px-1.5 text-xs ${on ? 'bg-[var(--c-sel-text)]/15' : 'bg-slate-100 text-slate-600'}`}>{t.badge}</span>}
           </button>
         );
       })}

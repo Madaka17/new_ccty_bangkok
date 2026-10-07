@@ -12,6 +12,7 @@ import EmergencyButton from './components/EmergencyButton.jsx';
 import { fetchCameras, fetchAllCameras, fetchAIStats, fetchIncidents, fetchSurveyRanking, fetchRoadCameras } from './lib/api.js';
 import { useActiveCameras, useFavorites } from './lib/store.js';
 import { trackView, startHeartbeat } from './lib/telemetry.js';
+import RiverBackdrop from './components/fx/RiverBackdrop.jsx';
 
 // Every page but the dashboard (the first page) loads when it is first opened: the maps (maplibre-gl),
 // the live video (hls.js) and the camera AI pages stay out of the first download
@@ -308,6 +309,7 @@ export default function App() {
           <button type="button" aria-label="ปิดเมนู" onClick={() => setMenuOpen(false)} className="flex-1 bg-slate-900/50" />
         </div>
       )}
+      <RiverBackdrop />
       <BottomNav page={page} onNavigate={navigate} onMenu={() => setMenuOpen(true)} onReport={openFloodReport} />
       <EmergencyButton />
 
@@ -320,7 +322,7 @@ export default function App() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.22 }}
-            className="mx-auto w-full max-w-[1400px] flex flex-col gap-4"
+            className="page-stage mx-auto w-full max-w-[1400px] flex flex-col gap-4"
           >
             <Suspense fallback={<PageLoading />}>
             {page === 'dashboard' && (
