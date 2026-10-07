@@ -17,6 +17,11 @@ failed read keeps the last good list):
   (radar, satellite, weather map) and cameras whose newest picture is over a week old are left out.
 - EGAT dams, from the national water data centre's list (api-v3.thaiwater.net), 8 with an https picture. The
   rest of that list is DWR's (read above, from DWR) or links straight into the cameras over plain http.
+- Udon Thani city (udoncity.go.th), ~35, an HLS stream each that the browser plays straight from the city's host.
+- DDPM water-level cameras (cctv.disaster.go.th), ~180 stations, many on rivers in provincial towns. The newest
+  picture's file name comes from the station's page, so it goes through image_bytes() like DWR's.
+- Nonthaburi city (182.52.224.70, the city's flood gate system), ~36 on canals and roads. Its pictures are plain
+  http, which an https page cannot show, so they go through image_bytes() too.
 
 Each camera says how the page shows it (media): "image" (a JPEG, refreshed), "video", "iframe" or "link".
 """
@@ -48,10 +53,16 @@ HATYAI_LIST = "https://hatyaicityclimate.org/api/flood/cams"
 HATYAI_NOT_CCTV = re.compile(r"เรดาร์|ดาวเทียม|แผนที่อากาศ|เครือข่าย")
 HATYAI_MAX_AGE_S = 7 * 86400
 THAIWATER_LIST = "https://api-v3.thaiwater.net/api/v1/thaiwater30/analyst/cctv"
+UDON_LIST = "https://www.udoncity.go.th/frontend/web/cctv/api/cameras"
+DDPM_API = "https://cctv.disaster.go.th/api/v1"
+NONTHABURI_LIST = "http://182.52.224.70/json.php?app=station"
+NONTHABURI_IMAGE = ("http://182.52.224.70/MilestoneImageService/ImageService.svc/ImageService/GetImage"
+                    "?width=800&height=450&cameraname={}")
 CACHE_FILE = os.path.join(DATA_DIR, "cache", "world_cameras.json")
 IMAGE_DIR = os.path.join(DATA_DIR, "cache", "world_images")
 REFRESH_S = 24 * 3600
-IMAGE_TTL = 600   # DWR posts a new picture every 15 minutes
+# seconds a picture is kept: DWR posts a new one every 15 minutes, DDPM every few minutes, Nonthaburi's is live
+IMAGE_TTL = {"dwr": 600, "ddpm": 120, "nonthaburi": 60}
 TIMEOUT = 30
 USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
               "Chrome/124.0.0.0 Safari/537.36")
@@ -66,6 +77,9 @@ SOURCES = {
     "dwr": {"group": "water", "organization": "กรมทรัพยากรน้ำ", "province": ""},
     "hatyai": {"group": "city", "organization": "Hatyai City Climate", "province": "สงขลา"},
     "egat": {"group": "water", "organization": "กฟผ. (เขื่อน)", "province": ""},
+    "udon": {"group": "city", "organization": "เทศบาลนครอุดรธานี", "province": "อุดรธานี"},
+    "ddpm": {"group": "water", "organization": "ปภ. (ระดับน้ำ)", "province": ""},
+    "nonthaburi": {"group": "city", "organization": "เทศบาลนครนนทบุรี", "province": "นนทบุรี"},
 }
 
 
@@ -190,8 +204,68 @@ def read_thaiwater():
     return out
 
 
+def read_udon():
+    out = []
+    for row in json.loads(_get(UDON_LIST)).get("data") or []:
+        url = row.get("videoUrl") or ""
+        if row.get("status") != "online" or not url.startswith("https://") or not str(row.get("id") or "").isdigit():
+            continue
+        # The list hands out one viewer's chunklist_w<session>.m3u8; playlist.m3u8 is the stream itself
+        out.append(_camera("udon", row["id"], row.get("title"), row.get("latitude"), row.get("longitude"), "video",
+                           hls_url=re.sub(r"chunklist_w\d+\.m3u8$", "playlist.m3u8", url)))
+    return out
+
+
+def read_ddpm():
+    rows = []
+    for page in range(1, 50):     # 100 stations a page at most
+        data = json.loads(_get(f"{DDPM_API}/stations?page={page}&limit=100"))
+        rows += data.get("data") or []
+        if page >= int(data.get("totalPages") or 1):
+            break
+    return [_camera("ddpm", row["code"], row.get("name"), row.get("latitude"), row.get("longitude"), "image",
+                    province=row.get("provName"), station=row["code"])
+            for row in rows if row.get("isActive") and not row.get("deletedAt")
+            and re.fullmatch(r"[A-Za-z0-9]{1,20}", str(row.get("code") or ""))]
+
+
+def read_nonthaburi():
+    out = []
+    for row in json.loads(_get(NONTHABURI_LIST)).get("station") or []:
+        loc, urls = row.get("location") or {}, row.get("cctv") or []
+        for i, url in enumerate(urls, 1):
+            # Each picture address carries the camera's name in the Milestone system, e.g. "A1-คลองท่าทราย Cam1"
+            name = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query)).get("cameraname")
+            if name and re.fullmatch(r"\w{1,10}", str(row.get("code") or "")):
+                title = f"{row.get('name')} กล้อง {i}" if len(urls) > 1 else row.get("name")
+                out.append(_camera("nonthaburi", f"{row['code']}-{i}", title, loc.get("lat"), loc.get("lng"), "image",
+                                   station=name))
+    return out
+
+
 READERS = {"flood": read_flood, "pattaya": read_pattaya, "nakhon": read_nakhon, "dwr": read_dwr,
-           "pakkred": read_pakkred, "samui": read_samui, "hatyai": read_hatyai, "thaiwater": read_thaiwater}
+           "pakkred": read_pakkred, "samui": read_samui, "hatyai": read_hatyai, "thaiwater": read_thaiwater,
+           "udon": read_udon, "ddpm": read_ddpm, "nonthaburi": read_nonthaburi}
+
+
+def _dwr_picture(station):
+    name = (json.loads(_get(f"{DWR_API}/public/reportCctv/snapshot/{station}")).get("value") or "").strip()
+    return _get(f"{DWR_API}/file/image/cctv", json.dumps({"path": name}).encode(),
+                {"Content-Type": "application/json"}) if name else b""
+
+
+def _ddpm_picture(code):
+    history = json.loads(_get(f"{DDPM_API}/stations/{code}")).get("histories") or [{}]
+    path = history[0].get("snapshotPath") or ""
+    return _get(f"{DDPM_API}/{path}") if re.fullmatch(r"snapshots/[\w/.-]+\.jpg", path) else b""
+
+
+def _nonthaburi_picture(name):
+    return _get(NONTHABURI_IMAGE.format(urllib.parse.quote(name)))
+
+
+# source -> newest picture of one camera, from the "station" its list gave it
+PICTURES = {"dwr": _dwr_picture, "ddpm": _ddpm_picture, "nonthaburi": _nonthaburi_picture}
 
 
 class WorldCameras:
@@ -208,7 +282,7 @@ class WorldCameras:
         self._by_id = {c["camid"]: c for cams in self._lists.values() for c in cams}
 
     def items(self):
-        """Copies of every camera; DWR's point at /api/cameras/image instead of their source."""
+        """Copies of every camera; DWR's, DDPM's and Nonthaburi's point at /api/cameras/image instead of their source."""
         with self._lock:
             cams = [c for cams in self._lists.values() for c in cams]
         out = []
@@ -248,21 +322,20 @@ class WorldCameras:
         print(f"[World cameras] {name}: {len(cams)} cameras")
 
     def image_bytes(self, camid):
-        """Newest DWR picture of a camera on our list, kept on disk for IMAGE_TTL; None when unknown or none."""
+        """Newest picture of a DWR, DDPM or Nonthaburi camera on our list, kept on disk for IMAGE_TTL; None when
+        unknown or none."""
         cam = self._by_id.get(camid)
-        if not cam or not cam.get("station"):
+        if not cam or not cam.get("station") or cam.get("source") not in PICTURES:
             return None
         path = os.path.join(IMAGE_DIR, f"{camid}.jpg")
         try:
-            if time.time() - os.path.getmtime(path) < IMAGE_TTL:
+            if time.time() - os.path.getmtime(path) < IMAGE_TTL[cam["source"]]:
                 with open(path, "rb") as f:
                     return f.read()
         except OSError:
             pass
         try:
-            name = (json.loads(_get(f"{DWR_API}/public/reportCctv/snapshot/{cam['station']}")).get("value") or "").strip()
-            data = _get(f"{DWR_API}/file/image/cctv", json.dumps({"path": name}).encode(),
-                        {"Content-Type": "application/json"}) if name else b""
+            data = PICTURES[cam["source"]](cam["station"])
         except Exception:
             data = b""
         if not data.startswith(b"\xff\xd8"):

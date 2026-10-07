@@ -40,6 +40,9 @@ echo [*] Local URL:  http://localhost:8000
 echo [*] Close this window to stop the server.
 echo.
 
+rem Camera status in its own window: every camera checked every 5 minutes (launch\camera_status_window.ps1)
+powershell -NoProfile -ExecutionPolicy Bypass -File "launch\camera_status_window.ps1"
+
 call launch\build_web.bat
 
 if exist ".venv\Scripts\python.exe" (

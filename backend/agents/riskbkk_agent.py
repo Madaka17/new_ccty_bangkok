@@ -28,7 +28,9 @@ import time
 
 from backend.core import local_llm
 
-AGENT_SECONDS = int(os.getenv("RISKBKK_AGENT_SECONDS", "360"))   # re-run the analysis this often
+# Re-run the analysis this often. The layers are yearly statistics that change only when the files do (the run at
+# start catches that), and the page has a few viewers a day, so once a day; it was every 6 minutes until Oct 2026.
+AGENT_SECONDS = int(os.getenv("RISKBKK_AGENT_SECONDS", "86400"))
 REPLY_TOKENS = int(os.getenv("RISKBKK_AGENT_REPLY_TOKENS", "3000"))
 LAYERS = ("accident", "accident_risk", "risk100", "risk100_solve", "friction", "construction",
           "crosswalk", "bus_stop", "motorcycle_taxi", "parking", "rail_crossing", "js100")

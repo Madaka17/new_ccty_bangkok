@@ -149,10 +149,8 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
   const avoid = activeSummary?.flow_index != null && activeSummary.flow_index < 75
     ? [...new Set((bma?.top_congested || []).map((c) => c.road).filter(Boolean))].slice(0, 2)
     : [];
-  const pickSection = (id) => {
-    setSection(id);
-    trackView(`dashboard:${id}`);
-  };
+  useEffect(() => trackView(`dashboard:${section}`), [section]);   // the open tab counts, the first one included
+  const pickSection = setSection;
   // The accident answer on the summary opens the accident tab and brings its list into view with the focus on it.
   // Only after that tap: switching tabs or loading the page never scrolls.
   const incidentsRef = useRef(null);
@@ -223,10 +221,13 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
         isActive={isActive}
       />
 
-      {/* roads to avoid on the left, the country's flood and accident news beside them */}
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-4 items-start">
-        <AvoidRoadsCard summary={summary} onOpenRoad={onOpenRoad} onNavigate={onNavigate} />
-        <NewsCard isActive={isActive} />
+      {/* roads to avoid on the left, the country's flood and accident news beside them. On wide screens the two
+          cards are one height: the roads card sets it and the news list scrolls inside the news card. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-4">
+        <AvoidRoadsCard summary={summary} onNavigate={onNavigate} />
+        <div className="relative min-w-0 lg:min-h-[28rem]">
+          <NewsCard isActive={isActive} />
+        </div>
       </div>
 
       <Tabs

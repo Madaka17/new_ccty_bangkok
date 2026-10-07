@@ -5,8 +5,9 @@ import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
 import { Skeleton } from './dashboard/ui.jsx';
 import ViewSwitch from './ViewSwitch.jsx';
 import { distanceKm } from '../lib/store.js';
-import CamTile from './cameras/Tiles.jsx';
+import CamTile, { kindOf } from './cameras/Tiles.jsx';
 import useFlood from './cameras/useFlood.js';
+import useDownCameras from './cameras/useDownCameras.js';
 import RegionPicker, { inPlace } from './cameras/RegionPicker.jsx';
 import FocusView from './cameras/FocusView.jsx';
 
@@ -28,6 +29,12 @@ const CHIPS = [
   { id: 'bkk', label: 'กรุงเทพฯ' },
   { id: 'near', label: 'ใกล้ฉัน' },
   { id: 'fav', label: 'รายการโปรด' },
+];
+// What the cameras show; a link to the owner's site (Pattaya) is video there
+const MEDIA = [
+  { id: 'all', label: 'ทุกแบบ' },
+  { id: 'video', label: 'วิดีโอ', kinds: ['live', 'link'] },
+  { id: 'still', label: 'ภาพนิ่ง', kinds: ['still'] },
 ];
 const GRID = 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3';
 function Section({ id, title, hint, count, loading, children }) {
@@ -78,8 +85,14 @@ export default function CameraWall({
   };
   const [region, setRegion] = useState('');
   const [province, setProvince] = useState('');
+  const [media, setMedia] = useState('all');
+  const down = useDownCameras();
+  // Cameras the status check found down stay out of sight until a later check finds them working
+  const working = useMemo(() => (down.size ? cameras.filter((c) => !down.has(c.camid)) : cameras), [cameras, down]);
   const list = useMemo(() => {
-    let out = cameras;
+    let out = working;
+    const kinds = MEDIA.find((m) => m.id === media)?.kinds;
+    if (kinds) out = out.filter((c) => kinds.includes(kindOf(c)));
     if (filter === 'bkk') out = out.filter((c) => c.province === 'กรุงเทพมหานคร');
     if (filter === 'fav') out = out.filter((c) => favorites.has(c.camid));
     if (query.trim()) {
@@ -93,7 +106,7 @@ export default function CameraWall({
         .sort((a, b) => a._km - b._km);
     }
     return out;
-  }, [cameras, favorites, filter, query, userPos]);
+  }, [working, favorites, filter, query, userPos, media]);
   const nation = useMemo(
     () => list.filter((c) => inPlace(c, region, province)),
     [list, region, province],
@@ -141,8 +154,22 @@ export default function CameraWall({
           ))}
           <span className="ml-auto text-xs text-slate-600">
             {loading ? 'กำลังโหลดรายชื่อกล้อง...' : `พบ ${nation.length} กล้อง`}
+            {!loading && cameras.length > working.length && ` · ซ่อนกล้องที่ดับ ${cameras.length - working.length} ตัว`}
             {filter === 'near' && !userPos && ' (กำลังหาตำแหน่งของคุณ...)'}
           </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="ชนิดภาพ">
+          {MEDIA.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => setMedia(m.id)}
+              aria-pressed={media === m.id}
+              className={`cursor-pointer inline-flex items-center rounded-lg border px-3 h-8 text-xs font-medium transition-colors duration-200 ${media === m.id ? CHIP_ON : CHIP_OFF}`}
+            >
+              {m.label}
+            </button>
+          ))}
         </div>
         <div className="border-t border-slate-200 pt-3">
           <RegionPicker cameras={list} region={region} province={province} onRegion={pickRegion} onProvince={setProvince} />
@@ -152,11 +179,11 @@ export default function CameraWall({
       <Section id="wall-nation" title={province ? `กล้องใน${province}` : region ? `กล้องใน${region}` : 'กล้องทั่วประเทศ'} count={nation.length} loading={loading}
         hint={view === 'map'
           ? 'แตะวงกลมตัวเลขเพื่อซูมเข้า แตะจุดหรือช่องกล้องข้างแผนที่เพื่อดูภาพใหญ่'
-          : 'กล้องจาก iTIC กรมทางหลวง กทม. เมืองพัทยา เทศบาล กรมทรัพยากรน้ำ และเขื่อน แตะช่องกล้องเพื่อดูภาพใหญ่'}>
+          : 'กล้องจาก iTIC กรมทางหลวง กทม. เมืองพัทยา เทศบาล กรมทรัพยากรน้ำ ปภ. และเขื่อน แตะช่องกล้องเพื่อดูภาพใหญ่'}>
         {/* only the open tab is on the page: the other one plays and loads nothing */}
         {view === 'map' ? (
           <Suspense fallback={<Skeleton className="h-[70vh] rounded-xl" />}>
-            <MapPanel cameras={nation} flood={flood} pinned={pinned} onOpen={setFocus} frameKey={`${region}|${province}|${filter}|${query}`} />
+            <MapPanel cameras={nation} flood={flood} pinned={pinned} onOpen={setFocus} frameKey={`${region}|${province}|${filter}|${query}|${media}`} />
           </Suspense>
         ) : (
           <div className={GRID}>

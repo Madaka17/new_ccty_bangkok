@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
+import CountUp from '../fx/CountUp.jsx';
 import { Card, Badge, Skeleton, ErrorState, FOCUS } from './ui.jsx';
 import { STATUS, flowLevel, fmtNum, fmtTime } from './format.js';
 import BmaSiteNotice, { bmaSiteDown } from '../bma/BmaSiteNotice.jsx';
@@ -260,7 +261,7 @@ export default function FlowOverview({ summary, areas, error, onRetry, retrying,
           {summary || area ? (
             <>
               <span className={`text-5xl font-semibold leading-none tabular-nums ${status.text}`} style={{ textShadow: `0 0 24px ${status.hex}66` }}>
-                {flow ?? '–'}
+                <CountUp value={flow ?? '–'} />
               </span>
               <span className="text-sm text-slate-500 pb-1">/ 100</span>
             </>

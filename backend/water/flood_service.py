@@ -111,15 +111,24 @@ STATUS_TH = {"flood": "น้ำท่วม", "slight": "น้ำท่วม�
 TREND_TH = {"rising": "กำลังเพิ่มขึ้น", "falling": "กำลังลดลง", "steady": "ทรงตัว"}
 STATUS_EN = {"flood": "flooding", "slight": "slight flooding", "normal": "normal", "offline": "offline"}
 _DOTNET_DATE = re.compile(r"/Date\((-?\d+)\)/")
+_THAI_DATE = re.compile(r"(\d{1,2})/(\d{1,2})/(\d{4})\s+(\d{1,2}):(\d{2})")
 
 
 def _epoch(value):
-    """BMA sends either '/Date(1790077800000)/' or '2026-09-22T18:45:00'. Both are Bangkok time."""
+    """BMA sends '/Date(1790077800000)/', '2026-09-22T18:45:00' or, since Oct 2026, '07/10/2569 21:30'
+    (Buddhist year). All are Bangkok time."""
     if not value:
         return None
     m = _DOTNET_DATE.search(str(value))
     if m:
         return int(m.group(1)) // 1000
+    m = _THAI_DATE.fullmatch(str(value).strip())
+    if m:
+        d, mo, y, h, mi = map(int, m.groups())
+        try:
+            return int(datetime(y - 543 if y > 2400 else y, mo, d, h, mi, tzinfo=BKK_TZ).timestamp())
+        except ValueError:
+            return None
     try:
         return int(datetime.fromisoformat(str(value)).replace(tzinfo=BKK_TZ).timestamp())
     except ValueError:
@@ -178,7 +187,7 @@ class FloodRoads:
     @staticmethod
     def _status(row, level, ts, newest):
         """Sensor health first, then the BMA depth thresholds."""
-        if row.get("status") == 0 or (row.get("chkStatustxt") or "").strip() == "ขัดข้อง":
+        if row.get("status") == 0 or (row.get("chkStatustxt") or "").strip().startswith("ขัดข้อง"):
             return "offline"
         if level is None:
             return "offline"
@@ -222,10 +231,18 @@ class FloodRoads:
 
     def refresh(self):
         data = self._fetch()
-        rows = data.get("dtTbl") or []
+        # Since Oct 2026 the station rows (dtTbl) carry no position and only a Thai time; the position and the
+        # start / stop / peak of the flood come in floodTbl, one row per station code
+        extra = {r["flood_code"]: r for r in data.get("floodTbl") or [] if r.get("flood_code")}
+        rows = [{**extra.get(r.get("flood_code"), {}), **{k: v for k, v in r.items() if v is not None}}
+                for r in data.get("dtTbl") or []]
         if not rows:
             raise RuntimeError("no stations in feed")
-        stamps = [t for t in (_epoch(r.get("site_timestamp")) for r in rows) if t]
+
+        def stamp(r):
+            return _epoch(r.get("site_timestamp") or r.get("site_timestatmpTH"))
+
+        stamps = [t for t in map(stamp, rows) if t]
         newest = max(stamps) if stamps else None
         items, seen = [], set()
         for r in rows:
@@ -238,7 +255,7 @@ class FloodRoads:
             if not lat or not lng:
                 continue
             level = _num(r.get("flood"))
-            ts = _epoch(r.get("site_timestamp"))
+            ts = stamp(r)
             status = self._status(r, level, ts, newest)
             if status != "offline":
                 self._record(code, ts, level)
@@ -384,6 +401,7 @@ class FloodRoads:
             model=AI_MODEL, contents=prompt,
             config=genai_types.GenerateContentConfig(temperature=0.2, max_output_tokens=1200,
                                                      response_mime_type="application/json"))
+        local_llm.note_cloud(AI_MODEL, resp)
         return json.loads(resp.text or "{}"), AI_MODEL
 
     def _analyse(self, force=False):
@@ -395,6 +413,12 @@ class FloodRoads:
         now = time.time()
         base = self._template(f)
         if not force and sig == self._ai_sig and self.analysis and now - self._ai_at < AI_INTERVAL:
+            return self.analysis
+        if not f["sensors_total"]:
+            # No station in the feed: nothing for the model to read, and the template says so
+            with self.lock:
+                self.analysis = {**base, "facts": f, "updated_at": int(now)}
+            self._ai_sig, self._ai_at = sig, now
             return self.analysis
         prompt = (
             "คุณคือนักวิเคราะห์สถานการณ์น้ำท่วมขังของศูนย์ควบคุมจราจรกรุงเทพมหานคร "

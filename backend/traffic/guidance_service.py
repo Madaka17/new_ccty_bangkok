@@ -292,6 +292,7 @@ class GuidanceService:
                     model=GEMINI_MODEL, contents=prompt,
                     config=genai_types.GenerateContentConfig(temperature=0.3, max_output_tokens=3000,
                                                              response_mime_type="application/json"))
+                local_llm.note_cloud(GEMINI_MODEL, resp)
                 text, mode = resp.text or "[]", "gemini"
             data = json.loads(text[text.find("["):text.rfind("]") + 1] or "[]")
             out = {}

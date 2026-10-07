@@ -12,13 +12,14 @@ import { baseStyle, bounds } from '../water/WaterMap.jsx';
 import { FOCUS } from '../dashboard/ui.jsx';
 import { fetchWindField } from '../../lib/api.js';
 import { WindLayer } from './windLayer.js';
+import { kindOf } from './Tiles.jsx';
 
+export { kindOf };
 export const KINDS = [
   { id: 'live', label: 'กล้องสด', color: '#22c55e' },
   { id: 'still', label: 'กล้องภาพนิ่ง', color: '#38bdf8' },
   { id: 'link', label: 'ดูที่เว็บเจ้าของ', color: '#94a3b8' },
 ];
-export const kindOf = (c) => (c.media === 'link' ? 'link' : c.source === 'bma' || c.media === 'image' ? 'still' : 'live');
 const COLOR = Object.fromEntries(KINDS.map((k) => [k.id, k.color]));
 const FLOOD = '#ec4899';
 const CLUSTER = '#0ea5e9';

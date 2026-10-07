@@ -104,6 +104,7 @@ from backend.vision.doh_cameras import doh_cameras, stream_key as doh_stream_key
 from backend.vision.world_cameras import world_cameras
 from backend.vision.wrongway_service import WrongWayPatrol
 from backend.water.air_service import air
+from backend.water.nasa_feeds import nasa_feeds
 from backend.water.flood_service import flood_roads
 from backend.water.user_reports import UserReports, report_locations
 from backend.water.flood_parking import flood_parking
@@ -412,9 +413,31 @@ def get_all_cameras(request: Request):
                         headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
     return Response(body, media_type="application/json")
 
+CAMERA_STATUS_FILE = os.path.join(DATA_DIR, "camera_status.json")   # written by launch\camera_status.py every 5 minutes
+CAMERA_STATUS_MAX_AGE = 20 * 60
+_down_cache = {"mtime": 0, "checked_at": 0, "items": []}
+
+@app.get("/api/cameras/down")
+def get_down_cameras():
+    """Cameras the newest launch\\camera_status.py round could not pull from, for the live camera page to hide until
+    a later round finds them working again. Empty when that round is over 20 minutes old (the status window is
+    closed), so a stopped check never hides a camera."""
+    try:
+        mtime = os.path.getmtime(CAMERA_STATUS_FILE)
+        if mtime != _down_cache["mtime"]:
+            with open(CAMERA_STATUS_FILE, encoding="utf-8") as f:
+                data = json.load(f)
+            _down_cache.update(mtime=mtime, checked_at=int(data.get("checked_at") or 0),
+                               items=[camid for camid, r in (data.get("cameras") or {}).items() if r.get("state") == "down"])
+    except (OSError, ValueError):
+        return {"checked_at": 0, "items": []}
+    if time.time() - _down_cache["checked_at"] > CAMERA_STATUS_MAX_AGE:
+        return {"checked_at": _down_cache["checked_at"], "items": []}
+    return {"checked_at": _down_cache["checked_at"], "items": _down_cache["items"]}
+
 @app.get("/api/cameras/image/{camid}")
 def get_camera_image(camid: str):
-    """Newest picture of a DWR river camera, which takes two calls the browser cannot make: see world_cameras.py."""
+    """Newest picture of a DWR, DDPM or Nonthaburi camera, which the browser cannot fetch itself: see world_cameras.py."""
     if not SAFE_ID.fullmatch(camid):
         raise HTTPException(400, "bad camera id")
     data = world_cameras.image_bytes(camid)
@@ -858,6 +881,20 @@ def weather_wind_field():
 def air_stations():
     """PM2.5 / AQI per monitoring station in Bangkok + surrounding provinces (Air4Thai)."""
     return air.status()
+
+@app.get("/api/nasa/fires")
+def nasa_fires():
+    """Fire hotspots in Thailand and along its borders from NASA FIRMS (VIIRS), last 24 h, with the numbers
+    against the 24 h before (nasa_feeds.py). 202 until the first read."""
+    data = nasa_feeds.fires()
+    return data if data else JSONResponse(status_code=202, content={"ready": False})
+
+@app.get("/api/nasa/events")
+def nasa_events():
+    """Open natural events NASA tracks from India to the western Pacific (EONET): storms with their track and
+    distance to Thailand, floods, volcanoes (nasa_feeds.py). 202 until the first read."""
+    data = nasa_feeds.events()
+    return data if data else JSONResponse(status_code=202, content={"ready": False})
 
 @app.get("/api/traffic/guidance")
 def traffic_guidance():
@@ -1668,6 +1705,7 @@ area_traffic.start()
 area_roads.warm()
 guidance.start()
 air.start()
+nasa_feeds.start()
 flood_roads.start()
 flood_cams.start()
 itic_frames.start()

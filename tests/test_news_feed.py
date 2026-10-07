@@ -32,6 +32,22 @@ def test_parse_rss_keeps_recent_flood_and_accident_with_province():
     assert items[0]["source"] == "มติชน" and items[0]["link"] == "https://www.matichon.co.th/a1"
 
 
+def test_parse_rss_takes_the_cover_picture():
+    xml = ('<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/"><channel>'
+           '<item><title>น้ำท่วมถนน a</title><link>https://www.matichon.co.th/a1</link><pubDate>Sat, 03 Oct 2026 03:00:00 +0700</pubDate>'
+           '<media:content url="https://www.matichon.co.th/big.jpg" type="image/jpeg" medium="image"/>'
+           '<media:thumbnail url="https://www.matichon.co.th/a1.jpg"/></item>'
+           '<item><title>น้ำท่วมถนน b</title><link>https://www.thairath.co.th/a2</link><pubDate>Sat, 03 Oct 2026 03:00:00 +0700</pubDate>'
+           '<enclosure url="https://static.thairath.co.th/a2.jpg" type="image/jpeg"/></item>'
+           '<item><title>น้ำท่วมถนน c</title><link>https://www.khaosod.co.th/a3</link><pubDate>Sat, 03 Oct 2026 03:00:00 +0700</pubDate>'
+           '<enclosure url="https://www.khaosod.co.th/a3.mp3" type="audio/mpeg"/></item>'
+           '<item><title>น้ำท่วมถนน d</title><link>https://www.khaosod.co.th/a4</link><pubDate>Sat, 03 Oct 2026 03:00:00 +0700</pubDate>'
+           '<media:thumbnail url="javascript:alert(1)"/></item>'
+           '</channel></rss>')
+    assert [i["image"] for i in nf.parse_rss(xml, "x", now=NOW)] == [
+        "https://www.matichon.co.th/a1.jpg", "https://static.thairath.co.th/a2.jpg", "", ""]
+
+
 def test_merge_drops_reposts_and_sorts_newest_first():
     a = {"title": "น้ำท่วม อยุธยา", "ts": 1}
     b = {"title": "น้ำท่วม อยุธยา!", "ts": 3}

@@ -39,6 +39,7 @@ from datetime import datetime
 import cv2
 import numpy as np
 
+from backend.core import local_llm
 from backend.core.instance import DEFAULT_BMA_DATA_DIR
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
@@ -638,6 +639,7 @@ class WrongWayPatrol:
                                                                  max_output_tokens=300, response_mime_type="application/json",
                                                                  http_options=genai_types.HttpOptions(timeout=AGENT_TIMEOUT_MS)),
                     )
+                    local_llm.note_cloud(model, resp)
                     return (resp.text or "").strip()
                 except Exception as e:  # noqa: BLE001
                     if any(k in str(e) for k in ("503", "UNAVAILABLE", "504", "DEADLINE")):
@@ -655,6 +657,7 @@ class WrongWayPatrol:
                 {"type": "text", "text": context},
             ]}],
         )
+        local_llm.note_cloud(response.model, response)
         return "".join(b.text for b in response.content if b.type == "text").strip()
 
     # ------------------------------------------------------------ reanalysis

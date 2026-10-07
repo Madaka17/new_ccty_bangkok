@@ -8,6 +8,7 @@ import hashlib
 import io
 import re
 from datetime import datetime, timedelta
+from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
 import requests
 import cv2
@@ -25,6 +26,13 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 # The same frames without the YOLO boxes, for pages that show the plain camera (the live camera wall)
 RAW_DIR = os.path.join(CACHE_DIR, "raw")
 os.makedirs(RAW_DIR, exist_ok=True)
+
+
+@lru_cache(maxsize=4)
+def _label_font(size):
+    """The Thai font for the snapshot labels, loaded once (it was read from disk for every snapshot)."""
+    path = thai_font()
+    return ImageFont.truetype(path, size) if path else ImageFont.load_default()
 
 
 def save_raw_frame(camid, jpeg):
@@ -79,7 +87,7 @@ class BmaSession:
     show.aspx serves the camera the ASP.NET session last opened in PlayVideo.aspx and ignores its image=
     (asked for camera 420 while bound to 310, it sends 310's picture). A session per camera stays bound,
     so a frame costs one request (show.aspx, ~1.3 s) instead of PlayVideo + show; a camera's first frame,
-    or one after its session expired, costs index.aspx + PlayVideo + show (5-6 s). Tested 2026-09-28/29:
+    or one after its session expired, costs the home page + PlayVideo + show (5-6 s). Tested 2026-09-28/29:
     a jar bound once kept serving that camera's live frame on later calls, and was still bound after
     8 min idle (a scan cycle revisits it every 3-4 min).
 
@@ -141,15 +149,16 @@ class BmaSession:
         if time.time() < self._rebind_after.get(camid_str, 0):
             return None
         # No session for this camera yet, it expired, or the camera is offline: start a new ASP.NET
-        # session (index.aspx; PlayVideo.aspx alone gets a placeholder) and bind it to this camera
-        # index.aspx is a big page (416 KB, 2.5-7 s, longer while other workers ask too): more time than one frame
+        # session (the home page; PlayVideo.aspx alone gets a placeholder) and bind it to this camera.
+        # The home page is the site root: index.aspx itself answers 404 since 2026-10-07.
+        # It is a big page (386-416 KB, 2.5-7 s, longer while other workers ask too): more time than one frame
         s.cookies = requests.cookies.RequestsCookieJar()
         bind_timeout = max(timeout, 15.0)
         try:
-            s.get(f'{bma_site.base()}index.aspx', timeout=bind_timeout)
-            s.get(f'{bma_site.base()}PlayVideo.aspx?ID={camid_str}', headers={'Referer': f'{bma_site.base()}index.aspx'}, timeout=bind_timeout)
+            s.get(bma_site.base(), timeout=bind_timeout)
+            s.get(f'{bma_site.base()}PlayVideo.aspx?ID={camid_str}', headers={'Referer': bma_site.base()}, timeout=bind_timeout)
         except Exception:
-            return None   # index.aspx (416 KB) timed out: BMA is busy, not this camera, so no backoff
+            return None   # the home page (~400 KB) timed out: BMA is busy, not this camera, so no backoff
         raw = self._show(s, camid_str, timeout)
         self._jars[camid_str] = s.cookies
         if raw:
@@ -646,13 +655,7 @@ class BmaScanner:
         try:
             pil_im = Image.fromarray(cv2.cvtColor(draw_img, cv2.COLOR_BGR2RGB))
             draw = ImageDraw.Draw(pil_im)
-            font_path = thai_font()
-            if font_path:
-                font = ImageFont.truetype(font_path, 13)
-                font_bold = ImageFont.truetype(font_path, 13)
-            else:
-                font = ImageFont.load_default()
-                font_bold = font
+            font = font_bold = _label_font(13)
 
             # Box labels (PIL works in RGB; BOX_COLORS are BGR)
             for d in dets:
@@ -668,8 +671,12 @@ class BmaScanner:
             count_str = f"รวม {total} · รถยนต์ {cars} · มอไซ {motos} · บรรทุก {trucks}"
             cw = int(draw.textlength(count_str, font=font))
             avail = w - cw - 40
-            while title_text and draw.textlength(title_text, font=font_bold) > avail:
-                title_text = title_text[:-2] + '…' if not title_text.endswith('…') else title_text[:-2] + '…'
+            # One character off at a time. It stops at "…" alone: "…"[:-2] + "…" is "…" again, so the old loop
+            # spun forever (holding the GIL) whenever the counters left less room than the "…" itself.
+            while len(title_text) > 1 and draw.textlength(title_text, font=font_bold) > avail:
+                title_text = title_text.rstrip('…')[:-1] + '…'
+            if draw.textlength(title_text, font=font_bold) > avail:
+                title_text = ''
             draw.text((26, 8), title_text, font=font_bold, fill=(240, 240, 250))
             
             # Counters on right

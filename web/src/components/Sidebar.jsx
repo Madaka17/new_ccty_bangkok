@@ -2,11 +2,9 @@ import ThemeToggle from './ThemeToggle.jsx';
 
 // Left navigation, grouped by what the page is for. `hint` is the one-liner shown as the
 // tooltip; the label is also the page's title in its header and the mobile top bar.
-// `line` is the group's colour on the menu's rail map (--line-* in index.css).
 export const NAV_GROUPS = [
   {
     label: 'ภาพรวม',
-    line: 'var(--line-1)',
     items: [
       { id: 'dashboard', label: 'ภาพรวมจราจร', hint: 'รถติดตรงไหน มีเหตุอะไรบนถนน และควรเลี่ยงทางไหน' },
       { id: 'map', label: 'แผนที่จราจร', hint: 'แผนที่รถติด กล้อง น้ำท่วม และจุดอันตราย' },
@@ -14,7 +12,6 @@ export const NAV_GROUPS = [
   },
   {
     label: 'กล้อง',
-    line: 'var(--line-2)',
     items: [
       { id: 'yolo', label: 'กล้อง AI', hint: 'AI นับรถจากกล้อง ค้นหากล้อง และตรวจคนไม่สวมหมวกกันน็อกหรือขับย้อนศร' },
       { id: 'cameras', label: 'ดูกล้องสด', hint: 'เลือกกล้องมาดูภาพสดพร้อมกันได้ 9 กล้อง' },
@@ -22,7 +19,6 @@ export const NAV_GROUPS = [
   },
   {
     label: 'เฝ้าระวังเมือง',
-    line: 'var(--line-3)',
     items: [
       { id: 'water', label: 'น้ำท่วม', hint: 'ระดับน้ำ น้ำเหนือ ถนนที่น้ำท่วม จุดพักพิง และ AI สรุปสถานการณ์' },
       { id: 'safety', label: 'อุบัติเหตุ', hint: 'จุดที่เกิดอุบัติเหตุบ่อย และจุดเสี่ยงในกรุงเทพฯ' },
@@ -32,7 +28,6 @@ export const NAV_GROUPS = [
   },
   {
     label: 'เครื่องมือ',
-    line: 'var(--line-4)',
     items: [
       { id: 'ai', label: 'ถาม AI', hint: 'ถาม AI เรื่องรถติด น้ำท่วม หรือเรื่องทั่วไป' },
       { id: 'report', label: 'แจ้งน้ำท่วม', hint: 'แจ้งน้ำท่วมกับ BKK StreetSmart แนบรูป รายละเอียด และปักหมุดตำแหน่ง' },
@@ -43,9 +38,10 @@ export const NAV_GROUPS = [
 
 export const PAGE_TITLES = Object.fromEntries(NAV_GROUPS.flatMap((g) => g.items).map((i) => [i.id, i.label]));
 
-// Menu drawn as a rail map: each group is a line in its own colour with its name on a sign, every page is a
-// station on it, and the lines meet at square interchanges. The page you are on is the big orange station
-// with "อยู่ที่นี่". Colours come from the city tokens in index.css, so it follows light / dark.
+// Menu drawn as a river: one wavy teal stream runs down the left (.river-rail in index.css), every page is a
+// pier on it, and each group is a quiet heading beside a small buoy. The page you are on is the orange pier
+// with "อยู่ที่นี่". Pills sit to the right of the stream so hover and the current page never cut the river.
+// Colours come from the river tokens in index.css, so it follows light / dark.
 function LogoMark() {
   // Small skyline mark, matches the icon stroke style used in the menu.
   return (
@@ -65,7 +61,7 @@ export default function Sidebar({ page, onNavigate, aiActive, liveCount = 0, onC
     cameras: liveCount ? `${liveCount}` : null,
   };
   return (
-    <div className="h-full flex flex-col bg-[var(--c-surface)] text-[var(--c-ink)] border-r border-[var(--c-border)]">
+    <div className="sidebar-glass h-full flex flex-col bg-[var(--c-surface)] text-[var(--c-ink)] border-r border-[var(--c-border)]">
       <div className="px-4 pt-5 pb-3 flex items-center gap-3">
         <LogoMark />
         <div className="min-w-0 flex-1">
@@ -90,16 +86,16 @@ export default function Sidebar({ page, onNavigate, aiActive, liveCount = 0, onC
         {NAV_GROUPS.map((group, gi) => {
           const last = gi === NAV_GROUPS.length - 1;
           return (
-            <div key={group.label} className="relative pt-3" style={{ '--g': group.line }}>
-              {/* this group's line, running on to the next group's interchange */}
-              <span aria-hidden="true" className={`absolute left-[15px] top-6 w-1 bg-[var(--g)] ${last ? 'bottom-5' : '-bottom-6'}`} />
+            <div key={group.label} className="relative pt-3">
+              {/* the river, running on to the next group's buoy */}
+              <span aria-hidden="true" className={`river-rail absolute left-[13px] top-6 w-2 ${last ? 'bottom-5' : '-bottom-6'}`} />
               <p className="relative flex items-center gap-2.5 min-h-8">
                 <span className="w-[34px] shrink-0 grid place-items-center" aria-hidden="true">
-                  <span className="w-4 h-4 rounded-[3px] bg-[var(--g)] ring-3 ring-[var(--c-surface)]" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-[var(--c-primary)] ring-4 ring-[var(--c-surface)]" />
                 </span>
-                <span className="font-display rounded-[3px] bg-[var(--g)] px-2 py-0.5 text-sm font-bold text-[var(--c-surface)]">{group.label}</span>
+                <span className="font-display text-[13px] font-semibold tracking-wide text-[var(--c-muted)]">{group.label}</span>
               </p>
-              <ul className="flex flex-col pt-0.5">
+              <ul className="flex flex-col gap-0.5 pt-0.5">
                 {group.items.map((item) => {
                   const on = page === item.id;
                   const badge = badges[item.id];
@@ -113,22 +109,26 @@ export default function Sidebar({ page, onNavigate, aiActive, liveCount = 0, onC
                           onClose?.();
                         }}
                         aria-current={on ? 'page' : undefined}
-                        className={`relative cursor-pointer w-full text-left min-h-11 pr-3 rounded-r-md flex items-center gap-2.5 text-[15px] transition-colors duration-150 ${
-                          on ? 'bg-[var(--c-here-tint)] font-bold' : 'font-medium text-[var(--c-ink)] hover:bg-[var(--c-raised)]'
-                        }`}
+                        className="group relative cursor-pointer w-full text-left min-h-11 flex items-center text-[15px] rounded-full"
                       >
                         <span className="w-[34px] shrink-0 grid place-items-center" aria-hidden="true">
                           {on ? (
-                            <span className="w-5 h-5 rounded-full bg-[var(--c-here)] border-4 border-[var(--c-surface)] ring-3 ring-[var(--c-here)]" />
+                            <span className="here-pulse w-4 h-4 rounded-full bg-[var(--c-here)] border-[3px] border-[var(--c-surface)] ring-4 ring-[var(--c-here-tint)]" />
                           ) : (
-                            <span className="w-3.5 h-3.5 rounded-full bg-[var(--c-surface)] border-3 border-[var(--g)]" />
+                            <span className="w-3 h-3 rounded-full bg-[var(--c-surface)] border-2 border-[var(--c-wave)] transition-colors duration-150 group-hover:border-[var(--c-primary)]" />
                           )}
                         </span>
-                        <span className="truncate flex-1">{item.label}</span>
-                        {on && <span className="shrink-0 text-xs font-semibold text-[var(--c-here-text)]">อยู่ที่นี่</span>}
-                        {!on && badge && (
-                          <span className="shrink-0 text-[11px] px-1.5 py-0.5 rounded-[3px] tabular-nums bg-[var(--c-raised)] text-[var(--c-muted)]">{badge}</span>
-                        )}
+                        <span
+                          className={`ml-1 flex-1 min-w-0 min-h-10 px-3 rounded-full flex items-center gap-2 transition-colors duration-150 ${
+                            on ? 'bg-[var(--c-here-tint)] font-bold' : 'font-medium group-hover:bg-[var(--c-raised)]'
+                          }`}
+                        >
+                          <span className="truncate flex-1">{item.label}</span>
+                          {on && <span className="shrink-0 text-xs font-semibold text-[var(--c-here-text)]">อยู่ที่นี่</span>}
+                          {!on && badge && (
+                            <span className="shrink-0 text-[11px] px-2 py-0.5 rounded-full tabular-nums bg-[var(--c-primary-tint)] text-[var(--c-primary)]">{badge}</span>
+                          )}
+                        </span>
                       </button>
                     </li>
                   );

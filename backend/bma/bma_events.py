@@ -109,14 +109,15 @@ class BMAEventFeed:
             return resp.read().decode("utf-8", "ignore")
 
     def _fetch_page(self, path):
-        # Without a session cookie the site bounces to a 404; hitting index.aspx first issues one
+        # Without a session cookie the site bounces to a 404; hitting the home page first issues one (the site
+        # root: index.aspx itself answers 404 since 2026-10-07)
         try:
             body = self._fetch(path)
             if 'id="news-list"' in body or "DetailContent" in body:
                 return body
         except Exception:
             pass
-        self._fetch("index.aspx")
+        self._fetch("")
         return self._fetch(path)
 
     # ------------------------------------------------------------ parsing

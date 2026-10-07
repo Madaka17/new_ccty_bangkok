@@ -86,10 +86,6 @@
   --c-sel-text: #ffffff;
   --c-wave: #5fa8a6;
   --c-shadow: 0 1px 2px rgba(26, 34, 40, 0.04), 0 8px 22px -14px rgba(15, 110, 116, 0.28);
-  --line-1: #1f4e79;
-  --line-2: #0f6e74;
-  --line-3: #6a4c93;
-  --line-4: #a15c1e;
 
   --ok-ring: #1e9e57;   --ok-fill: var(--c-surface);   --ok-text: #17733f;   --ok-tint: #e3f2e6;
   --watch-ring: #e09a0b; --watch-fill: #fce7b8;        --watch-text: #8a5300; --watch-tint: #fbefd6;
@@ -116,10 +112,6 @@
   --c-sel-text: #0b1a1f;
   --c-wave: #3f8f92;
   --c-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02), 0 10px 24px -14px rgba(0, 0, 0, 0.7);
-  --line-1: #7fb0e0;
-  --line-2: #4fc1b9;
-  --line-3: #b9a0e0;
-  --line-4: #e8a866;
 
   --ok-text: #6ee7a0;   --ok-tint: rgba(30, 158, 87, 0.16);
   --watch-ring: #f2b33d; --watch-fill: #5c4210; --watch-text: #fcd34d; --watch-tint: rgba(242, 179, 61, 0.14);
@@ -190,6 +182,12 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.005em; }
 
 /* Signature: a thin wave under each page title (PageHeader) */
 .wave-rule { display: block; width: 88px; height: 8px; margin-top: 6px; color: var(--c-wave); }
+/* The same wave standing up: the river the menu's piers sit on (Sidebar). Masked, so it takes the token colour. */
+.river-rail {
+  background: var(--c-wave);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 24'%3E%3Cpath d='M4 0C7 6 7 6 4 12S1 18 4 24' fill='none' stroke='black' stroke-width='2'/%3E%3C/svg%3E") repeat-y center top / 8px 24px;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 24'%3E%3Cpath d='M4 0C7 6 7 6 4 12S1 18 4 24' fill='none' stroke='black' stroke-width='2'/%3E%3C/svg%3E") repeat-y center top / 8px 24px;
+}
 .bg-blue-600, .bg-lavender-600 { background-color: var(--c-primary); color: var(--c-on-primary); }
 .border-blue-600 { border-color: var(--c-primary); }
 .hover\:bg-blue-700:hover, .hover\:bg-lavender-700:hover { background-color: var(--c-primary-hover); }
@@ -330,3 +328,195 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.005em; }
 @keyframes bot-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.1); } }
 @keyframes bot-glow { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 @media (prefers-reduced-motion: reduce) { .bot-eyes, .bot-bulb { animation: none; } }
+
+/* ---------------------------------------------------------------- river, in motion (Oct 2026)
+   The river look with depth and movement: a drifting sky and a flowing current behind the page
+   (RiverBackdrop.jsx), frosted cards that glow on hover, sections that rise in one after another when a page
+   opens, a wave under each title and a river in the menu that actually flow, and a sliding pill on tabs.
+   All of it stands still under "reduce motion" (last block). */
+.river-backdrop { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.river-glow { position: absolute; border-radius: 50%; opacity: 0.42; will-change: transform; }
+.river-glow-a {
+  width: 46vmax; height: 46vmax; left: -12vmax; top: -18vmax;
+  background: radial-gradient(circle, color-mix(in srgb, var(--c-primary) 55%, transparent), transparent 68%);
+  animation: river-drift-a 38s ease-in-out infinite alternate;
+}
+.river-glow-b {
+  width: 38vmax; height: 38vmax; right: -14vmax; top: 8vmax;
+  background: radial-gradient(circle, color-mix(in srgb, var(--c-here) 45%, transparent), transparent 70%);
+  animation: river-drift-b 46s ease-in-out infinite alternate;
+}
+.dark .river-glow { opacity: 0.5; }
+.dark .river-current-far { fill: color-mix(in srgb, var(--c-wave) 22%, transparent); }
+.dark .river-current-near { fill: color-mix(in srgb, var(--c-primary) 16%, transparent); }
+@keyframes river-drift-a { to { transform: translate(18vmax, 10vmax) scale(1.15); } }
+@keyframes river-drift-b { to { transform: translate(-16vmax, 14vmax) scale(0.9); } }
+.river-current { position: absolute; left: 0; bottom: 0; width: 200%; height: 18vh; min-height: 90px; }
+.river-current-far { fill: color-mix(in srgb, var(--c-wave) 16%, transparent); animation: river-flow 28s linear infinite; }
+.river-current-near { fill: color-mix(in srgb, var(--c-primary) 12%, transparent); animation: river-flow 17s linear infinite; }
+@keyframes river-flow { to { transform: translateX(-1200px); } }
+
+/* Frosted cards: the sky shows faintly through; a border light and a lift of shadow under the pointer. No
+   backdrop-filter: it would make each card the frame of any fixed popup drawn inside it. */
+.rounded-xl.border.bg-white, .rounded-2xl.border.bg-white, .glass, .glass-strong {
+  background-color: color-mix(in srgb, var(--c-surface) 88%, transparent);
+  transition: box-shadow 0.35s ease, border-color 0.35s ease, transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.rounded-xl.border.bg-white:hover, .rounded-2xl.border.bg-white:hover, .glass:hover {
+  border-color: color-mix(in srgb, var(--c-primary) 38%, var(--c-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--c-primary) 18%, transparent), 0 16px 34px -18px color-mix(in srgb, var(--c-primary) 55%, transparent);
+}
+/* A card that is a link or a button also rises a little */
+a.rounded-xl.border:hover, button.rounded-xl.border:hover { transform: translateY(-2px); }
+
+/* A page's sections rise in one after another when it opens (App.jsx wraps every page in .page-stage).
+   "backwards": the start state holds through the delay, and nothing is left on the element afterwards. */
+@keyframes rise-in { from { opacity: 0; transform: translateY(14px); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
+.page-stage > :not(.flex-col), .page-stage > .flex-col > * { animation: rise-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+.page-stage > .flex-col > :nth-child(2) { animation-delay: 0.06s; }
+.page-stage > .flex-col > :nth-child(3) { animation-delay: 0.12s; }
+.page-stage > .flex-col > :nth-child(4) { animation-delay: 0.18s; }
+.page-stage > .flex-col > :nth-child(5) { animation-delay: 0.24s; }
+.page-stage > .flex-col > :nth-child(6) { animation-delay: 0.3s; }
+.page-stage > .flex-col > :nth-child(n + 7) { animation-delay: 0.36s; }
+
+/* The wave under each page title flows, and its light runs from canal teal to evening orange */
+.wave-rule { overflow: hidden; }
+.wave-rule path { animation: wave-flow 2.6s linear infinite; }
+@keyframes wave-flow { to { transform: translateX(-22px); } }
+/* The river in the menu flows down past the piers */
+.river-rail { animation: rail-flow 3.2s linear infinite; }
+@keyframes rail-flow { to { -webkit-mask-position: center 24px; mask-position: center 24px; } }
+/* The pier you are on breathes a soft ring of evening light */
+.here-pulse { animation: here-pulse 2.8s ease-out infinite; }
+@keyframes here-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c-here) 55%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 10px transparent; }
+}
+
+/* Tabs: the selected pill slides from tab to tab (Tabs and ViewSwitch draw it with framer-motion's layoutId) */
+[role="tab"].tab-slide[aria-selected="true"] { background: transparent; }
+.tab-pill { position: absolute; inset: 0; border-radius: 999px; background: var(--c-sel-bg);
+  box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--c-sel-bg) 75%, transparent); }
+.seg-pill { position: absolute; inset: 0; border-radius: 0.75rem; background: var(--c-surface);
+  box-shadow: var(--c-shadow), 0 0 0 1px color-mix(in srgb, var(--c-primary) 30%, transparent); }
+.dark .seg-pill { background: var(--c-raised); }
+[role="tab"].seg-slide[aria-selected="true"] { background: transparent; color: var(--c-primary); }
+
+/* The main button: a light sweeps across it under the pointer (buttons in the page flow only: a positioned
+   one keeps its own position) */
+button.bg-blue-600:not(.absolute):not(.fixed):not(.sticky) { position: relative; overflow: hidden; }
+button.bg-blue-600:not(.absolute):not(.fixed):not(.sticky)::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
+  transform: translateX(-120%);
+}
+button.bg-blue-600:not(.absolute):not(.fixed):not(.sticky):hover::after { transform: translateX(120%); transition: transform 0.7s ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  .river-glow, .river-current-far, .river-current-near, .wave-rule path, .river-rail, .here-pulse { animation: none; }
+  .page-stage > :not(.flex-col), .page-stage > .flex-col > * { animation: none; }
+  button.bg-blue-600::after { display: none; }
+  a.rounded-xl.border:hover, button.rounded-xl.border:hover { transform: none; }
+}
+
+/* ---------------------------------------------------------------- river glass (Oct 2026, second pass)
+   Real frosted glass. The blur sits on a ::before layer behind the card's content, not on the card itself, so a
+   fixed popup drawn inside a card still covers the whole screen. Covers both card patterns of the site
+   (.bg-white cards and the newer var(--c-surface) panels) plus .fx-glass. Position and isolation live in the
+   components layer, so a card that says absolute / sticky keeps it. */
+@layer components {
+  .rounded-xl.border.bg-white, .rounded-2xl.border.bg-white, .glass, .glass-strong,
+  .rounded-md.border.bg-\[var\(--c-surface\)\], .fx-glass { position: relative; isolation: isolate; }
+}
+.rounded-xl.border.bg-white, .rounded-2xl.border.bg-white, .glass, .glass-strong,
+.rounded-md.border.bg-\[var\(--c-surface\)\], .fx-glass {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--c-border) 70%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 1px 2px rgba(26, 34, 40, 0.04), 0 18px 40px -26px rgba(15, 110, 116, 0.35);
+}
+.rounded-xl.border.bg-white::before, .rounded-2xl.border.bg-white::before, .glass::before, .glass-strong::before,
+.rounded-md.border.bg-\[var\(--c-surface\)\]::before, .fx-glass::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+  background:
+    radial-gradient(120% 80% at 0% 0%, rgba(255, 255, 255, 0.55), transparent 55%),
+    color-mix(in srgb, var(--c-surface) 82%, transparent);
+}
+/* A live blur only where there is one big pane: on every card it was redrawn each frame the sky moved */
+.fx-glass::before { -webkit-backdrop-filter: blur(16px) saturate(150%); backdrop-filter: blur(16px) saturate(150%); }
+.dark .rounded-xl.border.bg-white, .dark .rounded-2xl.border.bg-white, .dark .glass, .dark .glass-strong,
+.dark .rounded-md.border.bg-\[var\(--c-surface\)\], .dark .fx-glass {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 20px 44px -26px rgba(0, 0, 0, 0.85);
+}
+.dark .rounded-xl.border.bg-white::before, .dark .rounded-2xl.border.bg-white::before, .dark .glass::before,
+.dark .glass-strong::before, .dark .rounded-md.border.bg-\[var\(--c-surface\)\]::before, .dark .fx-glass::before {
+  background:
+    radial-gradient(120% 80% at 0% 0%, rgba(79, 193, 185, 0.1), transparent 55%),
+    color-mix(in srgb, var(--c-surface) 80%, transparent);
+}
+.rounded-md.border.bg-\[var\(--c-surface\)\] { transition: box-shadow 0.35s ease, border-color 0.35s ease; }
+.rounded-md.border.bg-\[var\(--c-surface\)\]:hover {
+  border-color: color-mix(in srgb, var(--c-primary) 35%, var(--c-border));
+}
+
+/* A richer sky behind the glass: a third light (river cyan) wanders through the middle */
+.river-glow { opacity: 0.55; }
+.dark .river-glow { opacity: 0.6; }
+.river-glow-c {
+  width: 34vmax; height: 34vmax; left: 30%; top: 42%;
+  background: radial-gradient(circle, color-mix(in srgb, #38bdf8 40%, transparent), transparent 70%);
+  animation: river-drift-c 52s ease-in-out infinite alternate;
+}
+@keyframes river-drift-c { to { transform: translate(-14vmax, -12vmax) scale(1.2); } }
+
+/* The menu: a pane of glass over the sky, the current pier lit like evening on the water */
+.sidebar-glass { background: color-mix(in srgb, var(--c-surface) 72%, transparent) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); }
+.sidebar-glass [aria-current="page"] > span:last-child {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--c-here) 26%, transparent), transparent);
+  box-shadow: 0 8px 20px -12px var(--c-here);
+}
+
+/* Summary sign (CityStatusStrip): the verdict band shimmers, and drops ripple out from its corner */
+.fx-band { position: relative; overflow: hidden;
+  background-image: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.18) 45%, transparent 70%);
+  background-size: 250% 100%; animation: band-sheen 6s ease-in-out infinite; }
+@keyframes band-sheen { 0% { background-position: 120% 0; } 60%, 100% { background-position: -120% 0; } }
+.fx-ripples { position: absolute; right: -60px; top: 40px; width: 300px; height: 300px; pointer-events: none; z-index: 0; }
+.fx-ripples span { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--t-ring); opacity: 0;
+  animation: ripple 6s cubic-bezier(0.2, 0.6, 0.3, 1) infinite; }
+.fx-ripples span:nth-child(2) { animation-delay: 2s; }
+.fx-ripples span:nth-child(3) { animation-delay: 4s; }
+@keyframes ripple { 0% { transform: scale(0.15); opacity: 0.55; } 100% { transform: scale(1); opacity: 0; } }
+
+/* "เมืองตอนนี้" tiles: a glowing top line, an icon chip that holds a little light, and a rise with the tone's
+   glow under the pointer; they come in one after another */
+.fx-tile { transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1), box-shadow 0.35s ease, border-color 0.35s ease; }
+.fx-tile:hover { transform: translateY(-4px);
+  border-color: color-mix(in srgb, var(--t-ring) 55%, var(--c-border));
+  box-shadow: 0 18px 34px -20px color-mix(in srgb, var(--t-ring) 70%, transparent); }
+.fx-tile-line { box-shadow: 0 0 14px 1px var(--t-ring); }
+.fx-tile-icon { background: radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--t-ring) 35%, transparent), var(--t-tint) 70%) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--t-ring) 25%, transparent), 0 6px 16px -8px var(--t-ring); }
+@keyframes tile-in { from { opacity: 0; transform: translateY(18px) scale(0.96); } to { opacity: 1; transform: none; } }
+.fx-tiles > li { animation: tile-in 0.55s cubic-bezier(0.34, 1.4, 0.64, 1) backwards; }
+.fx-tiles > li:nth-child(2) { animation-delay: 0.07s; }
+.fx-tiles > li:nth-child(3) { animation-delay: 0.14s; }
+.fx-tiles > li:nth-child(4) { animation-delay: 0.21s; }
+.fx-tiles > li:nth-child(5) { animation-delay: 0.28s; }
+.fx-tiles > li:nth-child(6) { animation-delay: 0.35s; }
+
+/* Page titles: a deeper ink that warms toward the river's evening light */
+.page-title { background: linear-gradient(92deg, var(--c-ink) 55%, color-mix(in srgb, var(--c-primary) 85%, var(--c-ink)));
+  -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  .river-glow-c, .fx-band, .fx-ripples span, .fx-tiles > li { animation: none; }
+  .fx-ripples { display: none; }
+  .fx-tile:hover { transform: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .rounded-xl.border.bg-white::before, .rounded-2xl.border.bg-white::before, .glass::before, .glass-strong::before,
+  .rounded-md.border.bg-\[var\(--c-surface\)\]::before, .fx-glass::before { background: var(--c-surface); backdrop-filter: none; }
+  .sidebar-glass { background: var(--c-surface) !important; backdrop-filter: none; }
+}
