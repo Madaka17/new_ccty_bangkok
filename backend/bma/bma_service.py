@@ -8,6 +8,7 @@ import hashlib
 import io
 import re
 from datetime import datetime, timedelta
+from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
 import requests
 import cv2
@@ -25,6 +26,13 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 # The same frames without the YOLO boxes, for pages that show the plain camera (the live camera wall)
 RAW_DIR = os.path.join(CACHE_DIR, "raw")
 os.makedirs(RAW_DIR, exist_ok=True)
+
+
+@lru_cache(maxsize=4)
+def _label_font(size):
+    """The Thai font for the snapshot labels, loaded once (it was read from disk for every snapshot)."""
+    path = thai_font()
+    return ImageFont.truetype(path, size) if path else ImageFont.load_default()
 
 
 def save_raw_frame(camid, jpeg):
@@ -647,13 +655,7 @@ class BmaScanner:
         try:
             pil_im = Image.fromarray(cv2.cvtColor(draw_img, cv2.COLOR_BGR2RGB))
             draw = ImageDraw.Draw(pil_im)
-            font_path = thai_font()
-            if font_path:
-                font = ImageFont.truetype(font_path, 13)
-                font_bold = ImageFont.truetype(font_path, 13)
-            else:
-                font = ImageFont.load_default()
-                font_bold = font
+            font = font_bold = _label_font(13)
 
             # Box labels (PIL works in RGB; BOX_COLORS are BGR)
             for d in dets:
@@ -669,8 +671,12 @@ class BmaScanner:
             count_str = f"รวม {total} · รถยนต์ {cars} · มอไซ {motos} · บรรทุก {trucks}"
             cw = int(draw.textlength(count_str, font=font))
             avail = w - cw - 40
-            while title_text and draw.textlength(title_text, font=font_bold) > avail:
-                title_text = title_text[:-2] + '…' if not title_text.endswith('…') else title_text[:-2] + '…'
+            # One character off at a time. It stops at "…" alone: "…"[:-2] + "…" is "…" again, so the old loop
+            # spun forever (holding the GIL) whenever the counters left less room than the "…" itself.
+            while len(title_text) > 1 and draw.textlength(title_text, font=font_bold) > avail:
+                title_text = title_text.rstrip('…')[:-1] + '…'
+            if draw.textlength(title_text, font=font_bold) > avail:
+                title_text = ''
             draw.text((26, 8), title_text, font=font_bold, fill=(240, 240, 250))
             
             # Counters on right
