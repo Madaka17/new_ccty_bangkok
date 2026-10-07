@@ -104,6 +104,7 @@ from backend.vision.doh_cameras import doh_cameras, stream_key as doh_stream_key
 from backend.vision.world_cameras import world_cameras
 from backend.vision.wrongway_service import WrongWayPatrol
 from backend.water.air_service import air
+from backend.water.nasa_feeds import nasa_feeds
 from backend.water.flood_service import flood_roads
 from backend.water.user_reports import UserReports, report_locations
 from backend.water.flood_parking import flood_parking
@@ -880,6 +881,20 @@ def weather_wind_field():
 def air_stations():
     """PM2.5 / AQI per monitoring station in Bangkok + surrounding provinces (Air4Thai)."""
     return air.status()
+
+@app.get("/api/nasa/fires")
+def nasa_fires():
+    """Fire hotspots in Thailand and along its borders from NASA FIRMS (VIIRS), last 24 h, with the numbers
+    against the 24 h before (nasa_feeds.py). 202 until the first read."""
+    data = nasa_feeds.fires()
+    return data if data else JSONResponse(status_code=202, content={"ready": False})
+
+@app.get("/api/nasa/events")
+def nasa_events():
+    """Open natural events NASA tracks from India to the western Pacific (EONET): storms with their track and
+    distance to Thailand, floods, volcanoes (nasa_feeds.py). 202 until the first read."""
+    data = nasa_feeds.events()
+    return data if data else JSONResponse(status_code=202, content={"ready": False})
 
 @app.get("/api/traffic/guidance")
 def traffic_guidance():
@@ -1690,6 +1705,7 @@ area_traffic.start()
 area_roads.warm()
 guidance.start()
 air.start()
+nasa_feeds.start()
 flood_roads.start()
 flood_cams.start()
 itic_frames.start()

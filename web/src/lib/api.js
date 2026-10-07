@@ -330,6 +330,23 @@ export async function fetchAirStations() {
   return res.json();
 }
 
+// NASA FIRMS fire hotspots in Thailand and along its borders (last 24 h, with the analysis); null until the
+// server's first read (202). See nasa_feeds.py.
+export async function fetchNasaFires() {
+  const res = await fetch('/api/nasa/fires');
+  if (res.status === 202) return null;
+  if (!res.ok) throw new Error('nasa_fires');
+  return res.json();
+}
+
+// NASA EONET natural events from India to the western Pacific (storms with tracks and distance to Thailand)
+export async function fetchNasaEvents() {
+  const res = await fetch('/api/nasa/events');
+  if (res.status === 202) return null;
+  if (!res.ok) throw new Error('nasa_events');
+  return res.json();
+}
+
 export async function fetchTrafficGuidance() {
   const res = await fetch('/api/traffic/guidance');
   if (!res.ok) throw new Error('guidance');
