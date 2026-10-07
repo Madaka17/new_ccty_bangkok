@@ -21,7 +21,8 @@ Each round:
                 BMA     the scanner got a frame from it in the last 20 minutes
                 Pattaya only a link to the owner's site: the site is checked, not each camera
 At most HOST_LIMIT requests go to one host at a time (fewer for SLOW_HOSTS), and a host that stops answering is skipped for the
-rest of the round. Results go to <instance>\\camera_status.json. <instance>\\camera_status.log gets one CHECK line per
+rest of the round. A website whose every camera was down last round (the BMA flood centre's 876, say) gets only
+DEAD_SAMPLE of them pulled; the rest are pulled again as soon as one of those works. Results go to <instance>\\camera_status.json. <instance>\\camera_status.log gets one CHECK line per
 round (cameras working out of all, per website) and a DOWN or BACK line for every camera that changed since the last round.
 """
 import json
@@ -48,6 +49,8 @@ HOST_GIVE_UP = 8            # this many connection failures in a row: the host's
 # hosts that answer HTTP 429 to HOST_LIMIT at once: (requests at once, seconds between requests)
 SLOW_HOSTS = {"nstcctv.nakhoncity.org": (1, 0.4)}
 BMA_MAX_AGE = 20 * 60
+DEAD_MIN_CAMERAS = 20       # a website with at least this many cameras, all down last round, ...
+DEAD_SAMPLE = 3             # ... gets only this many pulled until one of them works again
 USER_AGENT = wc.USER_AGENT
 INSTANCES = {8000: "production", 8001: "test"}
 
@@ -295,7 +298,19 @@ def interleave(jobs):
     return out
 
 
-def check_round(port):
+def dead_sources(previous, min_cameras=DEAD_MIN_CAMERAS):
+    """Sources whose every pulled camera was down last round (and that have enough cameras to be worth sparing)."""
+    seen = defaultdict(lambda: [0, 0])     # source -> [pulled, down]
+    for r in (previous or {}).values():
+        if r.get("url"):
+            seen[r["source"]][0] += 1
+            seen[r["source"]][1] += r.get("state") == "down"
+    return {src for src, (pulled, down) in seen.items() if pulled >= min_cameras and down == pulled}
+
+
+def check_round(port, previous=None):
+    """previous: last round's cameras. A source that was down on every camera last round gets only
+    DEAD_SAMPLE cameras pulled first; the rest are pulled only if one of those works, else they stay down."""
     t0 = time.time()
     base = f"http://127.0.0.1:{port}"
     sites = check_sites(port)
@@ -327,9 +342,25 @@ def check_round(port):
         except Exception as e:  # noqa: BLE001 - one odd camera must not end the round
             return camid, {**row, "state": "down", "reason": f"{type(e).__name__}: {e}"[:80], "url": url}
 
+    dead = dead_sources(previous)
+    by_source = defaultdict(list)
+    for job in jobs:
+        by_source[job[1]["source"]].append(job)
+    later = {src: by_source[src][DEAD_SAMPLE:] for src in dead if src in by_source}
+    first = [j for src, js in by_source.items() for j in (js[:DEAD_SAMPLE] if src in later else js)]
     with ThreadPoolExecutor(WORKERS) as pool:
-        results.update(pool.map(one, interleave(jobs)))
-    return {"checked_at": int(time.time()), "took_s": round(time.time() - t0), "port": port, "probed": len(jobs),
+        results.update(pool.map(one, interleave(first)))
+        back = [j for src, js in later.items() if any(results[c]["state"] == "ok" for c, *_ in by_source[src][:DEAD_SAMPLE])
+                for j in js]
+        results.update(pool.map(one, interleave(back)))
+    probed = len(first) + len(back)
+    for src, js in later.items():
+        for camid, row, url, _ in js:
+            if camid not in results:
+                why = (previous.get(camid) or {}).get("reason") or "down"
+                results[camid] = {**row, "state": "down", "url": url,
+                                  "reason": f"{why} (not pulled: {DEAD_SAMPLE} of this website's cameras tried, all down)"}
+    return {"checked_at": int(time.time()), "took_s": round(time.time() - t0), "port": port, "probed": probed,
             "sites": sites, "cameras": results}
 
 
@@ -376,7 +407,7 @@ def report(port, show_all=False, previous=None):
     if previous is None:
         previous = load_previous(path)
     try:
-        data = check_round(port)
+        data = check_round(port, previous)
     except Exception as e:  # noqa: BLE001 - the server itself is the first thing to report
         if LOG:
             log("ERROR", f"[FAIL] server :{port} not answering ({e})")
