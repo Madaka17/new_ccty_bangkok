@@ -1,22 +1,24 @@
+"""
+The BMA camera scanner: every few minutes it fetches a frame from each BMA Traffic camera (bma_session), counts
+the vehicles with the shared YOLO model, keeps the annotated and plain frames on disk, and stores the counts
+(bma_db) for the camera pages and the analytics.
+"""
 import os
-import sys
 import time
 import json
-import sqlite3
 import threading
 import hashlib
-import io
-import re
-from datetime import datetime, timedelta
+from datetime import datetime
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
-import requests
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from backend.bma import bma_site
 from backend.bma.bma_archive import CycleArchiver
+from backend.bma.bma_db import BmaDatabase
+from backend.bma.bma_session import BmaSession
 
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import thai_font
@@ -49,7 +51,8 @@ def save_raw_frame(camid, jpeg):
             os.remove(tmp)
         except OSError:
             pass
-DB_PATH = os.path.join(DATA_DIR, "vehicle_counts.db")
+
+
 CAMERAS_FILE = os.path.join(BASE_DIR, "config", "cameras_bma.json")
 
 # Target YOLO classes for traffic: 1: bicycle, 2: car, 3: motorcycle, 5: bus, 7: truck
@@ -79,277 +82,6 @@ def _pixels_id(img):
     changes them every second even on an empty street."""
     return hashlib.md5(img.tobytes()).digest()
 
-
-class BmaSession:
-    """HTTP access to the BMA Traffic site: one requests.Session per thread (connection pooling), and one
-    ASP.NET session (cookie jar) per camera.
-
-    show.aspx serves the camera the ASP.NET session last opened in PlayVideo.aspx and ignores its image=
-    (asked for camera 420 while bound to 310, it sends 310's picture). A session per camera stays bound,
-    so a frame costs one request (show.aspx, ~1.3 s) instead of PlayVideo + show; a camera's first frame,
-    or one after its session expired, costs the home page + PlayVideo + show (5-6 s). Tested 2026-09-28/29:
-    a jar bound once kept serving that camera's live frame on later calls, and was still bound after
-    8 min idle (a scan cycle revisits it every 3-4 min).
-
-    A camera that sends nothing keeps its bound session, so each cycle asks it once (show.aspx) and it
-    comes back as soon as it sends again; a new session is started for it at most every REBIND_BACKOFF
-    (15 such cameras bound again every cycle took ~30 s of a 230 s cycle)."""
-
-    REBIND_BACKOFF = 600
-
-    def __init__(self):
-        self._local = threading.local()
-        self._jars = {}          # camid -> RequestsCookieJar of the ASP.NET session bound to that camera
-        self._rebind_after = {}  # camid -> time before which a camera that sent nothing is not bound again
-
-    def _get_session(self) -> requests.Session:
-        s = getattr(self._local, 'session', None)
-        if s is None:
-            s = requests.Session()
-            s.headers.update({
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-                'Accept-Language': 'th,en-US;q=0.9,en;q=0.8',
-            })
-            self._local.session = s
-        return s
-
-    @staticmethod
-    def _show(s, camid_str, timeout):
-        """The camera's JPEG from show.aspx, or None for a placeholder (< 2500 bytes), an error or a timeout."""
-        try:
-            res = s.get(
-                f'{bma_site.base()}show.aspx?image={camid_str}&time={int(time.time() * 1000)}',
-                headers={'Referer': f'{bma_site.base()}PlayVideo.aspx?ID={camid_str}'},
-                timeout=timeout
-            )
-            if res.status_code == 200 and len(res.content) > 2500:
-                return res.content
-        except Exception:
-            pass
-        return None
-
-    def reset(self):
-        """Forget every bound ASP.NET session (after the site moved to another address)."""
-        self._jars.clear()
-        self._rebind_after.clear()
-
-    def fetch_snapshot(self, camid: str, timeout: float = 4.0) -> bytes:
-        """Fetch raw snapshot JPEG for a camera ID from BMA traffic."""
-        s = self._get_session()
-        camid_str = str(camid)
-
-        jar = self._jars.get(camid_str)
-        if jar is not None:
-            s.cookies = jar
-            raw = self._show(s, camid_str, timeout)
-            if raw:
-                return raw
-
-        if time.time() < self._rebind_after.get(camid_str, 0):
-            return None
-        # No session for this camera yet, it expired, or the camera is offline: start a new ASP.NET
-        # session (the home page; PlayVideo.aspx alone gets a placeholder) and bind it to this camera.
-        # The home page is the site root: index.aspx itself answers 404 since 2026-10-07.
-        # It is a big page (386-416 KB, 2.5-7 s, longer while other workers ask too): more time than one frame
-        s.cookies = requests.cookies.RequestsCookieJar()
-        bind_timeout = max(timeout, 15.0)
-        try:
-            s.get(bma_site.base(), timeout=bind_timeout)
-            s.get(f'{bma_site.base()}PlayVideo.aspx?ID={camid_str}', headers={'Referer': bma_site.base()}, timeout=bind_timeout)
-        except Exception:
-            return None   # the home page (~400 KB) timed out: BMA is busy, not this camera, so no backoff
-        raw = self._show(s, camid_str, timeout)
-        self._jars[camid_str] = s.cookies
-        if raw:
-            self._rebind_after.pop(camid_str, None)
-        else:
-            self._rebind_after[camid_str] = time.time() + self.REBIND_BACKOFF
-        return raw
-
-
-class BmaDatabase:
-    """Manages SQLite storage for BMA vehicle counts, latest metrics, and historical logs."""
-
-    def __init__(self, db_path=DB_PATH):
-        self.db_path = db_path
-        self.lock = threading.Lock()
-        self._init_db()
-
-    def _init_db(self):
-        with self.lock:
-            conn = sqlite3.connect(self.db_path, check_same_thread=False)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS bma_latest (
-                    camid           TEXT PRIMARY KEY,
-                    camera_code     TEXT,
-                    title           TEXT,
-                    road            TEXT,
-                    district        TEXT,
-                    latitude        REAL,
-                    longitude       REAL,
-                    cars            INTEGER NOT NULL DEFAULT 0,
-                    motorcycles     INTEGER NOT NULL DEFAULT 0,
-                    trucks          INTEGER NOT NULL DEFAULT 0,
-                    total           INTEGER NOT NULL DEFAULT 0,
-                    level           TEXT NOT NULL DEFAULT 'free',
-                    status          TEXT NOT NULL DEFAULT 'offline',
-                    latency_ms      REAL DEFAULT 0.0,
-                    ts              INTEGER NOT NULL DEFAULT 0,
-                    detections      TEXT DEFAULT '[]'
-                )
-            """)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS bma_history (
-                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                    camid           TEXT NOT NULL,
-                    hour            TEXT NOT NULL,
-                    cars            INTEGER NOT NULL DEFAULT 0,
-                    motorcycles     INTEGER NOT NULL DEFAULT 0,
-                    trucks          INTEGER NOT NULL DEFAULT 0,
-                    total           INTEGER NOT NULL DEFAULT 0,
-                    level           TEXT NOT NULL DEFAULT 'free',
-                    ts              INTEGER NOT NULL,
-                    date            TEXT,
-                    week            TEXT,
-                    month           TEXT,
-                    road            TEXT,
-                    district        TEXT
-                )
-            """)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS bma_archives (
-                    archive_id      TEXT PRIMARY KEY,
-                    ts              INTEGER NOT NULL,
-                    date_str        TEXT NOT NULL,
-                    total_cameras   INTEGER NOT NULL,
-                    online_cameras  INTEGER NOT NULL,
-                    total_vehicles  INTEGER NOT NULL,
-                    cars            INTEGER NOT NULL,
-                    motorcycles     INTEGER NOT NULL,
-                    trucks          INTEGER NOT NULL,
-                    free_count      INTEGER NOT NULL,
-                    moderate_count  INTEGER NOT NULL,
-                    heavy_count     INTEGER NOT NULL,
-                    csv_dir         TEXT NOT NULL,
-                    notes           TEXT DEFAULT ''
-                )
-            """)
-            # Ensure columns exist if table was previously created
-            existing_cols = [c[1] for c in conn.execute("PRAGMA table_info(bma_history)").fetchall()]
-            for col in ['date', 'week', 'month', 'road', 'district']:
-                if col not in existing_cols:
-                    try:
-                        conn.execute(f"ALTER TABLE bma_history ADD COLUMN {col} TEXT")
-                    except Exception:
-                        pass
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_bma_hist_hour ON bma_history (hour)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_bma_hist_cam ON bma_history (camid)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_bma_hist_date ON bma_history (date)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_bma_hist_week ON bma_history (week)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_bma_hist_month ON bma_history (month)")
-            conn.commit()
-            conn.close()
-
-    def update_camera_count(self, cam_info, cars, motos, trucks, total, level, status, latency_ms, detections):
-        now_dt = datetime.now()
-        now_ts = int(time.time())
-        hour_str = now_dt.strftime('%Y-%m-%dT%H:00')
-        date_str = now_dt.strftime('%Y-%m-%d')
-        week_str = now_dt.strftime('%Y-W%W')
-        month_str = now_dt.strftime('%Y-%m')
-        road_str = cam_info.get('road', '')
-        district_str = cam_info.get('district', '')
-        det_json = json.dumps(detections, ensure_ascii=False)
-
-        with self.lock:
-            conn = sqlite3.connect(self.db_path, check_same_thread=False)
-            conn.execute("""
-                INSERT INTO bma_latest (
-                    camid, camera_code, title, road, district, latitude, longitude,
-                    cars, motorcycles, trucks, total, level, status, latency_ms, ts, detections,
-                    acc_cars, acc_motorcycles, acc_trucks, acc_total, acc_scans
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                          CASE WHEN ? = 'online' THEN ? ELSE 0 END, CASE WHEN ? = 'online' THEN ? ELSE 0 END,
-                          CASE WHEN ? = 'online' THEN ? ELSE 0 END, CASE WHEN ? = 'online' THEN ? ELSE 0 END,
-                          CASE WHEN ? = 'online' THEN 1 ELSE 0 END)
-                ON CONFLICT(camid) DO UPDATE SET
-                    camera_code = excluded.camera_code,
-                    title = excluded.title,
-                    road = excluded.road,
-                    district = excluded.district,
-                    latitude = excluded.latitude,
-                    longitude = excluded.longitude,
-                    cars = CASE WHEN excluded.status = 'online' THEN excluded.cars ELSE bma_latest.cars END,
-                    motorcycles = CASE WHEN excluded.status = 'online' THEN excluded.motorcycles ELSE bma_latest.motorcycles END,
-                    trucks = CASE WHEN excluded.status = 'online' THEN excluded.trucks ELSE bma_latest.trucks END,
-                    total = CASE WHEN excluded.status = 'online' THEN excluded.total ELSE bma_latest.total END,
-                    level = CASE WHEN excluded.status = 'online' THEN excluded.level ELSE bma_latest.level END,
-                    status = excluded.status,
-                    latency_ms = excluded.latency_ms,
-                    ts = excluded.ts,
-                    detections = CASE WHEN excluded.status = 'online' THEN excluded.detections ELSE bma_latest.detections END,
-                    acc_cars = bma_latest.acc_cars + CASE WHEN excluded.status = 'online' THEN excluded.cars ELSE 0 END,
-                    acc_motorcycles = bma_latest.acc_motorcycles + CASE WHEN excluded.status = 'online' THEN excluded.motorcycles ELSE 0 END,
-                    acc_trucks = bma_latest.acc_trucks + CASE WHEN excluded.status = 'online' THEN excluded.trucks ELSE 0 END,
-                    acc_total = bma_latest.acc_total + CASE WHEN excluded.status = 'online' THEN excluded.total ELSE 0 END,
-                    acc_scans = bma_latest.acc_scans + CASE WHEN excluded.status = 'online' THEN 1 ELSE 0 END
-            """, (
-                cam_info['camid'],
-                cam_info.get('camera_code', ''),
-                cam_info.get('title', ''),
-                cam_info.get('road', ''),
-                cam_info.get('district', ''),
-                cam_info.get('latitude', 0.0),
-                cam_info.get('longitude', 0.0),
-                cars, motos, trucks, total, level, status, latency_ms, now_ts, det_json,
-                status, cars, status, motos, status, trucks, status, total, status
-            ))
-
-            # Record history only when online and counted
-            if status == 'online':
-                conn.execute("""
-                    INSERT INTO bma_history (camid, hour, cars, motorcycles, trucks, total, level, ts, date, week, month, road, district)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (cam_info['camid'], hour_str, cars, motos, trucks, total, level, now_ts, date_str, week_str, month_str, road_str, district_str))
-
-            conn.commit()
-            conn.close()
-
-    def get_all_latest(self):
-        with self.lock:
-            conn = sqlite3.connect(self.db_path, check_same_thread=False)
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute("SELECT * FROM bma_latest ORDER BY total DESC").fetchall()
-            conn.close()
-            return [dict(r) for r in rows]
-
-    def get_camera_latest(self, camid):
-        with self.lock:
-            conn = sqlite3.connect(self.db_path, check_same_thread=False)
-            conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM bma_latest WHERE camid = ?", (camid,)).fetchone()
-            conn.close()
-            return dict(row) if row else None
-
-    def get_history_summary(self, hours=24):
-        with self.lock:
-            conn = sqlite3.connect(self.db_path, check_same_thread=False)
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute("""
-                SELECT hour,
-                       SUM(cars) as cars,
-                       SUM(motorcycles) as motorcycles,
-                       SUM(trucks) as trucks,
-                       SUM(total) as total,
-                       COUNT(DISTINCT camid) as cam_count
-                FROM bma_history
-                WHERE ts >= ?
-                GROUP BY hour
-                ORDER BY hour ASC
-            """, (int(time.time() - hours * 3600),)).fetchall()
-            conn.close()
-            return [dict(r) for r in rows]
 
 class BmaScanner:
     """High-performance multi-threaded scanner that processes all BMA cameras with YOLO."""
