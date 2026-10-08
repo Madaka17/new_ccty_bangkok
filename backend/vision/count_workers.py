@@ -5,7 +5,7 @@ import threading
 import time
 from collections import deque
 
-from backend.vision.yolo_detector import VehicleTracker, frame_video_time, skip_elapsed_frames
+from backend.vision.vehicle_tracker import VehicleTracker, frame_video_time, skip_elapsed_frames
 
 
 class CountManager:
