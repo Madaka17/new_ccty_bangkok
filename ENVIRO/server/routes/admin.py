@@ -217,7 +217,7 @@ HISTORICAL_MAE_LAO_2014 = {
 @bp.post("/simulate-quake")
 @auth.require_role("admin", "operator")
 def simulate_quake():
-    from ..simulator import solve_magnitude_for_mmi
+    from ..seismology import solve_magnitude_for_mmi
 
     body = request.get_json(silent=True) or {}
     speed_multiplier = min(100.0, max(1.0, float(body.get("speed_multiplier", 1.0))))
@@ -233,7 +233,7 @@ def simulate_quake():
         )
 
     if body.get("historical_event") == "andaman_l6":
-        from ..simulator import solve_magnitude_for_mmi as _solve
+        from ..seismology import solve_magnitude_for_mmi as _solve
         d = HISTORICAL_ANDAMAN_MEGATHRUST
         conn0 = dbmod.get_conn()
         level6 = conn0.execute("SELECT mmi_min FROM levels WHERE lv=6").fetchone()

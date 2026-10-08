@@ -2,7 +2,7 @@ import cv2
 import threading
 import time
 
-from backend.vision.yolo_detector import VehicleTracker, frame_video_time
+from backend.vision.vehicle_tracker import VehicleTracker, frame_video_time
 
 
 class SurveyManager:

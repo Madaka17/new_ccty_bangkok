@@ -125,8 +125,8 @@ def test_route_through_real_sensor_avoids_it_and_says_what_was_missing(monkeypat
     assert r["avoided"] and r["avoided"][0]["source"] == "เซ็นเซอร์น้ำ กทม."
     assert r["flood_checked"] is False and r["flood_missing"] == ["กรมทางหลวง"]
 
-    from backend.agents import chat_service as cs
-    text = "\n".join(cs.route_context(r))
+    from backend.agents import chat_context as ctx
+    text = "\n".join(ctx.route_context(r))
     assert "ตรวจน้ำท่วมได้ไม่ครบ" in text and "กรมทางหลวง" in text and "ไม่พบจุดน้ำท่วม" not in text
 
 
@@ -136,7 +136,7 @@ def test_no_flood_source_means_not_checked(monkeypatch):
     monkeypatch.setattr(fr.FloodRouter, "_valhalla", lambda self, a, b, avoid: [_trip(STRAIGHT, "ถนนตรง")])
     r = fr.FloodRouter(hazards=lambda: fr.gather([("เซ็นเซอร์น้ำ กทม.", down)])).plan(A, B)
     assert r["flood_checked"] is False and r["flood_missing"] == []
-    from backend.agents import chat_service as cs
-    text = "\n".join(cs.route_context(r))
+    from backend.agents import chat_context as ctx
+    text = "\n".join(ctx.route_context(r))
     assert "ห้ามบอกว่าอ้อมน้ำท่วม" in text and "ไม่พบจุดน้ำท่วม" not in text
     assert "เส้นนี้ไม่ได้อ้อมจุดน้ำท่วมใด" in text

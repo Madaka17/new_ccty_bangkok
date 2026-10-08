@@ -29,7 +29,6 @@ import base64
 import csv
 import json
 import os
-import re
 import queue
 import sqlite3
 import threading
@@ -43,6 +42,7 @@ from backend.core import local_llm
 from backend.core.instance import DEFAULT_BMA_DATA_DIR
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
+from backend.vision.frame_utils import fingerprint, iou, safe_id, safe_name, same_scene, write_jpeg
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "wrongway")
 FIELD_DIR = os.path.join(DATA_DIR, "cache", "heading")
 ARCHIVE_DIR = os.getenv("WRONGWAY_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", DEFAULT_BMA_DATA_DIR), "wrongway"))
@@ -105,50 +105,6 @@ AGENT_PROMPT = (
 )
 
 
-_SAFE_ID = re.compile(r"[\w.-]{1,120}")   # \w as in _safe(): letters, digits, _
-
-
-def _safe_id(s):
-    """An id from a URL, usable in a file name: never a path (no separators, no drive, no ..)."""
-    s = str(s)
-    if not _SAFE_ID.fullmatch(s) or ".." in s:
-        raise ValueError("bad id")
-    return s
-
-
-def _safe(s):
-    return "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in str(s))
-
-
-def _write_jpeg(path, img, q=90):
-    ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, q])
-    if not ok:
-        return False
-    with open(path, "wb") as f:
-        f.write(buf.tobytes())
-    return True
-
-
-def _fingerprint(frame):
-    small = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (24, 18), interpolation=cv2.INTER_AREA)
-    return small.tobytes()
-
-
-def _same_scene(a, b, tol=6):
-    if a is None or b is None or len(a) != len(b):
-        return False
-    return int(np.abs(np.frombuffer(a, np.uint8).astype(np.int16) - np.frombuffer(b, np.uint8).astype(np.int16)).mean()) <= tol
-
-
-def _iou(a, b):
-    ix1, iy1, ix2, iy2 = max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3])
-    inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
-    if not inter:
-        return 0.0
-    ua = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
-    return inter / ua if ua else 0.0
-
-
 class HeadingField:
     """Votes per grid cell per heading for one camera, persisted in cache/heading/<camid>.json."""
 
@@ -161,7 +117,7 @@ class HeadingField:
 
     @property
     def path(self):
-        return os.path.join(FIELD_DIR, f"{_safe(self.camid)}.json")
+        return os.path.join(FIELD_DIR, f"{safe_name(self.camid)}.json")
 
     def load(self):
         try:
@@ -315,16 +271,16 @@ class WrongWayPatrol:
 
     @staticmethod
     def crop_path(wid):
-        return os.path.join(CACHE_DIR, f"{_safe_id(wid)}.jpg")
+        return os.path.join(CACHE_DIR, f"{safe_id(wid)}.jpg")
 
     @staticmethod
     def frame_path(wid):
-        return os.path.join(CACHE_DIR, f"{_safe_id(wid)}_frame.jpg")
+        return os.path.join(CACHE_DIR, f"{safe_id(wid)}_frame.jpg")
 
     @staticmethod
     def boxed_path(wid):
         """The frame with the red box only: what the cloud agent sees."""
-        return os.path.join(CACHE_DIR, f"{_safe_id(wid)}_box.jpg")
+        return os.path.join(CACHE_DIR, f"{safe_id(wid)}_box.jpg")
 
     def provider(self):
         v = self.vision
@@ -391,8 +347,8 @@ class WrongWayPatrol:
             return []
         camid = str(cam.get("camid"))
         now = time.time()
-        fp = _fingerprint(frame)
-        if not force and _same_scene(fp, self._last_frame.get(camid)):
+        fp = fingerprint(frame)
+        if not force and same_scene(fp, self._last_frame.get(camid)):
             return []          # frozen feed: same picture would vote twice and re-flag the same car
         self._last_frame[camid] = fp
         h, w = frame.shape[:2]
@@ -426,18 +382,18 @@ class WrongWayPatrol:
         if not force and now - self._last_visit.get(camid, 0) < COOLDOWN:
             return []
         prev = self._last_boxes.get(camid, [])
-        cands = [c for c in cands if not any(_iou(c[4], pb) >= 0.5 for pb in prev)]
+        cands = [c for c in cands if not any(iou(c[4], pb) >= 0.5 for pb in prev)]
         if not cands:
             return []
         self._last_visit[camid] = now
         cands.sort(key=lambda c: -c[0])
         ids = []
         for n, (conf, group, head, known, box) in enumerate(cands[:PER_CAM]):
-            wid = f"{_safe(camid)}-{int(now)}-{n}"
+            wid = f"{safe_name(camid)}-{int(now)}-{n}"
             crop, marked, boxed = self._evidence(frame, box, known)
-            _write_jpeg(self.crop_path(wid), crop)
-            _write_jpeg(self.frame_path(wid), marked, 88)
-            _write_jpeg(self.boxed_path(wid), boxed, 88)
+            write_jpeg(self.crop_path(wid), crop)
+            write_jpeg(self.frame_path(wid), marked, 88)
+            write_jpeg(self.boxed_path(wid), boxed, 88)
             self._insert((wid, int(now), camid, cam.get("title") or cam.get("short_title") or camid, cam.get("district"),
                           json.dumps(list(box)), HEADINGS[head], HEADINGS[known], round(conf, 3),
                           "pending", None, None, None, None))
@@ -605,14 +561,14 @@ class WrongWayPatrol:
             dt = datetime.fromtimestamp(ts)
             day_dir = os.path.join(ARCHIVE_DIR, dt.strftime("%Y-%m-%d"))
             os.makedirs(day_dir, exist_ok=True)
-            stem = os.path.join(day_dir, f"{_safe(camid)}_{dt.strftime('%H%M%S')}_{wid[-1]}")
+            stem = os.path.join(day_dir, f"{safe_name(camid)}_{dt.strftime('%H%M%S')}_{wid[-1]}")
             frame_out, crop_out = stem + ".jpg", stem + "_crop.jpg"
             banner = marked.copy()
             label = f"WRONG WAY {conf:.0%}  {dt.strftime('%Y-%m-%d %H:%M:%S')}"
             cv2.rectangle(banner, (0, 0), (banner.shape[1], 22), (0, 0, 0), -1)
             cv2.putText(banner, label, (4, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-            _write_jpeg(frame_out, banner, 92)
-            _write_jpeg(crop_out, crop, 92)
+            write_jpeg(frame_out, banner, 92)
+            write_jpeg(crop_out, crop, 92)
             index = os.path.join(ARCHIVE_DIR, "wrongway.csv")
             new_file = not os.path.exists(index)
             with open(index, "a", newline="", encoding="utf-8-sig") as f:
@@ -798,7 +754,7 @@ class WrongWayPatrol:
 
     def field_cells(self, camid):
         fl = self.fields.get(str(camid))
-        if fl is None and os.path.exists(os.path.join(FIELD_DIR, f"{_safe(camid)}.json")):
+        if fl is None and os.path.exists(os.path.join(FIELD_DIR, f"{safe_name(camid)}.json")):
             fl = self.field(str(camid))
         return {"camid": str(camid), "cols": GRID_COLS, "rows": GRID_ROWS, "min_votes": HEADING_MIN_VOTES,
                 "summary": fl.summary() if fl else None, "cells": fl.cells() if fl else []}
