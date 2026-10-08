@@ -29,7 +29,12 @@ class _StripPrefix:
 
     def __call__(self, environ, start_response):
         path = environ.get("PATH_INFO", "")
-        if path == self.prefix or path.startswith(self.prefix + "/"):
+        if path == self.prefix:
+            # /enviro without the slash: the page loads css/ and js/ by relative paths, which only resolve under /enviro/
+            query = environ.get("QUERY_STRING", "")
+            start_response("301 Moved Permanently", [("Location", self.prefix + "/" + (f"?{query}" if query else ""))])
+            return [b""]
+        if path.startswith(self.prefix + "/"):
             environ["SCRIPT_NAME"] = environ.get("SCRIPT_NAME", "") + self.prefix
             environ["PATH_INFO"] = path[len(self.prefix):] or "/"
         return self.app(environ, start_response)
@@ -58,6 +63,16 @@ def create_app():
     @app.get("/")
     def index():
         return send_from_directory(FRONTEND_DIR, "index.html")
+
+    # The page's styles and scripts (frontend/css, frontend/js). no-cache, like the page itself: Cloudflare would
+    # otherwise keep an old .js for hours after a change.
+    @app.get("/css/<path:name>")
+    def frontend_css(name):
+        return send_from_directory(os.path.join(FRONTEND_DIR, "css"), name, max_age=0)
+
+    @app.get("/js/<path:name>")
+    def frontend_js(name):
+        return send_from_directory(os.path.join(FRONTEND_DIR, "js"), name, max_age=0)
 
     @app.get("/health")
     def health():
