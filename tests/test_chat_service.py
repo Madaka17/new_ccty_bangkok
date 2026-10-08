@@ -1,19 +1,23 @@
 """Chat context builders: never crash on missing data, and put the place the user asked about first."""
+from backend.agents import chat_context as ctx
+from backend.agents import chat_offline as offline
+from backend.agents import chat_route as route
+from backend.agents import chat_topics as topics
 from backend.agents import chat_service as cs
 
 
 def test_asked_matches_with_or_without_prefix():
-    assert cs._asked("ฝุ่นบางนาเป็นไง", "เขตบางนา")
-    assert cs._asked("ฝุ่นเขตบางนาเป็นไง", "บางนา")
-    assert not cs._asked("ฝุ่นบางนาเป็นไง", "เขตดินแดง", None, "")
+    assert ctx._asked("ฝุ่นบางนาเป็นไง", "เขตบางนา")
+    assert ctx._asked("ฝุ่นเขตบางนาเป็นไง", "บางนา")
+    assert not ctx._asked("ฝุ่นบางนาเป็นไง", "เขตดินแดง", None, "")
 
 
 def test_asked_ignores_very_short_names():
-    assert not cs._asked("ถนนสายไหน", "สา")
+    assert not ctx._asked("ถนนสายไหน", "สา")
 
 
 def test_site_context_empty_sources():
-    assert cs.site_context("อะไรก็ได้", {}) == []
+    assert ctx.site_context("อะไรก็ได้", {}) == []
 
 
 def test_road_flood_context_puts_named_road_before_district():
@@ -21,7 +25,7 @@ def test_road_flood_context_puts_named_road_before_district():
              for i in range(10)]
     items.append({"road": "ถนนสุขุมวิท", "district": "สวนหลวง", "province": "กรุงเทพมหานคร", "level_th": "ปกติ", "class": 0})
     rr = {"items": items, "counts": {"watch": 10, "none": 1}, "level_th": {"watch": "เฝ้าระวัง", "none": "ปกติ"}, "total": 11}
-    lines = cs.road_flood_context(rr, None, "ถนนสุขุมวิทแถวบางนาน้ำท่วมไหม")
+    lines = ctx.road_flood_context(rr, None, "ถนนสุขุมวิทแถวบางนาน้ำท่วมไหม")
     assert "ถนนสุขุมวิท" in lines[1]
 
 
@@ -29,7 +33,7 @@ def test_air_context_lists_asked_station():
     air = {"avg_pm25": 20, "total": 7, "counts": {"good": 7}, "updated_at": 0,
            "items": [{"name": f"สถานี {i}", "area": f"เขตที่ {i}", "province": "กทม.", "pm25": 50 - i, "label": "ดี"} for i in range(6)]
            + [{"name": "ริมถนนบางนา", "area": "เขตบางนา", "province": "กทม.", "pm25": 10, "label": "ดีมาก"}]}
-    text = "\n".join(cs.air_context(air, "ฝุ่นบางนา"))
+    text = "\n".join(ctx.air_context(air, "ฝุ่นบางนา"))
     assert "ริมถนนบางนา" in text
 
 
@@ -51,13 +55,13 @@ AIR = {"avg_pm25": 20, "total": 1, "counts": {}, "updated_at": 0,
 
 
 def test_place_names_do_not_pick_a_topic():
-    assert cs.question_topics("ใช้เวลานานไหม จากพระราม 2 ไป สีลม") == ["traffic"]     # สี"ลม" is not wind
-    assert cs.question_topics("ปั๊มน้ำมันแถวสีลม") == []
-    assert cs.question_topics("สีลมน้ำท่วมไหม") == ["flood"]
+    assert topics.question_topics("ใช้เวลานานไหม จากพระราม 2 ไป สีลม") == ["traffic"]     # สี"ลม" is not wind
+    assert topics.question_topics("ปั๊มน้ำมันแถวสีลม") == []
+    assert topics.question_topics("สีลมน้ำท่วมไหม") == ["flood"]
 
 
 def test_offline_route_question_gets_traffic_not_flood():
-    reply = cs.rule_based_reply(_Traffic(), "ใช้เวลานานไหม จากพระราม 2 ไป สีลม", WATER, {})
+    reply = offline.rule_based_reply(_Traffic(), "ใช้เวลานานไหม จากพระราม 2 ไป สีลม", WATER, {})
     assert "น้ำท่วมถนน" not in reply and "ถนนพระราม 4" in reply and "flow" not in reply
 
 
@@ -96,27 +100,27 @@ def test_chat_uses_local_model_and_falls_back(monkeypatch):
 def test_patrol_context_formats_counts():
     helmet = {"status": {"today": {"captures": 10, "no_helmet": 2, "helmet": 7, "unclear": 1, "pending": 0}, "total_no_helmet": 5},
               "recent": []}
-    lines = cs.patrol_context(helmet, None, {"counts": {"wrong_way": 3}})
+    lines = ctx.patrol_context(helmet, None, {"counts": {"wrong_way": 3}})
     assert "ไม่สวม 2" in lines[0]
     assert "ย้อนศร 3" in lines[-1]
 
 
 def test_route_questions():
-    assert cs.wants_route("จากบางนาไปสีลม เลี่ยงน้ำท่วม")
-    assert cs.wants_route("ไปลาดกระบังทางไหนดี")
-    assert not cs.wants_route("ถนนไหนติดที่สุดตอนนี้")
-    assert not cs.wants_route("พรุ่งนี้ฝนจะตกไหม")
-    assert cs._trip_by_pattern("จากบางนาไปสีลมยังไงดี") == ("บางนา", "สีลม")
-    assert cs._trip_by_pattern("ไปที่เซ็นทรัลเวิลด์ทางไหนดี") == ("", "เซ็นทรัลเวิลด์")
+    assert topics.wants_route("จากบางนาไปสีลม เลี่ยงน้ำท่วม")
+    assert topics.wants_route("ไปลาดกระบังทางไหนดี")
+    assert not topics.wants_route("ถนนไหนติดที่สุดตอนนี้")
+    assert not topics.wants_route("พรุ่งนี้ฝนจะตกไหม")
+    assert route._trip_by_pattern("จากบางนาไปสีลมยังไงดี") == ("บางนา", "สีลม")
+    assert route._trip_by_pattern("ไปที่เซ็นทรัลเวิลด์ทางไหนดี") == ("", "เซ็นทรัลเวิลด์")
 
 
 def test_answer_style_matches_question():
-    assert "เส้นทาง" in cs.answer_style("จากบางนาไปสีลม", ["traffic"], route=True)
+    assert "เส้นทาง" in topics.answer_style("จากบางนาไปสีลม", ["traffic"], route=True)
     q = "ตอนนี้ควรเลี่ยงถนนไหน"
-    assert "ถนนที่ควรเลี่ยง" in cs.answer_style(q, cs.question_topics(q))
+    assert "ถนนที่ควรเลี่ยง" in topics.answer_style(q, topics.question_topics(q))
     q = "พรุ่งนี้ฝนจะตกไหม"
-    assert "อากาศ" in cs.answer_style(q, cs.question_topics(q))
-    assert cs.answer_style("แปลคำว่า hello", []) == ""
+    assert "อากาศ" in topics.answer_style(q, topics.question_topics(q))
+    assert topics.answer_style("แปลคำว่า hello", []) == ""
 
 
 ROUTE = {"origin": {"name": "บางนา", "label": "บางนา"}, "destination": {"name": "สีลม", "label": "สีลม"},
@@ -140,7 +144,7 @@ class _Router:
 
 
 def test_route_context_names_the_avoided_flood():
-    text = "\n".join(cs.route_context(ROUTE))
+    text = "\n".join(ctx.route_context(ROUTE))
     assert "ถนนพระราม 4" in text and "ถนนสุขุมวิท 101 25 ซม." in text and "32-42 นาที" in text
 
 
@@ -172,7 +176,7 @@ def test_weather_context_lists_days():
     outlook = {"days": [{"day": "พรุ่งนี้", "date": "2026-10-05", "text": "ฝนตก", "rain_mm": 5.0,
                          "rain_hours": "14:00-18:00", "tmin": 25, "tmax": 32}]}
     tmd = {"active": [{"date": "2026-10-04", "title": "ฝนตกหนัก", "summary": "", "bkk": True}]}
-    lines = cs.weather_context(outlook, None, tmd)
+    lines = ctx.weather_context(outlook, None, tmd)
     assert "พรุ่งนี้" in lines[1] and "14:00-18:00" in lines[1] and "25-32" in lines[1]
     assert "ฝนตกหนัก" in lines[-1]
 
@@ -192,23 +196,23 @@ PROVINCES = {"updated_at": 0, "counts": {"critical": 1, "flood": 0, "watch": 0, 
 
 
 def test_named_places_by_name_alias_and_district():
-    assert [p for p, _ in cs.named_places("อยุธยาน้ำท่วมไหม")] == ["พระนครศรีอยุธยา"]
-    assert [p for p, _ in cs.named_places("จังหวัดเชียงใหม่ฝนตกไหม")] == ["เชียงใหม่"]
-    assert cs.named_places("ปากช่องรถติดไหม", AREAS) == [("นครราชสีมา", ["ปากช่อง"])]
-    assert cs.named_places("รถติดไหม", AREAS) == []
+    assert [p for p, _ in ctx.named_places("อยุธยาน้ำท่วมไหม")] == ["พระนครศรีอยุธยา"]
+    assert [p for p, _ in ctx.named_places("จังหวัดเชียงใหม่ฝนตกไหม")] == ["เชียงใหม่"]
+    assert ctx.named_places("ปากช่องรถติดไหม", AREAS) == [("นครราชสีมา", ["ปากช่อง"])]
+    assert ctx.named_places("รถติดไหม", AREAS) == []
 
 
 def test_province_traffic_context_puts_asked_district_first():
-    lines = cs.province_traffic_context(AREAS, [("นครราชสีมา", ["ปากช่อง"])])
+    lines = ctx.province_traffic_context(AREAS, [("นครราชสีมา", ["ปากช่อง"])])
     text = "\n".join(lines)
     assert "จังหวัดนครราชสีมา" in text and "อ.ปากช่อง: ติดขัด" in text
     assert lines[-1].startswith("จังหวัดที่รถติดที่สุดตอนนี้: นครราชสีมา")
 
 
 def test_province_flood_context_reads_asked_province_and_worst():
-    asked = "\n".join(cs.province_flood_context(PROVINCES, [("พระนครศรีอยุธยา", [])]))
+    asked = "\n".join(ctx.province_flood_context(PROVINCES, [("พระนครศรีอยุธยา", [])]))
     assert "วิกฤต ล้นตลิ่ง 12 จุด" in asked and "สะพานหัวเวียง" in asked and "129% ของความสูงตลิ่ง" in asked
-    other = "\n".join(cs.province_flood_context(PROVINCES, []))
+    other = "\n".join(ctx.province_flood_context(PROVINCES, []))
     assert "จังหวัดที่น้ำท่วมหนัก" in other and "พระนครศรีอยุธยา" in other
 
 
