@@ -4,7 +4,7 @@ Every REFRESH_SECONDS this builds a set of facts from the live catalogs world_qu
 EMSC, GEOFON, TMD) over the last WINDOW_DAYS, with nothing guessed:
   - the events: time, place, magnitude, depth, the catalog that reported it, the nearest plate boundary
     (Bird 2003, PB2002) and the nearest mapped active fault (GEM GAF-DB, see world_faults.py)
-  - the shaking each Thai province could have felt: predict_mmi() (simulator.py) at the distance to its
+  - the shaking each Thai province could have felt: predict_mmi() (seismology.py) at the distance to its
     provincial capital, plus AMPLIFY_MMI on the Bangkok basin's soft clay
   - what that level of shaking does to buildings (db.LEVELS) and the standing hazard from Thailand's own
     active faults (risk_scores, db.FAULTS)
@@ -29,7 +29,7 @@ from . import db as dbmod
 from . import world_faults
 from . import world_quakes
 from .geo import haversine_km
-from .simulator import FELT_MMI_THRESHOLD, mmi_roman, predict_mmi
+from .seismology import FELT_MMI_THRESHOLD, mmi_roman, predict_mmi
 
 WINDOW_DAYS = 7
 GLOBAL_MIN_MAG = 4.5         # "worldwide": every event this size or bigger

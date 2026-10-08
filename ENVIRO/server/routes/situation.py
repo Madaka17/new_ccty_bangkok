@@ -2,7 +2,8 @@ from datetime import datetime
 from flask import Blueprint, jsonify, current_app
 
 from .. import db as dbmod
-from ..simulator import VP_KM_S, VS_KM_S, CONFIDENCE_LABELS, Simulator, predict_mmi, mmi_roman, felt_radius_km
+from ..seismology import felt_radius_km, mmi_roman, predict_mmi
+from ..simulator import VP_KM_S, VS_KM_S, CONFIDENCE_LABELS, Simulator
 from ..geo import haversine_km
 
 bp = Blueprint("situation", __name__, url_prefix="/api/situation")
@@ -23,7 +24,7 @@ def get_situation():
     # ago would keep being reported as "currently happening" on every future
     # page load or server restart, forever. An event stops counting as
     # current the moment its own S-wave has swept past its felt radius (see
-    # simulator.felt_radius_km) -- the same physical threshold that already
+    # seismology.felt_radius_km) -- the same physical threshold that already
     # governs when the frontend's map ripple stops animating, so "is this
     # event still active" agrees everywhere instead of the REST response
     # resurrecting something the map has long since stopped showing.
