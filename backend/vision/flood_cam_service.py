@@ -42,7 +42,7 @@ import numpy as np
 from backend.bma.bma_service import CACHE_DIR as SNAPSHOT_DIR   # the scanner's last annotated frame per camera
 from backend.core import local_llm
 from backend.core.instance import DATA_DIR   # cache root: instances/production, or instances/test for the test server
-from backend.vision.helmet_service import _fingerprint, _same_scene
+from backend.vision.frame_utils import fingerprint, same_scene
 
 STATE_FILE = os.path.join(DATA_DIR, "cache", "flood_cams.json")
 FRAME_DIR = os.path.join(DATA_DIR, "cache", "flood_cams")
@@ -231,7 +231,7 @@ class FloodCamWatch:
         ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
         if ok:
             with self._lock:
-                self._frames[camid] = (buf.tobytes(), time.time(), _fingerprint(frame))
+                self._frames[camid] = (buf.tobytes(), time.time(), fingerprint(frame))
 
     def _seed(self):
         """The scanner's saved snapshots, so a restart while the BMA site is down still has frames to check."""
@@ -250,7 +250,7 @@ class FloodCamWatch:
             if img is None:
                 continue
             with self._lock:
-                self._frames.setdefault(camid, (jpeg, ts, _fingerprint(img)))
+                self._frames.setdefault(camid, (jpeg, ts, fingerprint(img)))
 
     # ------------------------------------------------------------ worker
     def start(self):
@@ -302,7 +302,7 @@ class FloodCamWatch:
                 wait = WET_INTERVAL if st["level"] in WET else INTERVAL
                 if ts <= st["frame_ts"] or now - st["checked_at"] < wait:
                     continue
-                if _same_scene(fp, self._judged.get(camid)):
+                if same_scene(fp, self._judged.get(camid)):
                     continue   # frozen feed: same picture as the one already judged
             out.append((0 if st and st["level"] in WET else 1 if not st else 2, st["checked_at"] if st else 0, camid))
         return [camid for _, _, camid in sorted(out)]

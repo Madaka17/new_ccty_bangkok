@@ -25,7 +25,6 @@ import base64
 import csv
 import json
 import os
-import re
 import queue
 import sqlite3
 import threading
@@ -40,6 +39,7 @@ from backend.core import local_llm
 from backend.core.instance import DEFAULT_BMA_DATA_DIR
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
+from backend.vision.frame_utils import fingerprint, iou, safe_id, safe_name, same_scene, write_jpeg
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "helmet")
 ARCHIVE_DIR = os.getenv("HELMET_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", DEFAULT_BMA_DATA_DIR), "helmet"))
 LOCAL_DET_PATH = os.getenv("HELMET_DET", os.path.join(BASE_DIR, "helmet_det.pt"))
@@ -82,52 +82,6 @@ AGENT_PROMPT = (
     "clearly visible (too small, blurred, dark, cut off, or the object is not a motorcycle) set no_helmet to 0 "
     "and confidence below 0.5. Never guess."
 )
-
-
-_SAFE_ID = re.compile(r"[\w.-]{1,120}")   # \w as in _safe(): letters, digits, _
-
-
-def _safe_id(s):
-    """An id from a URL, usable in a file name: never a path (no separators, no drive, no ..)."""
-    s = str(s)
-    if not _SAFE_ID.fullmatch(s) or ".." in s:
-        raise ValueError("bad id")
-    return s
-
-
-def _fingerprint(frame):
-    """Tiny grayscale thumbnail bytes: equal for a frozen feed, different for any real new frame."""
-    small = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (24, 18), interpolation=cv2.INTER_AREA)
-    return small.tobytes()
-
-
-def _same_scene(a, b, tol=6):
-    if a is None or b is None or len(a) != len(b):
-        return False
-    return int(np.abs(np.frombuffer(a, np.uint8).astype(np.int16) - np.frombuffer(b, np.uint8).astype(np.int16)).mean()) <= tol
-
-
-def _iou(a, b):
-    ix1, iy1, ix2, iy2 = max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3])
-    inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
-    if not inter:
-        return 0.0
-    ua = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
-    return inter / ua if ua else 0.0
-
-
-def _safe(s):
-    return "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in str(s))
-
-
-def _write_jpeg(path, img, q=90):
-    # cv2.imwrite cannot take non-ASCII paths on Windows (the data dir has a space / Thai in places)
-    ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, q])
-    if not ok:
-        return False
-    with open(path, "wb") as f:
-        f.write(buf.tobytes())
-    return True
 
 
 class HelmetPatrol:
@@ -211,11 +165,11 @@ class HelmetPatrol:
     # ------------------------------------------------------------ paths
     @staticmethod
     def crop_path(hid):
-        return os.path.join(CACHE_DIR, f"{_safe_id(hid)}.jpg")
+        return os.path.join(CACHE_DIR, f"{safe_id(hid)}.jpg")
 
     @staticmethod
     def frame_path(hid):
-        return os.path.join(CACHE_DIR, f"{_safe_id(hid)}_frame.jpg")
+        return os.path.join(CACHE_DIR, f"{safe_id(hid)}_frame.jpg")
 
     def provider(self):
         if HELMET_AGENT == "qwen" and local_llm.default.enabled():
@@ -240,12 +194,12 @@ class HelmetPatrol:
         if not motos:
             return []
         # Frozen feed (BMA keeps serving the same frame): same picture as last time -> nothing new to check
-        fp = _fingerprint(frame)
-        if not force and _same_scene(fp, self._last_frame.get(camid)):
+        fp = fingerprint(frame)
+        if not force and same_scene(fp, self._last_frame.get(camid)):
             return []
         # A bike standing in the same spot as last capture (parked, or a stuck frame) is not a new rider
         prev = self._last_boxes.get(camid, [])
-        motos = [m for m in motos if not any(_iou(m[:4], pb) >= 0.6 for pb in prev)]
+        motos = [m for m in motos if not any(iou(m[:4], pb) >= 0.6 for pb in prev)]
         if not motos:
             self._last_frame[camid] = fp
             return []
@@ -264,11 +218,11 @@ class HelmetPatrol:
             scale = max(1.0, CROP_MIN_SIDE / max(crop.shape[:2]))
             if scale > 1.0:
                 crop = cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
-            hid = f"{_safe(camid)}-{int(now)}-{n}"
-            _write_jpeg(self.crop_path(hid), crop)
+            hid = f"{safe_name(camid)}-{int(now)}-{n}"
+            write_jpeg(self.crop_path(hid), crop)
             marked = frame.copy()
             cv2.rectangle(marked, (x1, y1), (x2, y2), (0, 0, 255), 2)
-            _write_jpeg(self.frame_path(hid), marked, 85)
+            write_jpeg(self.frame_path(hid), marked, 85)
             self._insert((hid, int(now), camid, cam.get("title") or cam.get("short_title") or camid, cam.get("district"),
                           json.dumps([x1, y1, x2, y2]), "pending", None, None, None, None, None, None))
             self._queue.put((hid, camid, cam, crop, marked))
@@ -511,14 +465,14 @@ class HelmetPatrol:
             dt = datetime.fromtimestamp(ts)
             day_dir = os.path.join(ARCHIVE_DIR, dt.strftime("%Y-%m-%d"))
             os.makedirs(day_dir, exist_ok=True)
-            stem = os.path.join(day_dir, f"{_safe(camid)}_{dt.strftime('%H%M%S')}_{hid[-1]}")
+            stem = os.path.join(day_dir, f"{safe_name(camid)}_{dt.strftime('%H%M%S')}_{hid[-1]}")
             frame_out, crop_out = stem + ".jpg", stem + "_crop.jpg"
             label = f"NO HELMET {bad}/{riders} {conf:.0%}  {dt.strftime('%Y-%m-%d %H:%M:%S')}"
             banner = marked.copy()
             cv2.rectangle(banner, (0, 0), (banner.shape[1], 18), (0, 0, 0), -1)
             cv2.putText(banner, label, (4, 13), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 255), 1, cv2.LINE_AA)
-            _write_jpeg(frame_out, banner, 92)
-            _write_jpeg(crop_out, crop, 92)
+            write_jpeg(frame_out, banner, 92)
+            write_jpeg(crop_out, crop, 92)
             index = os.path.join(ARCHIVE_DIR, "helmet.csv")
             new_file = not os.path.exists(index)
             with open(index, "a", newline="", encoding="utf-8-sig") as f:
