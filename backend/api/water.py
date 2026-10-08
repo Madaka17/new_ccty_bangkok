@@ -11,6 +11,7 @@ from backend.traffic.traffic_service import traffic
 from backend.water import north_flow, river_roads, water_service
 from backend.water.flood_feeds import hdms_floods, js100_floods, traffy_reports
 from backend.water.flood_service import flood_roads
+from backend.water.water_forecast import get_forecast
 
 router = APIRouter()
 
@@ -124,7 +125,7 @@ def water_map():
 def water_forecast(station: int = Query(..., ge=1)):
     """Observed + official (HII) or local tidal-harmonic outlook for one telemetry station."""
     try:
-        return water_service.get_forecast(station)
+        return get_forecast(station)
     except Exception as e:
         return JSONResponse(status_code=503, content={"error": str(e)})
 

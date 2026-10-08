@@ -6,7 +6,7 @@ Data: RID key gauges relayed by ThaiWater (the same keyed API as water_service):
 discharge (m3/s) for the last FIT_DAYS days, the bank height and each gauge's bank-full discharge
 (qmax, the "ความจุลำน้ำ" RID reports against). Upstream dams come from the National Thai Water snapshot
 water_service already caches, and the HII 7-day level forecasts at Nakhon Sawan, Ayutthaya and
-Nonthaburi from water_service.get_forecast.
+Nonthaburi from water_forecast.get_forecast.
 
 Model (flow routing, not a hydraulic simulation): each reach passes the change in its upstream discharge
 down after a travel time,
@@ -38,7 +38,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 
-from backend.water import water_service as ws
+from backend.water import water_forecast, water_service as ws
 
 FLOW_TTL = 600           # the outlook, with the 10-minute estimates
 RID_TTL = 1800           # ThaiWater relays the RID gauges hourly
@@ -377,7 +377,7 @@ def _in_text(hours):
 def _official(sid):
     """Peak of the HII 7-day level forecast against the bank, or None."""
     try:
-        f = ws.get_forecast(sid)
+        f = water_forecast.get_forecast(sid)
     except Exception as e:  # noqa: BLE001 - the routed outlook stands without it
         print(f"[NorthFlow] HII forecast {sid}: {e}")
         return None

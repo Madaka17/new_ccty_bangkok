@@ -32,7 +32,7 @@ from datetime import datetime, timedelta
 
 from backend.core import local_llm
 from backend.core.instance import BASE_DIR
-from backend.water import north_flow, water_service as ws
+from backend.water import north_flow, water_forecast, water_service as ws
 
 REFRESH_SECONDS = int(os.getenv("NORTH_ROUTE_SECONDS", "1800"))
 AI_MAX_AGE = int(os.getenv("NORTH_ROUTE_AI_MAX_AGE", "10800"))
@@ -160,7 +160,7 @@ def gauge_days(s, now, rain=None):
 def bangkok_days(now):
     """Nonthaburi-Bangkok from HII's level forecast at สะพานนวลฉวี: [{day, msl, below_bank, level}]."""
     try:
-        f = ws.get_forecast(north_flow.BANGKOK_STATION)
+        f = water_forecast.get_forecast(north_flow.BANGKOK_STATION)
     except Exception as e:  # noqa: BLE001 - the province list stands without it
         print(f"[NorthRoute] HII forecast: {e}")
         return [], None

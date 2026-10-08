@@ -38,7 +38,7 @@ from datetime import datetime, timedelta
 import numpy as np
 
 from backend.core.instance import DATA_DIR
-from backend.water import water_service as ws
+from backend.water import water_forecast, water_service as ws
 
 GAUGE_ID = 1132                                   # สะพานนวลฉวี, Pak Kret
 RIVER_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "config", "chao_phraya.json")
@@ -267,11 +267,11 @@ def day_chances(forecast_peaks, bank, sigma_for):
 
 def river_chance():
     """The gauge's forecast days with their chance of going over the bank, and how the spread was set."""
-    fore, levels = ws._load_official_forecast(GAUGE_ID)
+    fore, levels = water_forecast._load_official_forecast(GAUGE_ID)
     bank = levels.get("bank")
     if not fore or bank is None:
         raise RuntimeError("HII forecast for สะพานนวลฉวี unavailable")
-    observed = ws._load_observed(GAUGE_ID, days=31)
+    observed = water_forecast._load_observed(GAUGE_ID, days=31)
     obs_peaks = _daily_peaks(observed)
     fc_peaks = _daily_peaks(fore)
 

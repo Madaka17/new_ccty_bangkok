@@ -13,8 +13,6 @@ Sources (all public, read-only):
 """
 import json
 import math
-import os
-from backend.core.instance import DATA_DIR
 import re
 import threading
 import time
@@ -23,18 +21,14 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-import numpy as np
+from backend.water.thaiwater_api import USER_AGENT, _get, key_status
 
-TWA_API = "https://twa-api-public.thaiwater.net"
 # National Thai Water portal (nationalthaiwater.onwr.go.th) backend: no key needed, one big
 # snapshot of every station in the country refreshed by HII every hour
 NTW_API = "https://api-v3.thaiwater.net/api/v1/thaiwater30"
 NTW_TTL = 600
 # Upstream reservoirs that decide how much water reaches the lower Chao Phraya
 NTW_DAMS = ["ภูมิพล", "สิริกิติ์", "แควน้อยบำรุงแดน", "ป่าสักชลสิทธิ์", "ขุนด่านปราการชล"]
-# Anonymous key that twa.thaiwater.net ships to every browser; override with TWA_API_KEY if it rotates
-TWA_API_KEY = os.getenv("TWA_API_KEY", "TPSXrHRvTHeVT2Lygq6YeTqqAm4xZ72x")
-USER_AGENT = "BKK-Traffic-CCTV/2.0 (personal dashboard)"
 BKK_TZ = timezone(timedelta(hours=7))
 
 # Bangkok + the five surrounding provinces (ThaiWater province codes)
@@ -77,160 +71,9 @@ BMA_WATER_TTL = 120          # the gauges report every 5 minutes
 BMA_STALE_MINUTES = 60       # a gauge whose last reading is older than this counts as offline
 CANAL_HIGH_GAP_M = 0.2       # water within this many metres of the lower bank = near overflow
 CANAL_MATCH_KM = 0.15        # a ThaiWater canal station this close to a BMA gauge is the same gauge
-FORECAST_TTL = 600
-OBS_DAYS = 3        # history used for the local model
-EST_HOURS = 48      # local outlook horizon
-# Tidal constituents (period in hours): M2, S2, N2, K1, O1
-TIDE_PERIODS_H = (12.4206, 12.0, 12.6583, 23.9345, 25.8193)
 
 
-# ---------------------------------------------------------------- api key discovery
-TWA_SITE = "https://twa.thaiwater.net/th"
-KEY_FILE = os.path.join(DATA_DIR, "cache", "twa_key.json")
-KEY_RETRY_SECONDS = 300      # how long to wait between discovery attempts while no key works
-_KEY_RE = re.compile(r'"x-api-key"\s*[:=]\s*"([A-Za-z0-9_\-]{16,128})"')
-_CHUNK_RE = re.compile(r"/_next/static/chunks/[^\"']+\.js")
-
-
-class _KeyStore:
-    """Holds the anonymous key twa.thaiwater.net ships in its JS bundle.
-
-    Order: env TWA_API_KEY > last key that worked (cache/twa_key.json) > built-in default.
-    When the API answers 401 the key has rotated: scan the site's JS chunks for a new one.
-    If none is found the scan is retried in the background every KEY_RETRY_SECONDS until it is."""
-
-    def __init__(self):
-        self.lock = threading.Lock()
-        self.key = os.getenv("TWA_API_KEY") or self._load() or TWA_API_KEY
-        self.last_scan = 0.0
-        self.scanning = False
-        self.broken = False   # True while the current key is known to be rejected
-
-    def _load(self):
-        try:
-            with open(KEY_FILE, "r", encoding="utf-8") as f:
-                return json.load(f).get("key") or None
-        except Exception:
-            return None
-
-    def _save(self, key):
-        try:
-            os.makedirs(os.path.dirname(KEY_FILE), exist_ok=True)
-            with open(KEY_FILE, "w", encoding="utf-8") as f:
-                json.dump({"key": key, "found_at": int(time.time())}, f)
-        except Exception as e:
-            print(f"[Water] key save failed: {e}")
-
-    @staticmethod
-    def _fetch(url):
-        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-        with urllib.request.urlopen(req, timeout=40) as resp:
-            return resp.read().decode("utf-8", "ignore")
-
-    def scan(self):
-        """Download the site's JS chunks and return every candidate key (most frequent first)."""
-        html = self._fetch(TWA_SITE)
-        found = {}
-        for m in _KEY_RE.finditer(html):
-            found[m.group(1)] = found.get(m.group(1), 0) + 1
-        chunks = sorted(set(_CHUNK_RE.findall(html)))
-        for path in chunks:
-            try:
-                js = self._fetch("https://twa.thaiwater.net" + path)
-            except Exception:
-                continue
-            for m in _KEY_RE.finditer(js):
-                found[m.group(1)] = found.get(m.group(1), 0) + 1
-        return [k for k, _ in sorted(found.items(), key=lambda kv: -kv[1])]
-
-    @staticmethod
-    def _works(key):
-        req = urllib.request.Request(TWA_API + "/v2/waterload-tide/list",
-                                     headers={"User-Agent": USER_AGENT, "x-api-key": key, "Accept": "application/json"})
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                return resp.status == 200
-        except urllib.error.HTTPError as e:
-            return e.code not in (401, 403)
-        except Exception:
-            return False
-
-    def rediscover(self, reason=""):
-        """Scan the site once (rate limited) and switch to the first key the API accepts."""
-        with self.lock:
-            if self.scanning or time.time() - self.last_scan < 60:
-                return False
-            self.scanning = True
-            self.last_scan = time.time()
-        try:
-            print(f"[Water] api key rejected{f' ({reason})' if reason else ''}; scanning twa.thaiwater.net for a new one")
-            candidates = [k for k in self.scan() if k != self.key]
-            for k in candidates:
-                if self._works(k):
-                    with self.lock:
-                        self.key = k
-                        self.broken = False
-                    self._save(k)
-                    print(f"[Water] new api key found ({k[:6]}...)")
-                    return True
-            print(f"[Water] no working key among {len(candidates)} candidate(s); retry in {KEY_RETRY_SECONDS // 60} min")
-            return False
-        except Exception as e:
-            print(f"[Water] key scan failed: {e}")
-            return False
-        finally:
-            with self.lock:
-                self.scanning = False
-
-    def mark_broken(self):
-        with self.lock:
-            first = not self.broken
-            self.broken = True
-        if first:
-            threading.Thread(target=self._retry_loop, daemon=True, name="twa-key").start()
-
-    def _retry_loop(self):
-        """Keep looking until a key works again; the site may deploy the new bundle hours later."""
-        while True:
-            if self.rediscover():
-                return
-            with self.lock:
-                if not self.broken:
-                    return
-            time.sleep(KEY_RETRY_SECONDS)
-
-
-_keys = _KeyStore()
-
-
-# ---------------------------------------------------------------- http + cache
-def _get(path, **params):
-    url = TWA_API + path + ("?" + urllib.parse.urlencode(params) if params else "")
-
-    def call():
-        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "x-api-key": _keys.key, "Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=40) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-
-    try:
-        data = call()
-    except urllib.error.HTTPError as e:
-        if e.code not in (401, 403):
-            raise
-        # Key rotated: try to pick up the new one right away, else keep retrying in the background
-        if _keys.rediscover(f"HTTP {e.code}"):
-            data = call()
-        else:
-            _keys.mark_broken()
-            raise
-    _keys.broken = False
-    return data
-
-
-def key_status():
-    return {"key_prefix": _keys.key[:6], "rejected": _keys.broken, "last_scan": int(_keys.last_scan) or None}
-
-
+# ---------------------------------------------------------------- cache
 class _Cache:
     """Tiny TTL cache; a failed refresh keeps serving the last good value (stale flag set)."""
 
@@ -946,168 +789,6 @@ def get_map():
     keep = lambda rows: [r for r in rows if r["lat"] and r["lng"]]
     return {"updated_at": data.get("updated_at"), "stale": stale,
             "water": keep(water), "rain": keep(rain), "dams": keep(dams)}
-
-
-# ---------------------------------------------------------------- forecast
-def _load_observed(station_id, days=OBS_DAYS):
-    end = datetime.now(BKK_TZ)
-    start = end - timedelta(days=days)
-    d = _get("/data/platform/v1/public/tele_waterlevel/graph", stationId=station_id,
-             startDate=start.strftime("%Y-%m-%d"), endDate=(end + timedelta(days=1)).strftime("%Y-%m-%d"), limit=-1)
-    series = []
-    for block in d.get("data") or []:
-        for p in block.get("data") or []:
-            v = _num(p.get("value"))
-            t = _ts(p.get("datetime"))
-            if v is not None and t is not None:
-                series.append({"t": t, "v": round(v, 3)})
-    series.sort(key=lambda p: p["t"])
-    return _despike(series)
-
-
-def _despike(series, jump=0.5, half_window=6):
-    """Drop short telemetry glitches: samples further than `jump` m from the median of the
-    surrounding ~2 h window (a genuine tidal swing moves far less in that time)."""
-    if len(series) < 2 * half_window + 1:
-        return series
-    vals = np.array([p["v"] for p in series])
-    keep = []
-    for i, p in enumerate(series):
-        lo, hi = max(0, i - half_window), min(len(vals), i + half_window + 1)
-        if abs(p["v"] - float(np.median(vals[lo:hi]))) <= jump:
-            keep.append(p)
-    return keep
-
-
-def _load_official_forecast(station_id):
-    d = _get("/data/platform/v1/public/latest_waterlevel/forecast/graph", stationId=station_id, limit=-1)
-    now = time.time()
-    fore = []
-    for p in d.get("data") or []:
-        v = _num(p.get("foreValue"))
-        t = _ts(p.get("datetime"))
-        if v is not None and t is not None and t >= now - 3600:
-            fore.append({"t": t, "v": round(v, 3)})
-    fore.sort(key=lambda p: p["t"])
-    levels = {
-        "warning": _num(d.get("warningVolume")),
-        "alarm": _num(d.get("alarmVolume")),
-        "critical": _num(d.get("criticalVolume")),
-    }
-    for inc in d.get("included") or []:
-        attrs = inc.get("attributes") or {}
-        if inc.get("type") == "station":
-            levels["bank"] = _num(attrs.get("minBank"))
-    return fore, levels
-
-
-def _harmonic_outlook(observed, hours=EST_HOURS):
-    """48 h outlook from the station's own history.
-
-    Tidal stations: least-squares trend + tidal constituents, extrapolated hourly.
-    Non-tidal stations (gated inner-city canals): a rain pulse relaxes back towards the
-    pre-event baseline, so we use exponential recession instead of forcing a tide fit.
-    Returns (points, fit_rmse, model) or (None, None, None) when there is not enough data."""
-    if len(observed) < 144:  # < 1 day of 10-min samples
-        return None, None, None
-    t0 = observed[-1]["t"]
-    th = np.array([(p["t"] - t0) / 3600.0 for p in observed])
-    y = np.array([p["v"] for p in observed])
-    span_h = th[-1] - th[0]
-    if span_h < 24:
-        return None, None, None
-    tf = np.arange(0, hours + 1, dtype=float)
-
-    def design(t, tides=True):
-        cols = [np.ones_like(t), t]
-        if tides:
-            for period in TIDE_PERIODS_H:
-                if period * 1.5 > span_h:  # can't resolve a constituent longer than the window
-                    continue
-                w = 2 * math.pi / period
-                cols += [np.cos(w * t), np.sin(w * t)]
-        return np.column_stack(cols)
-
-    X = design(th)
-    coef, *_ = np.linalg.lstsq(X, y, rcond=None)
-    rss_tide = float(np.sum((X @ coef - y) ** 2))
-    X0 = design(th, tides=False)
-    coef0, *_ = np.linalg.lstsq(X0, y, rcond=None)
-    rss_trend = float(np.sum((X0 @ coef0 - y) ** 2))
-    tide_share = 1 - rss_tide / rss_trend if rss_trend > 0 else 0.0
-
-    if tide_share < 0.5:
-        # Tides explain little here: rain-driven canal. Relax from the latest reading towards
-        # the pre-event baseline (lower quartile of the window) with a ~30 h time constant.
-        base = float(np.percentile(y, 25))
-        yf = base + (y[-1] - base) * np.exp(-tf / 30.0)
-        # Uncertainty: how much the level typically moves in 6 h
-        step = y[36:] - y[:-36] if len(y) > 36 else np.diff(y)
-        rmse = float(np.std(step)) if len(step) else None
-        pts = [{"t": int(t0 + h * 3600), "v": round(float(v), 3)} for h, v in zip(tf, yf)]
-        return pts, (round(rmse, 3) if rmse is not None else None), "recession"
-
-    rmse = float(np.sqrt(rss_tide / len(y)))
-    yf = design(tf) @ coef
-    # Damp the linear trend so a short-term rise does not extrapolate for two days
-    damp = np.exp(-tf / 36.0)
-    yf = yf - coef[1] * tf * (1 - damp)
-    # Start from the actual latest reading; the fit residual fades out over ~6 h
-    resid = y[-1] - (X[-1] @ coef)
-    yf = yf + resid * np.exp(-tf / 6.0)
-    pts = [{"t": int(t0 + h * 3600), "v": round(float(v), 3)} for h, v in zip(tf, yf)]
-    return pts, round(rmse, 3), "tide"
-
-
-def _extremes(points, limit=4):
-    """Local maxima/minima in an hourly series (next high / low water)."""
-    out = []
-    for i in range(1, len(points) - 1):
-        a, b, c = points[i - 1]["v"], points[i]["v"], points[i + 1]["v"]
-        if b >= a and b > c:
-            out.append({"kind": "high", "t": points[i]["t"], "v": points[i]["v"]})
-        elif b <= a and b < c:
-            out.append({"kind": "low", "t": points[i]["t"], "v": points[i]["v"]})
-    return out[:limit]
-
-
-def _build_forecast(station_id):
-    observed = _load_observed(station_id)
-    official, levels = [], {}
-    if station_id in OFFICIAL_FORECAST_STATIONS:
-        try:
-            official, levels = _load_official_forecast(station_id)
-        except Exception as e:
-            print(f"[Water] official forecast {station_id}: {e}")
-    estimate, rmse, model = _harmonic_outlook(observed)
-    if levels.get("bank") is None:
-        # Bank height comes with the telemetry list; reuse the cached summary instead of a second call
-        cached = _cache.items.get("summary")
-        for r in (cached[0]["river"] if cached else []):
-            if r["id"] == str(station_id) and r.get("bank") is not None:
-                levels["bank"] = r["bank"]
-    basis = official or estimate or []
-    latest = observed[-1] if observed else None
-    peak = max(basis, key=lambda p: p["v"]) if basis else None
-    return {
-        "station_id": str(station_id),
-        "updated_at": int(time.time()),
-        "observed": observed[-(6 * 24 * 2):],  # last 48 h at 10-min resolution for the chart
-        "official": official,
-        "estimate": estimate,
-        "estimate_rmse": rmse,
-        "estimate_model": model,
-        "levels": levels,
-        "latest": latest,
-        "peak": peak,
-        "extremes": _extremes(basis),
-        "source": "hii" if official else ("local" if estimate else None),
-    }
-
-
-def get_forecast(station_id):
-    data, stale = _cache.get(f"forecast:{station_id}", FORECAST_TTL, lambda: _build_forecast(int(station_id)))
-    return {**data, "stale": stale}
 
 
 def warm():
