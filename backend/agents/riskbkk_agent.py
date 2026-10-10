@@ -294,7 +294,10 @@ class RiskAgent:
     def _loop(self):
         self.run()    # returns at once when the layers and report are unchanged
         while True:
-            time.sleep(AGENT_SECONDS)
+            # Counted from the saved report, not from the start: the server restarts more often than once
+            # a day, and a timer that starts over at each restart left the report days old
+            age = time.time() - ((self.result or {}).get("generated_at") or 0)
+            time.sleep(max(600, AGENT_SECONDS - age))
             try:
                 self.run(force=True)
             except Exception as e:  # noqa: BLE001 - keep the timer alive
