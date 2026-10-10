@@ -122,6 +122,16 @@ def fix_thai(text):
     return _TWICE.sub(r"\1", text)
 
 
+def _schema_in_prompt(messages, schema):
+    """The messages with the JSON schema asked for in words, for an endpoint without response_format."""
+    rule = ("Reply with one JSON object only, no other text, that matches this JSON schema:\n"
+            + json.dumps(schema, ensure_ascii=False))
+    # Qwen's chat template takes a system message only at the start
+    if messages and messages[0].get("role") == "system" and isinstance(messages[0].get("content"), str):
+        return [{**messages[0], "content": messages[0]["content"] + "\n\n" + rule}, *messages[1:]]
+    return [{"role": "system", "content": rule}, *messages]
+
+
 class ContextTooLong(Exception):
     """The prompt does not fit the context the model is loaded with."""
 
@@ -141,6 +151,9 @@ class Client:
         self.timeout = int(env("TIMEOUT", "240"))
         # extra request fields as JSON, e.g. {"chat_template_kwargs": {"enable_thinking": false}} for vLLM
         self.extra = json.loads(env("EXTRA", "") or "{}")
+        # False once the endpoint refuses response_format (the 9arm gateway: "Metered requests do not support
+        # response_format"); the schema then goes into the prompt instead, and the callers cut the JSON out
+        self.response_format = True
 
     def enabled(self):
         return bool(self.model)
@@ -157,8 +170,11 @@ class Client:
         if self.reasoning:
             body["reasoning_effort"] = self.reasoning
         if json_schema:
-            body["response_format"] = {"type": "json_schema",
-                                       "json_schema": {"name": "reply", "strict": True, "schema": json_schema}}
+            if self.response_format:
+                body["response_format"] = {"type": "json_schema",
+                                           "json_schema": {"name": "reply", "strict": True, "schema": json_schema}}
+            else:
+                body["messages"] = _schema_in_prompt(messages, json_schema)
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
         timeout = timeout or self.timeout
         caller = sys._getframe(1).f_globals.get("__name__", "?")
@@ -169,6 +185,12 @@ class Client:
         try:
             for wait in (*RETRY_429, None):
                 resp = requests.post(f"{self.url}/chat/completions", json=body, headers=headers, timeout=timeout)
+                if resp.status_code == 400 and "response_format" in body and "response_format" in resp.text:
+                    print(f"[LocalLLM] {self.url} refuses response_format: the JSON schema goes into the prompt")
+                    self.response_format = False
+                    del body["response_format"]
+                    body["messages"] = _schema_in_prompt(messages, json_schema)
+                    resp = requests.post(f"{self.url}/chat/completions", json=body, headers=headers, timeout=timeout)
                 if resp.status_code != 429 or wait is None:
                     break
                 time.sleep(wait)
