@@ -61,9 +61,10 @@ WEATHER_TTL = 1800
 
 SUMMARY_TTL = 60
 # BMA Drainage Department canal gauges (the same sensors ThaiWater relays ~45 min later, plus ~40 more).
-# The summary page embeds every station as JSON: level, both banks, bed and the department's own
-# warning / critical control levels, which are pump-operation levels, not the bank.
-BMA_WATER_URL = "https://weather.bangkok.go.th/water/summary"
+# The map page POSTs here for every station as JSON: level, both banks and the department's own
+# warning / critical control levels, which are pump-operation levels, not the bank. (The old /water/summary
+# page, which also gave the bed, was taken down in October 2026.)
+BMA_WATER_URL = "https://weather.bangkok.go.th/water/PageMap/GoogleMap"
 BMA_STATION_URL = "https://weather.bangkok.go.th/water/StationDetail?id={}"
 BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
               "Chrome/124.0.0.0 Safari/537.36")
@@ -196,11 +197,10 @@ def _load_river():
     return rows
 
 
-def _bma_json(html, name):
-    m = re.search(r"const " + name + r" = (\[.*?\]);\n", html)
-    if not m:
-        raise RuntimeError(f"{name} not found on {BMA_WATER_URL}")
-    return json.loads(m.group(1))
+def _bma_ts(s):
+    """BMA's ASP.NET "/Date(1791728100000)/" -> epoch seconds."""
+    m = re.fullmatch(r"/Date\((\d+)\)/", s or "")
+    return int(m.group(1)) // 1000 if m else None
 
 
 def _bma_area(name):
@@ -218,28 +218,30 @@ def _bma_area(name):
 def _load_bma_canals():
     """Every BMA canal gauge. Offline gauges (status 0 or an old reading) are marked, not dropped."""
     # The site's firewall answers 403 now and then; a browser-like request and one retry get through
-    headers = {"User-Agent": BROWSER_UA, "Accept": "text/html,application/xhtml+xml", "Accept-Language": "th,en;q=0.8"}
+    headers = {"User-Agent": BROWSER_UA, "Accept": "application/json", "Accept-Language": "th,en;q=0.8",
+               "X-Requested-With": "XMLHttpRequest", "Referer": "https://weather.bangkok.go.th/water/",
+               "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"}
+    body = b"payload=TEST_DATA_GOES_HERE"     # what the page itself sends
     for attempt in range(3):
         try:
-            with urllib.request.urlopen(urllib.request.Request(BMA_WATER_URL, headers=headers), timeout=30) as r:
-                html = r.read().decode("utf-8", "replace")
+            with urllib.request.urlopen(urllib.request.Request(BMA_WATER_URL, body, headers), timeout=30) as r:
+                stations = json.loads(r.read().decode("utf-8", "replace"))
             break
         except urllib.error.HTTPError as e:
             if e.code != 403 or attempt == 2:
                 raise
             time.sleep(3 * (attempt + 1))
-    districts = {d.get("district_id"): d.get("name") for d in _bma_json(html, "districtList")}
+    if not isinstance(stations, list):
+        raise RuntimeError(f"unexpected answer from {BMA_WATER_URL}")
     now = time.time()
     rows = []
-    for b in _bma_json(html, "waterSummaryList"):
-        if not b.get("active", 1):
-            continue
+    for b in stations:
         wl = _num(b.get("wl_in"))
         banks = [x for x in (_num(b.get("left_bank")), _num(b.get("right_bank"))) if x is not None]
         bank, bed = (min(banks) if banks else None), _num(b.get("bed_bank"))
         warn, crit = _num(b.get("warning")), _num(b.get("critical"))
-        ts = _ts(b.get("site_timestamp"))
-        offline = wl is None or b.get("water_status") == 0 or not ts or now - ts > BMA_STALE_MINUTES * 60
+        ts = _bma_ts(b.get("site_timestamp"))
+        offline = wl is None or b.get("status") == 0 or not ts or now - ts > BMA_STALE_MINUTES * 60
         diff = None if wl is None or bank is None else round(bank - wl, 2)
         fill = None
         if wl is not None and bank is not None and bed is not None and bank > bed:
@@ -253,7 +255,7 @@ def _load_bma_canals():
         control = None
         if not offline and wl is not None:
             control = "critical" if crit is not None and wl >= crit else "warning" if warn is not None and wl >= warn else None
-        district, province = _bma_area(districts.get(b.get("district_id")))
+        district, province = _bma_area(b.get("district_name"))
         rows.append({
             "id": f"bma-{b.get('water_id')}",
             "code": b.get("water_code"),
