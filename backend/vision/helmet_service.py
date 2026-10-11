@@ -9,7 +9,7 @@ Flow (per camera, once per BMA scan cycle, every 3 min by BMA_SCAN_INTERVAL, or 
          helmet only  -> verdict "helmet" with no API call
          no_helmet    -> the agent confirms it (agent over budget or not answering: pending, asked again later)
          nothing seen -> the agent decides
-    -> helmet agent (the Qwen vision model behind LOCAL_LLM_* by default; HELMET_AGENT=cloud for Gemini
+    -> helmet agent (the Qwen vision model behind VISION_LLM_* by default; HELMET_AGENT=cloud for Gemini
        vision, else Claude): JSON {riders, no_helmet, confidence, note_th}
        (no provider at all: the crop is kept as 'unclear')
     -> verdict no_helmet (confidence >= HELMET_MIN_CONF): full frame with a red box + the crop are
@@ -48,7 +48,7 @@ if not os.path.isabs(LOCAL_DET_PATH):
 # Fast non-thinking model on purpose: a 300-px crop needs no reasoning, and the thinking models
 # (gemini-3.6-flash) take 15-40 s per call and hit 504 under load. Falls back to GEMINI_VISION_MODEL.
 HELMET_MODEL = os.getenv("HELMET_AGENT_MODEL", os.getenv("GEMINI_VISION_MODEL", "gemini-3.1-flash-lite"))
-# qwen = the OpenAI-compatible vision model behind LOCAL_LLM_* (Qwen 3.8 27B reads images); cloud = Gemini / Claude.
+# qwen = the OpenAI-compatible vision model behind VISION_LLM_* (Qwen 3.8 27B reads images); cloud = Gemini / Claude.
 # Qwen by default: Gemini's free tier hit its per-minute limit and left most captures "unclear"
 HELMET_AGENT = os.getenv("HELMET_AGENT", "qwen").strip().lower()
 AGENT_TIMEOUT_MS = 40000
@@ -172,7 +172,7 @@ class HelmetPatrol:
         return os.path.join(CACHE_DIR, f"{safe_id(hid)}_frame.jpg")
 
     def provider(self):
-        if HELMET_AGENT == "qwen" and local_llm.default.enabled():
+        if HELMET_AGENT == "qwen" and local_llm.vision.enabled():
             return "qwen"
         v = self.vision
         return getattr(v, "provider", None) if v and getattr(v, "client", None) else None
@@ -488,11 +488,7 @@ class HelmetPatrol:
 
     def _ask(self, jpeg, context):
         if self.provider() == "qwen":
-            image = "data:image/jpeg;base64," + base64.standard_b64encode(jpeg).decode("ascii")
-            return local_llm.default.chat(
-                [{"role": "system", "content": AGENT_PROMPT},
-                 {"role": "user", "content": [{"type": "image_url", "image_url": {"url": image}}, {"type": "text", "text": context}]}],
-                max_tokens=300, temperature=0.1, timeout=AGENT_TIMEOUT_MS / 1000)
+            return local_llm.vision.look(AGENT_PROMPT, jpeg, context, timeout=AGENT_TIMEOUT_MS / 1000)
         vis = self.vision
         if vis.provider == "gemini":
             from google.genai import types as genai_types
@@ -542,7 +538,7 @@ class HelmetPatrol:
         self._calls = [t for t in self._calls if now - t < 3600]
         return {
             "updated": int(now), "enabled": self.enabled(), "agent": self.provider() or "off",
-            "agent_model": local_llm.default.model if self.provider() == "qwen"
+            "agent_model": local_llm.vision.model if self.provider() == "qwen"
             else HELMET_MODEL if self.provider() == "gemini"
             else (os.environ.get("CLAUDE_VISION_MODEL", "claude-opus-5-5") if self.provider() else None),
             "local_detector": os.path.basename(LOCAL_DET_PATH) if self.local_det is not None else None,

@@ -115,9 +115,11 @@ AI write-ups and the chat then fall back to simple rule-based text.
 
 ```
 GEMINI_API_KEY=        # AI chat and image checks (free key at https://aistudio.google.com/apikey)
-LOCAL_LLM_URL=         # OpenAI-compatible endpoint of the Qwen model used for the write-ups and image checks
+LOCAL_LLM_URL=         # OpenAI-compatible endpoint of the model used for the flood and traffic write-ups
 LOCAL_LLM_MODEL=
 LOCAL_LLM_API_KEY=
+VISION_LLM_MODEL=      # model for the camera checks (accident, helmet, wrong way); any VISION_LLM_ name
+                       # left out falls back to LOCAL_LLM_ (CHAT_LLM_ works the same for the chat bot)
 BMA_DATA_DIR=D:\Data   # where statistics and evidence images go (default: D:\Data on Windows,
                        # instances/production/data on macOS)
 ```

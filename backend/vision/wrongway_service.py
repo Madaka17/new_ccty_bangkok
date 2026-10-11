@@ -584,6 +584,8 @@ class WrongWayPatrol:
 
     def _ask(self, jpeg, context):
         vis = self.vision
+        if vis.provider == "qwen":
+            return vis.client.look(AGENT_PROMPT, jpeg, context, timeout=AGENT_TIMEOUT_MS / 1000)
         if vis.provider == "gemini":
             from google.genai import types as genai_types
             for model in dict.fromkeys([AGENT_MODEL, FALLBACK_MODEL]):
@@ -696,7 +698,8 @@ class WrongWayPatrol:
         return {
             "updated": int(now), "enabled": self.enabled(), "detector": self.model_name(),
             "detector_path": CLS_PATH if self.cls is not None else DET_PATH, "agent": self.provider() or "off",
-            "agent_model": AGENT_MODEL if self.provider() == "gemini"
+            "agent_model": local_llm.vision.model if self.provider() == "qwen"
+            else AGENT_MODEL if self.provider() == "gemini"
             else (os.environ.get("CLAUDE_VISION_MODEL", "claude-opus-5-5") if self.provider() else None),
             "archive_dir": ARCHIVE_DIR, "archive_ok": os.path.isdir(os.path.dirname(ARCHIVE_DIR.rstrip("/\\"))),
             "calls_last_hour": len(self._calls), "calls_per_hour_max": MAX_PER_HOUR, "queue": self._queue.qsize(),

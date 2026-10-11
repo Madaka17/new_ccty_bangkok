@@ -2,7 +2,8 @@
 
 Two sources:
   1. Camera AI: a vehicle stopped for a long time while traffic around it flows (tracker.anomaly())
-     is a candidate. A snapshot is sent to Claude vision to confirm before anything is shown.
+     is a candidate. A snapshot is sent to the vision model (Qwen, else Gemini or Claude) to confirm
+     before anything is shown.
   2. Longdo Traffic public event feed (type 3 = accident), for reported accidents city-wide.
 The same feed carries flooded roads (type 6, mostly relayed by iTIC / FM91 with a photo credit); those
 are kept apart in `floods()` for the flood pages and the flood agent.
@@ -32,7 +33,9 @@ try:
 except ImportError:
     genai = None
 
-# Vision provider order mirrors chat_service: Gemini (GEMINI_API_KEY) first, then Claude
+# Vision provider order: the Qwen model behind VISION_LLM_* (else LOCAL_LLM_*), then Gemini (GEMINI_API_KEY),
+# then Claude. VISION_AGENT=cloud skips Qwen. The helmet and wrong-way patrols ask the same provider.
+VISION_AGENT = os.getenv("VISION_AGENT", "qwen").strip().lower()
 CLAUDE_MODEL = "claude-opus-5-5"
 GEMINI_MODEL = os.environ.get("GEMINI_VISION_MODEL", "gemini-3.6-flash")
 LONGDO_FEED = "https://event.longdo.com/feed/json"
@@ -92,13 +95,15 @@ class IncidentManager:
         self.national_incidents = []            # active Longdo accidents and breakdowns in every province
         self.closures = []                      # active closed roads and diversions in every province
         self.provider, self.client = self._client()
-        print(f"[Incident] vision provider: {self.provider or 'none (set GEMINI_API_KEY or ANTHROPIC_API_KEY)'}")
+        print(f"[Incident] vision provider: {self.provider or 'none (set VISION_LLM_MODEL, GEMINI_API_KEY or ANTHROPIC_API_KEY)'}")
         for inc in vehicle_log.active_incidents():
             self.camera_incidents[inc['camid']] = inc
         threading.Thread(target=self._feed_loop, daemon=True).start()
 
     @staticmethod
     def _client():
+        if VISION_AGENT == "qwen" and local_llm.vision.enabled():
+            return 'qwen', local_llm.vision
         key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
         if genai is not None and key:
             try:
@@ -169,7 +174,9 @@ class IncidentManager:
             what = f"Tracker: vehicle stopped for {cand['stopped_s']} s. The stopped vehicle is inside the red box."
         context = (f"Camera: {title}. {what} {cand['persons_near']} people near it, "
                    f"{cand['moving_pct']}% of other vehicles moving, {cand['total']} vehicles visible.")
-        if self.provider == 'gemini':
+        if self.provider == 'qwen':
+            text = self.client.look(SYSTEM_PROMPT, jpeg, context, max_tokens=300, timeout=60)
+        elif self.provider == 'gemini':
             resp = self.client.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=[genai_types.Part.from_bytes(data=jpeg, mime_type='image/jpeg'), genai_types.Part(text=context)],

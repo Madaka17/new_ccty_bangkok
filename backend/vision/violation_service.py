@@ -13,7 +13,7 @@ Wrong way (ย้อนศร)
 No helmet (ไม่สวมหมวกกันน็อก)
     COCO YOLO has no helmet class and the riders are 20-60 px tall on these feeds, so a crop of
     each motorcycle (rider merged with the bike by VehicleTracker) is sent once per track to the
-    vision model already used for incidents (Gemini, else Claude). Only tracks at least
+    vision model already used for incidents (Qwen, else Gemini, else Claude). Only tracks at least
     HELMET_MIN_H px tall are checked, at most one crop per camera every HELMET_COOLDOWN seconds
     and HELMET_MAX_PER_HOUR per hour, so the API budget stays small. With no provider configured
     helmet checks are simply off; wrong-way detection needs no API.
@@ -470,6 +470,8 @@ class ViolationMonitor:
 
     def _ask(self, jpeg, context):
         vis = self.vision
+        if vis.provider == "qwen":
+            return vis.client.look(HELMET_PROMPT, jpeg, context, timeout=60)
         if vis.provider == "gemini":
             from google.genai import types as genai_types
             model = os.environ.get("GEMINI_VISION_MODEL", "gemini-3.6-flash")

@@ -19,15 +19,17 @@ The gateway behind LOCAL_LLM_URL allows 3 requests in flight per key (LiteLLM ma
 answers 429 to a 4th. The flood watch, the helmet patrol, the agents and the chat bot all share that key,
 so every Client waits for one of MAX_PARALLEL slots per endpoint + key, and retries a 429 twice.
 
-The flood agent uses `default`. The chat bot uses `chat`, which reads the same names with a CHAT_LLM_
+The flood and traffic agents use `default`. The chat bot uses `chat`, which reads the same names with a CHAT_LLM_
 prefix and falls back to the LOCAL_LLM_ value for any it does not set, so the chat can point at another
 endpoint (a hosted API, a LiteLLM proxy) while the flood agent stays on the local model. With the server
-off or the model not loaded, both fall back to their Thai rule-based answers.
+off or the model not loaded, both fall back to their Thai rule-based answers. The camera checks (accident
+confirmation, helmet, wrong way) use `vision` the same way, with a VISION_LLM_ prefix, through look().
 
 Every request is counted by the module that made it, with the prompt and reply tokens the server reports
 (`usage` in the OpenAI-compatible reply; image tokens are part of the prompt). usage() sums any window of
 the last USAGE_KEEP_H hours for /api/ai/usage.
 """
+import base64
 import json
 import os
 import re
@@ -163,7 +165,16 @@ class Client:
         used = sum(len(t or "") for t in texts) / CHARS_PER_TOKEN
         return int(self.context - used - reply_tokens)
 
-    def chat(self, messages, max_tokens=1200, temperature=0.4, json_schema=None, timeout=None):
+    def look(self, system, jpeg, text, max_tokens=300, temperature=0.1, timeout=None):
+        """One JPEG and a text question under a system prompt. Returns the reply text, counted under the caller."""
+        image = "data:image/jpeg;base64," + base64.standard_b64encode(jpeg).decode("ascii")
+        return self.chat([{"role": "system", "content": system},
+                          {"role": "user", "content": [{"type": "image_url", "image_url": {"url": image}},
+                                                       {"type": "text", "text": text}]}],
+                         max_tokens=max_tokens, temperature=temperature, timeout=timeout,
+                         caller=sys._getframe(1).f_globals.get("__name__", "?"))
+
+    def chat(self, messages, max_tokens=1200, temperature=0.4, json_schema=None, timeout=None, caller=None):
         """messages: [{role: system|user|assistant, content}]. Returns the reply text (thinking stripped)."""
         body = {"model": self.model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature,
                 **self.extra}
@@ -177,7 +188,7 @@ class Client:
                 body["messages"] = _schema_in_prompt(messages, json_schema)
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
         timeout = timeout or self.timeout
-        caller = sys._getframe(1).f_globals.get("__name__", "?")
+        caller = caller or sys._getframe(1).f_globals.get("__name__", "?")
         started = time.time()
         slot = _slot(self.url, self.api_key)
         if not slot.acquire(timeout=timeout):
@@ -214,3 +225,4 @@ class Client:
 
 default = Client("LOCAL_LLM")
 chat_client = Client("CHAT_LLM")
+vision = Client("VISION_LLM")
