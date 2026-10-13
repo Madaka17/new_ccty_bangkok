@@ -9,6 +9,7 @@ the instance cache, so a restart while off starts with no weights on the GPU.
 import gc
 import json
 import os
+import subprocess
 import threading
 import time
 
@@ -25,9 +26,38 @@ def _default_cuda():
         return None
 
 
+_gpu_cache = {"at": None, "value": None}
+_GPU_CACHE_S = 5.0
+
+
+def gpu_memory(cuda=_default_cuda, run=subprocess.run, now=time.monotonic):
+    """{"used_mb", "total_mb"} or None. Never creates a CUDA context: with no context yet it asks
+    nvidia-smi. Cached for 5 s so a public poll loop cannot spawn a process per request."""
+    t = now()
+    if _gpu_cache["at"] is not None and t - _gpu_cache["at"] < _GPU_CACHE_S:
+        return _gpu_cache["value"]
+    value = None
+    try:
+        c = cuda() if cuda is _default_cuda else cuda
+        if c is not None and getattr(c, "is_initialized", lambda: False)():
+            free, total = c.mem_get_info()
+            value = {"used_mb": int((total - free) / 2**20), "total_mb": int(total / 2**20)}
+        else:
+            kw = {"creationflags": 0x08000000} if os.name == "nt" else {}
+            r = run(["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"],
+                    timeout=3, capture_output=True, text=True, **kw)
+            used, total = r.stdout.splitlines()[0].split(",")
+            value = {"used_mb": int(used.strip()), "total_mb": int(total.strip())}
+    except Exception:  # noqa: BLE001 - no GPU / no nvidia-smi: no figures
+        value = None
+    _gpu_cache["at"], _gpu_cache["value"] = t, value
+    return value
+
+
 class YoloSwitch:
     def __init__(self, state_path, cuda=_default_cuda):
         self.state_path = state_path
+        self._real_cuda = cuda is _default_cuda
         self.cuda = cuda() if callable(cuda) and cuda is _default_cuda else cuda
         self.lock = threading.Lock()     # one flip at a time
         self.holders = {}                # name -> holder, in registration order
@@ -35,9 +65,10 @@ class YoloSwitch:
         try:
             with open(state_path, encoding="utf-8") as f:
                 saved = json.load(f)
-            self.enabled = bool(saved.get("enabled", True))
-            self.changed_at = int(saved.get("changed_at") or 0)
-        except (OSError, ValueError):
+            if isinstance(saved, dict):
+                self.enabled = bool(saved.get("enabled", True))
+                self.changed_at = int(saved.get("changed_at") or 0)
+        except (OSError, ValueError, TypeError):
             pass
 
     def register(self, name, holder):
@@ -78,6 +109,8 @@ class YoloSwitch:
         return out
 
     def _vram(self):
+        if self._real_cuda:
+            return gpu_memory()
         try:
             if self.cuda is None or not self.cuda.is_available():
                 return None

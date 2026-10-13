@@ -10,6 +10,7 @@ from fastapi import APIRouter
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from backend.core.instance import DATA_DIR, IS_STAGE, PORT
+from backend.vision.yolo_switch import gpu_memory
 from backend.services import bma_scanner, CAMERAS_FILE, detector, helmet, INDEX_HTML, SERVER_START, WEB_BUILT, WEB_DIST, wrongway
 
 router = APIRouter()
@@ -28,13 +29,16 @@ def health():
     # Fresh process: the first cycle over 574 cameras takes a few minutes, so give it a grace period
     scan_ok = (scan_age is not None and scan_age < 15 * 60) or (not last_scan and now - SERVER_START < 20 * 60)
     gpu = None
-    try:
-        import torch
-        if torch.cuda.is_available():
-            free, total = torch.cuda.mem_get_info()
-            gpu = {"name": torch.cuda.get_device_name(0), "used_mb": int((total - free) / 2**20), "total_mb": int(total / 2**20)}
-    except Exception:  # noqa: BLE001
-        pass
+    mem = gpu_memory()      # nvidia-smi until torch has its own CUDA context: no context made for a health poll
+    if mem:
+        name = None
+        try:
+            import torch
+            if torch.cuda.is_initialized():
+                name = torch.cuda.get_device_name(0)
+        except Exception:  # noqa: BLE001
+            pass
+        gpu = {"name": name, **mem}
     try:
         disk = shutil.disk_usage(os.getenv("BMA_DATA_DIR", DATA_DIR))
         data_disk = {"path": os.getenv("BMA_DATA_DIR", DATA_DIR), "free_gb": round(disk.free / 2**30, 1), "total_gb": round(disk.total / 2**30, 1)}

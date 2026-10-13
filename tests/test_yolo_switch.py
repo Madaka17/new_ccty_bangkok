@@ -96,3 +96,86 @@ def test_status_reports_vram(tmp_path):
 
 def test_status_without_cuda(tmp_path):
     assert YoloSwitch(str(tmp_path / "s.json"), cuda=None).status()["vram"] is None
+
+
+# --- gpu_memory: no CUDA context created just to read VRAM ---
+import subprocess
+
+from backend.vision import yolo_switch as ysw
+
+
+class UninitCuda:
+    def __init__(self):
+        self.mem_calls = 0
+
+    def is_initialized(self):
+        return False
+
+    def mem_get_info(self):
+        self.mem_calls += 1
+        return (1, 2)
+
+
+def _fresh_cache():
+    ysw._gpu_cache.update(at=None, value=None)
+
+
+def test_gpu_memory_uses_nvidia_smi_when_cuda_not_initialized():
+    _fresh_cache()
+    cuda, cmds = UninitCuda(), []
+
+    def run(cmd, **kw):
+        cmds.append((cmd, kw))
+        return subprocess.CompletedProcess(cmd, 0, stdout="1234, 10240\n", stderr="")
+
+    out = ysw.gpu_memory(cuda=cuda, run=run, now=lambda: 100.0)
+    assert out == {"used_mb": 1234, "total_mb": 10240}
+    assert cuda.mem_calls == 0
+    assert cmds[0][1]["timeout"] == 3 and cmds[0][1]["capture_output"] is True and cmds[0][1]["text"] is True
+
+
+def test_gpu_memory_none_when_nvidia_smi_fails():
+    _fresh_cache()
+
+    def run(cmd, **kw):
+        raise FileNotFoundError("nvidia-smi")
+
+    assert ysw.gpu_memory(cuda=UninitCuda(), run=run, now=lambda: 100.0) is None
+
+
+def test_gpu_memory_cached_for_five_seconds():
+    _fresh_cache()
+    calls = []
+
+    def run(cmd, **kw):
+        calls.append(1)
+        return subprocess.CompletedProcess(cmd, 0, stdout="1, 2\n", stderr="")
+
+    t = [100.0]
+    ysw.gpu_memory(cuda=UninitCuda(), run=run, now=lambda: t[0])
+    t[0] = 103.0
+    ysw.gpu_memory(cuda=UninitCuda(), run=run, now=lambda: t[0])
+    assert len(calls) == 1
+    t[0] = 106.0
+    ysw.gpu_memory(cuda=UninitCuda(), run=run, now=lambda: t[0])
+    assert len(calls) == 2
+
+
+def test_gpu_memory_initialized_cuda_uses_mem_get_info():
+    _fresh_cache()
+
+    class Init(UninitCuda):
+        def is_initialized(self):
+            return True
+
+        def mem_get_info(self):
+            return (6 * 2**30, 10 * 2**30)
+
+    assert ysw.gpu_memory(cuda=Init(), run=None, now=lambda: 1.0) == {"used_mb": 4096, "total_mb": 10240}
+
+
+def test_non_object_state_file_means_on(tmp_path):
+    p = tmp_path / "s.json"
+    for text in ("[]", "null", '"x"'):
+        p.write_text(text, encoding="utf-8")
+        assert YoloSwitch(str(p), cuda=FakeCuda()).enabled is True
