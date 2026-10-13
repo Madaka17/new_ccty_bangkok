@@ -16,7 +16,7 @@ router = APIRouter()
 
 @router.get("/api/ai/yolo")
 def yolo_status():
-    """YOLO on/off (launch\yolo_switch.bat): saved state, which models are on the GPU, VRAM in use."""
+    """YOLO on/off (launch\\yolo_switch.bat): saved state, which models are on the GPU, VRAM in use."""
     return yolo.status()
 
 
