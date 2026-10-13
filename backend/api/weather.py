@@ -1,9 +1,10 @@
 """
 Weather and the sky: wind, air quality, NASA fires and storms, the weather here and TMD warnings.
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
+from backend.core.response_cache import cached_json
 from backend.water import water_service, weather_now, wind_field
 from backend.water.air_service import air
 from backend.water.flood_feeds import tmd_warnings
@@ -23,9 +24,9 @@ def weather_wind_field():
     return wind_field.get()
 
 @router.get("/api/air/stations")
-def air_stations():
+def air_stations(request: Request):
     """PM2.5 / AQI per monitoring station in Bangkok + surrounding provinces (Air4Thai)."""
-    return air.status()
+    return cached_json(request, ("air/stations",), air.status)
 
 @router.get("/api/nasa/fires")
 def nasa_fires():

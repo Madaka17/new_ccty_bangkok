@@ -1,9 +1,10 @@
 """
 AI analyses read by the pages (BMA risk map, Traffy reports), Traffy history and the news.
 """
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
 from backend.core.news_feed import news_feed
+from backend.core.response_cache import cached_json
 from backend.services import risk_agent, traffy_agent, traffy_history
 
 router = APIRouter()
@@ -35,6 +36,6 @@ def traffy_history_compare():
     return traffy_history.compare()
 
 @router.get("/api/news")
-def news(kind: str = Query(None, pattern="^(flood|accident)$")):
+def news(request: Request, kind: str = Query(None, pattern="^(flood|accident)$")):
     """Flood and road-accident headlines from Thai news outlets' own RSS feeds, newest first (news_feed.py)."""
-    return news_feed.status(kind)
+    return cached_json(request, ("news", kind), lambda: news_feed.status(kind))
