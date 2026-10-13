@@ -17,6 +17,7 @@ from ultralytics import YOLO
 from ultralytics.engine.results import Results
 
 from backend.core.instance import thai_font
+from backend.vision.yolo_switch import YoloOff
 from backend.vision.vehicle_tracker import (CLASS_CONFIG, DEFAULT_CLASS, LEVEL_TEXT, PERSON_CLASS, VehicleTracker,
                                             frame_video_time, skip_elapsed_frames)
 
@@ -26,7 +27,7 @@ SURE_CONF = 0.5   # on the picture, a box below this shows no percentage and a t
 
 
 class VehicleDetectorYOLO11x:
-    def __init__(self, model_path='yolo26x.pt', target_fps=10.0, conf_threshold=0.15, vehicle_log=None):
+    def __init__(self, model_path='yolo26x.pt', target_fps=10.0, conf_threshold=0.15, vehicle_log=None, load_models=True):
         self.target_fps = target_fps
         self.conf_threshold = conf_threshold
         self.frame_interval = 1.0 / target_fps  # 0.10s for 10 FPS
@@ -39,21 +40,12 @@ class VehicleDetectorYOLO11x:
         stem = os.path.splitext(os.path.basename(model_path))[0]
         self.model_name = 'YOLO' + stem[4:] if stem.lower().startswith('yolo') else stem
         print(f"[AI] Initializing {self.model_name} ({model_path}) with target {target_fps} FPS...")
-        self.model = YOLO(model_path)
-        if torch.cuda.is_available():
-            try:
-                self.model.to('cuda').half()
-                print("[AI] Accelerated with CUDA FP16 (Tensor Cores active, TDR safe)")
-            except Exception as e:
-                print(f"[AI] Note: FP16 acceleration skipped: {e}")
-        # Warmup model once on dummy image so initial stream frames don't stall
-        try:
-            dummy = np.zeros((320, 320, 3), dtype=np.uint8)
-            self.model(dummy, verbose=False)
-        except Exception:
-            pass
+        self.model_path = model_path
         # One GPU: inference from all streams (this one and the background counters) is serialized
         self.model_lock = threading.Lock()
+        self.model = None
+        if load_models:
+            self.load_models()
 
         self.target_classes = TARGET_CLASSES
         self.CLASS_CONFIG = CLASS_CONFIG
@@ -106,6 +98,35 @@ class VehicleDetectorYOLO11x:
         self._gamma_table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in range(256)]).astype("uint8")
         self._clahe = cv2.createCLAHE(clipLimit=2.2, tileGridSize=(8, 8))
 
+    def load_models(self):
+        """Load the weights onto the GPU. Does nothing when a model is already loaded."""
+        if self.model is not None:
+            return
+        model = YOLO(self.model_path)
+        if torch.cuda.is_available():
+            try:
+                model.to('cuda').half()
+                print("[AI] Accelerated with CUDA FP16 (Tensor Cores active, TDR safe)")
+            except Exception as e:
+                print(f"[AI] Note: FP16 acceleration skipped: {e}")
+        # Warmup model once on dummy image so initial stream frames don't stall
+        try:
+            dummy = np.zeros((320, 320, 3), dtype=np.uint8)
+            model(dummy, verbose=False)
+        except Exception:
+            pass
+        with self.model_lock:
+            if self.model is None:
+                self.model = model
+
+    def unload_models(self):
+        """Drop the model once any running inference has finished."""
+        with self.model_lock:
+            self.model = None
+
+    def models_loaded(self):
+        return self.model is not None
+
     def _init_fonts(self):
         chosen = thai_font()
 
@@ -155,11 +176,18 @@ class VehicleDetectorYOLO11x:
         floor = min(min(self.CLASS_CONF.values()), base)
         if not tiled:
             with self.model_lock:
-                result = self.model(frame, classes=self.target_classes, conf=floor, imgsz=self.IMGSZ, iou=0.45, verbose=False)[0]
+                model = self.model
+                if model is None:
+                    raise YoloOff("YOLO ปิดอยู่")
+                result = model(frame, classes=self.target_classes, conf=floor, imgsz=self.IMGSZ, iou=0.45, verbose=False)[0]
         else:
             tiles = self._tiles(h, w)
             with self.model_lock:
-                parts = self.model([frame[y0:y1, x0:x1] for y0, y1, x0, x1 in tiles], classes=self.target_classes,
+                model = self.model
+                if model is None:
+                    raise YoloOff("YOLO ปิดอยู่")
+                names = model.names
+                parts = model([frame[y0:y1, x0:x1] for y0, y1, x0, x1 in tiles], classes=self.target_classes,
                                    conf=floor, imgsz=self.TILE_IMGSZ, iou=0.45, verbose=False)
             rows = []
             for (y0, y1, x0, x1), r in zip(tiles, parts):
@@ -170,7 +198,7 @@ class VehicleDetectorYOLO11x:
             merged = torch.cat(rows) if rows else torch.zeros((0, 6))
             if len(merged):
                 merged = merged[self._nms(merged.numpy(), 0.5)]
-            result = Results(frame, path='', names=self.model.names, boxes=merged)
+            result = Results(frame, path='', names=names, boxes=merged)
         if len(result.boxes):
             cls = result.boxes.cls
             thr = torch.tensor([max(base, self.CLASS_CONF.get(int(c), base)) for c in cls], device=cls.device)
@@ -405,7 +433,14 @@ class VehicleDetectorYOLO11x:
 
                 # Run YOLO inference
                 t_infer_start = time.time()
-                result = self.infer(frame, tiled=self.TILED_LIVE)
+                try:
+                    result = self.infer(frame, tiled=self.TILED_LIVE)
+                except YoloOff:
+                    # Switch is off: keep the stream open, show it as idle, check again shortly
+                    with self.lock:
+                        self.latest_stats.update(active=False, stream_error='yolo_off')
+                    stop_event.wait(2.0)
+                    continue
                 infer_latency_ms = (time.time() - t_infer_start) * 1000.0
 
                 dets, stats, new_vehicles = tracker.update(result, frame, frame_t)
