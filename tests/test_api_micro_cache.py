@@ -118,3 +118,27 @@ def test_water_error_answer_is_not_cached(monkeypatch):
     assert client.get("/api/water/summary").status_code == 503
     assert client.get("/api/water/summary").status_code == 503
     assert Broken.calls == 2
+
+
+def test_all_cameras_built_once_per_ttl(monkeypatch):
+    module, client = _router_client("cameras")
+    calls = []
+
+    def build():
+        calls.append(1)
+        return {"total": 1, "items": [{"camid": "c1", "title": "สี่แยก" * 300}]}
+
+    monkeypatch.setattr(module, "_all_cameras", build)
+    a = client.get("/api/cameras/all", headers={"Accept-Encoding": "gzip"})
+    b = client.get("/api/cameras/all", headers={"Accept-Encoding": "gzip"})
+    assert a.json() == b.json() and a.json()["items"][0]["camid"] == "c1"
+    assert a.headers["content-encoding"] == "gzip"
+    assert len(calls) == 1
+
+
+def test_camera_list_cached(monkeypatch):
+    module, client = _router_client("cameras")
+    monkeypatch.setattr(module, "cameras_data", [{"camid": "x" * 2000}])
+    assert client.get("/api/cameras").json() == {"total": 1, "items": [{"camid": "x" * 2000}]}
+    monkeypatch.setattr(module, "cameras_data", [])
+    assert client.get("/api/cameras").json()["total"] == 1   # still the cached answer inside the TTL
