@@ -58,6 +58,10 @@ class SurveyManager:
 
     def _loop(self):
         while not self.stop.is_set():
+            if not self.detector.models_loaded():
+                # Switch is off: open no streams and do not advance the round-robin
+                self.stop.wait(10.0)
+                continue
             cam = self._next_camera()
             if cam is None:
                 self.stop.wait(10.0)
