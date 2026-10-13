@@ -20,6 +20,7 @@ from backend.bma.bma_archive import CycleArchiver
 from backend.bma.bma_db import BmaDatabase
 from backend.bma.bma_session import BmaSession
 
+from backend.vision.yolo_switch import YoloOff
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import thai_font
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
@@ -176,6 +177,9 @@ class BmaScanner:
             self.is_scanning = False
             return {"status": "stopped"}
 
+    def yolo_enabled(self):
+        return bool(self.detector is None or getattr(self.detector, "models_loaded", lambda: True)())
+
     def get_status(self):
         with self.lock:
             pct = round((self.current_index / max(1, self.total_cameras)) * 100, 1)
@@ -267,7 +271,11 @@ class BmaScanner:
                 try:
                     # Tiled 2x2 inference on the small 352x288 BMA frames (see VehicleDetectorYOLO11x.infer)
                     with self.infer_lock:
-                        boxes = self._detect(img)
+                        try:
+                            boxes = self._detect(img)
+                        except YoloOff:
+                            # YOLO switched off: frames and flood watch above already ran; keep the last counts
+                            return
                     infer_latency = (time.time() - t_infer) * 1000.0
                     if self.helmet is not None:
                         try:
@@ -453,7 +461,7 @@ class BmaScanner:
         
         now_ts = int(time.time())
         online_cams = [c for c in latest_cams if c.get('status') == 'online' or (c.get('total', 0) > 0 and c.get('ts', 0) > now_ts - 1800)]
-        if self.source["state"] in ("down", "frozen"):
+        if self.source["state"] in ("down", "frozen") or not self.yolo_enabled():
             # an offline camera keeps its last counts and gets a new ts every cycle, so with the site down the
             # rule above still counted 539 cameras with the morning's traffic as live
             online_cams = []
@@ -559,7 +567,7 @@ class BmaScanner:
             "districts": districts_list,
             "major_roads": roads_list[:20],
             "hourly_trends": hourly_history,
-            "scan_status": self.get_status()
+            "scan_status": {**self.get_status(), "yolo_enabled": self.yolo_enabled()}
         }
 
     def process_image_and_detect(self, cam, raw_bytes):
