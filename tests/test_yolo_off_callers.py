@@ -86,3 +86,18 @@ def test_wrongway_check_now_while_off(monkeypatch, tmp_path):
     p.cls = object()     # a loaded classifier, so observe() asks the scanner's detector
     monkeypatch.setattr(p, "enabled", lambda: True)
     assert p.check_now("1") == {"ok": False, "error": "YOLO ปิดอยู่"}
+
+
+def test_process_image_and_detect_returns_plain_frame_when_off(capsys):
+    import cv2
+    from backend.bma.bma_service import BmaScanner
+
+    class OffDetector:
+        def detect_boxes(self, img):
+            raise YoloOff("off")
+
+    s = BmaScanner.__new__(BmaScanner)
+    s.detector = OffDetector()
+    raw = cv2.imencode(".jpg", np.zeros((64, 64, 3), np.uint8))[1].tobytes()
+    assert s.process_image_and_detect({"camid": "1"}, raw) == (raw, None)
+    assert capsys.readouterr().out == ""

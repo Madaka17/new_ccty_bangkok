@@ -612,6 +612,8 @@ class BmaScanner:
                 'detections': dets
             }
             return jpeg.tobytes(), stats
+        except YoloOff:
+            return raw_bytes, None      # YOLO off: live views show the plain frame, nothing to log per frame
         except Exception as e:
             print(f"[BMA Detect Error] {e}")
             return None, None
