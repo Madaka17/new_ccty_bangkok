@@ -30,6 +30,7 @@ from backend.vision.flood_cam_service import FloodCamWatch
 from backend.vision.helmet_service import HelmetPatrol
 from backend.vision.incident_service import IncidentManager
 from backend.vision.itic_frames import IticFrames
+from backend.vision.longdo_cameras import longdo_cameras as _longdo_cameras
 from backend.vision.survey import SurveyManager
 from backend.vision.vehicle_log import VehicleLog
 from backend.vision.violation_service import ViolationMonitor
@@ -130,66 +131,9 @@ if cameras_data:
 # When this process started: the health check's uptime
 SERVER_START = time.time()
 
-_longdo_cams_cache = {"time": 0, "data": None}
-
 def longdo_cameras():
-    """Returns all cameras from Longdo Traffic API with disk and memory caching."""
-    import urllib.request
-    import re
-    now = time.time()
-    if now - _longdo_cams_cache["time"] < 300 and _longdo_cams_cache["data"] is not None:
-        return _longdo_cams_cache["data"]
-
-    cache_file = os.path.join(DATA_DIR, "cache", "longdo_cameras.json")
-    try:
-        req = urllib.request.Request("https://traffic.longdo.com/camera.json", headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            raw = resp.read().decode("utf-8")
-            data = json.loads(raw)
-            items = data.get("item", [])
-            if items:
-                formatted = []
-                for it in items:
-                    title = (it.get("title") or "").strip()
-                    m = re.match(r"^\(([^)]+)\)", title)
-                    prov = m.group(1).replace("จ.", "").strip() if m else ""
-                    formatted.append({
-                        "camid": it.get("camid", ""),
-                        "title": title,
-                        "short_title": re.sub(r"^\([^)]+\)\s*", "", title),
-                        "province": prov or "กรุงเทพมหานคร",
-                        "organization": it.get("organization") or "Longdo Traffic",
-                        "hls_url": it.get("hls_url") or "",
-                        "vdourl": it.get("vdourl") or "",
-                        "imgurl": it.get("imgurl") or "",
-                        "latitude": float(it.get("latitude") or 0),
-                        "longitude": float(it.get("longitude") or 0),
-                        "geocode": str(it.get("geocode") or ""),
-                        "lastupdate": it.get("lastupdate") or ""
-                    })
-                res_data = {"total": len(formatted), "items": formatted}
-                _longdo_cams_cache["time"] = now
-                _longdo_cams_cache["data"] = res_data
-                try:
-                    os.makedirs(os.path.dirname(cache_file), exist_ok=True)
-                    with open(cache_file, "w", encoding="utf-8") as f:
-                        json.dump(res_data, f, ensure_ascii=False)
-                except Exception:
-                    pass
-                return res_data
-    except Exception as e:
-        print(f"[Warning] Failed to fetch live Longdo cameras: {e}")
-
-    if os.path.exists(cache_file):
-        try:
-            with open(cache_file, "r", encoding="utf-8") as f:
-                res_data = json.load(f)
-                _longdo_cams_cache["data"] = res_data
-                return res_data
-        except Exception:
-            pass
-
-    return {"total": len(cameras_data), "items": cameras_data}
+    """Longdo's camera list (vision/longdo_cameras.py); our own cameras when Longdo and its copy both fail."""
+    return _longdo_cameras(fallback=cameras_data)
 
 # ---------------------------------------------------------------- routes for the traffic assistant
 def route_hazards():

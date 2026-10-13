@@ -55,6 +55,9 @@ def save_raw_frame(camid, jpeg):
 
 CAMERAS_FILE = os.path.join(BASE_DIR, "config", "cameras_bma.json")
 
+# get_analytics is polled by every dashboard visitor; the build takes ~0.1-0.3 s under the DB lock
+ANALYTICS_TTL = 30  # seconds
+
 # Target YOLO classes for traffic: 1: bicycle, 2: car, 3: motorcycle, 5: bus, 7: truck
 VEHICLE_CLASSES = {1: 'motorcycles', 2: 'cars', 3: 'motorcycles', 5: 'trucks', 7: 'trucks'}
 
@@ -96,6 +99,7 @@ class BmaScanner:
         self.archiver.run_forever()
         self.cameras = []
         self._load_cameras()
+        self._init_analytics_cache()
 
         self.is_scanning = False
         self.stop_event = threading.Event()
@@ -420,7 +424,29 @@ class BmaScanner:
 
         return draw_img
 
+    def _init_analytics_cache(self):
+        self._analytics_lock = threading.Lock()
+        self._analytics = None
+        self._analytics_at = 0.0
+
     def get_analytics(self):
+        """Cached for ANALYTICS_TTL seconds; only one thread rebuilds while the others wait for it."""
+        if self._analytics is not None and time.monotonic() - self._analytics_at < ANALYTICS_TTL:
+            return self._analytics
+        with self._analytics_lock:
+            if self._analytics is not None and time.monotonic() - self._analytics_at < ANALYTICS_TTL:
+                return self._analytics
+            try:
+                result = self._build_analytics()
+            except Exception:
+                if self._analytics is not None:
+                    return self._analytics  # keep serving the last good result
+                raise
+            self._analytics = result
+            self._analytics_at = time.monotonic()
+            return result
+
+    def _build_analytics(self):
         """Generate comprehensive Data Analysis on the counted vehicle data."""
         latest_cams = self.db.get_all_latest()
         total_cameras = len(self.cameras)

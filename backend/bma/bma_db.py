@@ -7,12 +7,25 @@ import os
 import sqlite3
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from backend.core.instance import DATA_DIR
 
 
 DB_PATH = os.path.join(DATA_DIR, "vehicle_counts.db")
+
+HISTORY_SUMMARY_SQL = """
+    SELECT hour,
+           SUM(cars) as cars,
+           SUM(motorcycles) as motorcycles,
+           SUM(trucks) as trucks,
+           SUM(total) as total,
+           COUNT(DISTINCT camid) as cam_count
+    FROM bma_history
+    WHERE hour >= ?
+    GROUP BY hour
+    ORDER BY hour ASC
+"""
 
 
 class BmaDatabase:
@@ -180,20 +193,11 @@ class BmaDatabase:
             return dict(row) if row else None
 
     def get_history_summary(self, hours=24):
+        # Filter on `hour` (indexed, same text format as update_camera_count writes), not on `ts` (no index)
+        cutoff = (datetime.now() - timedelta(hours=hours)).strftime('%Y-%m-%dT%H:00')
         with self.lock:
             conn = sqlite3.connect(self.db_path, check_same_thread=False)
             conn.row_factory = sqlite3.Row
-            rows = conn.execute("""
-                SELECT hour,
-                       SUM(cars) as cars,
-                       SUM(motorcycles) as motorcycles,
-                       SUM(trucks) as trucks,
-                       SUM(total) as total,
-                       COUNT(DISTINCT camid) as cam_count
-                FROM bma_history
-                WHERE ts >= ?
-                GROUP BY hour
-                ORDER BY hour ASC
-            """, (int(time.time() - hours * 3600),)).fetchall()
+            rows = conn.execute(HISTORY_SUMMARY_SQL, (cutoff,)).fetchall()
             conn.close()
             return [dict(r) for r in rows]

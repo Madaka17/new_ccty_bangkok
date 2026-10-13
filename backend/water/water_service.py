@@ -76,27 +76,54 @@ CANAL_MATCH_KM = 0.15        # a ThaiWater canal station this close to a BMA gau
 
 # ---------------------------------------------------------------- cache
 class _Cache:
-    """Tiny TTL cache; a failed refresh keeps serving the last good value (stale flag set)."""
+    """Tiny TTL cache; a failed refresh keeps serving the last good value (stale flag set).
+
+    Stampede guard: one loader run per key at a time. Callers that find the key stale while it is being
+    loaded get the old value at once; only a caller with nothing to serve waits for the load. After a failed
+    load the key is not tried again for FAIL_WAIT seconds, so an upstream outage costs one timeout a minute,
+    not one per request.
+    """
+    FAIL_WAIT = 60
 
     def __init__(self):
-        self.lock = threading.Lock()
-        self.items = {}  # key -> (value, fetched_at)
+        self.lock = threading.Lock()   # guards the dicts only, never held while a loader runs
+        self.items = {}       # key -> (value, fetched_at)
+        self.key_locks = {}   # key -> Lock held by the one caller running the loader
+        self.failed = {}      # key -> (failed_at, exception) of the last failed load
 
     def get(self, key, ttl, loader):
         with self.lock:
             hit = self.items.get(key)
+            key_lock = self.key_locks.setdefault(key, threading.Lock())
         if hit and time.time() - hit[1] < ttl:
             return hit[0], False
+        if not key_lock.acquire(blocking=hit is None):
+            return hit[0], False   # being refreshed right now: the old value is a few seconds older at most
         try:
-            value = loader()
-        except Exception as e:
-            print(f"[Water] {key} refresh failed: {e}")
-            if hit:
-                return hit[0], True
-            raise
-        with self.lock:
-            self.items[key] = (value, time.time())
-        return value, False
+            with self.lock:
+                hit = self.items.get(key)
+                failed = self.failed.get(key)
+            if hit and time.time() - hit[1] < ttl:
+                return hit[0], False
+            if failed and time.time() - failed[0] < self.FAIL_WAIT:
+                if hit:
+                    return hit[0], True
+                raise failed[1]
+            try:
+                value = loader()
+            except Exception as e:
+                print(f"[Water] {key} refresh failed: {e}")
+                with self.lock:
+                    self.failed[key] = (time.time(), e)
+                if hit:
+                    return hit[0], True
+                raise
+            with self.lock:
+                self.items[key] = (value, time.time())
+                self.failed.pop(key, None)
+            return value, False
+        finally:
+            key_lock.release()
 
 
 _cache = _Cache()

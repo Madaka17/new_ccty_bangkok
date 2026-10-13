@@ -27,6 +27,9 @@ SYMBOL_TH = {
 
 _cache = {}
 _lock = threading.Lock()
+_key_locks = {}  # (lat, lng) -> Lock held by the one caller fetching that cell, see _series
+_failed = {}     # (lat, lng) -> (failed_at, exception) of the last failed fetch
+FAIL_WAIT = 60   # after a failed fetch, the cell is not tried again for this long
 
 
 def _describe(symbol):
@@ -47,22 +50,49 @@ def _place(lat, lng):
 
 
 def _series(lat, lng):
-    """MET's hourly series for a ~1 km cell, one upstream call per CACHE_SECONDS."""
+    """MET's hourly series for a ~1 km cell, one upstream call per CACHE_SECONDS.
+
+    Stampede guard: one upstream call per cell at a time; viewers arriving meanwhile get the old series at once
+    (or wait when there is none). After a failure the cell is not tried again for FAIL_WAIT seconds.
+    """
     key = (lat, lng)
-    now = time.time()
     with _lock:
         hit = _cache.get(key)
-        if hit and now - hit[0] < CACHE_SECONDS:
+        key_lock = _key_locks.setdefault(key, threading.Lock())
+    if hit and time.time() - hit[0] < CACHE_SECONDS:
+        return hit[1]
+    if not key_lock.acquire(blocking=hit is None):
+        return hit[1]
+    try:
+        with _lock:
+            hit = _cache.get(key)
+            failed = _failed.get(key)
+        if hit and time.time() - hit[0] < CACHE_SECONDS:
             return hit[1]
-    req = urllib.request.Request(URL.format(lat=lat, lng=lng), headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=15) as r:
-        series = json.loads(r.read().decode("utf-8"))["properties"]["timeseries"]
-    with _lock:
-        _cache[key] = (now, series)
-        if len(_cache) > 500:
-            for k in sorted(_cache, key=lambda k: _cache[k][0])[:250]:
-                _cache.pop(k, None)
-    return series
+        if failed and time.time() - failed[0] < FAIL_WAIT:
+            if hit:
+                return hit[1]
+            raise failed[1]
+        now = time.time()
+        req = urllib.request.Request(URL.format(lat=lat, lng=lng), headers={"User-Agent": USER_AGENT})
+        try:
+            with urllib.request.urlopen(req, timeout=15) as r:
+                series = json.loads(r.read().decode("utf-8"))["properties"]["timeseries"]
+        except Exception as e:
+            with _lock:
+                _failed[key] = (time.time(), e)
+            if hit:
+                return hit[1]
+            raise
+        with _lock:
+            _cache[key] = (now, series)
+            _failed.pop(key, None)
+            if len(_cache) > 500:
+                for k in sorted(_cache, key=lambda k: _cache[k][0])[:250]:
+                    _cache.pop(k, None)
+        return series
+    finally:
+        key_lock.release()
 
 
 def _ts(t):
