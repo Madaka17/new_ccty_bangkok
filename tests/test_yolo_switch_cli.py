@@ -73,3 +73,48 @@ def test_describe_shows_off_and_gpu_memory():
     text = ys.describe({"enabled": False, "vram": {"used_mb": 3789, "total_mb": 10240}, "holders": {}})
     assert "ปิด" in text
     assert "GPU ใช้ 3.7 จาก 10.0 GB" in text
+
+
+def test_module_compiles_without_warnings():
+    import warnings
+    src = (ROOT / "launch" / "yolo_switch.py").read_text(encoding="utf-8")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        compile(src, "yolo_switch.py", "exec")
+
+
+def _post_raises(monkeypatch, exc):
+    def fake_call(port, method="GET", body=None, timeout=120):
+        if method == "POST":
+            raise exc
+        return _state(True)
+    monkeypatch.setattr(ys, "call", fake_call)
+
+
+def test_post_timeout_returns_1_with_thai_message(monkeypatch, capsys):
+    _post_raises(monkeypatch, TimeoutError("timed out"))
+    assert ys.main(["--off"]) == 1
+    assert "ยังโหลดอยู่ ลองเปิดไอคอนนี้อีกครั้งเพื่อดูสถานะ" in capsys.readouterr().out
+
+
+def test_post_urlerror_timeout_reason_same_message(monkeypatch, capsys):
+    import socket
+    _post_raises(monkeypatch, urllib.error.URLError(socket.timeout("timed out")))
+    assert ys.main(["--off"]) == 1
+    assert "ยังโหลดอยู่" in capsys.readouterr().out
+
+
+def test_post_http_error_returns_1(monkeypatch):
+    _post_raises(monkeypatch, urllib.error.HTTPError("u", 500, "boom", {}, None))
+    assert ys.main(["--off"]) == 1
+
+
+def test_get_uses_timeout_10(monkeypatch):
+    seen = []
+
+    def fake_call(port, method="GET", body=None, timeout=120):
+        seen.append((method, timeout))
+        return _state(True)
+    monkeypatch.setattr(ys, "call", fake_call)
+    ys.main(["--off"])
+    assert seen[0] == ("GET", 10)

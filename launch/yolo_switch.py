@@ -1,4 +1,4 @@
-"""
+r"""
 YOLO on/off from the Desktop ("BKK YOLO On-Off" -> launch\yolo_switch.bat).
 
 Shows whether YOLO is on and how much GPU memory is in use, asks, then switches every YOLO model on or
@@ -31,7 +31,7 @@ def describe(st):
 def main(argv, ask=input):
     port = next((a for a in argv if a.isdigit()), "8000")
     try:
-        st = call(port)
+        st = call(port, timeout=10)
     except (urllib.error.URLError, OSError) as e:
         print(f"ต่อเซิร์ฟเวอร์ที่พอร์ต {port} ไม่ได้: {e}")
         return 1
@@ -45,7 +45,15 @@ def main(argv, ask=input):
             print("ไม่เปลี่ยน")
             return 0
     print("กำลังเปิด YOLO (โหลดโมเดลราว 10-30 วินาที)..." if want else "กำลังปิด YOLO และคืน GPU...")
-    out = call(port, "POST", {"enabled": want})
+    try:
+        out = call(port, "POST", {"enabled": want})
+    except (urllib.error.URLError, OSError) as e:
+        reason = getattr(e, "reason", e)
+        if isinstance(e, TimeoutError) or isinstance(reason, TimeoutError):   # socket.timeout is TimeoutError
+            print("ยังโหลดอยู่ ลองเปิดไอคอนนี้อีกครั้งเพื่อดูสถานะ")
+        else:
+            print(f"สั่งเปลี่ยนไม่สำเร็จ: {e}")
+        return 1
     print(describe(out))
     for name, err in (out.get("errors") or {}).items():
         print(f"  {name}: {err}")
