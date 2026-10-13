@@ -8,7 +8,7 @@ per TTL and every viewer gets a new Response around the same bytes (the access g
 viewer's cookie and headers to it).
 
 One thread rebuilds a stale key; the others get the old bytes at once, or wait when there are none yet.
-A build that raises keeps the old bytes; a build that returns a Response (an error answer) is passed
+A build that raises keeps the old bytes and the next try waits one TTL; a build that returns a Response (an error answer) is passed
 through and not kept, so the next request tries again.
 """
 import gzip
@@ -74,7 +74,10 @@ class ResponseCache:
                 value = build()
             except Exception:
                 if entry:
-                    return entry          # keep serving the last good answer
+                    # keep serving the last good answer; the next try waits one TTL
+                    entry = (entry[0], entry[1], self.clock())
+                    self._put(key, entry)
+                    return entry
                 raise
             if isinstance(value, Response):
                 return value
@@ -85,6 +88,9 @@ class ResponseCache:
             return entry
         finally:
             key_lock.release()
+            with self.lock:
+                if key not in self.entries:   # nothing cached: no lock to keep for this key
+                    self.key_locks.pop(key, None)
 
     def response(self, accept_encoding, key, build):
         entry = self._entry(key, build)

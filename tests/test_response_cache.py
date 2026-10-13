@@ -168,3 +168,37 @@ def test_keys_are_bounded_least_recently_used_out():
     cache.response("", "a", lambda: {"k": 1})     # touch a: b is now the oldest
     cache.response("", "d", lambda: {"k": 1})
     assert set(cache.keys()) == {"a", "c", "d"}
+
+
+def test_failed_and_passthrough_keys_leave_no_lock_behind():
+    cache = ResponseCache()
+
+    def broken():
+        raise RuntimeError("source down")
+
+    for i in range(5):
+        with pytest.raises(RuntimeError):
+            cache.response("", f"broken-{i}", broken)
+    for i in range(5):
+        cache.response("", f"passthrough-{i}",
+                       lambda: JSONResponse(status_code=503, content={"error": "down"}))
+    assert cache.key_locks == {}
+
+
+def test_failing_source_is_retried_once_per_ttl():
+    clock = Clock()
+    cache = ResponseCache(ttl=10, clock=clock)
+    cache.response("", "k", lambda: {"v": "good"})
+    clock.now += 11
+    build, calls = _counting(None)
+
+    def broken():
+        build()
+        raise RuntimeError("source down")
+
+    assert json.loads(cache.response("", "k", broken).body) == {"v": "good"}
+    assert json.loads(cache.response("", "k", broken).body) == {"v": "good"}
+    assert len(calls) == 1
+    clock.now += 11
+    assert json.loads(cache.response("", "k", broken).body) == {"v": "good"}
+    assert len(calls) == 2
