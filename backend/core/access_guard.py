@@ -108,36 +108,82 @@ TRUSTED_NETS = [ipaddress.ip_network(n) for n in (
 PUBLIC_WRITE_PREFIXES = ("/api/telemetry/", "/api/chat")
 
 
+SWEEP_SECONDS = 60
+SWEEP_MIN_KEYS = 5000
+
+
 class _Window:
     """Sliding window counter per key."""
-    def __init__(self, limit, seconds):
+    def __init__(self, limit, seconds, clock=time.time):
         self.limit = limit
         self.seconds = seconds
+        self.clock = clock
         self.hits = {}
         self.lock = threading.Lock()
+        self._last_sweep = clock()
+
+    def _sweep(self, now):
+        """Drop keys with no hit inside the window (caller holds the lock)."""
+        self._last_sweep = now
+        for k in [k for k, v in self.hits.items() if not v or v[-1] < now - self.seconds]:
+            self.hits.pop(k, None)
 
     def allow(self, key):
         if self.limit <= 0:
             return True
-        now = time.time()
+        now = self.clock()
         with self.lock:
+            # keep the map from growing forever, but at most once per SWEEP_SECONDS (load test 2026-10-13:
+            # a sweep on every call over >5000 IPs took half the server's CPU)
+            if len(self.hits) > SWEEP_MIN_KEYS and now - self._last_sweep >= SWEEP_SECONDS:
+                self._sweep(now)
             q = self.hits.setdefault(key, deque())
             while q and q[0] < now - self.seconds:
                 q.popleft()
             if len(q) >= self.limit:
                 return False
             q.append(now)
-            # keep the map from growing forever
-            if len(self.hits) > 5000:
-                for k in [k for k, v in self.hits.items() if not v or v[-1] < now - self.seconds]:
-                    self.hits.pop(k, None)
+            return True
+
+
+class _FixedWindow:
+    """Fixed-window counter per key: {key: [window_start, count]}, constant memory per key. The window
+    starts at the key's first hit and lasts ``seconds``."""
+    def __init__(self, limit, seconds, clock=time.time):
+        self.limit = limit
+        self.seconds = seconds
+        self.clock = clock
+        self.hits = {}
+        self.lock = threading.Lock()
+        self._last_sweep = clock()
+
+    def _sweep(self, now):
+        """Drop keys whose window has ended (caller holds the lock)."""
+        self._last_sweep = now
+        for k in [k for k, v in self.hits.items() if now - v[0] >= self.seconds]:
+            self.hits.pop(k, None)
+
+    def allow(self, key):
+        if self.limit <= 0:
+            return True
+        now = self.clock()
+        with self.lock:
+            # throttled like _Window: never more than one sweep per SWEEP_SECONDS
+            if len(self.hits) > SWEEP_MIN_KEYS and now - self._last_sweep >= SWEEP_SECONDS:
+                self._sweep(now)
+            entry = self.hits.get(key)
+            if entry is None or now - entry[0] >= self.seconds:
+                entry = self.hits[key] = [now, 0]
+            if entry[1] >= self.limit:
+                return False
+            entry[1] += 1
             return True
 
 
 chat_min = _Window(CHAT_RATE_PER_MIN, 60)
 chat_day = _Window(CHAT_RATE_PER_DAY, 86400)
 general_min = _Window(GENERAL_RATE_PER_MIN, 60)
-general_day = _Window(GENERAL_RATE_PER_DAY, 86400)
+general_day = _FixedWindow(GENERAL_RATE_PER_DAY, 86400)
 report_hour = _Window(USER_REPORT_RATE_PER_HOUR, 3600)
 report_day = _Window(USER_REPORT_RATE_PER_DAY, 86400)
 parking_hour = _Window(PARKING_FULL_RATE_PER_HOUR, 3600)
