@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { pickTrafficSummary } from './trafficSummary.js';
+import { bmaCountsLive, pickTrafficSummary } from './trafficSummary.js';
 
 const bmaUp = { ready: true, online: true, is_bma: true, flow_index: 72, updated_at: 1791900000 };
 const bmaDown = { ready: true, online: false, is_bma: true, flow_index: null, updated_at: 1791458052 };
@@ -20,5 +20,19 @@ describe('pickTrafficSummary', () => {
 
   test('uses Longdo when BMA has not answered yet', () => {
     expect(pickTrafficSummary('bma', null, longdo)).toBe(longdo);
+  });
+});
+
+describe('bmaCountsLive', () => {
+  test('is false while YOLO is off', () => {
+    expect(bmaCountsLive({ yolo_enabled: false })).toBe(false);
+  });
+
+  test('is true while YOLO is on', () => {
+    expect(bmaCountsLive({ yolo_enabled: true })).toBe(true);
+  });
+
+  test('is true when the server does not send the flag yet', () => {
+    expect(bmaCountsLive(undefined)).toBe(true);
   });
 });

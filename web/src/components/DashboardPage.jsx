@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchTrafficSummary, fetchTrafficAreas, fetchBmaAnalytics, fetchAnalytics, fetchOnlineCount, fetchFloodStatus } from '../lib/api.js';
-import { pickTrafficSummary } from '../lib/trafficSummary.js';
+import { bmaCountsLive, pickTrafficSummary } from '../lib/trafficSummary.js';
 import { bmaSiteDown } from './bma/BmaSiteNotice.jsx';
 import { trackView } from '../lib/telemetry.js';
 import { Button } from './dashboard/ui.jsx';
@@ -79,10 +79,11 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
   const cg = bma?.summary?.congestion;
   const site = bma?.scan_status?.source;
   const siteDown = bmaSiteDown(site);
+  const countsLive = bmaCountsLive(bma?.scan_status);
   const bmaSummary = bma?.summary
     ? {
         ready: true,
-        online: !siteDown,
+        online: !siteDown && countsLive,
         is_bma: true,
         site,
         // site down: the time of the last picture, not the last (empty) scan
@@ -91,7 +92,7 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
           : bma.scan_status?.last_scan_time
             ? Math.floor(new Date(bma.scan_status.last_scan_time.replace(' ', 'T')).getTime() / 1000)
             : Math.floor(Date.now() / 1000),
-        flow_index: siteDown ? null : Math.min(100, Math.max(1, Math.round((cg?.free_pct || 0) + 0.5 * (cg?.moderate_pct || 0)))),
+        flow_index: (siteDown || !countsLive) ? null : Math.min(100, Math.max(1, Math.round((cg?.free_pct || 0) + 0.5 * (cg?.moderate_pct || 0)))),
         green_pct: Math.round(cg?.free_pct || 0),
         yellow_pct: Math.round(cg?.moderate_pct || 0),
         red_pct: Math.round(cg?.heavy_pct || 0),

@@ -4,3 +4,8 @@ export function pickTrafficSummary(source, bmaSummary, longdoSummary) {
   const bmaLive = bmaSummary?.online ? bmaSummary : null;
   return source === 'bma' ? (bmaLive || longdoSummary || bmaSummary) : (longdoSummary || bmaSummary);
 }
+
+// False while YOLO is off: the BMA scanner then reports no counts, so the cameras cannot stand for traffic.
+export function bmaCountsLive(scanStatus) {
+  return scanStatus?.yolo_enabled !== false;
+}
