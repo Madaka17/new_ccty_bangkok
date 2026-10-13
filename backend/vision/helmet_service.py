@@ -39,6 +39,7 @@ from backend.core import local_llm
 from backend.core.instance import DEFAULT_BMA_DATA_DIR
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
+from backend.vision.yolo_switch import YoloOff
 from backend.vision.frame_utils import fingerprint, iou, safe_id, safe_name, same_scene, write_jpeg
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "helmet")
 ARCHIVE_DIR = os.getenv("HELMET_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", DEFAULT_BMA_DATA_DIR), "helmet"))
@@ -102,6 +103,7 @@ class HelmetPatrol:
         self._init_db()
         self.local_det = None
         self._det_lock = threading.Lock()
+        self._switched_off = not load_models    # YOLO off: no cloud calls on leftovers either
         if load_models:
             self.load_models()
         for _ in range(WORKERS):
@@ -130,8 +132,10 @@ class HelmetPatrol:
         with self._det_lock:
             if self.local_det is None:
                 self.local_det = det
+        self._switched_off = False
 
     def unload_models(self):
+        self._switched_off = True
         with self._det_lock:
             self.local_det = None
 
@@ -263,8 +267,11 @@ class HelmetPatrol:
         img = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
         if img is None:
             return {"ok": False, "error": "bad image"}
-        with self.scanner.infer_lock:
-            boxes = self.scanner._detect(img)
+        try:
+            with self.scanner.infer_lock:
+                boxes = self.scanner._detect(img)
+        except YoloOff:
+            return {"ok": False, "error": "YOLO ปิดอยู่"}
         motos = sum(1 for b in boxes if b[0] == MOTO_CLASS)
         usable = sum(1 for b in boxes if b[0] == MOTO_CLASS and b[1] >= MIN_BOX_CONF and (b[5] - b[3]) >= MIN_BOX_H)
         ids = self.observe(cam, img, boxes, force=True)
@@ -333,6 +340,8 @@ class HelmetPatrol:
                          note=f"AI ของระบบเห็นหมวกกันน็อก (มั่นใจ {local[1]:.0%})")
             self.last_check = int(now)
             return
+        if agent == "auto" and self._switched_off:
+            return      # YOLO off: the row stays pending, no cloud call until it is switched on again
         provider = self.provider()
         if not provider or (agent == "auto" and not self._budget_ok(now)):
             reason = self._agent_reason(now) if provider else "ไม่มี AI ตรวจซ้ำ"
@@ -419,7 +428,7 @@ class HelmetPatrol:
         the local detector while the agent was over budget or not answering), newest first, within budget."""
         time.sleep(20)   # let the cloud client / local model come up first
         while True:
-            if self.provider() and self._budget_ok(time.time()):
+            if not self._switched_off and self.provider() and self._budget_ok(time.time()):
                 with self.lock:
                     conn = self._db()
                     ids = [r["id"] for r in conn.execute(

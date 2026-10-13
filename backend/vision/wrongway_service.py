@@ -42,6 +42,7 @@ from backend.core import local_llm
 from backend.core.instance import DEFAULT_BMA_DATA_DIR
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
+from backend.vision.yolo_switch import YoloOff
 from backend.vision.frame_utils import fingerprint, iou, safe_id, safe_name, same_scene, write_jpeg
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "wrongway")
 FIELD_DIR = os.path.join(DATA_DIR, "cache", "heading")
@@ -471,7 +472,10 @@ class WrongWayPatrol:
         img = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
         if img is None:
             return {"ok": False, "error": "bad image"}
-        ids = self.observe(cam, img, force=True)
+        try:
+            ids = self.observe(cam, img, force=True)     # asks the scanner's detector, which is off with YOLO
+        except YoloOff:
+            return {"ok": False, "error": "YOLO ปิดอยู่"}
         fl = self.field(str(camid)).summary()
         if ids:
             msg = f"พบรถที่หันสวนทาง {len(ids)} คัน ส่งให้ AI ยืนยันแล้ว"
