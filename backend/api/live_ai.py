@@ -9,9 +9,24 @@ from fastapi import APIRouter, Body, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
 from backend.core import access_guard
-from backend.services import cameras_data, detector, incidents, vehicle_log, violations
+from backend.services import cameras_data, detector, incidents, vehicle_log, violations, yolo
 
 router = APIRouter()
+
+
+@router.get("/api/ai/yolo")
+def yolo_status():
+    """YOLO on/off (launch\yolo_switch.bat): saved state, which models are on the GPU, VRAM in use."""
+    return yolo.status()
+
+
+@router.post("/api/ai/yolo")
+def yolo_set(payload: dict = Body(...)):
+    """Switch every YOLO model on or off (operator only: the access guard keeps /api/ai/ POSTs local)."""
+    enabled = payload.get("enabled")
+    if not isinstance(enabled, bool):
+        return JSONResponse(status_code=400, content={"error": "enabled must be true or false"})
+    return yolo.set(enabled)
 
 
 @router.get("/api/ai/stats")

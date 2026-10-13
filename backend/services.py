@@ -37,6 +37,7 @@ from backend.vision.violation_service import ViolationMonitor
 from backend.vision.world_cameras import world_cameras
 from backend.vision.wrongway_service import WrongWayPatrol
 from backend.vision.yolo_detector import VehicleDetectorYOLO11x
+from backend.vision.yolo_switch import YoloSwitch
 from backend.water import north_flow, water_service
 from backend.water.air_service import air
 from backend.water.bkk_districts import BkkDistricts
@@ -81,7 +82,12 @@ if os.path.exists(CAMERAS_FILE):
 
 # Initialize the YOLO vehicle detector (model from AI_MODEL, target 10 FPS for smoother playback)
 vehicle_log = VehicleLog(os.path.join(DATA_DIR, "vehicle_counts.db"))
-detector = VehicleDetectorYOLO11x(model_path=MODEL_PATH, target_fps=10.0, conf_threshold=0.15, vehicle_log=vehicle_log)
+# YOLO on/off (launch\yolo_switch.bat): the saved state decides whether any model loads at startup
+yolo = YoloSwitch(os.path.join(DATA_DIR, "cache", "yolo_switch.json"))
+if not yolo.enabled:
+    print("[YOLO] off (saved state): no models loaded")
+detector = VehicleDetectorYOLO11x(model_path=MODEL_PATH, target_fps=10.0, conf_threshold=0.15, vehicle_log=vehicle_log,
+                                  load_models=yolo.enabled)
 # Background counting on user-selected cameras (lower fps to prioritize live camera)
 counter = CountManager(detector, vehicle_log, os.path.join(DATA_DIR, "count_cameras.json"), target_fps=0.5, max_cameras=4)
 counter.load({c["camid"]: c for c in cameras_data})
@@ -97,7 +103,8 @@ detector.incidents = incidents
 analytics_service.configure(incidents=incidents)
 # Wrong-way + no-helmet detection on the live AI camera (shares the incident vision provider)
 violations = ViolationMonitor(os.path.join(DATA_DIR, "vehicle_counts.db"), vision=incidents,
-                              cameras_by_id=lambda: {c["camid"]: c for c in cameras_data})
+                              cameras_by_id=lambda: {c["camid"]: c for c in cameras_data},
+                              load_models=yolo.enabled)
 detector.violations = violations
 # Which live-AI cameras answer right now (the camera search marks the ones without signal)
 camera_health = CameraHealth(lambda: cameras_data)
@@ -106,11 +113,13 @@ camera_health.start()
 # BMA Traffic Scanner & YOLO Vehicle Counter for all cameras
 bma_scanner = BmaScanner(detector=detector)
 # Helmet patrol over every BMA camera: motorcycle crops -> helmet agent -> evidence on the data drive
-helmet = HelmetPatrol(os.path.join(DATA_DIR, "vehicle_counts.db"), vision=incidents, scanner=bma_scanner)
+helmet = HelmetPatrol(os.path.join(DATA_DIR, "vehicle_counts.db"), vision=incidents, scanner=bma_scanner, load_models=yolo.enabled)
 bma_scanner.helmet = helmet
 # Wrong-way patrol over every BMA camera: heading detector + per-camera learned lane directions -> agent -> evidence
-wrongway = WrongWayPatrol(os.path.join(DATA_DIR, "vehicle_counts.db"), vision=incidents, scanner=bma_scanner)
+wrongway = WrongWayPatrol(os.path.join(DATA_DIR, "vehicle_counts.db"), vision=incidents, scanner=bma_scanner, load_models=yolo.enabled)
 bma_scanner.wrongway = wrongway
+for _name, _holder in (("detector", detector), ("helmet", helmet), ("wrongway", wrongway), ("violations", violations)):
+    yolo.register(_name, _holder)
 # Flood watch over every BMA camera: frames tiled 3x3 -> Qwen vision -> water on the road? -> map layer
 flood_cams = FloodCamWatch(bma_scanner.cameras)
 bma_scanner.flood = flood_cams
