@@ -160,3 +160,16 @@ def test_parking_full_is_public_and_rate_limited(monkeypatch, tmp_path):
     assert codes == [200, 200, 429]
     # only the exact "full" path is public
     assert c.post("/api/flood/parking/a/other", headers=SAME_ORIGIN).status_code == 403
+
+
+def test_hashed_assets_are_cached_for_a_year(tmp_path):
+    # Vite puts a content hash in every /assets/ file name, so a file never changes under its name:
+    # Cloudflare and browsers can keep it, and only the no-cache page decides which files to load.
+    from fastapi.staticfiles import StaticFiles
+    (tmp_path / "index-abc123.js").write_text("console.log(1)", encoding="utf-8")
+    app = _app()
+    app.mount("/assets", StaticFiles(directory=str(tmp_path)), name="assets")
+    client = TestClient(app)
+    assert client.get("/assets/index-abc123.js").headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert client.get("/").headers["cache-control"] == "no-cache"
+    assert "immutable" not in client.get("/api/data").headers.get("cache-control", "")

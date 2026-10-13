@@ -248,9 +248,13 @@ def _is_page(path):
     return path == "/" or last.endswith(".html") or "." not in last
 
 
-def _secure(response):
+def _secure(response, path=""):
     for k, v in SECURITY_HEADERS.items():
         response.headers.setdefault(k, v)
+    # Vite names every /assets/ file by its content hash, so a name never gets new content: Cloudflare's edge
+    # and the browser keep it for a year instead of asking the server again (default edge TTL is 4 h).
+    if path.startswith("/assets/") and response.status_code == 200:
+        response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
     # The page (index.html) names the hashed JS/CSS of the current build. Without this the browser keeps an
     # old copy by heuristic caching (it has Last-Modified only) and a new deploy shows up only after Ctrl+F5.
     if response.headers.get("content-type", "").startswith("text/html"):
@@ -275,7 +279,7 @@ async def guard(request: Request, call_next):
             age = session_age(request.cookies.get(SESSION_COOKIE))
             if age is None or age > SESSION_RENEW:
                 _set_session(response, request)
-        return _secure(response)
+        return _secure(response, path)
 
     ip = client_ip(request)
 

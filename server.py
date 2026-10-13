@@ -138,7 +138,10 @@ if __name__ == "__main__":
     print(f"  Running at http://localhost:{PORT}" + (f"  [TEST instance, data in {DATA_DIR}]" if IS_STAGE else ""))
     print("=" * 60)
     try:
-        uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info", server_header=False)
+        # One console line per request costs the one server process real time under load (Windows console
+        # writes are slow); ACCESS_LOG=1 in .env brings the per-request lines back for debugging.
+        uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info", server_header=False,
+                    access_log=os.getenv("ACCESS_LOG", "0") == "1")
     except BaseException as e:
         print(f"[Server] Exited with {type(e).__name__}: {e}")
         import traceback
