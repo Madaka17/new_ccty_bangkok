@@ -439,6 +439,7 @@ class VehicleDetectorYOLO11x:
                     # Switch is off: keep the stream open, show it as idle, check again shortly
                     with self.lock:
                         self.latest_stats.update(active=False, stream_error='yolo_off')
+                    tracker = VehicleTracker()      # old tracks would be stale after the pause
                     stop_event.wait(2.0)
                     continue
                 infer_latency_ms = (time.time() - t_infer_start) * 1000.0

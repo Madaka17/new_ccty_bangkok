@@ -119,6 +119,12 @@ class CountManager:
                     result = self.detector.infer(frame)
                 except YoloOff:
                     status.update(active=False, error='YOLO ปิดอยู่')
+                    tracker = VehicleTracker()      # old tracks would be stale after the pause
+                    try:
+                        cap.release()
+                    except Exception:
+                        pass
+                    cap = None                      # reopened on resume
                     stop.wait(10.0)
                     continue
                 _dets, stats, new_vehicles = tracker.update(result, frame, frame_t)
