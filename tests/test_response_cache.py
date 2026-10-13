@@ -152,6 +152,26 @@ def test_response_from_build_passes_through_uncached():
     assert len(calls) == 2   # not cached: the next request tries again
 
 
+def test_error_answer_with_old_bytes_serves_old_bytes_and_waits_a_ttl():
+    clock = Clock()
+    cache = ResponseCache(ttl=10, clock=clock)
+    cache.response("", "k", lambda: {"v": "good"})
+    clock.now += 11
+    calls = []
+
+    def failing_answer():
+        calls.append(1)
+        return JSONResponse(status_code=503, content={})
+
+    first = cache.response("", "k", failing_answer)
+    assert first.status_code == 200 and json.loads(first.body) == {"v": "good"}
+    assert cache.response("", "k", failing_answer).status_code == 200
+    assert len(calls) == 1   # the next try waits one TTL
+    clock.now += 11
+    cache.response("", "k", failing_answer)
+    assert len(calls) == 2
+
+
 def test_each_request_gets_its_own_response_object():
     cache = ResponseCache()
     a = cache.response("", "k", lambda: {"v": 1})

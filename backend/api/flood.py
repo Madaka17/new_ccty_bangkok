@@ -25,7 +25,9 @@ router = APIRouter()
 @router.get("/api/flood/status")
 def flood_status(request: Request, min_cm: float = Query(None, ge=0, le=200)):
     """Counts, every wet station and the per-district roll-up, for the flood layer on the map."""
-    return cached_json(request, ("flood/status", min_cm), lambda: flood_roads.status(min_cm=min_cm))
+    if min_cm is not None:   # a free float would let one client churn the cache's keys; the web page never sends it
+        return flood_roads.status(min_cm=min_cm)
+    return cached_json(request, ("flood/status",), lambda: flood_roads.status(min_cm=None))
 
 @router.get("/api/flood/stations")
 def flood_stations(status: str = Query(None, pattern="^(flood|slight|normal|offline)$"),

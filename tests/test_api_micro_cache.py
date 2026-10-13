@@ -1,9 +1,7 @@
 """The busy GET routes answer from the response cache: data source called once per TTL, gzip when asked.
 
 The routers are imported with a stub backend.services: the real one loads YOLO and starts camera threads."""
-import gzip
 import importlib
-import json
 import sys
 import types
 from unittest.mock import MagicMock
@@ -20,11 +18,21 @@ def fresh_cache(monkeypatch):
     monkeypatch.setattr(response_cache, "_cache", response_cache.ResponseCache())
 
 
+@pytest.fixture(scope="module", autouse=True)
+def services_stub():
+    """Routers bind to the stub; afterwards every backend.api module imported under it is dropped."""
+    before = set(sys.modules)
+    stub = types.ModuleType("backend.services")
+    stub.__getattr__ = lambda attr: MagicMock(name=attr)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setitem(sys.modules, "backend.services", stub)
+        yield stub
+    for name in set(sys.modules) - before:
+        if name.startswith("backend.api."):
+            sys.modules.pop(name, None)
+
+
 def _router_module(name):
-    if "backend.services" not in sys.modules:
-        stub = types.ModuleType("backend.services")
-        stub.__getattr__ = lambda attr: MagicMock(name=attr)
-        sys.modules["backend.services"] = stub
     return importlib.import_module(f"backend.api.{name}")
 
 
@@ -98,6 +106,15 @@ def test_analytics_refresh_skips_the_cache(monkeypatch):
     monkeypatch.setattr(module, "analytics_service", source)
     client.get("/api/analytics/summary")
     client.get("/api/analytics/summary?refresh=true")
+    assert source.calls == 2
+
+
+def test_flood_status_with_min_cm_skips_the_cache(monkeypatch):
+    module, client = _router_client("flood")
+    source = Source({"v": 1})
+    monkeypatch.setattr(module, "flood_roads", source)
+    client.get("/api/flood/status?min_cm=5")
+    client.get("/api/flood/status?min_cm=5")
     assert source.calls == 2
 
 

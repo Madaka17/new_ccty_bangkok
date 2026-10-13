@@ -8,8 +8,8 @@ per TTL and every viewer gets a new Response around the same bytes (the access g
 viewer's cookie and headers to it).
 
 One thread rebuilds a stale key; the others get the old bytes at once, or wait when there are none yet.
-A build that raises keeps the old bytes and the next try waits one TTL; a build that returns a Response (an error answer) is passed
-through and not kept, so the next request tries again.
+A build that raises, or returns a Response (an error answer), keeps the old bytes and the next try waits one TTL.
+With no old bytes a Response is passed through and not kept, so the next request tries again.
 """
 import gzip
 import json
@@ -59,6 +59,12 @@ class ResponseCache:
                 old, _ = self.entries.popitem(last=False)
                 self.key_locks.pop(old, None)
 
+    def _keep_old(self, key, entry):
+        # keep serving the last good answer; the next try waits one TTL
+        entry = (entry[0], entry[1], self.clock())
+        self._put(key, entry)
+        return entry
+
     def _entry(self, key, build):
         """(body, gz) for the key, or a Response from build to pass through."""
         entry, key_lock = self._get(key)
@@ -74,13 +80,11 @@ class ResponseCache:
                 value = build()
             except Exception:
                 if entry:
-                    # keep serving the last good answer; the next try waits one TTL
-                    entry = (entry[0], entry[1], self.clock())
-                    self._put(key, entry)
-                    return entry
+                    return self._keep_old(key, entry)
                 raise
             if isinstance(value, Response):
-                return value
+                # an error answer: viewers keep the last good bytes when there are any
+                return self._keep_old(key, entry) if entry else value
             body = _encode(value)
             gz = gzip.compress(body, 6) if len(body) >= GZIP_MIN_BYTES else None
             entry = (body, gz, self.clock())
