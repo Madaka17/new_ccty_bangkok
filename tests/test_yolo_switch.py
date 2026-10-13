@@ -179,3 +179,22 @@ def test_non_object_state_file_means_on(tmp_path):
     for text in ("[]", "null", '"x"'):
         p.write_text(text, encoding="utf-8")
         assert YoloSwitch(str(p), cuda=FakeCuda()).enabled is True
+
+
+def test_set_reports_fresh_vram_after_a_flip(tmp_path, monkeypatch):
+    _fresh_cache()
+    smi = {"out": "1000, 10240\n"}
+
+    def run(cmd, **kw):
+        return subprocess.CompletedProcess(cmd, 0, stdout=smi["out"], stderr="")
+
+    # Drive the real caching gpu_memory() through the nvidia-smi seam; now() stays fixed inside the 5 s window.
+    real_gpu_memory = ysw.gpu_memory
+    monkeypatch.setattr(ysw, "gpu_memory", lambda: real_gpu_memory(cuda=UninitCuda(), run=run, now=lambda: 100.0))
+    sw = YoloSwitch(str(tmp_path / "s.json"), cuda=FakeCuda())
+    sw._real_cuda = True
+    sw.register("detector", Holder())
+    assert sw.status()["vram"] == {"used_mb": 1000, "total_mb": 10240}   # value A is now cached
+    smi["out"] = "1900, 10240\n"                                         # VRAM changes, cache still warm
+    out = sw.set(False)
+    assert out["vram"] == {"used_mb": 1900, "total_mb": 10240}

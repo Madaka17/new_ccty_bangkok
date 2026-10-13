@@ -30,6 +30,10 @@ _gpu_cache = {"at": None, "value": None}
 _GPU_CACHE_S = 5.0
 
 
+def _forget_gpu_memory():
+    _gpu_cache["at"] = None   # a flip changes VRAM at once; the 5 s cache would report the old figure
+
+
 def gpu_memory(cuda=_default_cuda, run=subprocess.run, now=time.monotonic):
     """{"used_mb", "total_mb"} or None. Never creates a CUDA context: with no context yet it asks
     nvidia-smi. Cached for 5 s so a public poll loop cannot spawn a process per request."""
@@ -103,6 +107,7 @@ class YoloSwitch:
                     print(f"[YOLO] {name}: {'load' if enabled else 'unload'} failed: {e}")
             if not enabled:
                 self._free_cache()
+            _forget_gpu_memory()
             out = self._status()
         out["errors"] = errors
         print(f"[YOLO] switched {'on' if enabled else 'off'}: {out['holders']}")
