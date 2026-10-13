@@ -72,3 +72,6 @@ water_agent.json
 
 # launch\watchdog run state and log
 launch/watchdog/state/
+
+# Load test output
+local/loadtest/results.json
