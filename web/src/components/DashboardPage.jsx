@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchTrafficSummary, fetchTrafficAreas, fetchBmaAnalytics, fetchAnalytics, fetchOnlineCount, fetchFloodStatus } from '../lib/api.js';
+import { pickTrafficSummary } from '../lib/trafficSummary.js';
 import { bmaSiteDown } from './bma/BmaSiteNotice.jsx';
 import { trackView } from '../lib/telemetry.js';
 import { Button } from './dashboard/ui.jsx';
@@ -143,7 +144,7 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
       }
     : null;
 
-  const activeSummary = source === 'bma' ? (bmaSummary || ready) : (ready || bmaSummary);
+  const activeSummary = pickTrafficSummary(source, bmaSummary, ready);
   const incidentCount = (incidents?.camera?.length || 0) + (incidents?.longdo?.length || 0);
   // The most jammed roads, by name only, for the summary sentence ("เลี่ยง ... กับ ...")
   const avoid = activeSummary?.flow_index != null && activeSummary.flow_index < 75
