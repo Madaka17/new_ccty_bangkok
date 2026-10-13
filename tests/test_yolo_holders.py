@@ -67,3 +67,32 @@ def test_unload_waits_for_a_running_inference(fake_yolo):
     d.model_lock.release()
     t.join(2)
     assert not d.models_loaded()
+
+
+import ultralytics
+
+
+@pytest.mark.parametrize("module_name,cls_name,path_attrs", [
+    ("backend.vision.helmet_service", "HelmetPatrol", ["LOCAL_DET_PATH"]),
+    ("backend.vision.wrongway_service", "WrongWayPatrol", ["CLS_PATH"]),
+    ("backend.vision.violation_service", "ViolationMonitor", ["HELMET_CLS_PATH"]),
+])
+def test_patrol_models_follow_the_switch(monkeypatch, tmp_path, module_name, cls_name, path_attrs):
+    import importlib
+    mod = importlib.import_module(module_name)
+    monkeypatch.setattr(ultralytics, "YOLO", FakeYOLO)
+    for attr in path_attrs:
+        weights = tmp_path / f"{attr}.pt"
+        weights.write_bytes(b"x")
+        monkeypatch.setattr(mod, attr, str(weights))
+    for attr in ("CACHE_DIR", "EVIDENCE_DIR", "ARCHIVE_DIR"):
+        if hasattr(mod, attr):
+            monkeypatch.setattr(mod, attr, str(tmp_path / attr))
+    cls = getattr(mod, cls_name)
+    off = cls(str(tmp_path / "v.db"), load_models=False)
+    assert off.models_loaded() is False
+    off.load_models()
+    assert off.models_loaded() is True
+    off.load_models()   # no-op when loaded
+    off.unload_models()
+    assert off.models_loaded() is False

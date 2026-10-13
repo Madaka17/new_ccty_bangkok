@@ -177,7 +177,7 @@ class HeadingField:
 
 
 class WrongWayPatrol:
-    def __init__(self, db_path, vision=None, scanner=None):
+    def __init__(self, db_path, vision=None, scanner=None, load_models=True):
         """vision: IncidentManager-like object with .provider/.client. scanner: BmaScanner (for check_now)."""
         self.db_path = db_path
         self.vision = vision
@@ -198,27 +198,8 @@ class WrongWayPatrol:
         self.det_names = {}
         self.cls = None
         self._det_lock = threading.Lock()
-        if os.path.exists(CLS_PATH):
-            try:
-                from ultralytics import YOLO
-                self.cls = YOLO(CLS_PATH)
-                self.cls(np.zeros((CLS_IMGSZ, CLS_IMGSZ, 3), dtype=np.uint8), imgsz=CLS_IMGSZ, verbose=False)
-                print(f"[WrongWay] heading classifier loaded: {CLS_PATH} {list(self.cls.names.values())}")
-            except Exception as e:  # noqa: BLE001
-                print(f"[WrongWay] heading classifier failed to load: {e}")
-                self.cls = None
-        if self.cls is None and os.path.exists(DET_PATH):
-            try:
-                from ultralytics import YOLO
-                self.det = YOLO(DET_PATH)
-                self.det(np.zeros((288, 352, 3), dtype=np.uint8), imgsz=DET_IMGSZ, verbose=False)
-                self.det_names = {int(k): v for k, v in self.det.names.items()}
-                print(f"[WrongWay] heading detector loaded: {DET_PATH} {list(self.det_names.values())}")
-            except Exception as e:  # noqa: BLE001
-                print(f"[WrongWay] heading detector failed to load: {e}")
-                self.det = None
-        elif self.cls is None:
-            print(f"[WrongWay] no heading classifier or detector at {CLS_PATH}: patrol off (train it with local/pipeline/wrongway_pipeline.bat)")
+        if load_models:
+            self.load_models()
         for _ in range(WORKERS):
             threading.Thread(target=self._worker, daemon=True).start()
         threading.Thread(target=self._cleanup_loop, daemon=True).start()
@@ -282,6 +263,47 @@ class WrongWayPatrol:
         """The frame with the red box only: what the cloud agent sees."""
         return os.path.join(CACHE_DIR, f"{safe_id(wid)}_box.jpg")
 
+    def load_models(self):
+        """Load the heading classifier, falling back to the detector. No-op when a model is already loaded."""
+        with self._det_lock:
+            if self.cls is not None or self.det is not None:
+                return
+        cls = det = None
+        det_names = {}
+        if os.path.exists(CLS_PATH):
+            try:
+                from ultralytics import YOLO
+                cls = YOLO(CLS_PATH)
+                cls(np.zeros((CLS_IMGSZ, CLS_IMGSZ, 3), dtype=np.uint8), imgsz=CLS_IMGSZ, verbose=False)
+                print(f"[WrongWay] heading classifier loaded: {CLS_PATH} {list(cls.names.values())}")
+            except Exception as e:  # noqa: BLE001
+                print(f"[WrongWay] heading classifier failed to load: {e}")
+                cls = None
+        if cls is None and os.path.exists(DET_PATH):
+            try:
+                from ultralytics import YOLO
+                det = YOLO(DET_PATH)
+                det(np.zeros((288, 352, 3), dtype=np.uint8), imgsz=DET_IMGSZ, verbose=False)
+                det_names = {int(k): v for k, v in det.names.items()}
+                print(f"[WrongWay] heading detector loaded: {DET_PATH} {list(det_names.values())}")
+            except Exception as e:  # noqa: BLE001
+                print(f"[WrongWay] heading detector failed to load: {e}")
+                det = None
+        elif cls is None:
+            print(f"[WrongWay] no heading classifier or detector at {CLS_PATH}: patrol off (train it with local/pipeline/wrongway_pipeline.bat)")
+        with self._det_lock:
+            if self.cls is None and self.det is None:
+                self.cls, self.det, self.det_names = cls, det, det_names
+
+    def unload_models(self):
+        with self._det_lock:
+            self.cls = None
+            self.det = None
+            self.det_names = {}
+
+    def models_loaded(self):
+        return self.cls is not None or self.det is not None
+
     def provider(self):
         v = self.vision
         return getattr(v, "provider", None) if v and getattr(v, "client", None) else None
@@ -313,7 +335,10 @@ class WrongWayPatrol:
         if not crops:
             return []
         with self._det_lock:
-            res = self.cls(crops, imgsz=CLS_IMGSZ, verbose=False)
+            cls = self.cls
+            if cls is None:
+                return []
+            res = cls(crops, imgsz=CLS_IMGSZ, verbose=False)
         out = []
         for (group, x1, y1, x2, y2), r in zip(keep, res):
             head = r.names[int(r.probs.top1)]
@@ -324,10 +349,13 @@ class WrongWayPatrol:
     def _detect_headings(self, frame):
         """[(group, heading_idx, conf, x1, y1, x2, y2)] from the heading detector."""
         with self._det_lock:
-            r = self.det(frame, imgsz=DET_IMGSZ, conf=0.25, iou=0.5, verbose=False)[0]
+            det, det_names = self.det, self.det_names
+            if det is None:
+                return []
+            r = det(frame, imgsz=DET_IMGSZ, conf=0.25, iou=0.5, verbose=False)[0]
         out = []
         for (x1, y1, x2, y2), cf, c in zip(r.boxes.xyxy.tolist(), r.boxes.conf.tolist(), r.boxes.cls.tolist()):
-            name = self.det_names.get(int(c), "")
+            name = det_names.get(int(c), "")
             group, _, head = name.partition("_")
             if head not in HEADINGS:
                 continue

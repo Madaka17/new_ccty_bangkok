@@ -85,7 +85,7 @@ AGENT_PROMPT = (
 
 
 class HelmetPatrol:
-    def __init__(self, db_path, vision=None, scanner=None):
+    def __init__(self, db_path, vision=None, scanner=None, load_models=True):
         """vision: IncidentManager-like object with .provider/.client. scanner: BmaScanner (for check_now)."""
         self.db_path = db_path
         self.vision = vision
@@ -102,21 +102,41 @@ class HelmetPatrol:
         self._init_db()
         self.local_det = None
         self._det_lock = threading.Lock()
-        if os.path.exists(LOCAL_DET_PATH):
-            try:
-                from ultralytics import YOLO
-                self.local_det = YOLO(LOCAL_DET_PATH)
-                self.local_det(np.zeros((320, 320, 3), dtype=np.uint8), verbose=False)
-                print(f"[Helmet] local detector loaded: {LOCAL_DET_PATH} {self.local_det.names}")
-            except Exception as e:  # noqa: BLE001
-                print(f"[Helmet] local detector failed to load: {e}")
-                self.local_det = None
+        if load_models:
+            self.load_models()
         for _ in range(WORKERS):
             threading.Thread(target=self._worker, daemon=True).start()
         threading.Thread(target=self._cleanup_loop, daemon=True).start()
         # Captures left "pending" by a restart (the in-memory queue is gone): run them again
         threading.Thread(target=self._resume_pending, daemon=True).start()
         print(f"[Helmet] agent: {self.provider() or 'off'} · archive: {ARCHIVE_DIR}")
+
+    # ------------------------------------------------------------ models (YOLO switch)
+    def load_models(self):
+        """Load the local helmet detector. No-op when it is already loaded."""
+        with self._det_lock:
+            if self.local_det is not None:
+                return
+        det = None
+        if os.path.exists(LOCAL_DET_PATH):
+            try:
+                from ultralytics import YOLO
+                det = YOLO(LOCAL_DET_PATH)
+                det(np.zeros((320, 320, 3), dtype=np.uint8), verbose=False)
+                print(f"[Helmet] local detector loaded: {LOCAL_DET_PATH} {det.names}")
+            except Exception as e:  # noqa: BLE001
+                print(f"[Helmet] local detector failed to load: {e}")
+                det = None
+        with self._det_lock:
+            if self.local_det is None:
+                self.local_det = det
+
+    def unload_models(self):
+        with self._det_lock:
+            self.local_det = None
+
+    def models_loaded(self):
+        return self.local_det is not None
 
     # ------------------------------------------------------------ storage
     def _init_db(self):
@@ -283,10 +303,11 @@ class HelmetPatrol:
 
     def _local_verdict(self, crop):
         """(verdict, conf) from the YOLO26x helmet detector, or None when it sees no head at all."""
-        if self.local_det is None:
-            return None
         with self._det_lock:
-            r = self.local_det(crop, imgsz=640, conf=0.25, verbose=False)[0]
+            det = self.local_det
+            if det is None:
+                return None
+            r = det(crop, imgsz=640, conf=0.25, verbose=False)[0]
         best = {}
         for c, cf in zip(r.boxes.cls.tolist(), r.boxes.conf.tolist()):
             name = r.names[int(c)]
