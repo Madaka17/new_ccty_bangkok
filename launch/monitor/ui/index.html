@@ -110,6 +110,22 @@ h2 { font-size: 13px; font-weight: 600; margin: 0 0 10px; }
 #toasts { position: fixed; right: 20px; bottom: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 60; }
 .toast { background: var(--panel); border: 1px solid #2a313a; border-left: 3px solid var(--ok); border-radius: 6px; padding: 9px 14px; max-width: 380px; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
 .toast.bad { border-left-color: var(--fail); }
+/* processes */
+.pgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.card.sel { cursor: pointer; }
+.card.sel:hover { border-color: #333b45; }
+.card.sel.cur { border-color: var(--accent); }
+.card .acts { display: flex; gap: 8px; align-items: center; margin-top: auto; }
+.hint { color: var(--warn); font-size: 12px; }
+.ltool { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ltool .nm { font-weight: 600; margin-right: auto; }
+.chipbtn { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; cursor: pointer; color: var(--muted); }
+.chipbtn.on { border-color: var(--accent); color: var(--text); }
+#logpane { height: 60vh; min-height: 200px; overflow: auto; background: #07090b; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+  font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+#logpane .ln { color: var(--text); }
+#logpane .ln.c-fail { color: var(--fail); } #logpane .ln.c-warn { color: var(--warn); } #logpane .ln.c-acc { color: var(--accent); }
+#logpane.errs .ln:not(.k) { display: none; }
 ::-webkit-scrollbar { width: 10px; height: 10px; } ::-webkit-scrollbar-thumb { background: #222830; border-radius: 5px; } ::-webkit-scrollbar-track { background: transparent; }
 </style>
 </head>
@@ -120,6 +136,7 @@ h2 { font-size: 13px; font-weight: 600; margin: 0 0 10px; }
     <button class="nav" data-page="overview">Overview</button>
     <button class="nav" data-page="checks">Checks</button>
     <button class="nav" data-page="events">Events</button>
+    <button class="nav" data-page="processes">Processes</button>
     <div class="sec">Targets</div>
     <button class="nav" data-tgt="production">Production</button>
     <button class="nav" data-tgt="test">Test</button>
@@ -144,10 +161,10 @@ h2 { font-size: 13px; font-weight: 600; margin: 0 0 10px; }
 
 <script>
 const api = () => window.pywebview.api;
-const S = { page: "overview", target: "", state: "", q: "", hours: 24, limit: 25, offset: 0, status: null, events: null, menu: null, busy: false };
+const S = { page: "overview", target: "", state: "", q: "", hours: 24, limit: 25, offset: 0, status: null, events: null, menu: null, busy: false, sel: "production", procs: null, logOff: null, logBuf: [], follow: true, errs: false };
 const STATES = ["ok", "warn", "fail", "idle", "stopped"];
-const LABEL = { production: "Production", test: "Test", enviro: "ENVIRO", gateway: "AI gateway", tunnel: "Cloudflare tunnel" };
-const TARGETS = ["production", "test", "enviro", "gateway", "tunnel"];
+const LABEL = { production: "Production", test: "Test", enviro: "ENVIRO", gateway: "AI gateway", tunnel: "Cloudflare tunnel", camera: "Camera status" };
+const TARGETS = ["production", "test", "enviro", "gateway", "tunnel", "camera"];
 const ACTIONS = {
   start:   { title: t => `Start ${LABEL[t]}?`,   body: t => `Opens launch\\${t}\\start.bat in a new window.` },
   restart: { title: t => `Restart ${LABEL[t]}?`, body: t => t === "production" ? "The public site is down for about a minute while it restarts." : `Runs launch\\${t}\\restart.bat in a new window.` },
@@ -244,7 +261,7 @@ function renderOverview() {
 }
 
 function targetOptions(cur) {
-  const opts = [["", "All"], ["production", "Production"], ["test", "Test"], ["enviro", "ENVIRO"], ["services", "Services"], ["gateway", "AI gateway"], ["tunnel", "Cloudflare tunnel"]];
+  const opts = [["", "All"], ["production", "Production"], ["test", "Test"], ["enviro", "ENVIRO"], ["services", "Services"], ["gateway", "AI gateway"], ["tunnel", "Cloudflare tunnel"], ["camera", "Camera status"]];
   return opts.map(([v, l]) => `<option value="${v}"${cur === v ? " selected" : ""}>${l}</option>`).join("");
 }
 function stateOptions(extra) {
@@ -255,7 +272,7 @@ function targetChip() { return chip("Target", `<select data-f="target">${targetO
 function stateChip(extra) { return chip("State", `<select data-f="state">${stateOptions(extra)}</select>`, S.state); }
 function searchChip() { return `<label class="chip search"><input data-f="q" type="search" placeholder="Search…" value="${esc(S.q)}"></label>`; }
 
-function inTarget(t) { return !S.target || t === S.target || (S.target === "services" && (t === "gateway" || t === "tunnel")); }
+function inTarget(t) { return !S.target || t === S.target || (S.target === "services" && (t === "gateway" || t === "tunnel" || t === "camera")); }
 function renderChecks() {
   const q = S.q.trim().toLowerCase();
   const rows = items().filter(i => inTarget(i.target) && (!S.state || i.state === S.state) &&
@@ -318,22 +335,137 @@ function render() {
   document.querySelectorAll(".nav[data-page]").forEach(b => b.classList.toggle("active", b.dataset.page === S.page));
   document.querySelectorAll(".nav[data-tgt]").forEach(b => b.classList.toggle("active", S.target === b.dataset.tgt && S.page !== "overview"));
   const upd = st && st.collector_at ? new Date(st.collector_at * 1000).toTimeString().slice(0, 8) : "never";
-  const titles = { overview: "Overview", checks: "Checks", events: "Events" };
+  const titles = { overview: "Overview", checks: "Checks", events: "Events", processes: "Processes" };
   $("title").textContent = titles[S.page];
   $("sub").textContent = S.page === "events"
     ? `State changes, kept 30 days · ${S.events ? S.events.total : 0} events`
+    : S.page === "processes" ? "Servers running in the background · logs in launch\\logs"
     : `Live state of every check · updated ${upd}`;
 
   const body = $("body");
   const focus = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.f : null;
   const pos = focus === "q" ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
   const top = body.scrollTop;
-  body.innerHTML = S.page === "overview" ? renderOverview() : S.page === "checks" ? renderChecks() : renderEvents();
+  if (S.page === "processes") renderProcesses(body);
+  else body.innerHTML = S.page === "overview" ? renderOverview() : S.page === "checks" ? renderChecks() : renderEvents();
   body.scrollTop = top;
   if (focus) {
     const el = body.querySelector(`[data-f="${focus}"]`);
     if (el) { el.focus(); if (pos && el.setSelectionRange) try { el.setSelectionRange(pos[0], pos[1]); } catch (e) { /* type=search */ } }
   }
+}
+
+/* ---------- processes ---------- */
+const LOG_MAX = 5000;
+const RED = /\b(ERROR|CRITICAL|Traceback)\b|\[FAIL\]/, YEL = /\bWARNING\b|\[WARN\]/, ACC = /--- .* (started|exited) ---/;
+const TS = /^\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d[,.\d]*/;
+let inBlock = false;   // inside a Traceback: keep its lines for "Errors only"
+function classify(text) {
+  const red = RED.test(text), yel = !red && YEL.test(text);
+  const m = TS.exec(text);
+  const timestamped = !!m && !/^( {2,}|	)/.test(text.slice(m[0].length));
+  let keep = red || yel;
+  if (red && /\bTraceback\b/.test(text)) inBlock = true;
+  else if (!red && timestamped) inBlock = false;
+  if (!red && inBlock) keep = true;
+  return { text, cls: red ? "c-fail" : yel ? "c-warn" : ACC.test(text) ? "c-acc" : "", keep };
+}
+function lnEl(l) {
+  const d = document.createElement("div");
+  d.className = "ln" + (l.cls ? " " + l.cls : "") + (l.keep ? " k" : "");
+  d.textContent = l.text === "" ? "\u200b" : l.text;
+  return d;
+}
+function logClear() { S.logBuf = []; inBlock = false; const p = $("logpane"); if (p) p.textContent = ""; }
+function logAppend(lines) {
+  if (!lines.length) return;
+  const fresh = lines.map(classify);
+  S.logBuf.push(...fresh);
+  if (S.logBuf.length > LOG_MAX) S.logBuf.splice(0, S.logBuf.length - LOG_MAX);
+  const p = $("logpane");
+  if (!p) return;
+  const frag = document.createDocumentFragment();
+  fresh.forEach(l => frag.appendChild(lnEl(l)));
+  p.appendChild(frag);
+  while (p.childElementCount > LOG_MAX) p.removeChild(p.firstElementChild);
+  if (S.follow) p.scrollTop = p.scrollHeight;
+}
+function fmtSize(n) { return n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`; }
+function fmtUp(s) { const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h} h ${m} min` : `${m} min`; }
+function procCard(p) {
+  const bad = !p.running && p.exit_code != null && p.exit_code !== 0;
+  const pl = p.running ? `<span class="pill ok">running</span>` : `<span class="pill ${bad ? "fail" : "idle"}">not running</span>`;
+  const det = p.running ? `PID ${esc(p.pid)} · up ${esc(fmtUp(p.uptime_s || 0))}`
+    : p.exited_at ? `exited ${esc(ago(p.exited_at))} (code ${esc(p.exit_code)})` : "never started hidden";
+  const canAct = ["production", "test", "enviro"].includes(p.name);
+  const key = "proc:" + p.name;
+  let menu = "";
+  if (canAct && S.menu === key) {
+    menu = `<div class="menu">` + ["start", "restart", "stop"].map(v => {
+      const dis = (v === "start" ? p.running : !p.running) ? " disabled" : "";
+      return `<button data-act="${v}" data-t="${esc(p.name)}"${dis}>${VERB_LABEL[v]}</button>`;
+    }).join("") + `</div>`;
+  }
+  const srv = find("server:" + p.name);
+  const hint = !p.running && srv && (srv.state === "ok" || srv.state === "warn") ? `<div class="hint">running in a window (started with --window): no log here</div>` : "";
+  return `<div class="card sel${S.sel === p.name ? " cur" : ""}" data-sel="${esc(p.name)}"><div class="top"><span class="lbl">${esc(p.label)}</span>` +
+    (canAct ? `<button class="kebab" data-menu="${esc(key)}" aria-label="Actions">⋯</button>` : "") +
+    `</div><div>${pl}</div><div class="det">${det}</div><div class="since">log ${esc(fmtSize(p.log_size || 0))}</div>${hint}` +
+    `<div class="acts"><button class="btn sm" data-act2="openlog" data-n="${esc(p.name)}">Open log</button></div>${menu}</div>`;
+}
+function procCards() { return S.procs ? S.procs.map(procCard).join("") : `<div class="empty">Loading…</div>`; }
+function procSkeleton() {
+  return `<div class="pgrid" id="pcards">${procCards()}</div>` +
+    `<div class="ltool"><span class="nm" id="lname"></span><button class="chipbtn" id="lerrs" data-act2="errs">Errors only</button>` +
+    `<button class="chipbtn" id="lfollow" data-act2="follow">Follow</button><button class="btn sm" data-act2="clear">Clear</button>` +
+    `<button class="btn sm" id="lopen" data-act2="openlog" data-n="">Open log</button></div><div id="logpane"></div>`;
+}
+function syncProc() {
+  const p = S.procs && S.procs.find(x => x.name === S.sel);
+  $("lname").textContent = p ? p.label : S.sel;
+  $("lerrs").classList.toggle("on", S.errs);
+  $("lfollow").classList.toggle("on", S.follow);
+  $("logpane").classList.toggle("errs", S.errs);
+  $("lopen").dataset.n = S.sel;
+}
+// The log pane survives every status poll: while it exists only the cards are replaced.
+function renderProcesses(body) {
+  if ($("pcards") && body.contains($("pcards"))) $("pcards").innerHTML = procCards();
+  else {
+    body.innerHTML = procSkeleton();
+    const pane = $("logpane"), frag = document.createDocumentFragment();
+    S.logBuf.forEach(l => frag.appendChild(lnEl(l)));
+    pane.appendChild(frag);
+    if (S.follow) pane.scrollTop = pane.scrollHeight;
+  }
+  syncProc();
+}
+let procBusy = false, tailBusy = false;
+async function loadProcs() {
+  if (procBusy) return;
+  procBusy = true;
+  const r = await call(() => api().processes());
+  procBusy = false;
+  if (Array.isArray(r)) { S.procs = r; if (S.page === "processes") softRender(); }
+}
+async function loadTail() {
+  if (tailBusy) return;
+  const name = S.sel, off = S.logOff;
+  tailBusy = true;
+  const r = await call(() => api().log_tail(name, off));
+  tailBusy = false;
+  if (!r || r.error || name !== S.sel || off !== S.logOff) return;   // selection changed meanwhile
+  if (r.reset) logClear();
+  S.logOff = r.offset;
+  logAppend(r.lines || []);
+}
+function selectProc(name) {
+  S.menu = null;
+  if (name === S.sel) return render();
+  S.sel = name; S.logOff = null;
+  logClear();
+  render();
+  loadTail();
 }
 
 /* ---------- actions ---------- */
@@ -370,7 +502,7 @@ async function doExport() {
   if (r) toast(r.ok ? `Saved ${r.path}` : (r.message || "Not saved"), !!r.ok);
 }
 
-function setPage(p) { S.page = p; S.menu = null; if (p === "events") { S.offset = 0; loadEvents(); } render(); }
+function setPage(p) { S.page = p; S.menu = null; if (p === "events") { S.offset = 0; loadEvents(); } render(); if (p === "processes") { loadProcs(); loadTail(); } }
 function setFilter(k, v) {
   if (k === "hours" || k === "limit") v = Number(v);
   S[k] = v;
@@ -379,14 +511,19 @@ function setFilter(k, v) {
 }
 
 document.addEventListener("click", async e => {
-  const t = e.target.closest("[data-page],[data-tgt],[data-menu],[data-act],[data-act2]");
+  const t = e.target.closest("[data-page],[data-tgt],[data-menu],[data-act],[data-act2],[data-sel]");
   if (!t) { if (S.menu) { S.menu = null; render(); } return; }
   const d = t.dataset;
   if (d.page) return setPage(d.page);
   if (d.tgt) { S.target = d.tgt; return setPage(S.page === "overview" ? "checks" : S.page); }
   if (d.menu) { S.menu = S.menu === d.menu ? null : d.menu; return render(); }
   if (d.act) return confirmAction(d.t, d.act);
+  if (d.sel) return selectProc(d.sel);
   switch (d.act2) {
+    case "errs": S.errs = !S.errs; return syncProc();
+    case "follow": S.follow = !S.follow; syncProc(); if (S.follow) { const p = $("logpane"); p.scrollTop = p.scrollHeight; } return;
+    case "clear": return logClear();
+    case "openlog": { const r = await call(() => api().open_log(d.n)); if (r && !r.ok) toast("Could not open the log", false); return; }
     case "refresh": return loadEvents();
     case "export": return doExport();
     case "prev": S.offset = Math.max(0, S.offset - S.limit); return loadEvents();
@@ -424,6 +561,8 @@ function start() {
   render();
   loadStatus(); loadEvents();
   setInterval(loadStatus, 5000);
+  setInterval(() => { if (S.page === "processes") loadProcs(); }, 3000);
+  setInterval(() => { if (S.page === "processes") loadTail(); }, 1500);
   setInterval(() => { if (S.page === "events" && S.offset === 0) loadEvents(true); }, 15000);
 }
 window.addEventListener("pywebviewready", start);
