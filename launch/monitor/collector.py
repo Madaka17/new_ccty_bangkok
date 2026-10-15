@@ -47,7 +47,10 @@ def import_watchdog(store, now):
 
 def one_round(store, now, gateway_due):
     events = store.apply(monitor_checks.run_round(gateway_due), now)
-    events += import_watchdog(store, now)
+    try:
+        events += import_watchdog(store, now)
+    except Exception:  # noqa: BLE001 - the status events above are already stored; still return them
+        log.exception("watchdog import failed")
     store.set_meta("collector_at", int(now))
     return events
 
@@ -68,6 +71,7 @@ def main():
     last_gateway = last_prune = 0.0
     while True:
         now = time.time()
+        store.set_meta("check_now", "0")    # a refresh asked for during this round starts the next one
         try:
             gateway_due = now - last_gateway >= GATEWAY_S
             events = one_round(store, now, gateway_due)
@@ -81,7 +85,6 @@ def main():
                 monitor_notify.toast(*msg)
         except Exception:  # noqa: BLE001 - a bad round is logged, the next one runs
             log.exception("round failed")
-        store.set_meta("check_now", "0")
         for _ in range(ROUND_S):
             time.sleep(1)
             if store.get_meta("check_now") == "1":

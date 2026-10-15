@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(ROOT / "launch"), str(ROOT / "launch" / "monitor")]
 import collector  # noqa: E402
 import monitor_checks  # noqa: E402
+import monitor_watchdog  # noqa: E402
 from monitor_store import Store  # noqa: E402
 
 
@@ -32,3 +33,17 @@ def test_old_watchdog_lines_beyond_30_days_skipped(tmp_path, monkeypatch):
     monkeypatch.setattr(monitor_checks, "run_round", lambda gateway_due: [])
     store = Store(tmp_path / "m.db")
     assert collector.one_round(store, now=2_000_000_000, gateway_due=False) == []
+
+
+def test_watchdog_import_failure_keeps_status_events(tmp_path, monkeypatch):
+    def broken(path, offset):
+        raise RuntimeError("log unreadable")
+    monkeypatch.setattr(collector, "WATCHDOG_LOG", tmp_path / "watchdog.log")
+    monkeypatch.setattr(monitor_watchdog, "read_new", broken)
+    monkeypatch.setattr(monitor_checks, "run_round", lambda gateway_due: [
+        {"key": "server:production", "group": "server", "target": "production", "name": "Production",
+         "state": "fail", "detail": "down"}])
+    store = Store(tmp_path / "m.db")
+    events = collector.one_round(store, now=2_000_000_000, gateway_due=False)
+    assert [e["key"] for e in events] == ["server:production"]
+    assert store.get_meta("collector_at") == "2000000000"
