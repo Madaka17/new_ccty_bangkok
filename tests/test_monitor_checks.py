@@ -203,11 +203,32 @@ def test_public_status_codes(monkeypatch):
     import io
     seen = []
 
-    def fake_urlopen(url, timeout):
-        seen.append((url, timeout))
+    def fake_urlopen(req, timeout):
+        url = req.full_url
+        seen.append((url, timeout, req.get_header("User-agent")))
         if "enviro" in url:
             raise urllib.error.HTTPError(url, 522, "x", None, io.BytesIO(b""))
         raise urllib.error.URLError("no route")
     monkeypatch.setattr(mc.urllib.request, "urlopen", fake_urlopen)
     assert mc.public_status() == (0, 522)
-    assert seen == [("https://bkksmartstreet.com/", 20), ("https://bkksmartstreet.com/enviro/", 20)]
+    assert seen == [("https://bkksmartstreet.com/", 20, mc.PUBLIC_UA), ("https://bkksmartstreet.com/enviro/", 20, mc.PUBLIC_UA)]
+    assert "python" not in mc.PUBLIC_UA.lower()
+
+
+def test_public_403_is_fail_not_ok(monkeypatch):
+    patch(monkeypatch, up={8000}, stopped={8001, 5050}, public_status=lambda: (403, 200))
+    row = by_key(mc.run_round(gateway_due=True))["service:public"]
+    assert row["state"] == "fail" and "403" in row["detail"] and "Cloudflare" in row["detail"]
+
+
+def test_public_enviro_403_is_fail_even_when_main_ok(monkeypatch):
+    patch(monkeypatch, up={8000}, stopped={8001}, public_status=lambda: (200, 403))
+    assert by_key(mc.run_round(gateway_due=True))["service:public"]["state"] == "fail"
+
+
+def test_public_ok_range_is_200_to_399(monkeypatch):
+    for code, expected in [(199, "fail"), (200, "ok"), (302, "ok"), (399, "ok"), (400, "fail"), (404, "fail"), (500, "fail")]:
+        patch(monkeypatch, up={8000}, stopped={8001, 5050}, public_status=lambda c=code: (c, 200))
+        row = by_key(mc.run_round(gateway_due=True))["service:public"]
+        assert row["state"] == expected, code
+        assert str(code) in row["detail"] or code == 200

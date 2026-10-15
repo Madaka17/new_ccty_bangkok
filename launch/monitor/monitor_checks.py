@@ -83,12 +83,15 @@ def gateway():
 
 PUBLIC_MAIN = "https://bkksmartstreet.com/"
 PUBLIC_ENVIRO = "https://bkksmartstreet.com/enviro/"
+# Cloudflare blocks the default Python-urllib User-Agent with 403; a browser-like one gets the page
+PUBLIC_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) BKKMonitor/1.0"
 
 
 def _public_code(url):
     """The HTTP code the public URL answers with, 0 when nothing answers (DNS, TLS, timeout)."""
     try:
-        with urllib.request.urlopen(url, timeout=20) as r:
+        req = urllib.request.Request(url, headers={"User-Agent": PUBLIC_UA})
+        with urllib.request.urlopen(req, timeout=20) as r:
             return r.status
     except urllib.error.HTTPError as e:
         return e.code
@@ -112,9 +115,15 @@ def _status(key, group, target, name, state, detail):
     return {"key": key, "group": group, "target": target, "name": name, "state": state, "detail": detail}
 
 
+def _public_ok(code):
+    return 200 <= code <= 399
+
+
 def _public_text(code):
     if code == 0:
         return "no answer"
+    if code == 403:
+        return "blocked by Cloudflare (403)"
     return f"{code} {gateway_status.CLOUDFLARE[code]}" if code in gateway_status.CLOUDFLARE else str(code)
 
 
@@ -214,8 +223,8 @@ def run_round(gateway_due):
         try:
             main_c, enviro_c = public_status()
             # ENVIRO stopped on purpose makes /enviro/ fail on purpose: then only the main site is judged
-            judge_enviro = not (not 1 <= enviro_c <= 499 and stopped(SERVERS["enviro"]))
-            ok = 1 <= main_c <= 499 and (not judge_enviro or 1 <= enviro_c <= 499)
+            judge_enviro = not (not _public_ok(enviro_c) and stopped(SERVERS["enviro"]))
+            ok = _public_ok(main_c) and (not judge_enviro or _public_ok(enviro_c))
             detail = f"bkksmartstreet.com {_public_text(main_c)} · /enviro/ {_public_text(enviro_c)}"
             if not judge_enviro:
                 detail += " (ENVIRO stopped on purpose)"
