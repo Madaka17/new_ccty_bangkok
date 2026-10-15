@@ -210,7 +210,7 @@ Note: in the old code, `bad` counted only the `AGENTS` loop failures; endpoint-e
 
 Run: `.venv\Scripts\python.exe -m pytest tests/test_ai_status_check.py -v`
 Expected: 4 passed.
-Then confirm the CLI still parses: `.venv\Scripts\python.exe -c "import runpy,sys; sys.argv=['x','--help']" ` is not needed; instead run `.venv\Scripts\python.exe launch\ai_status.py 59999 --once` (no server on that port). Expected: one `[FAIL]  server ... not answering on :59999` line, exit code 1.
+Then run `.venv\Scripts\python.exe launch\ai_status.py 59999 --once` (no server on that port). Expected: one `[FAIL]  server ... not answering on :59999` line, exit code 1.
 
 - [ ] **Step 5: Commit**
 
@@ -517,7 +517,7 @@ def test_events_filters_and_paging(tmp_path):
     page = s.events(limit=25)
     assert page["total"] == 31 and len(page["rows"]) == 25 and page["rows"][0]["ts"] == 2000
     assert s.events(target="test")["total"] == 1
-    assert s.events(state="fail", q="BOOM 2")["total"] == 1
+    assert s.events(state="fail", q="BOOM 29")["total"] == 1
     assert s.events(since=1025)["total"] == 6
     assert len(s.events(limit=25, offset=25)["rows"]) == 6
 
@@ -891,7 +891,6 @@ A server that does not answer while launch\\watchdog\\state\\stopped_<port> exis
 """
 import subprocess
 import sys
-import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -1016,8 +1015,6 @@ def run_round(gateway_due):
             out.append(_status("service:gateway", "service", "gateway", LABELS["gateway"], "fail", str(e)[:200]))
     return out
 ```
-
-Note: `time` is imported for future use only if needed — remove the `import time` line if the linter flags it unused.
 
 - [ ] **Step 5: Run tests**
 
@@ -1648,7 +1645,7 @@ window.addEventListener("pywebviewready", () => {
 });
 ```
 
-The two comment-bodied functions above (`ago`, `render`, `confirmAction`) are descriptions of what to write, not code to paste: write them in full. Event-row state is `new`; first-seen rows (`old === null`) show only the `new` pill. Watchdog rows show target + "Watchdog" + pill `restart` (colour `--fail`) or `warn`.
+The comment-bodied functions above (`ago`, `render`, `confirmAction`) are descriptions of what to write, not code to paste: write them in full. Event-row state is `new`; first-seen rows (`old === null`) show only the `new` pill. Watchdog rows show target + "Watchdog" + pill `restart` (colour `--fail`) or `warn`.
 
 - [ ] **Step 3: Install and smoke test (live, read-only for the servers)**
 
@@ -1669,7 +1666,7 @@ Open the app: `.venv\Scripts\pythonw.exe launch\monitor\monitor_app.py`. Check b
 - [ ] **Step 4: Full test run**
 
 Run: `.venv\Scripts\python.exe -m pytest tests -q`
-Expected: everything passes (same failures as before the branch, if any — compare with `git stash`-free baseline by running the suite on the parent commit only if something unrelated fails).
+Expected: everything passes. If a test outside `tests/test_monitor_*`, `test_ai_status_check.py` and `test_yolo_status_check.py` fails, check whether it also fails on commit `9bd07c7` before blaming this branch.
 
 - [ ] **Step 5: Commit**
 
