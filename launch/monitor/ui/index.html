@@ -360,14 +360,19 @@ const LOG_MAX = 5000;
 const RED = /\b(ERROR|CRITICAL|Traceback)\b|\[FAIL\]/, YEL = /\bWARNING\b|\[WARN\]/, ACC = /--- .* (started|exited) ---/;
 const TS = /^\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d[,.\d]*/;
 let inBlock = false;   // inside a Traceback: keep its lines for "Errors only"
+const SEP = /During handling of the above exception|The above exception was the direct cause/;
 function classify(text) {
   const red = RED.test(text), yel = !red && YEL.test(text);
   const m = TS.exec(text);
-  const timestamped = !!m && !/^( {2,}|	)/.test(text.slice(m[0].length));
+  const rest = m ? text.slice(m[0].length) : text;
+  const indented = /^(\s{2,}|\s*\t)/.test(rest) || rest.trim() === "";   // frames and blank lines continue the block
   let keep = red || yel;
-  if (red && /\bTraceback\b/.test(text)) inBlock = true;
-  else if (!red && timestamped) inBlock = false;
-  if (!red && inBlock) keep = true;
+  if (SEP.test(text)) { keep = true; inBlock = true; }   // chained traceback: the separator follows the closing line
+  else if (red && /\bTraceback\b/.test(text)) inBlock = true;
+  else if (!red && inBlock) {
+    keep = true;                                  // frame, separator or the closing exception line
+    if (!indented && !SEP.test(text)) inBlock = false;   // "ValueError: bad" closes it; a separator means another Traceback follows
+  }
   return { text, cls: red ? "c-fail" : yel ? "c-warn" : ACC.test(text) ? "c-acc" : "", keep };
 }
 function lnEl(l) {
@@ -402,7 +407,10 @@ function procCard(p) {
   let menu = "";
   if (canAct && S.menu === key) {
     menu = `<div class="menu">` + ["start", "restart", "stop"].map(v => {
-      const dis = (v === "start" ? p.running : !p.running) ? " disabled" : "";
+      // same rule as the Overview cards: the port state wins, so a server started with --window still gets Restart/Stop
+      const srvSt = find("server:" + p.name), st = srvSt ? srvSt.state : null;
+      const up = srvSt ? (st === "ok" || st === "warn") : p.running;
+      const dis = (v === "start" ? up : (srvSt ? st === "stopped" : !p.running)) ? " disabled" : "";
       return `<button data-act="${v}" data-t="${esc(p.name)}"${dis}>${VERB_LABEL[v]}</button>`;
     }).join("") + `</div>`;
   }
