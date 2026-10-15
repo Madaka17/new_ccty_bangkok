@@ -38,7 +38,7 @@ class Store:
     def _conn(self):
         return sqlite3.connect(self.path, timeout=10)
 
-    def apply(self, statuses, now):
+    def apply(self, statuses, now, silent_new=()):
         events = []
         with closing(self._conn()) as c, c:
             for s in statuses:
@@ -48,7 +48,7 @@ class Store:
                 c.execute("INSERT OR REPLACE INTO status (key, grp, target, name, state, detail, since, checked_at) "
                           "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                           (s["key"], s["group"], s["target"], s["name"], s["state"], s["detail"], since, now))
-                if changed and not (prev is None and s["state"] == "ok"):
+                if changed and not (prev is None and (s["state"] == "ok" or s["key"] in silent_new)):
                     events.append(self._insert(c, now, s["key"], s["group"], s["target"], s["name"],
                                                prev[0] if prev else None, s["state"], s["detail"]))
         return events

@@ -72,15 +72,16 @@ def smooth(statuses, stored, now, memory):
     return out
 
 
-def retire_stale(store, raw, final):
+def retire_stale(store, final, retired):
     """Drop agent/YOLO rows of a server that gave no health this round, and rows whose name is gone."""
-    server = {s["target"]: s["state"] for s in raw if s["key"].startswith("server:")}
+    server = {s["target"]: s["state"] for s in final if s["key"].startswith("server:")}
     present = {s["key"] for s in final}
     stale = []
     for row in store.current():
         if row["group"] in ("agent", "yolo") and row["target"] in ("production", "test"):
             if server.get(row["target"]) not in ("ok", "warn") or row["key"] not in present:
                 stale.append(row["key"])
+                retired[row["key"]] = row["state"]      # coming back unchanged is not news
     store.retire(stale)
 
 
@@ -94,8 +95,12 @@ def one_round(store, now, gateway_due, memory=None, quiet=None):
                      and s.get("uptime_s", QUIET_UPTIME_S) < QUIET_UPTIME_S)
     stored = {r["key"]: r["state"] for r in store.current()}
     final = smooth(raw, stored, now, memory)
-    events = store.apply(final, now)
-    retire_stale(store, raw, final)
+    retired = memory.setdefault("retired", {})
+    silent = {s["key"] for s in final if retired.get(s["key"]) == s["state"]}
+    events = store.apply(final, now, silent)
+    for s in final:
+        retired.pop(s["key"], None)
+    retire_stale(store, final, retired)
     try:
         events += import_watchdog(store, now)
     except Exception:  # noqa: BLE001 - the status events above are already stored; still return them

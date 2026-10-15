@@ -127,3 +127,32 @@ def test_quiet_targets_collected_from_uptime(tmp_path, monkeypatch):
     run(store, monkeypatch, tmp_path, [row("server:production", "ok", uptime_s=120), row("server:test", "ok", uptime_s=9000)],
         1000, quiet=quiet)
     assert quiet == {"production"}
+
+
+def test_health_blip_does_not_renotify_unchanged_agent_rows(tmp_path, monkeypatch):
+    import monitor_notify
+    store, mem = Store(tmp_path / "m.db"), {"streak": {}, "grace": {}}
+    ok = [row("server:production", "ok"), row("agent:production:Helmet", "fail", "x")]
+    assert len(run(store, monkeypatch, tmp_path, ok, 1000, mem)) == 1      # first-seen fail: told once
+    assert run(store, monkeypatch, tmp_path, [row("server:production", "fail")], 1030, mem) == []
+    ev = run(store, monkeypatch, tmp_path, ok, 1060, mem)
+    assert ev == [] and monitor_notify.summarize(ev, now=1060) is None
+    assert {i["key"] for i in store.current()} == {"server:production", "agent:production:Helmet"}
+
+
+def test_long_outage_tells_server_only(tmp_path, monkeypatch):
+    import monitor_notify
+    store, mem = Store(tmp_path / "m.db"), {"streak": {}, "grace": {}}
+    ok = [row("server:production", "ok"), row("agent:production:Helmet", "fail", "x")]
+    run(store, monkeypatch, tmp_path, ok, 1000, mem)
+    down = [row("server:production", "fail")]
+    assert run(store, monkeypatch, tmp_path, down, 1030, mem) == []
+    assert [e["new"] for e in run(store, monkeypatch, tmp_path, down, 1060, mem)] == ["fail"]
+    run(store, monkeypatch, tmp_path, down, 1090, mem)
+    ev = run(store, monkeypatch, tmp_path, ok, 1120, mem)
+    assert [(e["key"], e["new"]) for e in ev] == [("server:production", "ok")]
+    assert monitor_notify.summarize(ev, now=1120)[0] == "BKK Monitor: back to normal"
+    # a row that returns in a different state is still news
+    run(store, monkeypatch, tmp_path, down, 1150, mem); run(store, monkeypatch, tmp_path, down, 1180, mem)
+    ev = run(store, monkeypatch, tmp_path, [row("server:production", "ok"), row("agent:production:Helmet", "ok")], 1210, mem)
+    assert "agent:production:Helmet" not in {e["key"] for e in ev}      # fail -> ok first-seen ok: no event either

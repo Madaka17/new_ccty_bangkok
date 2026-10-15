@@ -231,16 +231,16 @@ function renderOverview() {
     const y = find(`yolo:${i.target}:YOLO switch`);
     if (i.key.startsWith("server:") && y && (i.state === "ok" || i.state === "warn")) cards.push(stateCard(y, `YOLO · ${label(i.target)}`, null));
   });
-  const ok = all.filter(i => i.state === "ok").length;
   const up = {};
   all.forEach(i => { if (i.key.startsWith("server:")) up[i.target] = i.state === "ok" || i.state === "warn"; });
-  const bad = all.filter(i => (i.state === "fail" || i.state === "warn") &&
-    !((i.key.startsWith("agent:") || i.key.startsWith("yolo:")) && !up[i.target]));
+  const shown = all.filter(i => !((i.key.startsWith("agent:") || i.key.startsWith("yolo:")) && !up[i.target]));
+  const ok = shown.filter(i => i.state === "ok").length;
+  const bad = shown.filter(i => i.state === "fail" || i.state === "warn");
   const table = bad.length
     ? `<div class="wrap"><table><thead><tr><th>State</th><th>Target</th><th>Check</th><th>Detail</th><th>Since</th></tr></thead><tbody>${attentionRows(bad)}</tbody></table></div>`
     : `<div class="wrap"><div class="empty">Nothing needs attention.</div></div>`;
   return (cards.length ? `<div class="grid">${cards.join("")}</div>` : `<div class="empty">${S.status ? "No checks recorded yet." : "Loading…"}</div>`) +
-    `<div class="count">${all.length} checks · ${ok} ok · ${bad.length} need attention</div><h2>Needs attention</h2>${table}`;
+    `<div class="count">${shown.length} checks · ${ok} ok · ${bad.length} need attention</div><h2>Needs attention</h2>${table}`;
 }
 
 function targetOptions(cur) {
