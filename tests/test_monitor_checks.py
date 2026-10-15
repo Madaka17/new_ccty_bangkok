@@ -137,13 +137,13 @@ def test_watchdog_age_reads_heartbeat_mtime(monkeypatch, tmp_path):
 
 def test_disk_ok_warn_fail(monkeypatch):
     def with_free(free):
-        h = {**HEALTH, "data_disk": {"path": "E:\data", "free_gb": free, "total_gb": 900.0}}
+        h = {**HEALTH, "data_disk": {"path": "E:\\data", "free_gb": free, "total_gb": 900.0}}
         patch(monkeypatch, up={8000}, stopped={8001, 5050})
         monkeypatch.setattr(mc, "health", lambda port: h if port == 8000 else (_ for _ in ()).throw(urllib.error.URLError("x")))
         return by_key(mc.run_round(gateway_due=False))["service:disk"]
     row = with_free(120.0)
     assert row["state"] == "ok" and row["target"] == "disk"
-    assert row["detail"] == "120.0 GB free of 900.0 GB (E:\data)"
+    assert row["detail"] == "120.0 GB free of 900.0 GB (E:\\data)"
     assert with_free(20.0)["state"] == "ok"
     assert with_free(19.9)["state"] == "warn"
     assert with_free(10.0)["state"] == "warn"
