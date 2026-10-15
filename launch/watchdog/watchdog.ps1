@@ -1,4 +1,5 @@
 # Keeps the public site up: run every 2 minutes by the "BKK StreetSmart watchdog" scheduled task (install.ps1).
+# It also starts the camera status watcher (launch\camera_status_window.ps1) when production runs without it.
 # For production (:8000) and ENVIRO (:5050) it asks the page itself on 127.0.0.1. Two failed checks in a row
 # (no answer, or a 5xx) run that server's restart.bat in a new minimized window, which also closes a window left
 # at "pause" after a crash. A server stopped on purpose (stop.bat or kill_server.ps1 leaves
@@ -50,4 +51,16 @@ foreach ($server in @(@{ Port = 8000; Folder = 'production' }, @{ Port = 5050; F
     Write-Log "$($server.Folder) :$port down: running launch\$($server.Folder)\restart.bat"
     Start-Process -FilePath 'cmd.exe' -ArgumentList "/c `"$launch\$($server.Folder)\restart.bat`"" `
         -WorkingDirectory (Split-Path $launch -Parent) -WindowStyle Minimized
+}
+
+# Camera status (launch\camera_status.py) writes the list of dead cameras the live camera page hides; it runs
+# next to production. If production is up and not stopped on purpose but no camera watcher runs, start it
+# (hidden, launch\camera_status_window.ps1 decides how).
+if (-not (Test-Path (Join-Path $state 'stopped_8000')) -and (Test-Up 8000)) {
+    $cam = @(Get-CimInstance Win32_Process -Filter "Name='cmd.exe'" |
+        Where-Object { $_.CommandLine -match 'launch\\camera_status\.bat' -and $_.CommandLine -notmatch '--once|--all|8001' })
+    if (-not $cam) {
+        Write-Log 'camera status not running: starting it (launch\camera_status_window.ps1)'
+        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $launch 'camera_status_window.ps1') | Out-Null
+    }
 }

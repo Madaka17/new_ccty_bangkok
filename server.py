@@ -128,6 +128,8 @@ def start_browser_when_ready(url="http://localhost:8000"):
 
 if __name__ == "__main__":
     import uvicorn
+    from backend.core.log_filters import quiet_client_resets
+    quiet_client_resets()
     free_port_if_needed(PORT)
     if os.getenv("OPEN_BROWSER") == "1":
         start_browser_when_ready(f"http://localhost:{PORT}")
