@@ -57,10 +57,23 @@ foreach ($server in @(@{ Port = 8000; Folder = 'production' }, @{ Port = 5050; F
 # next to production. If production is up and not stopped on purpose but no camera watcher runs, start it
 # (hidden, launch\camera_status_window.ps1 decides how).
 if (-not (Test-Path (Join-Path $state 'stopped_8000')) -and (Test-Up 8000)) {
-    $cam = @(Get-CimInstance Win32_Process -Filter "Name='cmd.exe'" |
-        Where-Object { $_.CommandLine -match 'launch\\camera_status\.bat' -and $_.CommandLine -notmatch '--once|--all|8001' })
-    if (-not $cam) {
+    # A failed process query must not look like "not running": that would start a new watcher every run.
+    $cam = $null
+    $cimFailed = $false
+    try {
+        $cam = @(Get-CimInstance Win32_Process -Filter "Name='cmd.exe'" -ErrorAction Stop |
+            Where-Object { $_.CommandLine -match 'launch\\camera_status\.bat' -and $_.CommandLine -notmatch '--once|--all|8001' })
+    } catch {
+        Write-Log "camera status check skipped: process list failed ($($_.Exception.Message))"
+        $cimFailed = $true
+    }
+    if (-not $cimFailed -and -not $cam) {
         Write-Log 'camera status not running: starting it (launch\camera_status_window.ps1)'
-        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $launch 'camera_status_window.ps1') | Out-Null
+        try {
+            & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $launch 'camera_status_window.ps1') | Out-Null
+            if ($LASTEXITCODE -ne 0) { Write-Log "camera status starter exited with code $LASTEXITCODE" }
+        } catch {
+            Write-Log "camera status starter failed ($($_.Exception.Message))"
+        }
     }
 }
