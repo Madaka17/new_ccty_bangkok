@@ -75,3 +75,8 @@ def test_agent_check_crash_becomes_fail_row(monkeypatch):
     rows = by_key(mc.run_round(gateway_due=False))
     assert rows["agent:production:checks"]["state"] == "fail"
     assert "bad json" in rows["agent:production:checks"]["detail"]
+
+
+def test_server_status_carries_uptime(monkeypatch):
+    patch(monkeypatch, up={8000}, stopped={8001, 5050})
+    assert by_key(mc.run_round(gateway_due=False))["server:production"]["uptime_s"] == 7200

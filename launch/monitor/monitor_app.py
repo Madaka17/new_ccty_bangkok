@@ -18,15 +18,14 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE), str(HERE.parent)]
-import collector  # noqa: E402
 import yolo_switch  # noqa: E402
 from monitor_checks import ROOT, SERVERS  # noqa: E402
-from monitor_store import Store  # noqa: E402
+from monitor_store import DEFAULT_DB, Store  # noqa: E402
 
 BAT_TARGETS = {"production", "test", "enviro"}
 BAT_VERBS = {"start", "restart", "stop"}
 YOLO_TARGETS = {"production", "test"}
-ALIVE_S = 90
+ALIVE_S = 180
 DETACHED = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 
 
@@ -114,7 +113,7 @@ class Api:
 
 def main():
     import webview
-    api = Api(Store(collector.DB_PATH))
+    api = Api(Store(DEFAULT_DB))
     api._window = webview.create_window("BKK Monitor", str(HERE / "ui" / "index.html"), js_api=api,
                                          width=1360, height=860, min_size=(980, 640), background_color="#0b0d10")
     webview.start()

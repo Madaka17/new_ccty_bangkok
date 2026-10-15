@@ -98,3 +98,13 @@ def test_concurrent_read_while_writing(tmp_path):
     t1, t2 = threading.Thread(target=writer), threading.Thread(target=reader)
     t1.start(); t2.start(); t1.join(); t2.join()
     assert errors == []
+
+
+def test_retire_deletes_rows_without_events(tmp_path):
+    s = Store(tmp_path / "m.db")
+    s.apply([{"key": "agent:production:A", "group": "agent", "target": "production", "name": "A", "state": "fail",
+              "detail": "d", "uptime_s": 5}], 100)
+    n = len(s.events()["rows"])
+    s.retire(["agent:production:A", "nope"])
+    assert s.current() == [] and len(s.events()["rows"]) == n
+    s.retire([])

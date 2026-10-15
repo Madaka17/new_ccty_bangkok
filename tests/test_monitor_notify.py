@@ -35,3 +35,17 @@ def test_summary_back_and_none():
     assert mn.summarize([ev("fail", "ok")])[0] == "BKK Monitor: back to normal"
     assert mn.summarize([ev("ok", "stopped")]) is None
     assert mn.summarize([]) is None
+
+
+def test_quiet_targets_skip_agent_and_yolo_only():
+    events = [ev("ok", "fail", key="agent:production:a", target="production", name="a"),
+              ev("ok", "fail", key="yolo:production:y", target="production", name="y")]
+    assert mn.summarize(events, quiet_targets={"production"}) is None
+    events.append(ev("ok", "fail"))     # the server itself is still told
+    assert mn.summarize(events, quiet_targets={"production"})[0] == "BKK Monitor: 1 problem(s)"
+
+
+def test_old_watchdog_event_not_told():
+    old = {**ev(None, "restart", key="watchdog:production"), "ts": 1000}
+    assert mn.summarize([old], now=1000 + 301) is None
+    assert mn.summarize([old], now=1000 + 299) is not None

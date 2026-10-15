@@ -86,9 +86,8 @@ def _server(target, port):
     gpu = h.get("gpu")
     detail = f":{port} up {_uptime(h.get('uptime_s', 0))}" + \
         (f" · GPU {gpu['used_mb'] / 1024:.1f} / {gpu['total_mb'] / 1024:.1f} GB" if gpu else "")
-    if not h.get("ok"):
-        return _status(key, "server", target, name, "warn", detail + " · BMA scan stale (health 503)"), h
-    return _status(key, "server", target, name, "ok", detail), h
+    state, detail = ("ok", detail) if h.get("ok") else ("warn", detail + " · BMA scan stale (health 503)")
+    return {**_status(key, "server", target, name, state, detail), "uptime_s": h.get("uptime_s", 0)}, h
 
 
 def run_round(gateway_due):

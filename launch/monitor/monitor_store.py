@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL
 CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
 """
+DEFAULT_DB = Path(__file__).resolve().parent / "state" / "monitor.db"
 EVENT_COLS = "id, ts, key, grp, target, name, old, new, detail"
 
 
@@ -51,6 +52,13 @@ class Store:
                     events.append(self._insert(c, now, s["key"], s["group"], s["target"], s["name"],
                                                prev[0] if prev else None, s["state"], s["detail"]))
         return events
+
+    def retire(self, keys):
+        """Delete status rows (no events): checks that no longer exist or whose server is down."""
+        keys = list(keys)
+        if keys:
+            with closing(self._conn()) as c, c:
+                c.executemany("DELETE FROM status WHERE key = ?", [(k,) for k in keys])
 
     def _insert(self, c, ts, key, group, target, name, old, new, detail):
         cur = c.execute("INSERT INTO events (ts, key, grp, target, name, old, new, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",

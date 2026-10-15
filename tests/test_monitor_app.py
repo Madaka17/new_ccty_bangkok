@@ -44,7 +44,7 @@ def test_status_collector_alive(tmp_path):
     assert api.status()["collector_alive"] is False
     store.set_meta("collector_at", 950)
     assert api.status()["collector_alive"] is True
-    store.set_meta("collector_at", 900)
+    store.set_meta("collector_at", 800)
     assert api.status()["collector_alive"] is False
 
 

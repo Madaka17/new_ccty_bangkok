@@ -232,7 +232,10 @@ function renderOverview() {
     if (i.key.startsWith("server:") && y && (i.state === "ok" || i.state === "warn")) cards.push(stateCard(y, `YOLO · ${label(i.target)}`, null));
   });
   const ok = all.filter(i => i.state === "ok").length;
-  const bad = all.filter(i => i.state === "fail" || i.state === "warn");
+  const up = {};
+  all.forEach(i => { if (i.key.startsWith("server:")) up[i.target] = i.state === "ok" || i.state === "warn"; });
+  const bad = all.filter(i => (i.state === "fail" || i.state === "warn") &&
+    !((i.key.startsWith("agent:") || i.key.startsWith("yolo:")) && !up[i.target]));
   const table = bad.length
     ? `<div class="wrap"><table><thead><tr><th>State</th><th>Target</th><th>Check</th><th>Detail</th><th>Since</th></tr></thead><tbody>${attentionRows(bad)}</tbody></table></div>`
     : `<div class="wrap"><div class="empty">Nothing needs attention.</div></div>`;

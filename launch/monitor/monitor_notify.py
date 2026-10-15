@@ -20,7 +20,12 @@ $null = $t.Item(1).AppendChild($xml.CreateTextNode($env:MON_BODY))
 """
 
 
-def worth_telling(e):
+WATCHDOG_FRESH_S = 300      # older watchdog lines (first import after install) are history, not news
+
+
+def worth_telling(e, now=None):
+    if now is not None and e["key"].startswith("watchdog:") and e.get("ts", now) < now - WATCHDOG_FRESH_S:
+        return False
     if e["key"].startswith("watchdog:") and e["new"] == "warn":
         return False        # one missed check; the watchdog's restart line follows if it was real
     if e["new"] in BAD:
@@ -28,8 +33,10 @@ def worth_telling(e):
     return e["new"] == "ok" and e["old"] in ("fail", "warn")
 
 
-def summarize(events):
-    told = [e for e in events if worth_telling(e)]
+def summarize(events, quiet_targets=(), now=None):
+    """quiet_targets: servers that just restarted; their agent/YOLO rows fail for minutes while data refills."""
+    told = [e for e in events if worth_telling(e, now)
+            and not (e["target"] in quiet_targets and e["key"].startswith(("agent:", "yolo:")))]
     if not told:
         return None
     bad = [e for e in told if e["new"] in BAD]
