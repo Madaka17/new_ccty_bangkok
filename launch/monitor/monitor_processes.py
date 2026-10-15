@@ -69,6 +69,11 @@ def info(name, log_dir=None, alive=alive, now=time.time):
 def tail(name, offset=None, log_dir=None, first_bytes=65536, max_bytes=262144):
     """offset None: the last first_bytes. Otherwise the bytes after offset (at most max_bytes), whole lines only.
     A file shorter than offset was rotated: read from 0 and say so with reset."""
+    if offset is not None:                        # comes from the page: coerce, never trust
+        try:
+            offset = max(0, int(offset))
+        except (TypeError, ValueError, OverflowError):
+            offset = None
     path = _dir(log_dir) / f"{name}.log"
     try:
         size = path.stat().st_size

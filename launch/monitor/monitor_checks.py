@@ -134,16 +134,22 @@ def run_round(gateway_due):
     up = tunnel_running()
     out.append(_status("service:tunnel", "service", "tunnel", LABELS["tunnel"], "ok" if up else "fail",
                        "cloudflared service running" if up else "cloudflared service not running: site not public"))
-    age = camera_age()
-    if age is not None and age < 900:
-        out.append(_status("service:camera", "service", "camera", LABELS["camera"], "ok",
-                           f"updated {int(age // 60)} min ago"))
+    prod = next(r["state"] for r in out if r["key"] == "server:production")
+    if prod in ("ok", "warn"):
+        age = camera_age()
+        if age is not None and age < 900:
+            out.append(_status("service:camera", "service", "camera", LABELS["camera"], "ok",
+                               f"updated {int(age // 60)} min ago"))
+        else:
+            detail = f"camera_status.json is {int(age // 60)} min old" if age is not None else "camera_status.json missing"
+            out.append(_status("service:camera", "service", "camera", LABELS["camera"], "fail", detail))
     elif stopped(8000):
         out.append(_status("service:camera", "service", "camera", LABELS["camera"], "stopped",
                            "production stopped on purpose"))
     else:
-        detail = f"camera_status.json is {int(age // 60)} min old" if age is not None else "camera_status.json missing"
-        out.append(_status("service:camera", "service", "camera", LABELS["camera"], "fail", detail))
+        # camera_status.py reads from :8000, so its file goes stale whenever production is down
+        out.append(_status("service:camera", "service", "camera", LABELS["camera"], "idle",
+                           "waiting for production"))
     if gateway_due:
         try:
             proxy_ok, model_ok, proxy_note, model_note, secs = gateway()

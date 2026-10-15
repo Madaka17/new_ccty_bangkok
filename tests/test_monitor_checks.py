@@ -93,3 +93,10 @@ def test_camera_check(monkeypatch):
     patch(monkeypatch, up=set(), stopped={8000, 8001, 5050})
     monkeypatch.setattr(mc, "camera_age", lambda: None)
     assert by_key(mc.run_round(gateway_due=False))["service:camera"]["state"] == "stopped"
+
+
+def test_camera_idle_when_production_down_not_stopped(monkeypatch):
+    patch(monkeypatch, up=set(), stopped={8001, 5050})
+    monkeypatch.setattr(mc, "camera_age", lambda: 3600.0)
+    row = by_key(mc.run_round(gateway_due=False))["service:camera"]
+    assert row["state"] == "idle" and row["detail"] == "waiting for production"

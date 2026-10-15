@@ -53,6 +53,16 @@ def test_tail_first_drops_partial_head(tmp_path):
     assert mp.tail("test", log_dir=tmp_path, first_bytes=10)["lines"] == ["keep"]
 
 
+def test_tail_coerces_page_offset(tmp_path):
+    body = b"x" * 100 + b"\nkeep\n"
+    (tmp_path / "test.log").write_bytes(body)
+    # a value that cannot convert means the first read: last 10 bytes, partial head dropped
+    assert mp.tail("test", "abc", log_dir=tmp_path, first_bytes=10)["lines"] == ["keep"]
+    assert mp.tail("test", None, log_dir=tmp_path, first_bytes=10)["lines"] == ["keep"]
+    # a negative value is clamped to 0: read from the start
+    assert mp.tail("test", -5, log_dir=tmp_path, first_bytes=10)["lines"] == ["x" * 100, "keep"]
+
+
 def test_tail_rotated_and_missing(tmp_path):
     (tmp_path / "enviro.log").write_bytes(b"new\n")
     t = mp.tail("enviro", 5000, log_dir=tmp_path)
