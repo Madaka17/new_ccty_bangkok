@@ -10,6 +10,7 @@ confirmation first; this side only runs actions from a fixed list.
 """
 import csv
 import io
+import os
 import subprocess
 import sys
 import time
@@ -20,6 +21,7 @@ HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE), str(HERE.parent)]
 import yolo_switch  # noqa: E402
 from monitor_checks import ROOT, SERVERS  # noqa: E402
+import monitor_processes  # noqa: E402
 from monitor_store import DEFAULT_DB, Store  # noqa: E402
 
 BAT_TARGETS = {"production", "test", "enviro"}
@@ -88,6 +90,20 @@ class Api:
             self.check_now()
             return {"ok": True, "message": f"YOLO {'on' if out.get('enabled') else 'off'} on {target}"}
         return {"ok": False, "message": "not allowed"}
+
+    def processes(self):
+        return [monitor_processes.info(n) for n in monitor_processes.NAMES]
+
+    def log_tail(self, name, offset=None):
+        if name not in monitor_processes.NAMES:
+            return {"lines": [], "offset": 0, "reset": False, "error": "unknown"}
+        return monitor_processes.tail(name, offset)
+
+    def open_log(self, name):
+        if name not in monitor_processes.NAMES:
+            return {"ok": False}
+        os.startfile(str(monitor_processes.LOG_DIR))     # the folder: the rotated files sit beside the newest
+        return {"ok": True}
 
     def csv_text(self, filters):
         rows = self._store.events(**self._query(filters), limit=100000)["rows"]

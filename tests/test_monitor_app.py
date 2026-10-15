@@ -73,3 +73,15 @@ def test_check_now_sets_meta(tmp_path):
     api, store, _, _ = make(tmp_path)
     api.check_now()
     assert store.get_meta("check_now") == "1"
+
+
+def test_processes_and_log_api(tmp_path, monkeypatch):
+    import monitor_processes as mp
+    monkeypatch.setattr(mp, "LOG_DIR", tmp_path)
+    (tmp_path / "test.log").write_bytes(b"hello\n")
+    api, _, _, _ = make(tmp_path)
+    names = [p["name"] for p in api.processes()]
+    assert names == ["production", "test", "enviro", "camera"]
+    assert api.log_tail("test")["lines"] == ["hello"]
+    assert api.log_tail("../../x").get("error") == "unknown"
+    assert api.open_log("nope") == {"ok": False}

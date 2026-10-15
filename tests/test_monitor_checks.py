@@ -19,6 +19,7 @@ def patch(monkeypatch, up=(), stopped=(), ok_health=True, tunnel=True):
     monkeypatch.setattr(mc, "health", health)
     monkeypatch.setattr(mc, "http_up", lambda port: port in up)
     monkeypatch.setattr(mc, "tunnel_running", lambda: tunnel)
+    monkeypatch.setattr(mc, "camera_age", lambda: 60.0)
     monkeypatch.setattr(mc, "gateway", lambda: (True, True, "200, qwen listed", "200 answered", 1.2))
     monkeypatch.setattr(mc, "agents", lambda port: {"summary": "s", "window": 60, "rows": [
         {"name": "Bangkok flood report", "state": "ok", "data": "1m", "analysis": "1m", "calls": 1, "fails": 0,
@@ -80,3 +81,15 @@ def test_agent_check_crash_becomes_fail_row(monkeypatch):
 def test_server_status_carries_uptime(monkeypatch):
     patch(monkeypatch, up={8000}, stopped={8001, 5050})
     assert by_key(mc.run_round(gateway_due=False))["server:production"]["uptime_s"] == 7200
+
+
+def test_camera_check(monkeypatch):
+    patch(monkeypatch, up={8000}, stopped={8001, 5050})
+    monkeypatch.setattr(mc, "camera_age", lambda: 120.0)
+    assert by_key(mc.run_round(gateway_due=False))["service:camera"]["state"] == "ok"
+    monkeypatch.setattr(mc, "camera_age", lambda: 3600.0)
+    assert by_key(mc.run_round(gateway_due=False))["service:camera"]["state"] == "fail"
+    monkeypatch.setattr(mc, "camera_age", lambda: None)
+    patch(monkeypatch, up=set(), stopped={8000, 8001, 5050})
+    monkeypatch.setattr(mc, "camera_age", lambda: None)
+    assert by_key(mc.run_round(gateway_due=False))["service:camera"]["state"] == "stopped"
