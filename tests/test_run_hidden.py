@@ -82,3 +82,19 @@ def test_main_logs_runner_crash_and_returns_1(tmp_path, monkeypatch):
     assert run_hidden.main(["production"]) == 1
     text = (tmp_path / "run_hidden.log").read_text(encoding="utf-8")
     assert "Traceback" in text and "runner broke" in text
+
+
+def test_old_runner_does_not_overwrite_newer_runners_state(tmp_path):
+    import threading
+    import time
+
+    def takeover():
+        time.sleep(0.4)
+        (tmp_path / "own.json").write_text(json.dumps({"name": "own", "runner_pid": 999999}), encoding="utf-8")
+
+    t = threading.Thread(target=takeover)
+    t.start()
+    run_hidden.run("own", [PY, "-c", "import time; time.sleep(1)"], log_dir=tmp_path)
+    t.join()
+    st = json.loads((tmp_path / "own.json").read_text(encoding="utf-8"))
+    assert st["runner_pid"] == 999999 and "exited_at" not in st

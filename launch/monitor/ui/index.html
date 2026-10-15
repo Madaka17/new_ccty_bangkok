@@ -167,7 +167,7 @@ const LABEL = { production: "Production", test: "Test", enviro: "ENVIRO", gatewa
 const TARGETS = ["production", "test", "enviro", "gateway", "tunnel", "camera"];
 const ACTIONS = {
   start:   { title: t => `Start ${LABEL[t]}?`,   body: t => `Opens launch\\${t}\\start.bat in a new window.` },
-  restart: { title: t => `Restart ${LABEL[t]}?`, body: t => t === "production" ? "The public site is down for about a minute while it restarts." : `Runs launch\\${t}\\restart.bat in a new window.` },
+  restart: { title: t => `Restart ${LABEL[t]}?`, body: t => t === "production" ? "The public site is down for about a minute while it restarts." : `Runs launch\\${t}\\restart.bat in the background. Its log is on the Processes page.` },
   stop:    { title: t => `Stop ${LABEL[t]}?`,    body: t => t === "production" ? "This takes bkksmartstreet.com down until someone starts it again." : `Runs launch\\${t}\\stop.bat. The watchdog leaves it stopped.`, danger: true },
   yolo_on:  { title: t => `Turn YOLO on (${LABEL[t]})?`,  body: () => "Loads the models onto the GPU (10-30 s)." },
   yolo_off: { title: t => `Turn YOLO off (${LABEL[t]})?`, body: () => "Frees GPU memory; counters, helmet and wrong-way checks pause.", danger: true },

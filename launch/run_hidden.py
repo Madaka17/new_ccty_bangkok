@@ -93,6 +93,14 @@ def _save(path, state):
             time.sleep(0.05)  # file locked by another program; retry, then give up quietly
 
 
+def _still_ours(state_path):
+    """False when a newer runner for the same name has taken over the state file; it must keep its state."""
+    try:
+        return json.loads(state_path.read_text(encoding="utf-8")).get("runner_pid") == os.getpid()
+    except (OSError, ValueError, AttributeError):
+        return True
+
+
 def run(name, cmd, log_dir=LOG_DIR, max_bytes=MAX_BYTES, backups=BACKUPS):
     log_dir = Path(log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -112,7 +120,8 @@ def run(name, cmd, log_dir=LOG_DIR, max_bytes=MAX_BYTES, backups=BACKUPS):
         code = proc.wait()
         log.write(f"--- {name} exited with code {code} ---")
         log.close()
-        _save(state_path, {**state, "exited_at": time.time(), "exit_code": code})
+        if _still_ours(state_path):
+            _save(state_path, {**state, "exited_at": time.time(), "exit_code": code})
     return code
 
 

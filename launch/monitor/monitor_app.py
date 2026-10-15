@@ -5,7 +5,7 @@ BKK Monitor: the desktop window (Desktop icon "BKK Monitor", made by launch\moni
 
 Shows what the collector (launch\monitor\collector.py) stored in state\monitor.db: status cards, every check,
 and the history of changes. The buttons run the same files as the Desktop shortcuts (launch\<folder>\start.bat,
-restart.bat, stop.bat) in a new window, and switch YOLO through launch\yolo_switch.py. The page asks for
+restart.bat, stop.bat) in the background, and switch YOLO through launch\yolo_switch.py. The page asks for
 confirmation first; this side only runs actions from a fixed list.
 """
 import csv
@@ -80,7 +80,7 @@ class Api:
             bat = ROOT / "launch" / target / f"{verb}.bat"
             # `start` opens the .bat in its own console window, like double-clicking the Desktop shortcut
             self._run(["cmd.exe", "/c", "start", "", str(bat)])
-            return {"ok": True, "message": f"{verb} {target}: opened {bat.name} in a new window"}
+            return {"ok": True, "message": f"{verb} {target}: ran {bat.name} (the server runs in the background; see Processes)"}
         if target in YOLO_TARGETS and verb in ("yolo_on", "yolo_off"):
             want = verb == "yolo_on"
             try:
