@@ -76,3 +76,6 @@ launch/watchdog/state/
 # Load test output
 local/loadtest/results.json
 launch/monitor/state/
+
+# launch\run_hidden.py output (server logs and PIDs)
+launch/logs/
