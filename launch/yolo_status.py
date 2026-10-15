@@ -18,6 +18,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime
 
@@ -53,13 +54,78 @@ def ago(ts):
     return f"{s}s ago" if s < 120 else f"{s // 60} min ago" if s < 7200 else f"{s // 3600} h ago"
 
 
-def line(ok, name, detail):
-    mark = {True: "[ OK ]", False: "[FAIL]", None: "[IDLE]"}[ok]
+MARK = {"ok": "[ OK ]", "fail": "[FAIL]", "idle": "[IDLE]"}
+
+
+def line(state, name, detail):
     if LOG:
-        level = {True: "INFO", False: "ERROR", None: "WARNING"}[ok]
-        log(level, f"{LEVEL_COLOR[level]}{mark}{RESET} {name:<28} {detail}")
+        level = {"ok": "INFO", "fail": "ERROR", "idle": "WARNING"}[state]
+        log(level, f"{LEVEL_COLOR[level]}{MARK[state]}{RESET} {name:<28} {detail}")
     else:
-        print(f"  {mark}  {name:<28} {detail}")
+        print(f"  {MARK[state]}  {name:<28} {detail}")
+
+
+def get_health(port, fetch=None):
+    """/api/health, also when it answers 503: that only means the BMA scan is stale, the server is up."""
+    fetch = fetch or get
+    try:
+        return fetch(port, "/api/health")
+    except urllib.error.HTTPError as e:
+        if e.code != 503:
+            raise
+        return json.loads(e.read().decode("utf-8"))
+
+
+def check_yolo(port, fetch=None, health=None):
+    """Every YOLO model judged once: {"server": {...}, "rows": [{"name", "state", "detail"}]}."""
+    fetch = fetch or get
+    h = health if health is not None else get_health(port, fetch)
+    rows = []
+
+    def row(state, name, detail):
+        rows.append({"name": name, "state": state, "detail": detail})
+
+    sw = fetch(port, "/api/ai/yolo")
+    vram = sw.get("vram")
+    mem = f" · GPU {vram['used_mb'] / 1024:.1f} / {vram['total_mb'] / 1024:.1f} GB" if vram else ""
+    row("ok" if sw.get("enabled") else "idle", "YOLO switch", ("on" if sw.get("enabled") else "switched off") + mem)
+
+    scan, src = h.get("scan") or {}, h.get("bma_source") or {}
+    fresh = scan.get("age_s") is not None and scan["age_s"] < SCAN_FRESH_S
+    state = "scanning now" if scan.get("running") else f"last cycle {scan['age_s']}s ago" if scan.get("age_s") is not None else "no cycle yet"
+    working = bool(fresh or scan.get("running"))
+    row(("ok" if working else "fail") if scan.get("cycle") else "idle", "YOLO26x  BMA camera scan",
+        f"{state} · cycle {scan.get('cycle')} · frames {src.get('frames_ok', '–')} ok, {src.get('frames_new', '–')} new · source {src.get('state', '–')}")
+
+    ai = fetch(port, "/api/ai/stats")
+    if ai.get("active"):
+        live_ok = (ai.get("fps") or 0) > 0
+        row("ok" if live_ok else "fail", f"{ai.get('model', 'YOLO')}  live AI camera",
+            f"{ai.get('fps')} fps (target {ai.get('target_fps')}) · {ai.get('latency_ms')} ms · {ai.get('title') or ai.get('camid')} · {ai.get('total')} vehicles")
+    else:
+        why = f"camera offline ({ai.get('title') or ai.get('camid')})" if ai.get("stream_error") else "nobody is watching the AI page"
+        row("idle", f"{ai.get('model', 'YOLO')}  live AI camera", f"not playing: {why}")
+
+    hs = fetch(port, "/api/helmet/status")
+    if not hs.get("enabled"):
+        row("idle", "helmet detector", "switched off")
+    else:
+        recent = hs.get("last_check") and time.time() - hs["last_check"] < HELMET_FRESH_S
+        t = hs.get("today") or {}
+        row("ok" if recent else "fail", f"helmet  {hs.get('local_detector', '')}",
+            f"last check {ago(hs.get('last_check'))} · {hs.get('calls_last_hour')} checks/h · queue {hs.get('queue')} · today {t.get('captures', 0)} captures, {t.get('no_helmet', 0)} no helmet"
+            + (f" · agent error: {hs['agent_error']}" if hs.get("agent_error") else ""))
+
+    ww = fetch(port, "/api/wrongway/status")
+    if not ww.get("enabled"):
+        row("idle", "wrong-way classifier", "switched off")
+    else:
+        learning = (ww.get("frames_seen") or 0) > 0
+        t = ww.get("today") or {}
+        row("ok" if learning else "fail", f"wrong-way  {ww.get('detector', '')}",
+            f"{ww.get('frames_seen')} frames read · {ww.get('cameras_learned')}/{ww.get('cameras_seen')} cameras learned · today {t.get('captures', 0)} captures, {t.get('wrong_way', 0)} wrong way"
+            + (f" · agent error: {ww['agent_error']}" if ww.get("agent_error") else ""))
+    return {"server": {"uptime_s": h.get("uptime_s", 0), "gpu": h.get("gpu"), "ok": bool(h.get("ok"))}, "rows": rows}
 
 
 def report(port):
@@ -67,55 +133,22 @@ def report(port):
         print(f"YOLO status  ·  server :{port}  ·  {datetime.now():%Y-%m-%d %H:%M:%S}")
         print("-" * 78)
     try:
-        h = get(port, "/api/health")
+        h = get_health(port)
     except Exception as e:  # noqa: BLE001 - the server itself is the first thing to report
-        line(False, "server", f"not answering on :{port} ({e})")
+        line("fail", "server", f"not answering on :{port} ({e})")
         return 1
     gpu = h.get("gpu")
     say(f"  server :{port} up {h['uptime_s'] // 60} min · GPU {gpu['name']} {gpu['used_mb']:,} / {gpu['total_mb']:,} MB in use"
         if gpu else f"  server :{port} up {h['uptime_s'] // 60} min · no GPU found: the models run on the CPU")
     if not LOG:
         print()
+    result = check_yolo(port, health=h)
     bad = 0
-
-    scan, src = h.get("scan") or {}, h.get("bma_source") or {}
-    fresh = scan.get("age_s") is not None and scan["age_s"] < SCAN_FRESH_S
-    state = "scanning now" if scan.get("running") else f"last cycle {scan['age_s']}s ago" if scan.get("age_s") is not None else "no cycle yet"
-    working = bool(fresh or scan.get("running"))
-    line(working if scan.get("cycle") else None, "YOLO26x  BMA camera scan", f"{state} · cycle {scan.get('cycle')} · frames {src.get('frames_ok', '–')} ok, {src.get('frames_new', '–')} new · source {src.get('state', '–')}")
-    bad += bool(scan.get("cycle")) and not working
-
-    ai = get(port, "/api/ai/stats")
-    if ai.get("active"):
-        live_ok = (ai.get("fps") or 0) > 0
-        line(live_ok, f"{ai.get('model', 'YOLO')}  live AI camera", f"{ai.get('fps')} fps (target {ai.get('target_fps')}) · {ai.get('latency_ms')} ms · {ai.get('title') or ai.get('camid')} · {ai.get('total')} vehicles")
-        bad += not live_ok
-    else:
-        why = f"camera offline ({ai.get('title') or ai.get('camid')})" if ai.get("stream_error") else "nobody is watching the AI page"
-        line(None, f"{ai.get('model', 'YOLO')}  live AI camera", f"not playing: {why}")
-
-    hs = get(port, "/api/helmet/status")
-    if not hs.get("enabled"):
-        line(None, "helmet detector", "switched off")
-    else:
-        recent = hs.get("last_check") and time.time() - hs["last_check"] < HELMET_FRESH_S
-        t = hs.get("today") or {}
-        line(bool(recent), f"helmet  {hs.get('local_detector', '')}",
-             f"last check {ago(hs.get('last_check'))} · {hs.get('calls_last_hour')} checks/h · queue {hs.get('queue')} · today {t.get('captures', 0)} captures, {t.get('no_helmet', 0)} no helmet"
-             + (f" · agent error: {hs['agent_error']}" if hs.get("agent_error") else ""))
-        bad += not recent
-
-    ww = get(port, "/api/wrongway/status")
-    if not ww.get("enabled"):
-        line(None, "wrong-way classifier", "switched off")
-    else:
-        learning = (ww.get("frames_seen") or 0) > 0
-        t = ww.get("today") or {}
-        line(learning, f"wrong-way  {ww.get('detector', '')}",
-             f"{ww.get('frames_seen')} frames read · {ww.get('cameras_learned')}/{ww.get('cameras_seen')} cameras learned · today {t.get('captures', 0)} captures, {t.get('wrong_way', 0)} wrong way"
-             + (f" · agent error: {ww['agent_error']}" if ww.get("agent_error") else ""))
-        bad += not learning
-
+    for r in result["rows"]:
+        if r["name"] == "YOLO switch":
+            continue        # the terminal report has no switch line; the monitor app shows it
+        line(r["state"], r["name"], r["detail"])
+        bad += r["state"] == "fail"
     if LOG:
         log("INFO" if not bad else "ERROR", "all YOLO models are working" if not bad else f"{bad} model(s) not working")
     else:
