@@ -1092,6 +1092,7 @@ def test_summary_back_and_none():
 `tests/test_monitor_collector.py`:
 ```python
 import sys
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -1109,11 +1110,12 @@ def test_one_round_stores_status_and_imports_watchdog(tmp_path, monkeypatch):
         {"key": "server:production", "group": "server", "target": "production", "name": "Production",
          "state": "fail", "detail": "down"}])
     store = Store(tmp_path / "m.db")
-    events = collector.one_round(store, now=2_000_000_000, gateway_due=False)
+    now = int(datetime(2026, 10, 15, 1, 0, 0).timestamp())     # one hour after the log line
+    events = collector.one_round(store, now=now, gateway_due=False)
     assert {e["key"] for e in events} == {"server:production", "watchdog:production"}
-    assert store.get_meta("collector_at") == "2000000000"
+    assert store.get_meta("collector_at") == str(now)
     # the same log line is not imported twice
-    assert [e["key"] for e in collector.one_round(store, now=2_000_000_030, gateway_due=False)] == []
+    assert [e["key"] for e in collector.one_round(store, now=now + 30, gateway_due=False)] == []
 
 
 def test_old_watchdog_lines_beyond_30_days_skipped(tmp_path, monkeypatch):
