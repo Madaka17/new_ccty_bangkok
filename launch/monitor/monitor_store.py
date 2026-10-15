@@ -70,7 +70,10 @@ class Store:
 
     def events(self, target=None, state=None, q=None, since=None, limit=25, offset=0):
         where, args = [], []
-        if target:
+        if isinstance(target, (list, tuple)):
+            if target:
+                where.append(f"target IN ({', '.join('?' * len(target))})"); args += list(target)
+        elif target:
             where.append("target = ?"); args.append(target)
         if state:
             where.append("new = ?"); args.append(state)

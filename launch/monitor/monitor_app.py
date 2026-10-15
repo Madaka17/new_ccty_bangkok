@@ -51,7 +51,10 @@ class Api:
     def _query(self, filters):
         f = filters or {}
         hours = f.get("hours")
-        return {"target": f.get("target") or None, "state": f.get("state") or None, "q": f.get("q") or None,
+        target = f.get("target") or None
+        if target == "services":
+            target = ["gateway", "tunnel"]
+        return {"target": target, "state": f.get("state") or None, "q": f.get("q") or None,
                 "since": self._now() - float(hours) * 3600 if hours else None}
 
     def events(self, filters):

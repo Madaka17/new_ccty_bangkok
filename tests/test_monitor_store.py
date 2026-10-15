@@ -56,6 +56,15 @@ def test_events_filters_and_paging(tmp_path):
     assert len(s.events(limit=25, offset=25)["rows"]) == 6
 
 
+def test_events_target_list(tmp_path):
+    s = Store(tmp_path / "m.db")
+    for i, t in enumerate(["production", "gateway", "tunnel", "test"]):
+        s.add_event(1000 + i, f"x:{t}", "service", t, t, "ok", "fail", "")
+    got = s.events(target=["gateway", "tunnel"])
+    assert got["total"] == 2 and {r["target"] for r in got["rows"]} == {"gateway", "tunnel"}
+    assert s.events(target=[])["total"] == 4
+
+
 def test_prune(tmp_path):
     s = Store(tmp_path / "m.db")
     s.add_event(0, "k", "server", "production", "P", "ok", "fail", "")

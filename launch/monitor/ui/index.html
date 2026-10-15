@@ -191,21 +191,14 @@ async function call(fn) {
 
 async function loadStatus() {
   const r = await call(() => api().status());
-  if (r) { S.status = r; render(); }
+  if (r) { S.status = r; softRender(); }
 }
-async function fetchEvents(f) {
-  if (f.target !== "services") return api().events(f);
-  const big = { ...f, limit: f.offset + f.limit, offset: 0 };
-  const [a, b] = await Promise.all([api().events({ ...big, target: "gateway" }), api().events({ ...big, target: "tunnel" })]);
-  const rows = a.rows.concat(b.rows).sort((x, y) => y.ts - x.ts || y.id - x.id);
-  return { rows: rows.slice(f.offset, f.offset + f.limit), total: a.total + b.total };
-}
-async function loadEvents() {
+async function loadEvents(poll) {
   const seq = ++evSeq;
-  const r = await call(() => fetchEvents({ target: S.target, state: S.state, q: S.q, hours: S.hours, limit: S.limit, offset: S.offset }));
+  const r = await call(() => api().events({ target: S.target, state: S.state, q: S.q, hours: S.hours, limit: S.limit, offset: S.offset }));
   if (!r || seq !== evSeq) return;
   if (!r.rows.length && S.offset > 0 && r.total > 0) { S.offset = 0; return loadEvents(); }
-  S.events = r; render();
+  S.events = r; poll ? softRender() : render();
 }
 
 /* ---------- views ---------- */
@@ -308,7 +301,13 @@ function renderEvents() {
     `<button class="btn sm" data-act2="next"${b >= total ? " disabled" : ""}>Next</button></span></div>`;
 }
 
+// Polls must not rebuild the page under an open dropdown or a half-typed search; they wait until the field loses focus.
+function fieldFocused() { const a = document.activeElement; return !!a && (a.tagName === "SELECT" || (a.tagName === "INPUT" && a.type === "search")); }
+function softRender() { if (fieldFocused()) S.dirty = true; else render(); }
+document.addEventListener("focusout", () => setTimeout(() => { if (S.dirty && !fieldFocused()) render(); }, 0));
+
 function render() {
+  S.dirty = false;
   const st = S.status, alive = !!(st && st.collector_alive);
   $("dot").className = "dot" + (alive ? " on" : "");
   $("dot").title = alive ? "Collector running" : "Collector not running";
@@ -363,7 +362,7 @@ async function runPending() {
   loadStatus();
 }
 async function doExport() {
-  const f = { target: S.target === "services" ? "" : S.target, state: S.state, q: S.q, hours: S.hours };
+  const f = { target: S.target, state: S.state, q: S.q, hours: S.hours };
   const r = await call(() => api().export_csv(f));
   if (r) toast(r.ok ? `Saved ${r.path}` : (r.message || "Not saved"), !!r.ok);
 }
@@ -392,6 +391,7 @@ document.addEventListener("click", async e => {
     case "startcol": {
       const r = await call(() => api().start_collector());
       if (r) toast(r.message || "collector started", !!r.ok);
+      setTimeout(loadStatus, 2000);
       return;
     }
   }
@@ -421,7 +421,7 @@ function start() {
   render();
   loadStatus(); loadEvents();
   setInterval(loadStatus, 5000);
-  setInterval(() => { if (S.page === "events" && S.offset === 0) loadEvents(); }, 15000);
+  setInterval(() => { if (S.page === "events" && S.offset === 0) loadEvents(true); }, 15000);
 }
 window.addEventListener("pywebviewready", start);
 if (window.pywebview && window.pywebview.api) start();
