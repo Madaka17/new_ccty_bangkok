@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -49,3 +50,35 @@ def test_targets_and_unknown_name(tmp_path, monkeypatch):
     monkeypatch.setattr(run_hidden, "LOG_DIR", tmp_path)
     assert run_hidden.main(["nope"]) == 2
     assert run_hidden.main([]) == 2
+
+
+def _locked(src, dst):
+    raise PermissionError(f"locked: {dst}")
+
+
+def test_locked_log_rotation_keeps_draining_child(tmp_path, monkeypatch):
+    monkeypatch.setattr(os, "replace", _locked)
+    cmd = [PY, "-c", "for i in range(200): print('line', i)"]
+    code = run_hidden.run("locked", cmd, log_dir=tmp_path, max_bytes=2000, backups=2)
+    assert code == 0
+    text = (tmp_path / "locked.log").read_text(encoding="utf-8")
+    assert " line 199" in text
+    assert "--- locked exited with code 0 ---" in text
+
+
+def test_locked_state_file_does_not_stop_run(tmp_path, monkeypatch):
+    monkeypatch.setattr(os, "replace", _locked)
+    cmd = [PY, "-c", "import sys; print('ok'); sys.exit(4)"]
+    assert run_hidden.run("nosave", cmd, log_dir=tmp_path) == 4
+    assert "--- nosave exited with code 4 ---" in (tmp_path / "nosave.log").read_text(encoding="utf-8")
+
+
+def test_main_logs_runner_crash_and_returns_1(tmp_path, monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError("runner broke")
+
+    monkeypatch.setattr(run_hidden, "LOG_DIR", tmp_path)
+    monkeypatch.setattr(run_hidden, "run", boom)
+    assert run_hidden.main(["production"]) == 1
+    text = (tmp_path / "run_hidden.log").read_text(encoding="utf-8")
+    assert "Traceback" in text and "runner broke" in text
