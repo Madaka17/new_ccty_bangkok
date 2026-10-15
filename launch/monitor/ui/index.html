@@ -112,7 +112,8 @@ h2 { font-size: 13px; font-weight: 600; margin: 0 0 10px; }
 .toast.bad { border-left-color: var(--fail); }
 /* processes */
 .pgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
-.card.sel { cursor: pointer; }
+.card.sel, .card[data-open] { cursor: pointer; }
+.card[data-open]:hover { border-color: #333b45; }
 .card.sel:hover { border-color: #333b45; }
 .card.sel.cur { border-color: var(--accent); }
 .card .acts { display: flex; gap: 8px; align-items: center; margin-top: auto; }
@@ -163,8 +164,8 @@ h2 { font-size: 13px; font-weight: 600; margin: 0 0 10px; }
 const api = () => window.pywebview.api;
 const S = { page: "overview", target: "", state: "", q: "", hours: 24, limit: 25, offset: 0, status: null, events: null, menu: null, busy: false, sel: "production", procs: null, logOff: null, logBuf: [], follow: true, errs: false };
 const STATES = ["ok", "warn", "fail", "idle", "stopped"];
-const LABEL = { production: "Production", test: "Test", enviro: "ENVIRO", gateway: "AI gateway", tunnel: "Cloudflare tunnel", camera: "Camera status" };
-const TARGETS = ["production", "test", "enviro", "gateway", "tunnel", "camera"];
+const LABEL = { production: "Production", test: "Test", enviro: "ENVIRO", gateway: "AI gateway", tunnel: "Cloudflare tunnel", camera: "Camera status", watchdog: "Watchdog", disk: "Data disk", public: "Public site" };
+const TARGETS = ["production", "test", "enviro", "gateway", "tunnel", "camera", "watchdog", "disk", "public"];
 const ACTIONS = {
   start:   { title: t => `Start ${LABEL[t]}?`,   body: t => `Runs launch\\${t}\\start.bat in the background. Its log is on the Processes page.` },
   restart: { title: t => `Restart ${LABEL[t]}?`, body: t => t === "production" ? "The public site is down for about a minute while it restarts." : `Runs launch\\${t}\\restart.bat in the background. Its log is on the Processes page.` },
@@ -222,6 +223,7 @@ async function loadEvents(poll) {
 function stateCard(it, title, menuTarget) {
   const showMenu = !!menuTarget;
   const t = menuTarget;
+  const open = t ? ` data-open="${esc(t)}" title="Open on Processes"` : "";
   const st = it.state;
   const dis = (v) => (v === "start" ? (st === "ok" || st === "warn") : (st === "stopped")) ? " disabled" : "";
   let menu = "";
@@ -231,7 +233,7 @@ function stateCard(it, title, menuTarget) {
       (t === "production" || t === "test" ? `<hr><button data-act="yolo_on" data-t="${esc(t)}">YOLO on</button><button data-act="yolo_off" data-t="${esc(t)}">YOLO off</button>` : "") +
       `</div>`;
   }
-  return `<div class="card"><div class="top"><span class="lbl">${esc(title)}</span>` +
+  return `<div class="card"${open}><div class="top"><span class="lbl">${esc(title)}</span>` +
     (showMenu ? `<button class="kebab" data-menu="${esc(it.key)}" aria-label="Actions">⋯</button>` : "") +
     `</div><div>${pill(st)}</div><div class="det">${esc(it.detail)}</div><div class="since">since ${esc(ago(it.since))}</div>${menu}</div>`;
 }
@@ -272,7 +274,8 @@ function targetChip() { return chip("Target", `<select data-f="target">${targetO
 function stateChip(extra) { return chip("State", `<select data-f="state">${stateOptions(extra)}</select>`, S.state); }
 function searchChip() { return `<label class="chip search"><input data-f="q" type="search" placeholder="Search…" value="${esc(S.q)}"></label>`; }
 
-function inTarget(t) { return !S.target || t === S.target || (S.target === "services" && (t === "gateway" || t === "tunnel" || t === "camera")); }
+const SERVICE_TARGETS = ["gateway", "tunnel", "camera", "watchdog", "disk", "public"];
+function inTarget(t) { return !S.target || t === S.target || (S.target === "services" && SERVICE_TARGETS.includes(t)); }
 function renderChecks() {
   const q = S.q.trim().toLowerCase();
   const rows = items().filter(i => inTarget(i.target) && (!S.state || i.state === S.state) &&
@@ -398,9 +401,12 @@ function logAppend(lines) {
 function fmtSize(n) { return n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`; }
 function fmtUp(s) { const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h} h ${m} min` : `${m} min`; }
 function procCard(p) {
-  const bad = !p.running && p.exit_code != null && p.exit_code !== 0;
-  const pl = p.running ? `<span class="pill ok">running</span>` : `<span class="pill ${bad ? "fail" : "idle"}">not running</span>`;
+  const stopped = !p.running && !!p.stopped_on_purpose;   // stop.bat: an intended exit, not a failure
+  const bad = !p.running && !stopped && p.exit_code != null && p.exit_code !== 0;
+  const pl = p.running ? `<span class="pill ok">running</span>` : stopped ? `<span class="pill stopped">stopped</span>`
+    : `<span class="pill ${bad ? "fail" : "idle"}">not running</span>`;
   const det = p.running ? `PID ${esc(p.pid)} · up ${esc(fmtUp(p.uptime_s || 0))}`
+    : stopped ? `stopped on purpose${p.exited_at ? ` · exited ${esc(ago(p.exited_at))}` : ""}`
     : p.exited_at ? `exited ${esc(ago(p.exited_at))} (code ${esc(p.exit_code)})` : "never started hidden";
   const canAct = ["production", "test", "enviro"].includes(p.name);
   const key = "proc:" + p.name;
@@ -475,6 +481,12 @@ function selectProc(name) {
   render();
   loadTail();
 }
+// Overview server card: open Processes with that server selected
+function openProc(name) {
+  S.menu = null;
+  if (name !== S.sel) { S.sel = name; S.logOff = null; logClear(); }
+  setPage("processes");
+}
 
 /* ---------- actions ---------- */
 let pending = null;
@@ -519,13 +531,14 @@ function setFilter(k, v) {
 }
 
 document.addEventListener("click", async e => {
-  const t = e.target.closest("[data-page],[data-tgt],[data-menu],[data-act],[data-act2],[data-sel]");
+  const t = e.target.closest("[data-page],[data-tgt],[data-menu],[data-act],[data-act2],[data-sel],[data-open]");
   if (!t) { if (S.menu) { S.menu = null; render(); } return; }
   const d = t.dataset;
   if (d.page) return setPage(d.page);
   if (d.tgt) { S.target = d.tgt; return setPage(S.page === "overview" ? "checks" : S.page); }
   if (d.menu) { S.menu = S.menu === d.menu ? null : d.menu; return render(); }
   if (d.act) return confirmAction(d.t, d.act);
+  if (d.open) { if (e.target.closest(".menu")) return; return openProc(d.open); }   // the menu's empty space is not a click on the card
   if (d.sel) return selectProc(d.sel);
   switch (d.act2) {
     case "errs": S.errs = !S.errs; return syncProc();

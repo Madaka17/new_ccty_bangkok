@@ -6,6 +6,9 @@ One round of the monitor's checks (launch\\monitor\\collector.py runs it every 3
     service:tunnel           the cloudflared Windows service
     service:camera           the camera status file (instances\\production\\camera_status.json) is fresh
     service:gateway          the AI gateway (launch\\gateway_status.py), only when the caller says it is due
+    service:watchdog         the "BKK StreetSmart watchdog" task still writes its heartbeat (state\\heartbeat)
+    service:disk             free space on the data disk (production /api/health data_disk)
+    service:public           bkksmartstreet.com and /enviro/ answer through Cloudflare, only when the gateway is due
 A server that does not answer while launch\\watchdog\\state\\stopped_<port> exists was stopped on purpose: "stopped".
 """
 import subprocess
@@ -25,12 +28,21 @@ STATE_DIR = ROOT / "launch" / "watchdog" / "state"
 CAMERA_STATUS = ROOT / "instances" / "production" / "camera_status.json"
 SERVERS = {"production": 8000, "test": 8001, "enviro": 5050}
 LABELS = {"production": "Production", "test": "Test", "enviro": "ENVIRO", "gateway": "AI gateway",
-          "tunnel": "Cloudflare tunnel", "camera": "Camera status"}
+          "tunnel": "Cloudflare tunnel", "camera": "Camera status", "watchdog": "Watchdog", "disk": "Data disk",
+          "public": "Public site"}
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def stopped(port):
     return (STATE_DIR / f"stopped_{port}").exists()
+
+
+def watchdog_age():
+    """Seconds since the watchdog task last wrote its heartbeat (launch\\watchdog\\state\\heartbeat), None when missing."""
+    try:
+        return time.time() - (STATE_DIR / "heartbeat").stat().st_mtime
+    except OSError:
+        return None
 
 
 def camera_age():
@@ -69,6 +81,25 @@ def gateway():
     return gateway_status.check(*gateway_status.load_env())
 
 
+PUBLIC_MAIN = "https://bkksmartstreet.com/"
+PUBLIC_ENVIRO = "https://bkksmartstreet.com/enviro/"
+
+
+def _public_code(url):
+    """The HTTP code the public URL answers with, 0 when nothing answers (DNS, TLS, timeout)."""
+    try:
+        with urllib.request.urlopen(url, timeout=20) as r:
+            return r.status
+    except urllib.error.HTTPError as e:
+        return e.code
+    except Exception:  # noqa: BLE001 - no answer is the answer
+        return 0
+
+
+def public_status():
+    return _public_code(PUBLIC_MAIN), _public_code(PUBLIC_ENVIRO)
+
+
 def agents(port):
     return ai_status.check_agents(port)
 
@@ -79,6 +110,12 @@ def yolo(port, h):
 
 def _status(key, group, target, name, state, detail):
     return {"key": key, "group": group, "target": target, "name": name, "state": state, "detail": detail}
+
+
+def _public_text(code):
+    if code == 0:
+        return "no answer"
+    return f"{code} {gateway_status.CLOUDFLARE[code]}" if code in gateway_status.CLOUDFLARE else str(code)
 
 
 def _uptime(s):
@@ -103,10 +140,13 @@ def _server(target, port):
 
 def run_round(gateway_due):
     out = []
+    prod_h = None
     for target in ("production", "test"):
         port = SERVERS[target]
         status, h = _server(target, port)
         out.append(status)
+        if target == "production":
+            prod_h = h
         if h is None:
             continue
         try:
@@ -150,6 +190,20 @@ def run_round(gateway_due):
         # camera_status.py reads from :8000, so its file goes stale whenever production is down
         out.append(_status("service:camera", "service", "camera", LABELS["camera"], "idle",
                            "waiting for production"))
+    age = watchdog_age()
+    if age is None:
+        out.append(_status("service:watchdog", "service", "watchdog", LABELS["watchdog"], "fail", "no heartbeat file"))
+    elif age < 360:
+        out.append(_status("service:watchdog", "service", "watchdog", LABELS["watchdog"], "ok", f"last run {int(age)} s ago"))
+    else:
+        out.append(_status("service:watchdog", "service", "watchdog", LABELS["watchdog"], "fail",
+                           f"no run for {int(age // 60)} min (scheduled task 'BKK StreetSmart watchdog')"))
+    disk = (prod_h or {}).get("data_disk")
+    if prod_h is not None and disk:   # production did not answer: no row, the store keeps the last one
+        free, total, path = disk["free_gb"], disk["total_gb"], disk["path"]
+        state = "ok" if free >= 20 else "warn" if free >= 5 else "fail"
+        out.append(_status("service:disk", "service", "disk", LABELS["disk"], state,
+                           f"{free} GB free of {total} GB ({path})"))
     if gateway_due:
         try:
             proxy_ok, model_ok, proxy_note, model_note, secs = gateway()
@@ -157,4 +211,15 @@ def run_round(gateway_due):
                                f"model {model_note} ({secs:.1f}s) · proxy {proxy_note}"))
         except Exception as e:  # noqa: BLE001
             out.append(_status("service:gateway", "service", "gateway", LABELS["gateway"], "fail", str(e)[:200]))
+        try:
+            main_c, enviro_c = public_status()
+            # ENVIRO stopped on purpose makes /enviro/ fail on purpose: then only the main site is judged
+            judge_enviro = not (not 1 <= enviro_c <= 499 and stopped(SERVERS["enviro"]))
+            ok = 1 <= main_c <= 499 and (not judge_enviro or 1 <= enviro_c <= 499)
+            detail = f"bkksmartstreet.com {_public_text(main_c)} · /enviro/ {_public_text(enviro_c)}"
+            if not judge_enviro:
+                detail += " (ENVIRO stopped on purpose)"
+            out.append(_status("service:public", "service", "public", LABELS["public"], "ok" if ok else "fail", detail))
+        except Exception as e:  # noqa: BLE001
+            out.append(_status("service:public", "service", "public", LABELS["public"], "fail", str(e)[:200]))
     return out

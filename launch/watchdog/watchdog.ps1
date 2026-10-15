@@ -9,6 +9,8 @@ $ErrorActionPreference = 'Continue'
 $launch = Split-Path $PSScriptRoot -Parent
 $state = Join-Path $PSScriptRoot 'state'
 New-Item -ItemType Directory -Force $state | Out-Null
+# Heartbeat for BKK Monitor (launch\monitor): proves this task still runs every 2 minutes
+Set-Content -Path (Join-Path $state 'heartbeat') -Value (Get-Date -Format o) -ErrorAction SilentlyContinue
 $log = Join-Path $state 'watchdog.log'
 $FAILS_TO_RESTART = 2
 $GRACE_SECONDS = 300          # after a restart, give the server this long to come up before checking again

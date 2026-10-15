@@ -69,3 +69,17 @@ def test_tail_rotated_and_missing(tmp_path):
     assert t["reset"] is True and t["lines"] == ["new"]
     assert mp.tail("camera", None, log_dir=tmp_path) == {"lines": [], "offset": 0, "reset": False}
     assert mp.tail("camera", 40, log_dir=tmp_path)["reset"] is True
+
+
+def test_stopped_on_purpose_marker_per_port(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "stopped_8001").write_text("", encoding="utf-8")
+    assert mp.info("test", log_dir=tmp_path, state_dir=state)["stopped_on_purpose"] is True
+    assert mp.info("production", log_dir=tmp_path, state_dir=state)["stopped_on_purpose"] is False
+    assert mp.info("enviro", log_dir=tmp_path, state_dir=state)["stopped_on_purpose"] is False
+    (state / "stopped_8000").write_text("", encoding="utf-8")
+    assert mp.info("production", log_dir=tmp_path, state_dir=state)["stopped_on_purpose"] is True
+    assert mp.info("camera", log_dir=tmp_path, state_dir=state)["stopped_on_purpose"] is True
+    (state / "stopped_5050").write_text("", encoding="utf-8")
+    assert mp.info("enviro", log_dir=tmp_path, state_dir=state)["stopped_on_purpose"] is True

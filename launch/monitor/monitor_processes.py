@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 NAMES = ("production", "test", "enviro", "camera")
 LABELS = {"production": "Production", "test": "Test", "enviro": "ENVIRO", "camera": "Camera status"}
 LOG_DIR = ROOT / "launch" / "logs"
+STATE_DIR = ROOT / "launch" / "watchdog" / "state"
+PORTS = {"production": 8000, "test": 8001, "enviro": 5050, "camera": 8000}   # camera runs next to production
 
 _k32 = ctypes.WinDLL("kernel32", use_last_error=True)
 _k32.OpenProcess.restype = wintypes.HANDLE
@@ -41,6 +43,10 @@ def _dir(log_dir):
     return LOG_DIR if log_dir is None else Path(log_dir)
 
 
+def _state_dir(state_dir):
+    return STATE_DIR if state_dir is None else Path(state_dir)
+
+
 def _state(path):
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -49,7 +55,7 @@ def _state(path):
     return data if isinstance(data, dict) else None
 
 
-def info(name, log_dir=None, alive=alive, now=time.time):
+def info(name, log_dir=None, alive=alive, now=time.time, state_dir=None):
     d = _dir(log_dir)
     log = d / f"{name}.log"
     try:
@@ -59,10 +65,13 @@ def info(name, log_dir=None, alive=alive, now=time.time):
     st = _state(d / f"{name}.json") or {}
     started = st.get("started_at")
     running = bool(st) and "exited_at" not in st and alive(st.get("runner_pid")) and alive(st.get("child_pid"))
+    # stop.bat / kill_server.ps1 leave this marker: the exit is intended, not a failure
+    stopped_on_purpose = name in PORTS and (_state_dir(state_dir) / f"stopped_{PORTS[name]}").exists()
     return {"name": name, "label": LABELS.get(name, name), "running": running,
             "pid": st.get("child_pid"), "started_at": started,
             "uptime_s": int(now() - started) if running and started is not None else None,
             "exit_code": st.get("exit_code"), "exited_at": st.get("exited_at"),
+            "stopped_on_purpose": stopped_on_purpose,
             "log": str(log), "log_size": log_size}
 
 

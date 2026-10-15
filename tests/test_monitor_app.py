@@ -61,12 +61,13 @@ def test_events_filters_and_csv(tmp_path):
 
 def test_services_target_covers_gateway_and_tunnel(tmp_path):
     api, store, _, _ = make(tmp_path, now=10_000.0)
-    for i, t in enumerate(["production", "gateway", "tunnel", "camera", "test"]):
+    for i, t in enumerate(["production", "gateway", "tunnel", "camera", "test", "watchdog", "disk", "public"]):
         store.add_event(9_000 + i, f"service:{t}", "service", t, t, "ok", "fail", "")
     got = api.events({"target": "services"})
-    assert got["total"] == 3 and {r["target"] for r in got["rows"]} == {"gateway", "tunnel", "camera"}
+    assert got["total"] == 6
+    assert {r["target"] for r in got["rows"]} == {"gateway", "tunnel", "camera", "watchdog", "disk", "public"}
     rows = api.csv_text({"target": "services"}).splitlines()[1:]
-    assert len(rows) == 3 and not any("production" in r for r in rows)
+    assert len(rows) == 6 and not any("production" in r or "test" in r for r in rows)
 
 
 def test_check_now_sets_meta(tmp_path):
