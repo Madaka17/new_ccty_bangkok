@@ -75,3 +75,4 @@ launch/watchdog/state/
 
 # Load test output
 local/loadtest/results.json
+launch/monitor/state/
