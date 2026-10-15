@@ -12,6 +12,27 @@ rem It runs the same background AI jobs as production on the same keys: stop it 
 set "PORT=8001"
 set "INSTANCE_DIR=%CD%\instances\test"
 set "BMA_DATA_DIR=%CD%\instances\test\data"
+rem Started again: launch\watchdog may restart it from now on (stop.bat left this mark)
+if exist "launch\watchdog\state\stopped_8001" del "launch\watchdog\state\stopped_8001"
+
+rem Modes: no flag = start hidden through launch\run_hidden.py (output in launch\logs\test.log, shown in
+rem BKK Monitor > Processes); --child = the hidden run itself (no pause, nobody is there to press a key);
+rem --window = the old visible console, for debugging.
+set "MODE=hidden"
+for %%a in (%*) do (
+    if /i "%%~a"=="--child" set "MODE=child"
+    if /i "%%~a"=="--window" set "MODE=window"
+)
+if "%MODE%"=="hidden" (
+    netstat -ano | findstr /r /c:":8001 .*LISTENING" >nul && (
+        echo [!] Server is already running on port 8001. Use restart.bat to restart it.
+        exit /b 0
+    )
+    start "" /b "%~dp0..\..\.venv\Scripts\pythonw.exe" "%~dp0..\run_hidden.py" test
+    echo [OK] Started in the background. Log: launch\logs\test.log  ^(BKK Monitor ^> Processes^)
+    ping -n 3 127.0.0.1 >nul
+    exit /b 0
+)
 
 echo ======================================================================
 echo   BKK StreetSmart - TEST server  http://localhost:8001
@@ -23,7 +44,7 @@ netstat -ano | findstr /r /c:":8001 .*LISTENING" >nul
 if %ERRORLEVEL% EQU 0 (
     echo [!] Test server is already running on port 8001. Use restart.bat to restart it.
     echo.
-    pause
+    if not "%MODE%"=="child" pause
     exit /b 0
 )
 
@@ -50,4 +71,4 @@ if %ERRORLEVEL% NEQ 0 (
     echo.
     echo [ERROR] Server exited with code %ERRORLEVEL%
 )
-pause
+if not "%MODE%"=="child" pause

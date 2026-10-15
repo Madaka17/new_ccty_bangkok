@@ -9,4 +9,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\kill_server.ps1" -P
 rem Give the OS a moment to release the port
 ping -n 3 127.0.0.1 >nul
 
-call "%~dp0start.bat"
+call "%~dp0start.bat" %*

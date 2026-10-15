@@ -16,4 +16,4 @@ ping -n 3 127.0.0.1 >nul
 
 echo [*] Starting server ...
 echo.
-call "%~dp0start.bat"
+call "%~dp0start.bat" %*
