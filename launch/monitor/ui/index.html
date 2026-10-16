@@ -130,6 +130,30 @@ td.num, th.num { text-align: right; }
 #logpane .ln.c-fail { color: var(--fail); } #logpane .ln.c-warn { color: var(--warn); } #logpane .ln.c-acc { color: var(--accent); }
 #logpane.errs .ln:not(.k) { display: none; }
 ::-webkit-scrollbar { width: 10px; height: 10px; } ::-webkit-scrollbar-thumb { background: #222830; border-radius: 5px; } ::-webkit-scrollbar-track { background: transparent; }
+
+/* phone (monitor_web.py through Tailscale): sidebar becomes a top bar, the page scrolls, tables scroll sideways */
+@media (max-width: 760px) {
+  body { min-width: 0; overflow: auto; }
+  .app { flex-direction: column; height: auto; min-height: 100vh; }
+  .side { width: auto; flex-direction: row; align-items: center; gap: 4px; padding: 8px 12px; overflow-x: auto;
+    border-right: 0; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 30; }
+  .brand { padding: 0 8px 0 0; white-space: nowrap; }
+  .sec, .spacer { display: none; }
+  .nav { width: auto; flex: none; white-space: nowrap; }
+  .foot { flex-direction: row; align-items: center; border-top: 0; padding: 0 0 0 8px; white-space: nowrap; }
+  .head { padding: 14px 16px 10px; }
+  .head h1 { font-size: 18px; }
+  .body { overflow: visible; padding: 0 16px 16px; }
+  .grid { grid-template-columns: 1fr; }
+  .pgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wrap { overflow-x: auto; }
+  .wrap table { min-width: 560px; }
+  .detail { max-width: 220px; }
+  .chip input { width: 110px; }
+  #logpane { height: 55vh; }
+  .modal { width: calc(100vw - 32px); }
+  #toasts { left: 16px; right: 16px; }
+}
 </style>
 </head>
 <body>
@@ -163,7 +187,22 @@ td.num, th.num { text-align: right; }
 <div id="toasts"></div>
 
 <script>
-const api = () => window.pywebview.api;
+// Served by monitor_web.py (the phone, through Tailscale): read-only, fetch instead of pywebview
+const WEB = !!document.querySelector('meta[name="bkk-web"]');
+async function post(name, args) {
+  const r = await fetch(`api/${name}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(args) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  return j;
+}
+const WEB_API = {
+  status: () => post("status", []),
+  events: f => post("events", [f]),
+  processes: () => post("processes", []),
+  log_tail: (n, off) => post("log_tail", [n, off]),
+  check_now: () => post("check_now", []),
+};
+const api = () => WEB ? WEB_API : window.pywebview.api;
 const S = { page: "overview", target: "", state: "", q: "", hours: 24, limit: 25, offset: 0, status: null, events: null, menu: null, busy: false, sel: "production", procs: null, logOff: null, logBuf: [], follow: true, errs: false, agentT: "production" };
 const STATES = ["ok", "warn", "fail", "idle", "stopped"];
 const LABEL = { production: "Production", test: "Test", enviro: "ENVIRO", gateway: "AI gateway", tunnel: "Cloudflare tunnel", camera: "Camera status", watchdog: "Watchdog", disk: "Data disk", public: "Public site" };
@@ -223,7 +262,7 @@ async function loadEvents(poll) {
 
 /* ---------- views ---------- */
 function stateCard(it, title, menuTarget) {
-  const showMenu = !!menuTarget;
+  const showMenu = !!menuTarget && !WEB;
   const t = menuTarget;
   const open = t ? ` data-open="${esc(t)}" title="Open on Processes"` : "";
   const st = it.state;
@@ -311,7 +350,7 @@ function renderEvents() {
     targetChip() + stateChip(["restart"]) + searchChip() +
     `<div class="right"><button class="btn icon" data-act2="refresh" title="Refresh" aria-label="Refresh">↻</button>` +
     `<select class="sel" data-f="limit" aria-label="Rows">${[25, 50, 100].map(n => `<option value="${n}"${S.limit === n ? " selected" : ""}>Rows: ${n}</option>`).join("")}</select>` +
-    `<button class="btn" data-act2="export">Export</button></div></div>`;
+    (WEB ? "" : `<button class="btn" data-act2="export">Export</button>`) + `</div></div>`;
   const body = rows.map(r => {
     const tgt = r.target || "";
     const name = r.key && r.key.startsWith("watchdog:") ? "Watchdog" : r.name;
@@ -336,7 +375,8 @@ function render() {
   const st = S.status, alive = !!(st && st.collector_alive);
   $("dot").className = "dot" + (alive ? " on" : "");
   $("dot").title = alive ? "Collector running" : "Collector not running";
-  $("foot").innerHTML = `<div>Collector: ${alive ? "running" : "not running"}</div>` + (alive ? "" : `<button class="btn sm" data-act2="startcol">Start collector</button>`);
+  $("foot").innerHTML = `<div>Collector: ${alive ? "running" : "not running"}</div>` +
+    (WEB ? `<div>View only</div>` : "") + (alive || WEB ? "" : `<button class="btn sm" data-act2="startcol">Start collector</button>`);
   document.querySelectorAll(".nav[data-page]").forEach(b => b.classList.toggle("active", b.dataset.page === S.page));
   document.querySelectorAll(".nav[data-tgt]").forEach(b => b.classList.toggle("active", S.target === b.dataset.tgt && S.page !== "overview"));
   const upd = st && st.collector_at ? new Date(st.collector_at * 1000).toTimeString().slice(0, 8) : "never";
@@ -410,7 +450,7 @@ function procCard(p) {
   const det = p.running ? `PID ${esc(p.pid)} · up ${esc(fmtUp(p.uptime_s || 0))}`
     : stopped ? `stopped on purpose${p.exited_at ? ` · exited ${esc(ago(p.exited_at))}` : ""}`
     : p.exited_at ? `exited ${esc(ago(p.exited_at))} (code ${esc(p.exit_code)})` : "never started hidden";
-  const canAct = ["production", "test", "enviro"].includes(p.name);
+  const canAct = !WEB && ["production", "test", "enviro"].includes(p.name);
   const key = "proc:" + p.name;
   let menu = "";
   if (canAct && S.menu === key) {
@@ -427,7 +467,7 @@ function procCard(p) {
   return `<div class="card sel${S.sel === p.name ? " cur" : ""}" data-sel="${esc(p.name)}"><div class="top"><span class="lbl">${esc(p.label)}</span>` +
     (canAct ? `<button class="kebab" data-menu="${esc(key)}" aria-label="Actions">⋯</button>` : "") +
     `</div><div>${pl}</div><div class="det">${det}</div><div class="since">log ${esc(fmtSize(p.log_size || 0))}</div>${hint}` +
-    `<div class="acts"><button class="btn sm" data-act2="openlog" data-n="${esc(p.name)}">Open log</button></div>${menu}</div>`;
+    (WEB ? "" : `<div class="acts"><button class="btn sm" data-act2="openlog" data-n="${esc(p.name)}">Open log</button></div>`) + `${menu}</div>`;
 }
 function procCards() { return S.procs ? S.procs.map(procCard).join("") : `<div class="empty">Loading…</div>`; }
 // AI agents of one server (group "agent" rows from the collector), with the numbers kept in extra
@@ -471,7 +511,7 @@ function procSkeleton() {
     `<div id="agents"></div>` +
     `<div class="ltool"><span class="nm" id="lname"></span><button class="chipbtn" id="lerrs" data-act2="errs">Errors only</button>` +
     `<button class="chipbtn" id="lfollow" data-act2="follow">Follow</button><button class="btn sm" data-act2="clear">Clear</button>` +
-    `<button class="btn sm" id="lopen" data-act2="openlog" data-n="">Open log</button></div><div id="logpane"></div>`;
+    (WEB ? "" : `<button class="btn sm" id="lopen" data-act2="openlog" data-n="">Open log</button>`) + `</div><div id="logpane"></div>`;
 }
 function syncProc() {
   const p = S.procs && S.procs.find(x => x.name === S.sel);
@@ -479,7 +519,7 @@ function syncProc() {
   $("lerrs").classList.toggle("on", S.errs);
   $("lfollow").classList.toggle("on", S.follow);
   $("logpane").classList.toggle("errs", S.errs);
-  $("lopen").dataset.n = S.sel;
+  if ($("lopen")) $("lopen").dataset.n = S.sel;
 }
 // The log pane survives every status poll: while it exists only the cards are replaced.
 function renderProcesses(body) {
@@ -628,7 +668,7 @@ function start() {
   setInterval(() => { if (S.page === "events" && S.offset === 0) loadEvents(true); }, 15000);
 }
 window.addEventListener("pywebviewready", start);
-if (window.pywebview && window.pywebview.api) start();
+if (WEB || (window.pywebview && window.pywebview.api)) start();
 else render();
 </script>
 </body>
