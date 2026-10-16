@@ -43,6 +43,8 @@ def page_bytes():
 
 def make_handler(api):
     class Handler(BaseHTTPRequestHandler):
+        timeout = 10    # a stalled client frees its thread instead of holding it forever
+
         def log_message(self, *args):    # pythonw has no stderr; requests are not worth logging
             pass
 
@@ -78,6 +80,8 @@ def make_handler(api):
             try:
                 length = int(self.headers.get("Content-Length") or 0)
             except ValueError:
+                return self._send(400, {"error": "bad length"})
+            if length < 0:
                 return self._send(400, {"error": "bad length"})
             if length > MAX_BODY:
                 if length <= 1 << 20:

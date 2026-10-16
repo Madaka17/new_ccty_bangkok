@@ -125,6 +125,22 @@ def test_bad_bodies(srv):
     assert req(base + "/api/status", b"[" + b"0," * 40000 + b"0]")[0] == 413
 
 
+def test_negative_content_length_is_refused_fast(srv):
+    import http.client
+    import time
+    _, base = srv
+    conn = http.client.HTTPConnection(base.split("//")[1], timeout=8)
+    conn.putrequest("POST", "/api/status")
+    conn.putheader("Content-Type", "application/json")
+    conn.putheader("Content-Length", "-1")
+    conn.endheaders(b"[]")
+    t = time.time()
+    resp = conn.getresponse()
+    assert resp.status == 400 and json.loads(resp.read())["error"] == "bad length"
+    assert time.time() - t < 5
+    conn.close()
+
+
 def test_unknown_path_404(srv):
     _, base = srv
     assert req(base + "/secret.txt")[0] == 404

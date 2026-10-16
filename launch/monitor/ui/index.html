@@ -190,10 +190,19 @@ td.num, th.num { text-align: right; }
 // Served by monitor_web.py (the phone, through Tailscale): read-only, fetch instead of pywebview
 const WEB = !!document.querySelector('meta[name="bkk-web"]');
 async function post(name, args) {
-  const r = await fetch(`api/${name}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(args) });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-  return j;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 10000);
+  try {
+    const r = await fetch(`api/${name}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(args), signal: ctl.signal });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    return j;
+  } catch (e) {
+    if (e && e.name === "AbortError") throw new Error("timed out");
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 const WEB_API = {
   status: () => post("status", []),
@@ -238,6 +247,7 @@ function items() { return (S.status && S.status.items) || []; }
 function find(key) { return items().find(i => i.key === key); }
 
 function toast(msg, ok = true) {
+  if ([...$("toasts").children].some(c => c.textContent === msg)) return;    // same toast already showing
   const el = document.createElement("div");
   el.className = "toast" + (ok ? "" : " bad");
   el.textContent = msg;
