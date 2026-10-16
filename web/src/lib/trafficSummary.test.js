@@ -21,6 +21,10 @@ describe('pickTrafficSummary', () => {
   test('uses Longdo when BMA has not answered yet', () => {
     expect(pickTrafficSummary('bma', null, longdo)).toBe(longdo);
   });
+
+  test('with the longdo source, uses the Longdo roads even while the BMA cameras are up', () => {
+    expect(pickTrafficSummary('longdo', bmaUp, longdo)).toBe(longdo);
+  });
 });
 
 describe('bmaCountsLive', () => {

@@ -28,7 +28,8 @@ const SECTIONS = [
 
 
 export default function DashboardPage({ isActive, liveCount, cameras = [], incidents, onAsk, onAskText, onOpenRoad, onNavigate, onOpenAI, onToast }) {
-  const source = 'bma';
+  // The summary comes from the Longdo road colours; the BMA camera count only stands in until Longdo has data
+  const source = 'longdo';
   const [section, setSection] = useState('overview');
   const [summary, setSummary] = useState(null);
   const [bma, setBma] = useState(null);
