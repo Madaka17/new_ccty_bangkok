@@ -20,6 +20,7 @@ from backend.bma.bma_archive import CycleArchiver
 from backend.bma.bma_db import BmaDatabase
 from backend.bma.bma_session import BmaSession
 
+from backend.vision.yolo_switch import YoloOff
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import thai_font
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
@@ -54,6 +55,9 @@ def save_raw_frame(camid, jpeg):
 
 
 CAMERAS_FILE = os.path.join(BASE_DIR, "config", "cameras_bma.json")
+
+# get_analytics is polled by every dashboard visitor; the build takes ~0.1-0.3 s under the DB lock
+ANALYTICS_TTL = 30  # seconds
 
 # Target YOLO classes for traffic: 1: bicycle, 2: car, 3: motorcycle, 5: bus, 7: truck
 VEHICLE_CLASSES = {1: 'motorcycles', 2: 'cars', 3: 'motorcycles', 5: 'trucks', 7: 'trucks'}
@@ -96,6 +100,7 @@ class BmaScanner:
         self.archiver.run_forever()
         self.cameras = []
         self._load_cameras()
+        self._init_analytics_cache()
 
         self.is_scanning = False
         self.stop_event = threading.Event()
@@ -171,6 +176,9 @@ class BmaScanner:
             self.stop_event.set()
             self.is_scanning = False
             return {"status": "stopped"}
+
+    def yolo_enabled(self):
+        return bool(self.detector is None or getattr(self.detector, "models_loaded", lambda: True)())
 
     def get_status(self):
         with self.lock:
@@ -263,7 +271,11 @@ class BmaScanner:
                 try:
                     # Tiled 2x2 inference on the small 352x288 BMA frames (see VehicleDetectorYOLO11x.infer)
                     with self.infer_lock:
-                        boxes = self._detect(img)
+                        try:
+                            boxes = self._detect(img)
+                        except YoloOff:
+                            # YOLO switched off: frames and flood watch above already ran; keep the last counts
+                            return
                     infer_latency = (time.time() - t_infer) * 1000.0
                     if self.helmet is not None:
                         try:
@@ -420,14 +432,36 @@ class BmaScanner:
 
         return draw_img
 
+    def _init_analytics_cache(self):
+        self._analytics_lock = threading.Lock()
+        self._analytics = None
+        self._analytics_at = 0.0
+
     def get_analytics(self):
+        """Cached for ANALYTICS_TTL seconds; only one thread rebuilds while the others wait for it."""
+        if self._analytics is not None and time.monotonic() - self._analytics_at < ANALYTICS_TTL:
+            return self._analytics
+        with self._analytics_lock:
+            if self._analytics is not None and time.monotonic() - self._analytics_at < ANALYTICS_TTL:
+                return self._analytics
+            try:
+                result = self._build_analytics()
+            except Exception:
+                if self._analytics is not None:
+                    return self._analytics  # keep serving the last good result
+                raise
+            self._analytics = result
+            self._analytics_at = time.monotonic()
+            return result
+
+    def _build_analytics(self):
         """Generate comprehensive Data Analysis on the counted vehicle data."""
         latest_cams = self.db.get_all_latest()
         total_cameras = len(self.cameras)
         
         now_ts = int(time.time())
         online_cams = [c for c in latest_cams if c.get('status') == 'online' or (c.get('total', 0) > 0 and c.get('ts', 0) > now_ts - 1800)]
-        if self.source["state"] in ("down", "frozen"):
+        if self.source["state"] in ("down", "frozen") or not self.yolo_enabled():
             # an offline camera keeps its last counts and gets a new ts every cycle, so with the site down the
             # rule above still counted 539 cameras with the morning's traffic as live
             online_cams = []
@@ -533,7 +567,7 @@ class BmaScanner:
             "districts": districts_list,
             "major_roads": roads_list[:20],
             "hourly_trends": hourly_history,
-            "scan_status": self.get_status()
+            "scan_status": {**self.get_status(), "yolo_enabled": self.yolo_enabled()}
         }
 
     def process_image_and_detect(self, cam, raw_bytes):
@@ -578,6 +612,8 @@ class BmaScanner:
                 'detections': dets
             }
             return jpeg.tobytes(), stats
+        except YoloOff:
+            return raw_bytes, None      # YOLO off: live views show the plain frame, nothing to log per frame
         except Exception as e:
             print(f"[BMA Detect Error] {e}")
             return None, None

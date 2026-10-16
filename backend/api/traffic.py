@@ -2,7 +2,6 @@
 Traffic: the city summary, areas, road events and risk, guidance, tiles, accident statistics (RSC) and
 the analytics page.
 """
-import gzip
 import json
 import time
 from datetime import datetime
@@ -11,6 +10,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, Response
 
 from backend.api.flood import flood_national_map
+from backend.core.response_cache import cached_json
 from backend.bma.bma_events import bma_feed
 from backend.services import bma_scanner, cameras_data, guidance, incidents
 from backend.traffic import analytics_service, area_roads, near_traffic, rsc_service
@@ -22,17 +22,13 @@ router = APIRouter()
 
 
 @router.get("/api/traffic/summary")
-def traffic_summary(top: int = Query(8, ge=1, le=30)):
-    return traffic.get_summary(top=top)
+def traffic_summary(request: Request, top: int = Query(8, ge=1, le=30)):
+    return cached_json(request, ("traffic/summary", top), lambda: traffic.get_summary(top=top))
 
 @router.get("/api/traffic/areas")
 def traffic_areas(request: Request):
     """Traffic score per province and district from Longdo's lines over the whole country (area_traffic.py)."""
-    body = json.dumps(area_traffic.status(), ensure_ascii=False).encode("utf-8")
-    if "gzip" in request.headers.get("accept-encoding", ""):
-        return Response(gzip.compress(body, 6), media_type="application/json",
-                        headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
-    return Response(body, media_type="application/json")
+    return cached_json(request, ("traffic/areas",), area_traffic.status)
 
 def road_event_points():
     """Accidents, closed roads and floods on roads in every province as points: {"kind", "title", "lat", "lng"}."""
@@ -88,9 +84,9 @@ def road_events():
     return out
 
 @router.get("/api/traffic/guidance")
-def traffic_guidance():
+def traffic_guidance(request: Request):
     """Live dispersal guidance per main corridor: hotspots, bypass roads with live flow, advice text."""
-    return guidance.status()
+    return cached_json(request, ("traffic/guidance",), guidance.status)
 
 @router.get("/api/traffic/guidance/area")
 def traffic_guidance_area(province: str = Query(..., pattern=r"^\d{2}$"), amphoe: str = Query("", pattern=r"^(\d{4})?$")):
@@ -160,9 +156,11 @@ def rsc_rebuild(force: bool = Query(False)):
     return rsc_service.build_camera_risk(bma_scanner.cameras, force=force)
 
 @router.get("/api/analytics/summary")
-def analytics_summary(refresh: bool = Query(False)):
+def analytics_summary(request: Request, refresh: bool = Query(False)):
     """Traffic overview, flood watch + 1-6 h outlook, density tiers, black spots, dashboard visitors."""
-    return analytics_service.get_summary(force=refresh)
+    if refresh:
+        return analytics_service.get_summary(force=True)
+    return cached_json(request, ("analytics/summary",), analytics_service.get_summary)
 
 @router.get("/api/analytics/export")
 def analytics_export(format: str = Query("json", pattern="^(json|csv)$"),

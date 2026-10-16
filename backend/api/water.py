@@ -1,10 +1,11 @@
 """
 Water levels: the summary, the water map, river forecasts, the northern water route and BMA water news.
 """
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
 from backend.bma.bma_events import bma_feed
+from backend.core.response_cache import cached_json
 from backend.services import incidents, north_route, province_flood, user_reports
 from backend.traffic.area_traffic import area_traffic
 from backend.traffic.traffic_service import traffic
@@ -17,11 +18,13 @@ router = APIRouter()
 
 
 @router.get("/api/water/summary")
-def water_summary():
-    try:
-        return water_service.get_summary()
-    except Exception as e:
-        return JSONResponse(status_code=503, content={"error": str(e), "api_key": water_service.key_status()})
+def water_summary(request: Request):
+    def build():
+        try:
+            return water_service.get_summary()
+        except Exception as e:
+            return JSONResponse(status_code=503, content={"error": str(e), "api_key": water_service.key_status()})
+    return cached_json(request, ("water/summary",), build)
 
 @router.get("/api/water/map")
 def water_map():

@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>BKK Monitor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root {
+  --bg: #0b0d10; --panel: #111418; --line: #1f242b; --text: #e6e8eb; --muted: #8b929c;
+  --ok: #3ecf8e; --warn: #f5a524; --fail: #f0556a; --idle: #6b7280; --stopped: #4b5563; --accent: #5b8cff;
+  --hover: #151a20; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--text); font: 13px/1.45 "Segoe UI", system-ui, sans-serif; min-width: 980px; overflow: hidden; }
+button, select, input { font: inherit; color: inherit; }
+.app { display: flex; height: 100vh; }
+
+/* sidebar */
+.side { width: 220px; flex: none; background: var(--bg); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 16px 12px; }
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 14px; padding: 2px 8px 18px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fail); flex: none; }
+.dot.on { background: var(--ok); box-shadow: 0 0 0 3px rgba(62, 207, 142, .15); }
+.sec { color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding: 16px 8px 6px; }
+.nav { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: var(--muted); text-align: left; cursor: pointer; }
+.nav:hover { background: var(--hover); color: var(--text); }
+.nav.active { background: var(--panel); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+.nav .n { margin-left: auto; font-size: 11px; color: var(--muted); }
+.spacer { flex: 1; }
+.foot { border-top: 1px solid var(--line); padding: 12px 8px 0; color: var(--muted); font-size: 12px; display: flex; flex-direction: column; gap: 8px; }
+
+/* main */
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.head { display: flex; align-items: flex-start; justify-content: space-between; padding: 22px 28px 14px; gap: 16px; }
+.head h1 { margin: 0; font-size: 20px; font-weight: 600; }
+.head .sub { color: var(--muted); margin-top: 2px; }
+.body { flex: 1; overflow: auto; padding: 0 28px 28px; }
+
+.btn { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px; cursor: pointer; color: var(--text); }
+.btn:hover:not(:disabled) { border-color: #333b45; background: var(--hover); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover:not(:disabled) { background: #7aa1ff; border-color: #7aa1ff; }
+.btn.danger { background: var(--fail); border-color: var(--fail); color: #fff; }
+.btn.danger:hover:not(:disabled) { background: #f47285; border-color: #f47285; }
+.btn.icon { width: 30px; padding: 5px 0; text-align: center; }
+.btn.sm { padding: 3px 10px; font-size: 12px; }
+
+/* chips */
+.bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 14px; }
+.bar .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.chip { display: inline-flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 3px 6px 3px 12px; color: var(--muted); }
+.chip select, .chip input { background: transparent; border: 0; outline: 0; color: var(--text); padding: 2px 4px; }
+.chip select option { background: var(--panel); }
+.chip.on { border-color: var(--accent); }
+.chip input { width: 150px; padding-left: 0; }
+.chip.search { padding-right: 12px; }
+.sel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+.sel option { background: var(--panel); }
+
+/* table */
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.wrap { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: hidden; }
+th { text-align: left; font-weight: 500; color: var(--muted); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; padding: 9px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 8px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+tbody tr:hover td { background: var(--hover); }
+tr.group td { background: var(--bg); color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding: 6px 14px; }
+tr.dim td { opacity: .45; }
+.mono { font-family: var(--mono); font-size: 12px; }
+.muted { color: var(--muted); }
+.detail { max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.empty { padding: 28px; text-align: center; color: var(--muted); }
+.tfoot { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; color: var(--muted); font-size: 12px; }
+.tfoot .pg { display: flex; gap: 8px; }
+
+/* pills */
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 1px 9px; border-radius: 999px; font-size: 11.5px; line-height: 18px; border: 1px solid currentColor; background: transparent; white-space: nowrap; }
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill.ok { color: var(--ok); } .pill.warn { color: var(--warn); } .pill.fail, .pill.restart { color: var(--fail); }
+.pill.idle { color: var(--idle); } .pill.stopped { color: var(--stopped); }
+.arrow { color: var(--muted); margin: 0 6px; }
+
+/* cards */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; position: relative; display: flex; flex-direction: column; gap: 8px; min-height: 108px; }
+.card .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.card .lbl { font-weight: 600; }
+.card .det { color: var(--muted); font-size: 12px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
+.card .since { color: var(--muted); font-size: 11.5px; margin-top: auto; }
+.kebab { background: none; border: 0; color: var(--muted); cursor: pointer; border-radius: 4px; padding: 0 6px; font-size: 16px; line-height: 20px; }
+.kebab:hover { background: var(--hover); color: var(--text); }
+.menu { position: absolute; right: 10px; top: 38px; z-index: 20; min-width: 150px; background: var(--panel); border: 1px solid #2a313a; border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
+.menu button { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 6px 10px; border-radius: 5px; cursor: pointer; }
+.menu button:hover:not(:disabled) { background: var(--hover); }
+.menu button:disabled { opacity: .35; cursor: default; }
+.menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+.count { color: var(--muted); margin: 4px 0 20px; }
+h2 { font-size: 13px; font-weight: 600; margin: 0 0 10px; }
+
+/* modal + toast */
+.veil { position: fixed; inset: 0; background: rgba(0, 0, 0, .6); display: none; align-items: center; justify-content: center; z-index: 50; }
+.veil.show { display: flex; }
+.modal { width: 420px; background: var(--panel); border: 1px solid #2a313a; border-radius: 10px; padding: 20px; box-shadow: 0 16px 48px rgba(0, 0, 0, .6); }
+.modal h3 { margin: 0 0 8px; font-size: 15px; }
+.modal p { margin: 0 0 20px; color: var(--muted); }
+.modal .row { display: flex; justify-content: flex-end; gap: 8px; }
+.spin { display: inline-block; width: 11px; height: 11px; border: 2px solid rgba(255, 255, 255, .35); border-top-color: #fff; border-radius: 50%; animation: sp .7s linear infinite; vertical-align: -2px; margin-right: 6px; }
+@keyframes sp { to { transform: rotate(360deg); } }
+#toasts { position: fixed; right: 20px; bottom: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 60; }
+.toast { background: var(--panel); border: 1px solid #2a313a; border-left: 3px solid var(--ok); border-radius: 6px; padding: 9px 14px; max-width: 380px; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
+.toast.bad { border-left-color: var(--fail); }
+/* processes */
+.pgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.card.sel, .card[data-open] { cursor: pointer; }
+.card[data-open]:hover { border-color: #333b45; }
+.card.sel:hover { border-color: #333b45; }
+.card.sel.cur { border-color: var(--accent); }
+.card .acts { display: flex; gap: 8px; align-items: center; margin-top: auto; }
+.hint { color: var(--warn); font-size: 12px; }
+.ltool { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ltool .nm { font-weight: 600; margin-right: auto; }
+.chipbtn { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; cursor: pointer; color: var(--muted); }
+.chipbtn.on { border-color: var(--accent); color: var(--text); }
+td.num, th.num { text-align: right; }
+.fail-t { color: var(--fail); }
+#logpane { height: 60vh; min-height: 200px; overflow: auto; background: #07090b; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
+  font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+#logpane .ln { color: var(--text); }
+#logpane .ln.c-fail { color: var(--fail); } #logpane .ln.c-warn { color: var(--warn); } #logpane .ln.c-acc { color: var(--accent); }
+#logpane.errs .ln:not(.k) { display: none; }
+::-webkit-scrollbar { width: 10px; height: 10px; } ::-webkit-scrollbar-thumb { background: #222830; border-radius: 5px; } ::-webkit-scrollbar-track { background: transparent; }
+
+/* phone (monitor_web.py through Tailscale): sidebar becomes a top bar, the page scrolls, tables scroll sideways */
+@media (max-width: 760px) {
+  body { min-width: 0; overflow: auto; }
+  .app { flex-direction: column; height: auto; min-height: 100vh; }
+  .side { width: auto; flex-direction: row; align-items: center; gap: 4px; padding: 8px 12px; overflow-x: auto;
+    border-right: 0; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 30; }
+  .brand { padding: 0 8px 0 0; white-space: nowrap; }
+  .sec, .spacer { display: none; }
+  .nav { width: auto; flex: none; white-space: nowrap; }
+  .foot { flex-direction: row; align-items: center; border-top: 0; padding: 0 0 0 8px; white-space: nowrap; }
+  .head { padding: 14px 16px 10px; }
+  .head h1 { font-size: 18px; }
+  .body { overflow: visible; padding: 0 16px 16px; }
+  .grid { grid-template-columns: 1fr; }
+  .pgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wrap { overflow-x: auto; }
+  .wrap table { min-width: 560px; }
+  .detail { max-width: 220px; }
+  .chip input { width: 110px; }
+  #logpane { height: 55vh; }
+  .modal { width: calc(100vw - 32px); }
+  #toasts { left: 16px; right: 16px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><span class="dot" id="dot"></span>BKK Monitor</div>
+    <button class="nav" data-page="overview">Overview</button>
+    <button class="nav" data-page="checks">Checks</button>
+    <button class="nav" data-page="events">Events</button>
+    <button class="nav" data-page="processes">Processes</button>
+    <div class="sec">Targets</div>
+    <button class="nav" data-tgt="production">Production</button>
+    <button class="nav" data-tgt="test">Test</button>
+    <button class="nav" data-tgt="enviro">ENVIRO</button>
+    <button class="nav" data-tgt="services">Services</button>
+    <div class="spacer"></div>
+    <div class="foot" id="foot"></div>
+  </aside>
+  <section class="main">
+    <header class="head">
+      <div><h1 id="title"></h1><div class="sub" id="sub"></div></div>
+      <button class="btn" id="checknow">Check now</button>
+    </header>
+    <div class="body" id="body"></div>
+  </section>
+</div>
+<div class="veil" id="veil"><div class="modal" role="dialog" aria-modal="true">
+  <h3 id="mtitle"></h3><p id="mbody"></p>
+  <div class="row"><button class="btn" id="mcancel">Cancel</button><button class="btn" id="mok"></button></div>
+</div></div>
+<div id="toasts"></div>
+
+<script>
+// Served by monitor_web.py (the phone, through Tailscale): read-only, fetch instead of pywebview
+const WEB = !!document.querySelector('meta[name="bkk-web"]');
+async function post(name, args) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 10000);
+  try {
+    const r = await fetch(`api/${name}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(args), signal: ctl.signal });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    return j;
+  } catch (e) {
+    if (e && e.name === "AbortError") throw new Error("timed out");
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+const WEB_API = {
+  status: () => post("status", []),
+  events: f => post("events", [f]),
+  processes: () => post("processes", []),
+  log_tail: (n, off) => post("log_tail", [n, off]),
+  check_now: () => post("check_now", []),
+};
+const api = () => WEB ? WEB_API : window.pywebview.api;
+const S = { page: "overview", target: "", state: "", q: "", hours: 24, limit: 25, offset: 0, status: null, events: null, menu: null, busy: false, sel: "production", procs: null, logOff: null, logBuf: [], follow: true, errs: false, agentT: "production" };
+const STATES = ["ok", "warn", "fail", "idle", "stopped"];
+const LABEL = { production: "Production", test: "Test", enviro: "ENVIRO", gateway: "AI gateway", tunnel: "Cloudflare tunnel", camera: "Camera status", watchdog: "Watchdog", disk: "Data disk", public: "Public site" };
+const TARGETS = ["production", "test", "enviro", "gateway", "tunnel", "camera", "watchdog", "disk", "public"];
+const ACTIONS = {
+  start:   { title: t => `Start ${LABEL[t]}?`,   body: t => `Runs launch\\${t}\\start.bat in the background. Its log is on the Processes page.` },
+  restart: { title: t => `Restart ${LABEL[t]}?`, body: t => t === "production" ? "The public site is down for about a minute while it restarts." : `Runs launch\\${t}\\restart.bat in the background. Its log is on the Processes page.` },
+  stop:    { title: t => `Stop ${LABEL[t]}?`,    body: t => t === "production" ? "This takes bkksmartstreet.com down until someone starts it again." : `Runs launch\\${t}\\stop.bat. The watchdog leaves it stopped.`, danger: true },
+  yolo_on:  { title: t => `Turn YOLO on (${LABEL[t]})?`,  body: () => "Loads the models onto the GPU (10-30 s)." },
+  yolo_off: { title: t => `Turn YOLO off (${LABEL[t]})?`, body: () => "Frees GPU memory; counters, helmet and wrong-way checks pause.", danger: true },
+};
+const VERB_LABEL = { start: "Start", restart: "Restart", stop: "Stop", yolo_on: "Turn on", yolo_off: "Turn off" };
+const $ = id => document.getElementById(id);
+let evSeq = 0;
+
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+const p2 = n => String(n).padStart(2, "0");
+function stamp(ts, secs) {
+  const d = new Date(ts * 1000);
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}${secs ? ":" + p2(d.getSeconds()) : ""}`;
+}
+function ago(ts) {
+  if (!ts) return "never";
+  const s = Date.now() / 1000 - ts;
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  return stamp(ts);
+}
+function pill(state) { return `<span class="pill ${esc(state)}">${esc(state)}</span>`; }
+function label(t) { return LABEL[t] || t; }
+function items() { return (S.status && S.status.items) || []; }
+function find(key) { return items().find(i => i.key === key); }
+
+function toast(msg, ok = true) {
+  if ([...$("toasts").children].some(c => c.textContent === msg)) return;    // same toast already showing
+  const el = document.createElement("div");
+  el.className = "toast" + (ok ? "" : " bad");
+  el.textContent = msg;
+  $("toasts").appendChild(el);
+  setTimeout(() => el.remove(), 6000);
+}
+async function call(fn) {
+  try { return await fn(); } catch (e) { toast("Error: " + (e && e.message || e), false); return null; }
+}
+
+async function loadStatus() {
+  const r = await call(() => api().status());
+  if (r) { S.status = r; softRender(); }
+}
+async function loadEvents(poll) {
+  const seq = ++evSeq;
+  const r = await call(() => api().events({ target: S.target, state: S.state, q: S.q, hours: S.hours, limit: S.limit, offset: S.offset }));
+  if (!r || seq !== evSeq) return;
+  if (!r.rows.length && S.offset > 0 && r.total > 0) { S.offset = 0; return loadEvents(); }
+  S.events = r; poll ? softRender() : render();
+}
+
+/* ---------- views ---------- */
+function stateCard(it, title, menuTarget) {
+  const showMenu = !!menuTarget && !WEB;
+  const t = menuTarget;
+  const open = t ? ` data-open="${esc(t)}" title="Open on Processes"` : "";
+  const st = it.state;
+  const dis = (v) => (v === "start" ? (st === "ok" || st === "warn") : (st === "stopped")) ? " disabled" : "";
+  let menu = "";
+  if (showMenu && S.menu === it.key) {
+    menu = `<div class="menu">` +
+      ["start", "restart", "stop"].map(v => `<button data-act="${v}" data-t="${esc(t)}"${dis(v)}>${VERB_LABEL[v]}</button>`).join("") +
+      (t === "production" || t === "test" ? `<hr><button data-act="yolo_on" data-t="${esc(t)}">YOLO on</button><button data-act="yolo_off" data-t="${esc(t)}">YOLO off</button>` : "") +
+      `</div>`;
+  }
+  return `<div class="card"${open}><div class="top"><span class="lbl">${esc(title)}</span>` +
+    (showMenu ? `<button class="kebab" data-menu="${esc(it.key)}" aria-label="Actions">⋯</button>` : "") +
+    `</div><div>${pill(st)}</div><div class="det">${esc(it.detail)}</div><div class="since">since ${esc(ago(it.since))}</div>${menu}</div>`;
+}
+function attentionRows(list) {
+  return list.map(i => `<tr><td>${pill(i.state)}</td><td>${esc(label(i.target))}</td><td>${esc(i.name)}</td>` +
+    `<td><div class="detail" title="${esc(i.detail)}">${esc(i.detail)}</div></td><td class="muted">${esc(ago(i.since))}</td></tr>`).join("");
+}
+function renderOverview() {
+  const all = items();
+  const cards = [];
+  all.filter(i => i.key.startsWith("server:") || i.key.startsWith("service:")).forEach(i => {
+    const menuT = i.key.startsWith("server:") && ["production", "test", "enviro"].includes(i.target) ? i.target : null;
+    cards.push(stateCard(i, label(i.target), menuT));
+    const y = find(`yolo:${i.target}:YOLO switch`);
+    if (i.key.startsWith("server:") && y && (i.state === "ok" || i.state === "warn")) cards.push(stateCard(y, `YOLO · ${label(i.target)}`, null));
+  });
+  const up = {};
+  all.forEach(i => { if (i.key.startsWith("server:")) up[i.target] = i.state === "ok" || i.state === "warn"; });
+  const shown = all.filter(i => !((i.key.startsWith("agent:") || i.key.startsWith("yolo:")) && !up[i.target]));
+  const ok = shown.filter(i => i.state === "ok").length;
+  const bad = shown.filter(i => i.state === "fail" || i.state === "warn");
+  const table = bad.length
+    ? `<div class="wrap"><table><thead><tr><th>State</th><th>Target</th><th>Check</th><th>Detail</th><th>Since</th></tr></thead><tbody>${attentionRows(bad)}</tbody></table></div>`
+    : `<div class="wrap"><div class="empty">Nothing needs attention.</div></div>`;
+  return (cards.length ? `<div class="grid">${cards.join("")}</div>` : `<div class="empty">${S.status ? "No checks recorded yet." : "Loading…"}</div>`) +
+    `<div class="count">${shown.length} checks · ${ok} ok · ${bad.length} need attention</div><h2>Needs attention</h2>${table}`;
+}
+
+function targetOptions(cur) {
+  const opts = [["", "All"], ["production", "Production"], ["test", "Test"], ["enviro", "ENVIRO"], ["services", "Services"], ["gateway", "AI gateway"], ["tunnel", "Cloudflare tunnel"], ["camera", "Camera status"]];
+  return opts.map(([v, l]) => `<option value="${v}"${cur === v ? " selected" : ""}>${l}</option>`).join("");
+}
+function stateOptions(extra) {
+  return `<option value="">All</option>` + STATES.concat(extra || []).map(s => `<option value="${s}"${S.state === s ? " selected" : ""}>${s}</option>`).join("");
+}
+function chip(lbl, inner, on) { return `<label class="chip${on ? " on" : ""}">${lbl}${inner}</label>`; }
+function targetChip() { return chip("Target", `<select data-f="target">${targetOptions(S.target)}</select>`, S.target); }
+function stateChip(extra) { return chip("State", `<select data-f="state">${stateOptions(extra)}</select>`, S.state); }
+function searchChip() { return `<label class="chip search"><input data-f="q" type="search" placeholder="Search…" value="${esc(S.q)}"></label>`; }
+
+const SERVICE_TARGETS = ["gateway", "tunnel", "camera", "watchdog", "disk", "public"];
+function inTarget(t) { return !S.target || t === S.target || (S.target === "services" && SERVICE_TARGETS.includes(t)); }
+function renderChecks() {
+  const q = S.q.trim().toLowerCase();
+  const rows = items().filter(i => inTarget(i.target) && (!S.state || i.state === S.state) &&
+    (!q || (i.name + " " + i.detail + " " + i.target).toLowerCase().includes(q)));
+  const down = {};
+  items().forEach(i => { if (i.key.startsWith("server:")) down[i.target] = !(i.state === "ok" || i.state === "warn"); });
+  const order = t => { const k = TARGETS.indexOf(t); return k < 0 ? 99 : k; };
+  const sorted = rows.slice().sort((a, b) => order(a.target) - order(b.target) || a.key.localeCompare(b.key));
+  let html = "", last = null;
+  sorted.forEach(i => {
+    if (i.target !== last) { last = i.target; html += `<tr class="group"><td colspan="6">${esc(label(i.target))}</td></tr>`; }
+    const dim = down[i.target] && !i.key.startsWith("server:");
+    html += `<tr class="${dim ? "dim" : ""}"><td>${pill(i.state)}</td><td>${esc(label(i.target))}</td><td>${esc(i.name)}</td>` +
+      `<td><div class="detail" title="${esc(i.detail)}">${esc(i.detail)}</div></td><td class="muted">${esc(ago(i.since))}</td><td class="muted">${esc(ago(i.checked_at))}</td></tr>`;
+  });
+  return `<div class="bar">${targetChip()}${stateChip()}${searchChip()}</div>` +
+    `<div class="wrap"><table><thead><tr><th>State</th><th>Target</th><th>Check</th><th>Detail</th><th>Since</th><th>Checked</th></tr></thead><tbody>` +
+    (html || `<tr><td colspan="6" class="empty">No checks match.</td></tr>`) + `</tbody></table></div>` +
+    `<div class="tfoot"><span>${rows.length} of ${items().length} check(s)</span></div>`;
+}
+
+function changeCell(r) {
+  if (r.key && r.key.startsWith("watchdog:")) return pill(r.new);
+  return r.old == null ? pill(r.new) : `${pill(r.old)}<span class="arrow">→</span>${pill(r.new)}`;
+}
+function renderEvents() {
+  const ev = S.events, rows = ev ? ev.rows : [], total = ev ? ev.total : 0;
+  const hrs = [[1, "1 h"], [24, "24 h"], [168, "7 d"], [720, "30 d"]];
+  const bar = `<div class="bar">` +
+    chip("Time range", `<select data-f="hours">${hrs.map(([v, l]) => `<option value="${v}"${S.hours === v ? " selected" : ""}>${l}</option>`).join("")}</select>`, false) +
+    targetChip() + stateChip(["restart"]) + searchChip() +
+    `<div class="right"><button class="btn icon" data-act2="refresh" title="Refresh" aria-label="Refresh">↻</button>` +
+    `<select class="sel" data-f="limit" aria-label="Rows">${[25, 50, 100].map(n => `<option value="${n}"${S.limit === n ? " selected" : ""}>Rows: ${n}</option>`).join("")}</select>` +
+    (WEB ? "" : `<button class="btn" data-act2="export">Export</button>`) + `</div></div>`;
+  const body = rows.map(r => {
+    const tgt = r.target || "";
+    const name = r.key && r.key.startsWith("watchdog:") ? "Watchdog" : r.name;
+    return `<tr><td class="mono muted" style="white-space:nowrap">${esc(stamp(r.ts, true))}</td><td>${esc(label(tgt))}</td><td>${esc(name)}</td>` +
+      `<td style="white-space:nowrap">${changeCell(r)}</td><td><div class="detail" title="${esc(r.detail)}">${esc(r.detail)}</div></td></tr>`;
+  }).join("");
+  const a = rows.length ? S.offset + 1 : 0, b = S.offset + rows.length;
+  return bar + `<div class="wrap"><table><thead><tr><th>Time</th><th>Target</th><th>Check</th><th>Change</th><th>Detail</th></tr></thead><tbody>` +
+    (body || `<tr><td colspan="5" class="empty">${ev ? "No events in this range." : "Loading…"}</td></tr>`) + `</tbody></table></div>` +
+    `<div class="tfoot"><span>Showing ${a}–${b} of ${total}</span><span class="pg">` +
+    `<button class="btn sm" data-act2="prev"${S.offset <= 0 ? " disabled" : ""}>Prev</button>` +
+    `<button class="btn sm" data-act2="next"${b >= total ? " disabled" : ""}>Next</button></span></div>`;
+}
+
+// Polls must not rebuild the page under an open dropdown or a half-typed search; they wait until the field loses focus.
+function fieldFocused() { const a = document.activeElement; return !!a && (a.tagName === "SELECT" || (a.tagName === "INPUT" && a.type === "search")); }
+function softRender() { if (fieldFocused()) S.dirty = true; else render(); }
+document.addEventListener("focusout", () => setTimeout(() => { if (S.dirty && !fieldFocused()) render(); }, 0));
+
+function render() {
+  S.dirty = false;
+  const st = S.status, alive = !!(st && st.collector_alive);
+  $("dot").className = "dot" + (alive ? " on" : "");
+  $("dot").title = alive ? "Collector running" : "Collector not running";
+  $("foot").innerHTML = `<div>Collector: ${alive ? "running" : "not running"}</div>` +
+    (WEB ? `<div>View only</div>` : "") + (alive || WEB ? "" : `<button class="btn sm" data-act2="startcol">Start collector</button>`);
+  document.querySelectorAll(".nav[data-page]").forEach(b => b.classList.toggle("active", b.dataset.page === S.page));
+  document.querySelectorAll(".nav[data-tgt]").forEach(b => b.classList.toggle("active", S.target === b.dataset.tgt && S.page !== "overview"));
+  const upd = st && st.collector_at ? new Date(st.collector_at * 1000).toTimeString().slice(0, 8) : "never";
+  const titles = { overview: "Overview", checks: "Checks", events: "Events", processes: "Processes" };
+  $("title").textContent = titles[S.page];
+  $("sub").textContent = S.page === "events"
+    ? `State changes, kept 30 days · ${S.events ? S.events.total : 0} events`
+    : S.page === "processes" ? "Servers running in the background · logs in launch\\logs"
+    : `Live state of every check · updated ${upd}`;
+
+  const body = $("body");
+  const focus = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.f : null;
+  const pos = focus === "q" ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
+  const top = body.scrollTop;
+  if (S.page === "processes") renderProcesses(body);
+  else body.innerHTML = S.page === "overview" ? renderOverview() : S.page === "checks" ? renderChecks() : renderEvents();
+  body.scrollTop = top;
+  if (focus) {
+    const el = body.querySelector(`[data-f="${focus}"]`);
+    if (el) { el.focus(); if (pos && el.setSelectionRange) try { el.setSelectionRange(pos[0], pos[1]); } catch (e) { /* type=search */ } }
+  }
+}
+
+/* ---------- processes ---------- */
+const LOG_MAX = 5000;
+const RED = /\b(ERROR|CRITICAL|Traceback)\b|\[FAIL\]/, YEL = /\bWARNING\b|\[WARN\]/, ACC = /--- .* (started|exited) ---/;
+const TS = /^\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d[,.\d]*/;
+let inBlock = false;   // inside a Traceback: keep its lines for "Errors only"
+const SEP = /During handling of the above exception|The above exception was the direct cause/;
+function classify(text) {
+  const red = RED.test(text), yel = !red && YEL.test(text);
+  const m = TS.exec(text);
+  const rest = m ? text.slice(m[0].length) : text;
+  const indented = /^(\s{2,}|\s*\t)/.test(rest) || rest.trim() === "";   // frames and blank lines continue the block
+  let keep = red || yel;
+  if (SEP.test(text)) { keep = true; inBlock = true; }   // chained traceback: the separator follows the closing line
+  else if (red && /\bTraceback\b/.test(text)) inBlock = true;
+  else if (!red && inBlock) {
+    keep = true;                                  // frame, separator or the closing exception line
+    if (!indented && !SEP.test(text)) inBlock = false;   // "ValueError: bad" closes it; a separator means another Traceback follows
+  }
+  return { text, cls: red ? "c-fail" : yel ? "c-warn" : ACC.test(text) ? "c-acc" : "", keep };
+}
+function lnEl(l) {
+  const d = document.createElement("div");
+  d.className = "ln" + (l.cls ? " " + l.cls : "") + (l.keep ? " k" : "");
+  d.textContent = l.text === "" ? "\u200b" : l.text;
+  return d;
+}
+function logClear() { S.logBuf = []; inBlock = false; const p = $("logpane"); if (p) p.textContent = ""; }
+function logAppend(lines) {
+  if (!lines.length) return;
+  const fresh = lines.map(classify);
+  S.logBuf.push(...fresh);
+  if (S.logBuf.length > LOG_MAX) S.logBuf.splice(0, S.logBuf.length - LOG_MAX);
+  const p = $("logpane");
+  if (!p) return;
+  const frag = document.createDocumentFragment();
+  fresh.forEach(l => frag.appendChild(lnEl(l)));
+  p.appendChild(frag);
+  while (p.childElementCount > LOG_MAX) p.removeChild(p.firstElementChild);
+  if (S.follow) p.scrollTop = p.scrollHeight;
+}
+function fmtSize(n) { return n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`; }
+function fmtUp(s) { const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h} h ${m} min` : `${m} min`; }
+function procCard(p) {
+  const stopped = !p.running && !!p.stopped_on_purpose;   // stop.bat: an intended exit, not a failure
+  const bad = !p.running && !stopped && p.exit_code != null && p.exit_code !== 0;
+  const pl = p.running ? `<span class="pill ok">running</span>` : stopped ? `<span class="pill stopped">stopped</span>`
+    : `<span class="pill ${bad ? "fail" : "idle"}">not running</span>`;
+  const det = p.running ? `PID ${esc(p.pid)} · up ${esc(fmtUp(p.uptime_s || 0))}`
+    : stopped ? `stopped on purpose${p.exited_at ? ` · exited ${esc(ago(p.exited_at))}` : ""}`
+    : p.exited_at ? `exited ${esc(ago(p.exited_at))} (code ${esc(p.exit_code)})` : "never started hidden";
+  const canAct = !WEB && ["production", "test", "enviro"].includes(p.name);
+  const key = "proc:" + p.name;
+  let menu = "";
+  if (canAct && S.menu === key) {
+    menu = `<div class="menu">` + ["start", "restart", "stop"].map(v => {
+      // same rule as the Overview cards: the port state wins, so a server started with --window still gets Restart/Stop
+      const srvSt = find("server:" + p.name), st = srvSt ? srvSt.state : null;
+      const up = srvSt ? (st === "ok" || st === "warn") : p.running;
+      const dis = (v === "start" ? up : (srvSt ? st === "stopped" : !p.running)) ? " disabled" : "";
+      return `<button data-act="${v}" data-t="${esc(p.name)}"${dis}>${VERB_LABEL[v]}</button>`;
+    }).join("") + `</div>`;
+  }
+  const srv = find("server:" + p.name);
+  const hint = !p.running && srv && (srv.state === "ok" || srv.state === "warn") ? `<div class="hint">running in a window (started with --window): no log here</div>` : "";
+  return `<div class="card sel${S.sel === p.name ? " cur" : ""}" data-sel="${esc(p.name)}"><div class="top"><span class="lbl">${esc(p.label)}</span>` +
+    (canAct ? `<button class="kebab" data-menu="${esc(key)}" aria-label="Actions">⋯</button>` : "") +
+    `</div><div>${pl}</div><div class="det">${det}</div><div class="since">log ${esc(fmtSize(p.log_size || 0))}</div>${hint}` +
+    (WEB ? "" : `<div class="acts"><button class="btn sm" data-act2="openlog" data-n="${esc(p.name)}">Open log</button></div>`) + `${menu}</div>`;
+}
+function procCards() { return S.procs ? S.procs.map(procCard).join("") : `<div class="empty">Loading…</div>`; }
+// AI agents of one server (group "agent" rows from the collector), with the numbers kept in extra
+const WORK_LABEL = { ok: "working", fail: "not working", warn: "warn", idle: "idle" };
+function agentsHtml() {
+  const tgt = S.agentT, n = v => Number(v).toLocaleString("en-US");
+  const rows = items().filter(i => i.group === "agent" && i.target === tgt).sort((a, b) => a.name.localeCompare(b.name));
+  const tabs = [["production", "Production"], ["test", "Test"]].map(([v, l]) =>
+    `<button class="chipbtn${tgt === v ? " on" : ""}" data-act2="agentT" data-t="${v}">${l}</button>`).join("");
+  const head = `<div class="ltool"><h2 class="nm" style="margin:0">AI agents</h2>${tabs}</div>`;
+  if (!rows.length) {
+    const srv = find("server:" + tgt), up = !!srv && (srv.state === "ok" || srv.state === "warn");
+    return head + `<div class="wrap"><div class="empty">${up ? "No agent data yet." : "Server not running: no agent data."}</div></div>`;
+  }
+  const working = rows.filter(i => i.state === "ok").length;
+  const notWorking = rows.filter(i => i.state === "fail" || i.state === "warn").length;
+  const tokens = rows.reduce((sum, i) => sum + ((i.extra && i.extra.tokens) || 0), 0);
+  const win = rows.map(i => i.extra && i.extra.window).find(w => w != null);
+  const summary = `${rows.length} agents · ${working} working · ${notWorking} not working · ${n(tokens)} tokens` +
+    (win != null ? ` in the last ${win} min` : "");
+  const trs = rows.map(i => {
+    const x = i.extra, work = `<span class="pill ${esc(i.state)}">${esc(WORK_LABEL[i.state] || i.state)}</span>`;
+    if (!x) {   // a row without extra (the agent checks crash row): the detail is all there is
+      return `<tr><td>${esc(i.name)}</td><td>${work}</td><td>–</td><td>–</td><td class="num">–</td><td class="num">–</td>` +
+        `<td><div class="detail" title="${esc(i.detail)}">${esc(i.detail)}</div></td></tr>`;
+    }
+    const dash = v => (v === "" || v == null) ? "–" : esc(v);
+    const calls = `${dash(x.calls)}` + (x.fails > 0 ? ` <span class="fail-t">(${esc(x.fails)} failed)</span>` : "");
+    return `<tr><td>${esc(i.name)}</td><td>${work}</td><td>${dash(x.data)}</td><td>${dash(x.analysis)}</td>` +
+      `<td class="num">${calls}</td><td class="num">${x.tokens ? n(x.tokens) : "–"}</td>` +
+      `<td><div class="detail" title="${esc(x.note)}">${esc(x.note || "")}</div></td></tr>`;
+  }).join("");
+  return head + `<div class="count" style="margin:0 0 10px">${esc(summary)}</div>` +
+    `<div class="wrap" style="margin-bottom:14px"><table><thead><tr><th>Agent</th><th>Working</th><th>Data</th><th>Analysis</th>` +
+    `<th class="num">Calls</th><th class="num">Tokens</th><th>Note</th></tr></thead><tbody>${trs}</tbody></table></div>` +
+    `<div class="muted" style="font-size:12px;margin:-4px 0 14px">Working = fresh data and a recent AI analysis. ` +
+    `Calls / tokens = real model requests${win != null ? ` in the last ${win} min` : ""}.</div>`;
+}
+function procSkeleton() {
+  return `<div class="pgrid" id="pcards">${procCards()}</div>` +
+    `<div id="agents"></div>` +
+    `<div class="ltool"><span class="nm" id="lname"></span><button class="chipbtn" id="lerrs" data-act2="errs">Errors only</button>` +
+    `<button class="chipbtn" id="lfollow" data-act2="follow">Follow</button><button class="btn sm" data-act2="clear">Clear</button>` +
+    (WEB ? "" : `<button class="btn sm" id="lopen" data-act2="openlog" data-n="">Open log</button>`) + `</div><div id="logpane"></div>`;
+}
+function syncProc() {
+  const p = S.procs && S.procs.find(x => x.name === S.sel);
+  $("lname").textContent = p ? p.label : S.sel;
+  $("lerrs").classList.toggle("on", S.errs);
+  $("lfollow").classList.toggle("on", S.follow);
+  $("logpane").classList.toggle("errs", S.errs);
+  if ($("lopen")) $("lopen").dataset.n = S.sel;
+}
+// The log pane survives every status poll: while it exists only the cards are replaced.
+function renderProcesses(body) {
+  if ($("pcards") && body.contains($("pcards"))) $("pcards").innerHTML = procCards();
+  else {
+    body.innerHTML = procSkeleton();
+    const pane = $("logpane"), frag = document.createDocumentFragment();
+    S.logBuf.forEach(l => frag.appendChild(lnEl(l)));
+    pane.appendChild(frag);
+    if (S.follow) pane.scrollTop = pane.scrollHeight;
+  }
+  $("agents").innerHTML = agentsHtml();   // both branches: the table follows the 5 s status poll too
+  syncProc();
+}
+let procBusy = false, tailBusy = false;
+async function loadProcs() {
+  if (procBusy) return;
+  procBusy = true;
+  const r = await call(() => api().processes());
+  procBusy = false;
+  if (Array.isArray(r)) { S.procs = r; if (S.page === "processes") softRender(); }
+}
+async function loadTail() {
+  if (tailBusy) return;
+  const name = S.sel, off = S.logOff;
+  tailBusy = true;
+  const r = await call(() => api().log_tail(name, off));
+  tailBusy = false;
+  if (!r || r.error || name !== S.sel || off !== S.logOff) return;   // selection changed meanwhile
+  if (r.reset) logClear();
+  S.logOff = r.offset;
+  logAppend(r.lines || []);
+}
+function selectProc(name) {
+  S.menu = null;
+  if (name === S.sel) return render();
+  S.sel = name; S.logOff = null;
+  logClear();
+  render();
+  loadTail();
+}
+// Overview server card: open Processes with that server selected
+function openProc(name) {
+  S.menu = null;
+  if (name !== S.sel) { S.sel = name; S.logOff = null; logClear(); }
+  setPage("processes");
+}
+
+/* ---------- actions ---------- */
+let pending = null;
+function confirmAction(target, verb) {
+  const A = ACTIONS[verb];
+  pending = { target, verb };
+  S.menu = null; render();
+  $("mtitle").textContent = A.title(target);
+  $("mbody").textContent = A.body(target);
+  const ok = $("mok");
+  ok.className = "btn " + (A.danger ? "danger" : "primary");
+  ok.disabled = false; ok.textContent = VERB_LABEL[verb];
+  $("mcancel").disabled = false;
+  $("veil").classList.add("show");
+}
+function closeModal() { if (S.busy) return; pending = null; $("veil").classList.remove("show"); }
+async function runPending() {
+  if (!pending || S.busy) return;
+  const { target, verb } = pending;
+  S.busy = true;
+  $("mok").disabled = true; $("mcancel").disabled = true;
+  $("mok").innerHTML = `<span class="spin"></span>${esc(VERB_LABEL[verb])}`;
+  const res = await call(() => api().action(target, verb));
+  S.busy = false;
+  closeModal();
+  if (res) toast(res.message || (res.ok ? "Done" : "Failed"), !!res.ok);
+  await call(() => api().check_now());
+  loadStatus();
+}
+async function doExport() {
+  const f = { target: S.target, state: S.state, q: S.q, hours: S.hours };
+  const r = await call(() => api().export_csv(f));
+  if (r) toast(r.ok ? `Saved ${r.path}` : (r.message || "Not saved"), !!r.ok);
+}
+
+function setPage(p) { S.page = p; S.menu = null; if (p === "events") { S.offset = 0; loadEvents(); } render(); if (p === "processes") { loadProcs(); loadTail(); } }
+function setFilter(k, v) {
+  if (k === "hours" || k === "limit") v = Number(v);
+  S[k] = v;
+  if (S.page === "events") { S.offset = 0; loadEvents(); }
+  render();
+}
+
+document.addEventListener("click", async e => {
+  const t = e.target.closest("[data-page],[data-tgt],[data-menu],[data-act],[data-act2],[data-sel],[data-open]");
+  if (!t) { if (S.menu) { S.menu = null; render(); } return; }
+  const d = t.dataset;
+  if (d.page) return setPage(d.page);
+  if (d.tgt) { S.target = d.tgt; return setPage(S.page === "overview" ? "checks" : S.page); }
+  if (d.menu) { S.menu = S.menu === d.menu ? null : d.menu; return render(); }
+  if (d.act) return confirmAction(d.t, d.act);
+  if (d.open) { if (e.target.closest(".menu")) return; return openProc(d.open); }   // the menu's empty space is not a click on the card
+  if (d.sel) return selectProc(d.sel);
+  switch (d.act2) {
+    case "errs": S.errs = !S.errs; return syncProc();
+    case "follow": S.follow = !S.follow; syncProc(); if (S.follow) { const p = $("logpane"); p.scrollTop = p.scrollHeight; } return;
+    case "clear": return logClear();
+    case "openlog": { const r = await call(() => api().open_log(d.n)); if (r && !r.ok) toast("Could not open the log", false); return; }
+    case "agentT": S.agentT = d.t; return render();
+    case "refresh": return loadEvents();
+    case "export": return doExport();
+    case "prev": S.offset = Math.max(0, S.offset - S.limit); return loadEvents();
+    case "next": S.offset += S.limit; return loadEvents();
+    case "startcol": {
+      const r = await call(() => api().start_collector());
+      if (r) toast(r.message || "collector started", !!r.ok);
+      setTimeout(loadStatus, 2000);
+      return;
+    }
+  }
+});
+document.addEventListener("change", e => { const f = e.target.dataset && e.target.dataset.f; if (f && f !== "q") setFilter(f, e.target.value); });
+let qTimer = null;
+document.addEventListener("input", e => {
+  if (!(e.target.dataset && e.target.dataset.f === "q")) return;
+  S.q = e.target.value;
+  clearTimeout(qTimer);
+  qTimer = setTimeout(() => { if (S.page === "events") { S.offset = 0; loadEvents(); } else render(); }, 250);
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+$("mcancel").addEventListener("click", closeModal);
+$("mok").addEventListener("click", runPending);
+$("veil").addEventListener("mousedown", e => { if (e.target === $("veil")) closeModal(); });
+$("checknow").addEventListener("click", async () => {
+  const r = await call(() => api().check_now());
+  if (r) toast("Check requested");
+  setTimeout(loadStatus, 3000);
+});
+
+let started = false;
+function start() {
+  if (started) return;
+  started = true;
+  render();
+  loadStatus(); loadEvents();
+  setInterval(loadStatus, 5000);
+  setInterval(() => { if (S.page === "processes") loadProcs(); }, 3000);
+  setInterval(() => { if (S.page === "processes") loadTail(); }, 1500);
+  setInterval(() => { if (S.page === "events" && S.offset === 0) loadEvents(true); }, 15000);
+}
+window.addEventListener("pywebviewready", start);
+if (WEB || (window.pywebview && window.pywebview.api)) start();
+else render();
+</script>
+</body>
+</html>

@@ -3,13 +3,14 @@ Visitor telemetry and the operator team's Web Push alerts.
 """
 import json
 
-from fastapi import APIRouter, Body, Query
+from fastapi import APIRouter, Body, Query, Request
 
 from backend.api.system import health
 from backend.api.traffic import road_events
 from backend.bma.bma_events import bma_feed
 from backend.core.alert_service import AlertService
 from backend.core.instance import DATA_DIR
+from backend.core.response_cache import cached_json
 from backend.core.telemetry_service import telemetry
 from backend.services import flood_agent, incidents, province_flood
 from backend.water import water_service
@@ -53,8 +54,8 @@ def alerts_status(endpoint: str = Query(None)):
     return alerts.status(endpoint)
 
 @router.get("/api/alerts/recent")
-def alerts_recent(limit: int = Query(50, ge=1, le=200)):
-    return alerts.recent(limit)
+def alerts_recent(request: Request, limit: int = Query(50, ge=1, le=200)):
+    return cached_json(request, ("alerts/recent", limit), lambda: alerts.recent(limit))
 
 @router.post("/api/alerts/subscribe")
 def alerts_subscribe(payload: dict = Body(...)):

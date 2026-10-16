@@ -2,7 +2,6 @@
 Camera lists for the live camera page and the map, the pictures the browser cannot fetch itself, the hidden
 (down) cameras, and the cameras the background counters watch.
 """
-import gzip
 import json
 import os
 import time
@@ -12,6 +11,7 @@ from fastapi.responses import JSONResponse, Response
 
 from backend.core import thai_regions
 from backend.core.instance import DATA_DIR
+from backend.core.response_cache import cached_json
 from backend.services import bma_scanner, camera_health, cameras_data, counter, longdo_cameras, SAFE_ID, survey
 from backend.vision.doh_cameras import doh_cameras, stream_key as doh_stream_key
 from backend.vision.world_cameras import world_cameras
@@ -20,8 +20,8 @@ router = APIRouter()
 
 
 @router.get("/api/cameras")
-def get_cameras():
-    return {"total": len(cameras_data), "items": cameras_data}
+def get_cameras(request: Request):
+    return cached_json(request, ("cameras",), lambda: {"total": len(cameras_data), "items": cameras_data})
 
 @router.get("/api/cameras/longdo")
 def get_longdo_cameras():
@@ -41,8 +41,7 @@ def _unmasked(c):
     img = "" if "X.X.X.X" in (c.get("imgurl") or "") else c.get("imgurl") or ""
     return dict(c, hls_url=hls, vdourl=vdo, imgurl=img, source="itic")
 
-@router.get("/api/cameras/all")
-def get_all_cameras(request: Request):
+def _all_cameras():
     """Every camera for the live camera page. Ours first (cameras_bkk.json, the ones the AI knows), then the
     rest of iTIC's list from Longdo, then the Department of Highways cameras Longdo does not list (source
     "doh"), then the BMA cameras (source "bma"), which have no video: the page shows their newest frame,
@@ -94,12 +93,12 @@ def get_all_cameras(request: Request):
         c["region"] = thai_regions.region_of(province)
         if not thai_regions.in_thailand(c.get("latitude"), c.get("longitude")):
             c["latitude"] = c["longitude"] = 0   # e.g. BMA-1712 has its latitude in both
-    # About 430 KB of mostly Thai text: gzip takes it under 60 KB
-    body = json.dumps({"total": len(items), "items": items}, ensure_ascii=False).encode("utf-8")
-    if "gzip" in request.headers.get("accept-encoding", ""):
-        return Response(gzip.compress(body, 6), media_type="application/json",
-                        headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
-    return Response(body, media_type="application/json")
+    return {"total": len(items), "items": items}
+
+@router.get("/api/cameras/all")
+def get_all_cameras(request: Request):
+    """Every camera for the live camera page (see _all_cameras), about 1.7 MB: built and gzipped once per TTL."""
+    return cached_json(request, ("cameras/all",), _all_cameras)
 
 CAMERA_STATUS_FILE = os.path.join(DATA_DIR, "camera_status.json")   # written by launch\camera_status.py every 5 minutes
 

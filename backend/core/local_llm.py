@@ -19,15 +19,17 @@ The gateway behind LOCAL_LLM_URL allows 3 requests in flight per key (LiteLLM ma
 answers 429 to a 4th. The flood watch, the helmet patrol, the agents and the chat bot all share that key,
 so every Client waits for one of MAX_PARALLEL slots per endpoint + key, and retries a 429 twice.
 
-The flood agent uses `default`. The chat bot uses `chat`, which reads the same names with a CHAT_LLM_
+The flood and traffic agents use `default`. The chat bot uses `chat`, which reads the same names with a CHAT_LLM_
 prefix and falls back to the LOCAL_LLM_ value for any it does not set, so the chat can point at another
 endpoint (a hosted API, a LiteLLM proxy) while the flood agent stays on the local model. With the server
-off or the model not loaded, both fall back to their Thai rule-based answers.
+off or the model not loaded, both fall back to their Thai rule-based answers. The camera checks (accident
+confirmation, helmet, wrong way) use `vision` the same way, with a VISION_LLM_ prefix, through look().
 
 Every request is counted by the module that made it, with the prompt and reply tokens the server reports
 (`usage` in the OpenAI-compatible reply; image tokens are part of the prompt). usage() sums any window of
 the last USAGE_KEEP_H hours for /api/ai/usage.
 """
+import base64
 import json
 import os
 import re
@@ -122,6 +124,16 @@ def fix_thai(text):
     return _TWICE.sub(r"\1", text)
 
 
+def _schema_in_prompt(messages, schema):
+    """The messages with the JSON schema asked for in words, for an endpoint without response_format."""
+    rule = ("Reply with one JSON object only, no other text, that matches this JSON schema:\n"
+            + json.dumps(schema, ensure_ascii=False))
+    # Qwen's chat template takes a system message only at the start
+    if messages and messages[0].get("role") == "system" and isinstance(messages[0].get("content"), str):
+        return [{**messages[0], "content": messages[0]["content"] + "\n\n" + rule}, *messages[1:]]
+    return [{"role": "system", "content": rule}, *messages]
+
+
 class ContextTooLong(Exception):
     """The prompt does not fit the context the model is loaded with."""
 
@@ -141,6 +153,9 @@ class Client:
         self.timeout = int(env("TIMEOUT", "240"))
         # extra request fields as JSON, e.g. {"chat_template_kwargs": {"enable_thinking": false}} for vLLM
         self.extra = json.loads(env("EXTRA", "") or "{}")
+        # False once the endpoint refuses response_format (the 9arm gateway: "Metered requests do not support
+        # response_format"); the schema then goes into the prompt instead, and the callers cut the JSON out
+        self.response_format = True
 
     def enabled(self):
         return bool(self.model)
@@ -150,18 +165,30 @@ class Client:
         used = sum(len(t or "") for t in texts) / CHARS_PER_TOKEN
         return int(self.context - used - reply_tokens)
 
-    def chat(self, messages, max_tokens=1200, temperature=0.4, json_schema=None, timeout=None):
+    def look(self, system, jpeg, text, max_tokens=300, temperature=0.1, timeout=None):
+        """One JPEG and a text question under a system prompt. Returns the reply text, counted under the caller."""
+        image = "data:image/jpeg;base64," + base64.standard_b64encode(jpeg).decode("ascii")
+        return self.chat([{"role": "system", "content": system},
+                          {"role": "user", "content": [{"type": "image_url", "image_url": {"url": image}},
+                                                       {"type": "text", "text": text}]}],
+                         max_tokens=max_tokens, temperature=temperature, timeout=timeout,
+                         caller=sys._getframe(1).f_globals.get("__name__", "?"))
+
+    def chat(self, messages, max_tokens=1200, temperature=0.4, json_schema=None, timeout=None, caller=None):
         """messages: [{role: system|user|assistant, content}]. Returns the reply text (thinking stripped)."""
         body = {"model": self.model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature,
                 **self.extra}
         if self.reasoning:
             body["reasoning_effort"] = self.reasoning
         if json_schema:
-            body["response_format"] = {"type": "json_schema",
-                                       "json_schema": {"name": "reply", "strict": True, "schema": json_schema}}
+            if self.response_format:
+                body["response_format"] = {"type": "json_schema",
+                                           "json_schema": {"name": "reply", "strict": True, "schema": json_schema}}
+            else:
+                body["messages"] = _schema_in_prompt(messages, json_schema)
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
         timeout = timeout or self.timeout
-        caller = sys._getframe(1).f_globals.get("__name__", "?")
+        caller = caller or sys._getframe(1).f_globals.get("__name__", "?")
         started = time.time()
         slot = _slot(self.url, self.api_key)
         if not slot.acquire(timeout=timeout):
@@ -169,6 +196,12 @@ class Client:
         try:
             for wait in (*RETRY_429, None):
                 resp = requests.post(f"{self.url}/chat/completions", json=body, headers=headers, timeout=timeout)
+                if resp.status_code == 400 and "response_format" in body and "response_format" in resp.text:
+                    print(f"[LocalLLM] {self.url} refuses response_format: the JSON schema goes into the prompt")
+                    self.response_format = False
+                    del body["response_format"]
+                    body["messages"] = _schema_in_prompt(messages, json_schema)
+                    resp = requests.post(f"{self.url}/chat/completions", json=body, headers=headers, timeout=timeout)
                 if resp.status_code != 429 or wait is None:
                     break
                 time.sleep(wait)
@@ -192,3 +225,4 @@ class Client:
 
 default = Client("LOCAL_LLM")
 chat_client = Client("CHAT_LLM")
+vision = Client("VISION_LLM")

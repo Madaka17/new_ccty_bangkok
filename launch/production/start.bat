@@ -11,6 +11,25 @@ set "INSTANCE_DIR=%CD%\instances\production"
 rem Started again: launch\watchdog may restart it from now on (stop.bat / kill_server.ps1 left this mark)
 if exist "launch\watchdog\state\stopped_8000" del "launch\watchdog\state\stopped_8000"
 
+rem Modes: no flag = start hidden through launch\run_hidden.py (output in launch\logs\production.log, shown in
+rem BKK Monitor > Processes); --child = the hidden run itself (no pause, nobody is there to press a key);
+rem --window = the old visible console, for debugging.
+set "MODE=hidden"
+for %%a in (%*) do (
+    if /i "%%~a"=="--child" set "MODE=child"
+    if /i "%%~a"=="--window" set "MODE=window"
+)
+if "%MODE%"=="hidden" (
+    netstat -ano | findstr /r /c:":8000 .*LISTENING" >nul && (
+        echo [!] Server is already running on port 8000. Use restart.bat to restart it.
+        exit /b 0
+    )
+    start "" /b "%~dp0..\..\.venv\Scripts\pythonw.exe" "%~dp0..\run_hidden.py" production
+    echo [OK] Started in the background. Log: launch\logs\production.log  ^(BKK Monitor ^> Processes^)
+    ping -n 3 127.0.0.1 >nul
+    exit /b 0
+)
+
 echo ======================================================================
 echo   BKK StreetSmart - PRODUCTION  (Public: https://bkksmartstreet.com)
 echo   data: instances\production\
@@ -22,7 +41,7 @@ netstat -ano | findstr /r /c:":8000 .*LISTENING" >nul
 if %ERRORLEVEL% EQU 0 (
     echo [!] Server is already running on port 8000. Use restart.bat to restart it.
     echo.
-    pause
+    if not "%MODE%"=="child" pause
     exit /b 0
 )
 
@@ -41,7 +60,11 @@ echo [*] Close this window to stop the server.
 echo.
 
 rem Camera status in its own window: every camera checked every 5 minutes (launch\camera_status_window.ps1)
-powershell -NoProfile -ExecutionPolicy Bypass -File "launch\camera_status_window.ps1"
+if "%MODE%"=="window" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "launch\camera_status_window.ps1" -Window
+) else (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "launch\camera_status_window.ps1"
+)
 
 call launch\build_web.bat
 
@@ -55,4 +78,4 @@ if %ERRORLEVEL% NEQ 0 (
     echo.
     echo [ERROR] Server exited with code %ERRORLEVEL%
 )
-pause
+if not "%MODE%"=="child" pause

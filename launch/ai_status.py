@@ -97,33 +97,27 @@ def emit(state, name, data="", analysis="", calls="", fails="", tokens="", note=
         print(f"  {mark}  {name:<26} {data:>6}  {analysis:>8}  {calls!s:>7} {fails!s:>4} {tok:>9}  {note}")
 
 
-def report(port):
-    if not LOG:
-        print(f"AI agent status  ·  server :{port}  ·  {datetime.now():%Y-%m-%d %H:%M:%S}")
-    try:
-        usage = get(port, "/api/ai/usage?minutes=60")
-    except Exception as e:  # noqa: BLE001 - the server itself is the first thing to report
-        emit("fail", "server", note=f"not answering on :{port} ({e})")
-        return 1
+def check_agents(port, fetch=None):
+    """Every agent judged once: {"summary", "window", "rows"}. Raises when /api/ai/usage does not answer."""
+    fetch = fetch or get
+    usage = fetch(port, "/api/ai/usage?minutes=60")
     calls = {c["caller"]: c for c in usage.get("callers") or []}
     models = ", ".join(dict.fromkeys(c["model"] for c in usage.get("callers") or [])) or "–"
     window = usage.get("covered_minutes", 0)
     per_hour = usage.get("tokens_per_hour")
     summary = (f"models {models} · last {window:.0f} min: {usage.get('calls', 0)} requests, "
                f"{usage.get('total_tokens', 0):,} tokens" + (f" (~{per_hour:,}/h)" if per_hour else ""))
-    if LOG:
-        log("INFO", summary)
-    else:
-        print(f"  {summary}")
-        print("-" * 104)
-        print(f"  {'':6}  {'agent':<26} {'data':>6}  {'analysis':>8}  {'calls':>7} {'fail':>4} {'tokens':>9}  note")
-    bad = 0
+    rows = []
+
+    def row(state, name, data="", analysis="", calls="", fails="", tokens="", note=""):
+        rows.append({"name": name, "state": state, "data": data, "analysis": analysis, "calls": calls,
+                     "fails": fails, "tokens": tokens, "note": note})
+
     for name, caller, path, data_f, ai_f, err_fs, data_max, ai_max in AGENTS:
         try:
-            d = get(port, path)
+            d = fetch(port, path)
         except Exception as e:  # noqa: BLE001 - one agent down leaves the others
-            emit("fail", name, "–", "–", note=f"endpoint error: {e}")
-            bad += 1
+            row("fail", name, "–", "–", note=f"endpoint error: {e}")
             continue
         data_t, ai_t = dig(d, data_f), dig(d, ai_f)
         err = next((dig(d, f) for f in err_fs if dig(d, f)), None)
@@ -135,30 +129,50 @@ def report(port):
         note = str(err)[:60] if err else "model calls failing" if failed else \
             "source sent no readings" if not data_t else "data stale" if not fresh else "no recent analysis" if not analysed else \
             "picture unchanged, last report reused" if not u.get("calls") else ""
-        emit("ok" if ok else "fail", name, ago(data_t), ago(ai_t), u.get("calls", 0), u.get("errors", 0), u.get("total_tokens", 0), note)
-        bad += not ok
+        row("ok" if ok else "fail", name, ago(data_t), ago(ai_t), u.get("calls", 0), u.get("errors", 0), u.get("total_tokens", 0), note)
     chat = calls.get("backend.agents.chat_service") or {}
-    emit("ok" if chat.get("calls") else "idle", "Ask AI chat", calls=chat.get("calls", 0), fails=chat.get("errors", 0),
-         tokens=chat.get("total_tokens", 0), note="" if chat.get("calls") else "answers only when someone asks")
+    row("ok" if chat.get("calls") else "idle", "Ask AI chat", calls=chat.get("calls", 0), fails=chat.get("errors", 0),
+        tokens=chat.get("total_tokens", 0), note="" if chat.get("calls") else "answers only when someone asks")
     try:
-        ww = get(port, "/api/wrongway/status")
+        ww = fetch(port, "/api/wrongway/status")
         u = calls.get("backend.vision.wrongway_service") or {}
-        emit("ok" if ww.get("enabled") and not ww.get("agent_error") else "warn", f"Wrong-way check ({ww.get('agent')})",
-             analysis=ago(ww.get("last_check")), calls=ww.get("calls_last_hour", 0), fails=u.get("errors", 0),
-             tokens=u.get("total_tokens", 0), note=ww.get("agent_error") or "")
+        row("ok" if ww.get("enabled") and not ww.get("agent_error") else "warn", f"Wrong-way check ({ww.get('agent')})",
+            analysis=ago(ww.get("last_check")), calls=ww.get("calls_last_hour", 0), fails=u.get("errors", 0),
+            tokens=u.get("total_tokens", 0), note=ww.get("agent_error") or "")
     except Exception:  # noqa: BLE001 - optional line
         pass
     # model callers with no row above (incident check, violation check, ...): still count their tokens
     shown = {a[1] for a in AGENTS} | {"backend.agents.chat_service", "backend.vision.wrongway_service"}
     for c in usage.get("callers") or []:
         if c["caller"] not in shown:
-            emit("ok", c["caller"].rsplit(".", 1)[-1], calls=c["calls"], fails=c["errors"], tokens=c["total_tokens"],
-                 note=c["model"])
+            row("ok", c["caller"].rsplit(".", 1)[-1], calls=c["calls"], fails=c["errors"], tokens=c["total_tokens"],
+                note=c["model"])
+    return {"summary": summary, "window": window, "rows": rows}
+
+
+def report(port):
+    if not LOG:
+        print(f"AI agent status  ·  server :{port}  ·  {datetime.now():%Y-%m-%d %H:%M:%S}")
+    try:
+        result = check_agents(port)
+    except Exception as e:  # noqa: BLE001 - the server itself is the first thing to report
+        emit("fail", "server", note=f"not answering on :{port} ({e})")
+        return 1
+    if LOG:
+        log("INFO", result["summary"])
+    else:
+        print(f"  {result['summary']}")
+        print("-" * 104)
+        print(f"  {'':6}  {'agent':<26} {'data':>6}  {'analysis':>8}  {'calls':>7} {'fail':>4} {'tokens':>9}  note")
+    bad = 0
+    for r in result["rows"]:
+        emit(r["state"], r["name"], r["data"], r["analysis"], r["calls"], r["fails"], r["tokens"], r["note"])
+        bad += r["state"] == "fail"
     if LOG:
         log("INFO" if not bad else "ERROR", "all AI agents are fetching and analysing" if not bad else f"{bad} agent(s) not working")
     else:
         print("-" * 104)
-        print(f"  data / analysis = how long ago · calls / tokens = real model requests in the last {window:.0f} min")
+        print(f"  data / analysis = how long ago · calls / tokens = real model requests in the last {result['window']:.0f} min")
         print("  all AI agents are fetching and analysing" if not bad else f"  {bad} agent(s) not working: see [FAIL] above")
     return 1 if bad else 0
 

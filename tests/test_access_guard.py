@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.core import access_guard
-from backend.core.access_guard import _is_trusted_ip, _Window, client_ip
+from backend.core.access_guard import _FixedWindow, _is_trusted_ip, _Window, client_ip
 
 
 def _req(peer, server="127.0.0.1", **headers):
@@ -160,3 +160,67 @@ def test_parking_full_is_public_and_rate_limited(monkeypatch, tmp_path):
     assert codes == [200, 200, 429]
     # only the exact "full" path is public
     assert c.post("/api/flood/parking/a/other", headers=SAME_ORIGIN).status_code == 403
+
+
+def test_hashed_assets_are_cached_for_a_year(tmp_path):
+    # Vite puts a content hash in every /assets/ file name, so a file never changes under its name:
+    # Cloudflare and browsers can keep it, and only the no-cache page decides which files to load.
+    from fastapi.staticfiles import StaticFiles
+    (tmp_path / "index-abc123.js").write_text("console.log(1)", encoding="utf-8")
+    app = _app()
+    app.mount("/assets", StaticFiles(directory=str(tmp_path)), name="assets")
+    client = TestClient(app)
+    assert client.get("/assets/index-abc123.js").headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert client.get("/").headers["cache-control"] == "no-cache"
+    assert "immutable" not in client.get("/api/data").headers.get("cache-control", "")
+
+
+class _Clock:
+    def __init__(self, now=1000.0):
+        self.now = now
+
+    def __call__(self):
+        return self.now
+
+
+def test_window_sweeps_at_most_once_a_minute(monkeypatch):
+    clock = _Clock()
+    w = _Window(10, 60, clock=clock)
+    sweeps = []
+    real = w._sweep
+    monkeypatch.setattr(w, "_sweep", lambda now: (sweeps.append(now), real(now)))
+    for i in range(access_guard.SWEEP_MIN_KEYS + 10):
+        w.allow(f"ip{i}")
+    for _ in range(500):
+        w.allow("busy")          # a busy second with a big map: no sweep per call
+    assert len(sweeps) <= 1
+    clock.now += 61
+    w.allow("later")             # a minute on: one sweep drops every stale key
+    assert len(sweeps) <= 2
+    assert set(w.hits) == {"later"}
+
+
+def test_fixed_window_limits_and_resets():
+    clock = _Clock()
+    w = _FixedWindow(3, 86400, clock=clock)
+    assert [w.allow("a") for _ in range(4)] == [True, True, True, False]
+    assert w.allow("b")
+    clock.now += 86400
+    assert w.allow("a")
+
+
+def test_fixed_window_keeps_constant_memory_per_key():
+    w = _FixedWindow(100000, 86400)
+    for _ in range(5000):
+        w.allow("a")
+    assert w.hits["a"][1] == 5000 and len(w.hits["a"]) == 2
+
+
+def test_fixed_window_zero_means_unlimited():
+    w = _FixedWindow(0, 86400)
+    assert all(w.allow("a") for _ in range(10))
+    assert w.hits == {}
+
+
+def test_general_day_is_a_fixed_window():
+    assert isinstance(access_guard.general_day, _FixedWindow)

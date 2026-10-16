@@ -30,12 +30,14 @@ from backend.vision.flood_cam_service import FloodCamWatch
 from backend.vision.helmet_service import HelmetPatrol
 from backend.vision.incident_service import IncidentManager
 from backend.vision.itic_frames import IticFrames
+from backend.vision.longdo_cameras import longdo_cameras as _longdo_cameras
 from backend.vision.survey import SurveyManager
 from backend.vision.vehicle_log import VehicleLog
 from backend.vision.violation_service import ViolationMonitor
 from backend.vision.world_cameras import world_cameras
 from backend.vision.wrongway_service import WrongWayPatrol
 from backend.vision.yolo_detector import VehicleDetectorYOLO11x
+from backend.vision.yolo_switch import YoloSwitch
 from backend.water import north_flow, water_service
 from backend.water.air_service import air
 from backend.water.bkk_districts import BkkDistricts
@@ -80,7 +82,12 @@ if os.path.exists(CAMERAS_FILE):
 
 # Initialize the YOLO vehicle detector (model from AI_MODEL, target 10 FPS for smoother playback)
 vehicle_log = VehicleLog(os.path.join(DATA_DIR, "vehicle_counts.db"))
-detector = VehicleDetectorYOLO11x(model_path=MODEL_PATH, target_fps=10.0, conf_threshold=0.15, vehicle_log=vehicle_log)
+# YOLO on/off (launch\yolo_switch.bat): the saved state decides whether any model loads at startup
+yolo = YoloSwitch(os.path.join(DATA_DIR, "cache", "yolo_switch.json"))
+if not yolo.enabled:
+    print("[YOLO] off (saved state): no models loaded")
+detector = VehicleDetectorYOLO11x(model_path=MODEL_PATH, target_fps=10.0, conf_threshold=0.15, vehicle_log=vehicle_log,
+                                  load_models=yolo.enabled)
 # Background counting on user-selected cameras (lower fps to prioritize live camera)
 counter = CountManager(detector, vehicle_log, os.path.join(DATA_DIR, "count_cameras.json"), target_fps=0.5, max_cameras=4)
 counter.load({c["camid"]: c for c in cameras_data})
@@ -96,7 +103,8 @@ detector.incidents = incidents
 analytics_service.configure(incidents=incidents)
 # Wrong-way + no-helmet detection on the live AI camera (shares the incident vision provider)
 violations = ViolationMonitor(os.path.join(DATA_DIR, "vehicle_counts.db"), vision=incidents,
-                              cameras_by_id=lambda: {c["camid"]: c for c in cameras_data})
+                              cameras_by_id=lambda: {c["camid"]: c for c in cameras_data},
+                              load_models=yolo.enabled)
 detector.violations = violations
 # Which live-AI cameras answer right now (the camera search marks the ones without signal)
 camera_health = CameraHealth(lambda: cameras_data)
@@ -105,11 +113,13 @@ camera_health.start()
 # BMA Traffic Scanner & YOLO Vehicle Counter for all cameras
 bma_scanner = BmaScanner(detector=detector)
 # Helmet patrol over every BMA camera: motorcycle crops -> helmet agent -> evidence on the data drive
-helmet = HelmetPatrol(os.path.join(DATA_DIR, "vehicle_counts.db"), vision=incidents, scanner=bma_scanner)
+helmet = HelmetPatrol(os.path.join(DATA_DIR, "vehicle_counts.db"), vision=incidents, scanner=bma_scanner, load_models=yolo.enabled)
 bma_scanner.helmet = helmet
 # Wrong-way patrol over every BMA camera: heading detector + per-camera learned lane directions -> agent -> evidence
-wrongway = WrongWayPatrol(os.path.join(DATA_DIR, "vehicle_counts.db"), vision=incidents, scanner=bma_scanner)
+wrongway = WrongWayPatrol(os.path.join(DATA_DIR, "vehicle_counts.db"), vision=incidents, scanner=bma_scanner, load_models=yolo.enabled)
 bma_scanner.wrongway = wrongway
+for _name, _holder in (("detector", detector), ("helmet", helmet), ("wrongway", wrongway), ("violations", violations)):
+    yolo.register(_name, _holder)
 # Flood watch over every BMA camera: frames tiled 3x3 -> Qwen vision -> water on the road? -> map layer
 flood_cams = FloodCamWatch(bma_scanner.cameras)
 bma_scanner.flood = flood_cams
@@ -130,66 +140,9 @@ if cameras_data:
 # When this process started: the health check's uptime
 SERVER_START = time.time()
 
-_longdo_cams_cache = {"time": 0, "data": None}
-
 def longdo_cameras():
-    """Returns all cameras from Longdo Traffic API with disk and memory caching."""
-    import urllib.request
-    import re
-    now = time.time()
-    if now - _longdo_cams_cache["time"] < 300 and _longdo_cams_cache["data"] is not None:
-        return _longdo_cams_cache["data"]
-
-    cache_file = os.path.join(DATA_DIR, "cache", "longdo_cameras.json")
-    try:
-        req = urllib.request.Request("https://traffic.longdo.com/camera.json", headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            raw = resp.read().decode("utf-8")
-            data = json.loads(raw)
-            items = data.get("item", [])
-            if items:
-                formatted = []
-                for it in items:
-                    title = (it.get("title") or "").strip()
-                    m = re.match(r"^\(([^)]+)\)", title)
-                    prov = m.group(1).replace("จ.", "").strip() if m else ""
-                    formatted.append({
-                        "camid": it.get("camid", ""),
-                        "title": title,
-                        "short_title": re.sub(r"^\([^)]+\)\s*", "", title),
-                        "province": prov or "กรุงเทพมหานคร",
-                        "organization": it.get("organization") or "Longdo Traffic",
-                        "hls_url": it.get("hls_url") or "",
-                        "vdourl": it.get("vdourl") or "",
-                        "imgurl": it.get("imgurl") or "",
-                        "latitude": float(it.get("latitude") or 0),
-                        "longitude": float(it.get("longitude") or 0),
-                        "geocode": str(it.get("geocode") or ""),
-                        "lastupdate": it.get("lastupdate") or ""
-                    })
-                res_data = {"total": len(formatted), "items": formatted}
-                _longdo_cams_cache["time"] = now
-                _longdo_cams_cache["data"] = res_data
-                try:
-                    os.makedirs(os.path.dirname(cache_file), exist_ok=True)
-                    with open(cache_file, "w", encoding="utf-8") as f:
-                        json.dump(res_data, f, ensure_ascii=False)
-                except Exception:
-                    pass
-                return res_data
-    except Exception as e:
-        print(f"[Warning] Failed to fetch live Longdo cameras: {e}")
-
-    if os.path.exists(cache_file):
-        try:
-            with open(cache_file, "r", encoding="utf-8") as f:
-                res_data = json.load(f)
-                _longdo_cams_cache["data"] = res_data
-                return res_data
-        except Exception:
-            pass
-
-    return {"total": len(cameras_data), "items": cameras_data}
+    """Longdo's camera list (vision/longdo_cameras.py); our own cameras when Longdo and its copy both fail."""
+    return _longdo_cameras(fallback=cameras_data)
 
 # ---------------------------------------------------------------- routes for the traffic assistant
 def route_hazards():

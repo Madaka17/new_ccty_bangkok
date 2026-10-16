@@ -5,6 +5,7 @@ import threading
 import time
 from collections import deque
 
+from backend.vision.yolo_switch import YoloOff
 from backend.vision.vehicle_tracker import VehicleTracker, frame_video_time, skip_elapsed_frames
 
 
@@ -114,7 +115,18 @@ class CountManager:
                     stop.wait(interval)
                     continue
 
-                result = self.detector.infer(frame)
+                try:
+                    result = self.detector.infer(frame)
+                except YoloOff:
+                    status.update(active=False, error='YOLO ปิดอยู่')
+                    tracker = VehicleTracker()      # old tracks would be stale after the pause
+                    try:
+                        cap.release()
+                    except Exception:
+                        pass
+                    cap = None                      # reopened on resume
+                    stop.wait(10.0)
+                    continue
                 _dets, stats, new_vehicles = tracker.update(result, frame, frame_t)
                 if self.detector.incidents:
                     self.detector.incidents.observe(camid, title, tracker, frame)

@@ -2,6 +2,7 @@ import cv2
 import threading
 import time
 
+from backend.vision.yolo_switch import YoloOff
 from backend.vision.vehicle_tracker import VehicleTracker, frame_video_time
 
 
@@ -57,12 +58,19 @@ class SurveyManager:
 
     def _loop(self):
         while not self.stop.is_set():
+            if not self.detector.models_loaded():
+                # Switch is off: open no streams and do not advance the round-robin
+                self.stop.wait(10.0)
+                continue
             cam = self._next_camera()
             if cam is None:
                 self.stop.wait(10.0)
                 continue
             try:
                 self._sample(cam)
+            except YoloOff:
+                # Switch is off: _sample dropped its stream without saving a sample; wait, do not spin
+                self.stop.wait(10.0)
             except Exception as e:
                 print(f"[Survey] {cam.get('camid')}: {e}")
                 self.stop.wait(2.0)

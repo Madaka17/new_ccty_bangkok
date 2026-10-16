@@ -7,11 +7,12 @@ import os
 import time
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
 
 from backend.bma.bma_service import RAW_DIR as BMA_RAW_DIR
 from backend.core import stale_stamp
+from backend.core.response_cache import cached_json
 from backend.core.instance import DATA_DIR
 from backend.services import bma_scanner, SAFE_ID
 
@@ -28,9 +29,9 @@ def get_bma_cameras():
     return {"total": len(bma_scanner.cameras), "items": cams}
 
 @router.get("/api/bma/analytics")
-def get_bma_analytics():
+def get_bma_analytics(request: Request):
     """Returns comprehensive data analysis for BMA cameras vehicle counts."""
-    return bma_scanner.get_analytics()
+    return cached_json(request, ("bma/analytics",), bma_scanner.get_analytics)
 
 @router.post("/api/bma/scan")
 def trigger_bma_scan():

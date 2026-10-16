@@ -13,7 +13,7 @@ Wrong way (ย้อนศร)
 No helmet (ไม่สวมหมวกกันน็อก)
     COCO YOLO has no helmet class and the riders are 20-60 px tall on these feeds, so a crop of
     each motorcycle (rider merged with the bike by VehicleTracker) is sent once per track to the
-    vision model already used for incidents (Gemini, else Claude). Only tracks at least
+    vision model already used for incidents (Qwen, else Gemini, else Claude). Only tracks at least
     HELMET_MIN_H px tall are checked, at most one crop per camera every HELMET_COOLDOWN seconds
     and HELMET_MAX_PER_HOUR per hour, so the API budget stays small. With no provider configured
     helmet checks are simply off; wrong-way detection needs no API.
@@ -153,7 +153,7 @@ class FlowField:
 
 
 class ViolationMonitor:
-    def __init__(self, db_path, vision=None, cameras_by_id=lambda: {}):
+    def __init__(self, db_path, vision=None, cameras_by_id=lambda: {}, load_models=True):
         """vision: object with .provider/.client and _ask_* like IncidentManager (or None)."""
         self.db_path = db_path
         self.vision = vision
@@ -170,15 +170,35 @@ class ViolationMonitor:
         self._init_db()
         self.helmet_cls = None
         self._cls_lock = threading.Lock()
+        if load_models:
+            self.load_models()
+
+    # ------------------------------------------------------------ models (YOLO switch)
+    def load_models(self):
+        """Load the helmet classifier. No-op when it is already loaded."""
+        with self._cls_lock:
+            if self.helmet_cls is not None:
+                return
+        cls = None
         if os.path.exists(HELMET_CLS_PATH):
             try:
                 from ultralytics import YOLO
-                self.helmet_cls = YOLO(HELMET_CLS_PATH)
-                self.helmet_cls(np.zeros((160, 160, 3), dtype=np.uint8), verbose=False)  # warm up
-                print(f"[Violation] helmet classifier loaded: {HELMET_CLS_PATH} {self.helmet_cls.names}")
+                cls = YOLO(HELMET_CLS_PATH)
+                cls(np.zeros((160, 160, 3), dtype=np.uint8), verbose=False)  # warm up
+                print(f"[Violation] helmet classifier loaded: {HELMET_CLS_PATH} {cls.names}")
             except Exception as e:  # noqa: BLE001
                 print(f"[Violation] helmet classifier failed to load: {e}")
-                self.helmet_cls = None
+                cls = None
+        with self._cls_lock:
+            if self.helmet_cls is None:
+                self.helmet_cls = cls
+
+    def unload_models(self):
+        with self._cls_lock:
+            self.helmet_cls = None
+
+    def models_loaded(self):
+        return self.helmet_cls is not None
 
     # ------------------------------------------------------------ storage
     def _init_db(self):
@@ -426,7 +446,10 @@ class ViolationMonitor:
         """Local classifier on the rider crop; optional API confirmation of a no-helmet verdict."""
         try:
             with self._cls_lock:
-                r = self.helmet_cls(crop, imgsz=160, verbose=False)[0]
+                model = self.helmet_cls
+                if model is None:
+                    return   # switched off since the check was queued
+                r = model(crop, imgsz=160, verbose=False)[0]
             names = r.names
             probs = r.probs
             top = int(probs.top1)
@@ -470,6 +493,8 @@ class ViolationMonitor:
 
     def _ask(self, jpeg, context):
         vis = self.vision
+        if vis.provider == "qwen":
+            return vis.client.look(HELMET_PROMPT, jpeg, context, timeout=60)
         if vis.provider == "gemini":
             from google.genai import types as genai_types
             model = os.environ.get("GEMINI_VISION_MODEL", "gemini-3.6-flash")

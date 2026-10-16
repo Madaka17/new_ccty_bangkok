@@ -377,14 +377,24 @@ def _build():
     }
 
 
+_build_lock = threading.Lock()  # stampede guard: one rebuild at a time; the others wait and reuse its result
+
+
 def get_summary(force=False):
     with _lock:
         fresh = _cache["data"] and time.time() - _cache["ts"] < SUMMARY_TTL
     if fresh and not force:
         return _cache["data"]
-    data = _build()
-    with _lock:
-        _cache.update(ts=time.time(), data=data)
+    with _build_lock:
+        if not force:
+            # another thread may have rebuilt while we waited for the lock
+            with _lock:
+                fresh = _cache["data"] and time.time() - _cache["ts"] < SUMMARY_TTL
+            if fresh:
+                return _cache["data"]
+        data = _build()
+        with _lock:
+            _cache.update(ts=time.time(), data=data)
     return data
 
 

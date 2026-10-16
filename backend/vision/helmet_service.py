@@ -9,7 +9,7 @@ Flow (per camera, once per BMA scan cycle, every 3 min by BMA_SCAN_INTERVAL, or 
          helmet only  -> verdict "helmet" with no API call
          no_helmet    -> the agent confirms it (agent over budget or not answering: pending, asked again later)
          nothing seen -> the agent decides
-    -> helmet agent (the Qwen vision model behind LOCAL_LLM_* by default; HELMET_AGENT=cloud for Gemini
+    -> helmet agent (the Qwen vision model behind VISION_LLM_* by default; HELMET_AGENT=cloud for Gemini
        vision, else Claude): JSON {riders, no_helmet, confidence, note_th}
        (no provider at all: the crop is kept as 'unclear')
     -> verdict no_helmet (confidence >= HELMET_MIN_CONF): full frame with a red box + the crop are
@@ -39,6 +39,7 @@ from backend.core import local_llm
 from backend.core.instance import DEFAULT_BMA_DATA_DIR
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
+from backend.vision.yolo_switch import YoloOff
 from backend.vision.frame_utils import fingerprint, iou, safe_id, safe_name, same_scene, write_jpeg
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "helmet")
 ARCHIVE_DIR = os.getenv("HELMET_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", DEFAULT_BMA_DATA_DIR), "helmet"))
@@ -48,7 +49,7 @@ if not os.path.isabs(LOCAL_DET_PATH):
 # Fast non-thinking model on purpose: a 300-px crop needs no reasoning, and the thinking models
 # (gemini-3.6-flash) take 15-40 s per call and hit 504 under load. Falls back to GEMINI_VISION_MODEL.
 HELMET_MODEL = os.getenv("HELMET_AGENT_MODEL", os.getenv("GEMINI_VISION_MODEL", "gemini-3.1-flash-lite"))
-# qwen = the OpenAI-compatible vision model behind LOCAL_LLM_* (Qwen 3.8 27B reads images); cloud = Gemini / Claude.
+# qwen = the OpenAI-compatible vision model behind VISION_LLM_* (Qwen 3.8 27B reads images); cloud = Gemini / Claude.
 # Qwen by default: Gemini's free tier hit its per-minute limit and left most captures "unclear"
 HELMET_AGENT = os.getenv("HELMET_AGENT", "qwen").strip().lower()
 AGENT_TIMEOUT_MS = 40000
@@ -85,7 +86,7 @@ AGENT_PROMPT = (
 
 
 class HelmetPatrol:
-    def __init__(self, db_path, vision=None, scanner=None):
+    def __init__(self, db_path, vision=None, scanner=None, load_models=True):
         """vision: IncidentManager-like object with .provider/.client. scanner: BmaScanner (for check_now)."""
         self.db_path = db_path
         self.vision = vision
@@ -102,21 +103,44 @@ class HelmetPatrol:
         self._init_db()
         self.local_det = None
         self._det_lock = threading.Lock()
-        if os.path.exists(LOCAL_DET_PATH):
-            try:
-                from ultralytics import YOLO
-                self.local_det = YOLO(LOCAL_DET_PATH)
-                self.local_det(np.zeros((320, 320, 3), dtype=np.uint8), verbose=False)
-                print(f"[Helmet] local detector loaded: {LOCAL_DET_PATH} {self.local_det.names}")
-            except Exception as e:  # noqa: BLE001
-                print(f"[Helmet] local detector failed to load: {e}")
-                self.local_det = None
+        self._switched_off = not load_models    # YOLO off: no cloud calls on leftovers either
+        if load_models:
+            self.load_models()
         for _ in range(WORKERS):
             threading.Thread(target=self._worker, daemon=True).start()
         threading.Thread(target=self._cleanup_loop, daemon=True).start()
         # Captures left "pending" by a restart (the in-memory queue is gone): run them again
         threading.Thread(target=self._resume_pending, daemon=True).start()
         print(f"[Helmet] agent: {self.provider() or 'off'} · archive: {ARCHIVE_DIR}")
+
+    # ------------------------------------------------------------ models (YOLO switch)
+    def load_models(self):
+        """Load the local helmet detector. No-op when it is already loaded."""
+        with self._det_lock:
+            if self.local_det is not None:
+                return
+        det = None
+        if os.path.exists(LOCAL_DET_PATH):
+            try:
+                from ultralytics import YOLO
+                det = YOLO(LOCAL_DET_PATH)
+                det(np.zeros((320, 320, 3), dtype=np.uint8), verbose=False)
+                print(f"[Helmet] local detector loaded: {LOCAL_DET_PATH} {det.names}")
+            except Exception as e:  # noqa: BLE001
+                print(f"[Helmet] local detector failed to load: {e}")
+                det = None
+        with self._det_lock:
+            if self.local_det is None:
+                self.local_det = det
+        self._switched_off = False
+
+    def unload_models(self):
+        self._switched_off = True
+        with self._det_lock:
+            self.local_det = None
+
+    def models_loaded(self):
+        return self.local_det is not None
 
     # ------------------------------------------------------------ storage
     def _init_db(self):
@@ -172,7 +196,7 @@ class HelmetPatrol:
         return os.path.join(CACHE_DIR, f"{safe_id(hid)}_frame.jpg")
 
     def provider(self):
-        if HELMET_AGENT == "qwen" and local_llm.default.enabled():
+        if HELMET_AGENT == "qwen" and local_llm.vision.enabled():
             return "qwen"
         v = self.vision
         return getattr(v, "provider", None) if v and getattr(v, "client", None) else None
@@ -243,8 +267,11 @@ class HelmetPatrol:
         img = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
         if img is None:
             return {"ok": False, "error": "bad image"}
-        with self.scanner.infer_lock:
-            boxes = self.scanner._detect(img)
+        try:
+            with self.scanner.infer_lock:
+                boxes = self.scanner._detect(img)
+        except YoloOff:
+            return {"ok": False, "error": "YOLO ปิดอยู่"}
         motos = sum(1 for b in boxes if b[0] == MOTO_CLASS)
         usable = sum(1 for b in boxes if b[0] == MOTO_CLASS and b[1] >= MIN_BOX_CONF and (b[5] - b[3]) >= MIN_BOX_H)
         ids = self.observe(cam, img, boxes, force=True)
@@ -283,10 +310,11 @@ class HelmetPatrol:
 
     def _local_verdict(self, crop):
         """(verdict, conf) from the YOLO26x helmet detector, or None when it sees no head at all."""
-        if self.local_det is None:
-            return None
         with self._det_lock:
-            r = self.local_det(crop, imgsz=640, conf=0.25, verbose=False)[0]
+            det = self.local_det
+            if det is None:
+                return None
+            r = det(crop, imgsz=640, conf=0.25, verbose=False)[0]
         best = {}
         for c, cf in zip(r.boxes.cls.tolist(), r.boxes.conf.tolist()):
             name = r.names[int(c)]
@@ -312,6 +340,8 @@ class HelmetPatrol:
                          note=f"AI ของระบบเห็นหมวกกันน็อก (มั่นใจ {local[1]:.0%})")
             self.last_check = int(now)
             return
+        if agent == "auto" and self._switched_off:
+            return      # YOLO off: the row stays pending, no cloud call until it is switched on again
         provider = self.provider()
         if not provider or (agent == "auto" and not self._budget_ok(now)):
             reason = self._agent_reason(now) if provider else "ไม่มี AI ตรวจซ้ำ"
@@ -398,7 +428,7 @@ class HelmetPatrol:
         the local detector while the agent was over budget or not answering), newest first, within budget."""
         time.sleep(20)   # let the cloud client / local model come up first
         while True:
-            if self.provider() and self._budget_ok(time.time()):
+            if not self._switched_off and self.provider() and self._budget_ok(time.time()):
                 with self.lock:
                     conn = self._db()
                     ids = [r["id"] for r in conn.execute(
@@ -488,11 +518,7 @@ class HelmetPatrol:
 
     def _ask(self, jpeg, context):
         if self.provider() == "qwen":
-            image = "data:image/jpeg;base64," + base64.standard_b64encode(jpeg).decode("ascii")
-            return local_llm.default.chat(
-                [{"role": "system", "content": AGENT_PROMPT},
-                 {"role": "user", "content": [{"type": "image_url", "image_url": {"url": image}}, {"type": "text", "text": context}]}],
-                max_tokens=300, temperature=0.1, timeout=AGENT_TIMEOUT_MS / 1000)
+            return local_llm.vision.look(AGENT_PROMPT, jpeg, context, timeout=AGENT_TIMEOUT_MS / 1000)
         vis = self.vision
         if vis.provider == "gemini":
             from google.genai import types as genai_types
@@ -542,7 +568,7 @@ class HelmetPatrol:
         self._calls = [t for t in self._calls if now - t < 3600]
         return {
             "updated": int(now), "enabled": self.enabled(), "agent": self.provider() or "off",
-            "agent_model": local_llm.default.model if self.provider() == "qwen"
+            "agent_model": local_llm.vision.model if self.provider() == "qwen"
             else HELMET_MODEL if self.provider() == "gemini"
             else (os.environ.get("CLAUDE_VISION_MODEL", "claude-opus-5-5") if self.provider() else None),
             "local_detector": os.path.basename(LOCAL_DET_PATH) if self.local_det is not None else None,

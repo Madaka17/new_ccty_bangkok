@@ -19,3 +19,5 @@ kagglehub>=0.3.0
 pytest>=8.0
 # Web Push alerts (alert_service.py)
 pywebpush>=2.0
+# BKK Monitor desktop window (launch\monitor, WebView2)
+pywebview>=6.2
