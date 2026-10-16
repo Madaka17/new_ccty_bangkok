@@ -98,3 +98,22 @@ def test_old_runner_does_not_overwrite_newer_runners_state(tmp_path):
     t.join()
     st = json.loads((tmp_path / "own.json").read_text(encoding="utf-8"))
     assert st["runner_pid"] == 999999 and "exited_at" not in st
+
+
+def test_server_stdout_setup_keeps_lines_live(tmp_path):
+    # server.py wraps stdout for UTF-8; that wrapper must not hold lines back, or production.log fills in 8 KB bursts
+    import threading
+    import time
+    setup = (ROOT / "server.py").read_text(encoding="utf-8").split("# 1. Auto-detect")[0]
+    (tmp_path / "child.py").write_text(setup + "\nimport time\nprint('live line')\ntime.sleep(3)\n", encoding="utf-8")
+    t = threading.Thread(target=run_hidden.run, args=("srv", [sys.executable, str(tmp_path / "child.py")]),
+                         kwargs={"log_dir": tmp_path}, daemon=True)
+    t.start()
+    deadline = time.time() + 2
+    seen = False
+    while time.time() < deadline and not seen:
+        time.sleep(0.1)
+        log = tmp_path / "srv.log"
+        seen = log.exists() and "live line" in log.read_text(encoding="utf-8", errors="replace")
+    t.join()
+    assert seen, "the line only reached the log when the child exited"
