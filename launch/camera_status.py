@@ -357,7 +357,8 @@ def check_round(port, previous=None):
     for src, js in later.items():
         for camid, row, url, _ in js:
             if camid not in results:
-                why = (previous.get(camid) or {}).get("reason") or "down"
+                # the last pulled reason, without the note an earlier unpulled round added
+                why = ((previous.get(camid) or {}).get("reason") or "down").split(" (not pulled:")[0]
                 results[camid] = {**row, "state": "down", "url": url,
                                   "reason": f"{why} (not pulled: {DEAD_SAMPLE} of this website's cameras tried, all down)"}
     return {"checked_at": int(time.time()), "took_s": round(time.time() - t0), "port": port, "probed": probed,
