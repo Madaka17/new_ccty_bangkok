@@ -82,6 +82,20 @@ def test_agent_check_crash_becomes_fail_row(monkeypatch):
     assert "bad json" in rows["agent:production:checks"]["detail"]
 
 
+def test_agent_rows_carry_extra(monkeypatch):
+    patch(monkeypatch, up={8000}, stopped={8001, 5050})
+    calls = []
+    monkeypatch.setattr(mc, "agents", lambda port: calls.append(port) or {"summary": "s", "window": 59.6, "rows": [
+        {"name": "A", "state": "ok", "data": "1m", "analysis": "2m", "calls": 3, "fails": 1, "tokens": 500, "note": "n"},
+        {"name": "B", "state": "idle", "data": "", "analysis": "", "calls": "", "fails": "", "tokens": "", "note": ""}]})
+    rows = by_key(mc.run_round(gateway_due=False))
+    assert calls == [8000]
+    assert rows["agent:production:A"]["extra"] == {"data": "1m", "analysis": "2m", "calls": 3, "fails": 1,
+                                                  "tokens": 500, "window": 60, "note": "n"}
+    assert rows["agent:production:B"]["extra"]["tokens"] == 0
+    assert rows["agent:production:A"]["detail"] == "data 1m · analysis 2m · 3 calls · 1 failed · 500 tokens · n"
+
+
 def test_server_status_carries_uptime(monkeypatch):
     patch(monkeypatch, up={8000}, stopped={8001, 5050})
     assert by_key(mc.run_round(gateway_due=False))["server:production"]["uptime_s"] == 7200

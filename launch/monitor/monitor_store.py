@@ -6,13 +6,14 @@ The monitor's database (launch\\monitor\\state\\monitor.db), shared by the colle
     meta     small values: the collector's heartbeat, the watchdog.log read offset, "check now" requests
 Each call opens its own connection in WAL mode, so the app can read while the collector writes.
 """
+import json
 import sqlite3
 from contextlib import closing
 from pathlib import Path
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS status (key TEXT PRIMARY KEY, grp TEXT, target TEXT, name TEXT, state TEXT,
-                                   detail TEXT, since REAL, checked_at REAL);
+                                   detail TEXT, since REAL, checked_at REAL, extra TEXT);
 CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, key TEXT, grp TEXT, target TEXT,
                                    name TEXT, old TEXT, new TEXT, detail TEXT);
 CREATE INDEX IF NOT EXISTS events_ts ON events(ts);
@@ -27,6 +28,14 @@ def _event(row):
             "old": row[6], "new": row[7], "detail": row[8]}
 
 
+def _extra(text):
+    """The stored JSON of a status row, None when there is none or it does not parse."""
+    try:
+        return json.loads(text) if text else None
+    except ValueError:
+        return None
+
+
 class Store:
     def __init__(self, path):
         self.path = str(path)
@@ -34,6 +43,13 @@ class Store:
         with closing(self._conn()) as c:
             c.execute("PRAGMA journal_mode=WAL")
             c.executescript(SCHEMA)
+            # DBs made before the extra column (agent token/call numbers) get it here
+            if "extra" not in {r[1] for r in c.execute("PRAGMA table_info(status)")}:
+                try:
+                    c.execute("ALTER TABLE status ADD COLUMN extra TEXT")
+                except sqlite3.OperationalError as e:   # the collector and the app both started on an old DB
+                    if "duplicate column" not in str(e):
+                        raise
 
     def _conn(self):
         return sqlite3.connect(self.path, timeout=10)
@@ -45,9 +61,10 @@ class Store:
                 prev = c.execute("SELECT state, since FROM status WHERE key = ?", (s["key"],)).fetchone()
                 changed = prev is None or prev[0] != s["state"]
                 since = now if changed else prev[1]
-                c.execute("INSERT OR REPLACE INTO status (key, grp, target, name, state, detail, since, checked_at) "
-                          "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                          (s["key"], s["group"], s["target"], s["name"], s["state"], s["detail"], since, now))
+                extra = json.dumps(s["extra"]) if s.get("extra") is not None else None
+                c.execute("INSERT OR REPLACE INTO status (key, grp, target, name, state, detail, since, checked_at, extra) "
+                          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                          (s["key"], s["group"], s["target"], s["name"], s["state"], s["detail"], since, now, extra))
                 if changed and not (prev is None and (s["state"] == "ok" or s["key"] in silent_new)):
                     events.append(self._insert(c, now, s["key"], s["group"], s["target"], s["name"],
                                                prev[0] if prev else None, s["state"], s["detail"]))
@@ -72,9 +89,9 @@ class Store:
 
     def current(self):
         with closing(self._conn()) as c:
-            rows = c.execute("SELECT key, grp, target, name, state, detail, since, checked_at FROM status ORDER BY key").fetchall()
+            rows = c.execute("SELECT key, grp, target, name, state, detail, since, checked_at, extra FROM status ORDER BY key").fetchall()
         return [{"key": r[0], "group": r[1], "target": r[2], "name": r[3], "state": r[4], "detail": r[5],
-                 "since": r[6], "checked_at": r[7]} for r in rows]
+                 "since": r[6], "checked_at": r[7], "extra": _extra(r[8])} for r in rows]
 
     def events(self, target=None, state=None, q=None, since=None, limit=25, offset=0):
         where, args = [], []

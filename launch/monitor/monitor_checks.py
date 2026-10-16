@@ -1,7 +1,7 @@
 """
 One round of the monitor's checks (launch\\monitor\\collector.py runs it every 30 s). Returns one status per check:
     server:<target>          production :8000 / test :8001 (/api/health), enviro :5050 (its page)
-    agent:<target>:<name>    the AI agents, judged like launch\\ai_status.py
+    agent:<target>:<name>    the AI agents, judged like launch\\ai_status.py (extra: the numbers for the Processes table)
     yolo:<target>:<name>     the YOLO switch and models, judged like launch\\yolo_status.py
     service:tunnel           the cloudflared Windows service
     service:camera           the camera status file (instances\\production\\camera_status.json) is fresh
@@ -159,13 +159,17 @@ def run_round(gateway_due):
         if h is None:
             continue
         try:
-            for r in agents(port)["rows"]:
+            result = agents(port)
+            for r in result["rows"]:
                 parts = [f"data {r['data']}" if r["data"] else "", f"analysis {r['analysis']}" if r["analysis"] else "",
                          f"{r['calls']} calls" if r["calls"] != "" else "",
                          f"{r['fails']} failed" if r["fails"] else "",
                          f"{r['tokens']:,} tokens" if isinstance(r["tokens"], int) and r["tokens"] else "", r["note"]]
-                out.append(_status(f"agent:{target}:{r['name']}", "agent", target, r["name"], r["state"],
-                                   " · ".join(p for p in parts if p)))
+                extra = {"data": r["data"], "analysis": r["analysis"], "calls": r["calls"], "fails": r["fails"],
+                         "tokens": r["tokens"] if isinstance(r["tokens"], int) else 0,
+                         "window": round(result["window"]), "note": r["note"]}
+                out.append({**_status(f"agent:{target}:{r['name']}", "agent", target, r["name"], r["state"],
+                                      " · ".join(p for p in parts if p)), "extra": extra})
         except Exception as e:  # noqa: BLE001 - the server answered health but not the agent checks
             out.append(_status(f"agent:{target}:checks", "agent", target, "agent checks", "fail", str(e)[:200]))
         try:

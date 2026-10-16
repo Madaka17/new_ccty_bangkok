@@ -100,6 +100,43 @@ def test_concurrent_read_while_writing(tmp_path):
     assert errors == []
 
 
+def test_extra_round_trips_and_is_none_without(tmp_path):
+    s = Store(tmp_path / "m.db")
+    s.apply([{**st("agent:production:A", "ok", group="agent", target="production", name="A"),
+              "extra": {"tokens": 500, "calls": 3, "note": ""}},
+             st("server:production", "ok")], now=100)
+    cur = {r["key"]: r for r in s.current()}
+    assert cur["agent:production:A"]["extra"] == {"tokens": 500, "calls": 3, "note": ""}
+    assert cur["server:production"]["extra"] is None
+
+
+def test_bad_extra_json_reads_as_none(tmp_path):
+    from contextlib import closing
+    import sqlite3
+    s = Store(tmp_path / "m.db")
+    s.apply([st("server:production", "ok")], now=100)
+    with closing(sqlite3.connect(s.path)) as c, c:
+        c.execute("UPDATE status SET extra = '{not json' WHERE key = 'server:production'")
+    assert s.current()[0]["extra"] is None
+
+
+def test_old_db_gains_extra_column(tmp_path):
+    from contextlib import closing
+    import sqlite3
+    path = tmp_path / "old.db"
+    with closing(sqlite3.connect(path)) as c, c:
+        c.execute("CREATE TABLE status (key TEXT PRIMARY KEY, grp TEXT, target TEXT, name TEXT, state TEXT, "
+                  "detail TEXT, since REAL, checked_at REAL)")
+        c.execute("INSERT INTO status VALUES ('server:production', 'server', 'production', 'Production', 'ok', 'up', 100, 100)")
+    s = Store(path)
+    with closing(sqlite3.connect(path)) as c:
+        assert "extra" in {r[1] for r in c.execute("PRAGMA table_info(status)")}
+    cur = s.current()
+    assert cur[0]["key"] == "server:production" and cur[0]["extra"] is None
+    s.apply([{**st("agent:production:A", "ok", group="agent", target="production", name="A"), "extra": {"tokens": 1}}], now=200)
+    assert {r["key"]: r["extra"] for r in s.current()}["agent:production:A"] == {"tokens": 1}
+
+
 def test_retire_deletes_rows_without_events(tmp_path):
     s = Store(tmp_path / "m.db")
     s.apply([{"key": "agent:production:A", "group": "agent", "target": "production", "name": "A", "state": "fail",

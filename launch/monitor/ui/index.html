@@ -122,6 +122,8 @@ h2 { font-size: 13px; font-weight: 600; margin: 0 0 10px; }
 .ltool .nm { font-weight: 600; margin-right: auto; }
 .chipbtn { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; cursor: pointer; color: var(--muted); }
 .chipbtn.on { border-color: var(--accent); color: var(--text); }
+td.num, th.num { text-align: right; }
+.fail-t { color: var(--fail); }
 #logpane { height: 60vh; min-height: 200px; overflow: auto; background: #07090b; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
   font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
 #logpane .ln { color: var(--text); }
@@ -162,7 +164,7 @@ h2 { font-size: 13px; font-weight: 600; margin: 0 0 10px; }
 
 <script>
 const api = () => window.pywebview.api;
-const S = { page: "overview", target: "", state: "", q: "", hours: 24, limit: 25, offset: 0, status: null, events: null, menu: null, busy: false, sel: "production", procs: null, logOff: null, logBuf: [], follow: true, errs: false };
+const S = { page: "overview", target: "", state: "", q: "", hours: 24, limit: 25, offset: 0, status: null, events: null, menu: null, busy: false, sel: "production", procs: null, logOff: null, logBuf: [], follow: true, errs: false, agentT: "production" };
 const STATES = ["ok", "warn", "fail", "idle", "stopped"];
 const LABEL = { production: "Production", test: "Test", enviro: "ENVIRO", gateway: "AI gateway", tunnel: "Cloudflare tunnel", camera: "Camera status", watchdog: "Watchdog", disk: "Data disk", public: "Public site" };
 const TARGETS = ["production", "test", "enviro", "gateway", "tunnel", "camera", "watchdog", "disk", "public"];
@@ -428,8 +430,45 @@ function procCard(p) {
     `<div class="acts"><button class="btn sm" data-act2="openlog" data-n="${esc(p.name)}">Open log</button></div>${menu}</div>`;
 }
 function procCards() { return S.procs ? S.procs.map(procCard).join("") : `<div class="empty">Loading…</div>`; }
+// AI agents of one server (group "agent" rows from the collector), with the numbers kept in extra
+const WORK_LABEL = { ok: "working", fail: "not working", warn: "warn", idle: "idle" };
+function agentsHtml() {
+  const tgt = S.agentT, n = v => Number(v).toLocaleString("en-US");
+  const rows = items().filter(i => i.group === "agent" && i.target === tgt).sort((a, b) => a.name.localeCompare(b.name));
+  const tabs = [["production", "Production"], ["test", "Test"]].map(([v, l]) =>
+    `<button class="chipbtn${tgt === v ? " on" : ""}" data-act2="agentT" data-t="${v}">${l}</button>`).join("");
+  const head = `<div class="ltool"><h2 class="nm" style="margin:0">AI agents</h2>${tabs}</div>`;
+  if (!rows.length) {
+    const srv = find("server:" + tgt), up = !!srv && (srv.state === "ok" || srv.state === "warn");
+    return head + `<div class="wrap"><div class="empty">${up ? "No agent data yet." : "Server not running: no agent data."}</div></div>`;
+  }
+  const working = rows.filter(i => i.state === "ok").length;
+  const notWorking = rows.filter(i => i.state === "fail" || i.state === "warn").length;
+  const tokens = rows.reduce((sum, i) => sum + ((i.extra && i.extra.tokens) || 0), 0);
+  const win = rows.map(i => i.extra && i.extra.window).find(w => w != null);
+  const summary = `${rows.length} agents · ${working} working · ${notWorking} not working · ${n(tokens)} tokens` +
+    (win != null ? ` in the last ${win} min` : "");
+  const trs = rows.map(i => {
+    const x = i.extra, work = `<span class="pill ${esc(i.state)}">${esc(WORK_LABEL[i.state] || i.state)}</span>`;
+    if (!x) {   // a row without extra (the agent checks crash row): the detail is all there is
+      return `<tr><td>${esc(i.name)}</td><td>${work}</td><td>–</td><td>–</td><td class="num">–</td><td class="num">–</td>` +
+        `<td><div class="detail" title="${esc(i.detail)}">${esc(i.detail)}</div></td></tr>`;
+    }
+    const dash = v => (v === "" || v == null) ? "–" : esc(v);
+    const calls = `${dash(x.calls)}` + (x.fails > 0 ? ` <span class="fail-t">(${esc(x.fails)} failed)</span>` : "");
+    return `<tr><td>${esc(i.name)}</td><td>${work}</td><td>${dash(x.data)}</td><td>${dash(x.analysis)}</td>` +
+      `<td class="num">${calls}</td><td class="num">${x.tokens ? n(x.tokens) : "–"}</td>` +
+      `<td><div class="detail" title="${esc(x.note)}">${esc(x.note || "")}</div></td></tr>`;
+  }).join("");
+  return head + `<div class="count" style="margin:0 0 10px">${esc(summary)}</div>` +
+    `<div class="wrap" style="margin-bottom:14px"><table><thead><tr><th>Agent</th><th>Working</th><th>Data</th><th>Analysis</th>` +
+    `<th class="num">Calls</th><th class="num">Tokens</th><th>Note</th></tr></thead><tbody>${trs}</tbody></table></div>` +
+    `<div class="muted" style="font-size:12px;margin:-4px 0 14px">Working = fresh data and a recent AI analysis. ` +
+    `Calls / tokens = real model requests${win != null ? ` in the last ${win} min` : ""}.</div>`;
+}
 function procSkeleton() {
   return `<div class="pgrid" id="pcards">${procCards()}</div>` +
+    `<div id="agents"></div>` +
     `<div class="ltool"><span class="nm" id="lname"></span><button class="chipbtn" id="lerrs" data-act2="errs">Errors only</button>` +
     `<button class="chipbtn" id="lfollow" data-act2="follow">Follow</button><button class="btn sm" data-act2="clear">Clear</button>` +
     `<button class="btn sm" id="lopen" data-act2="openlog" data-n="">Open log</button></div><div id="logpane"></div>`;
@@ -452,6 +491,7 @@ function renderProcesses(body) {
     pane.appendChild(frag);
     if (S.follow) pane.scrollTop = pane.scrollHeight;
   }
+  $("agents").innerHTML = agentsHtml();   // both branches: the table follows the 5 s status poll too
   syncProc();
 }
 let procBusy = false, tailBusy = false;
@@ -545,6 +585,7 @@ document.addEventListener("click", async e => {
     case "follow": S.follow = !S.follow; syncProc(); if (S.follow) { const p = $("logpane"); p.scrollTop = p.scrollHeight; } return;
     case "clear": return logClear();
     case "openlog": { const r = await call(() => api().open_log(d.n)); if (r && !r.ok) toast("Could not open the log", false); return; }
+    case "agentT": S.agentT = d.t; return render();
     case "refresh": return loadEvents();
     case "export": return doExport();
     case "prev": S.offset = Math.max(0, S.offset - S.limit); return loadEvents();
