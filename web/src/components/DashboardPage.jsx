@@ -243,9 +243,9 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
 
       {section === 'overview' && (
         <>
+          <BestTimeCard isActive={isActive} />
           <FlowOverview summary={activeSummary} areas={areas} error={summaryError} onRetry={load} retrying={refreshing} onArea={setRoadArea} />
           <TrafficGuidanceCard province={roadArea?.province} amphoe={roadArea?.amphoe} />
-          <BestTimeCard isActive={isActive} />
         </>
       )}
       {/* The road-colour shares (Longdo lines) sit with the per-road views: on the overview they read as a second,
