@@ -177,3 +177,14 @@ def test_commute_window_without_data(tmp_path):
     assert result["commute"]["evening"] == {"best": None, "worst": None}
     # all four morning hours read 10 cars, so the first hour is both the best and the worst
     assert result["commute"]["morning"] == {"best": {"from": 6, "to": 7}, "worst": {"from": 6, "to": 7}}
+
+
+def test_holiday_counts_as_weekend(tmp_path):
+    db = BmaDatabase(db_path=str(tmp_path / "v.db"))
+    friday = "2026-10-09"          # a Friday; with it in the holiday set it is weekend
+    assert date.fromisoformat(friday).weekday() == 4
+    _insert(db, "c1", friday, 8, 10)
+    cams = [{"camid": "c1", "road": "ถนนสีลม", "title": ""}]
+    bt = BestTime(db.db_path, cams, today=lambda: TODAY, holidays={friday})
+    assert bt.profile(day="weekend")["days_of_data"] == 1
+    assert bt.profile(day="workday")["days_of_data"] == 0

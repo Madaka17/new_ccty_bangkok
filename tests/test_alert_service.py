@@ -247,3 +247,23 @@ def test_dust_alert_level_raise(tmp_path, monkeypatch):
 def test_dust_alert_no_outlook(tmp_path, monkeypatch):
     svc, _ = _svc(tmp_path, monkeypatch, air_forecast=lambda: None)
     assert [c for c in svc.candidates(now=_bkk(18, 18)) if c["topic"] == "air"] == []
+
+
+def test_dust_alert_once_per_date(tmp_path, monkeypatch):
+    on = {"v": True}
+    svc, pushed = _svc(tmp_path, monkeypatch, air_forecast=lambda: _outlook("unhealthy")() if on["v"] else None)
+    assert [c["key"] for c in svc.check(now=_bkk(18, 18))] == ["airfc:2026-10-19"]
+    on["v"] = False    # absent for 45 minutes
+    svc.check(now=_bkk(18, 18) + 45 * 60)
+    assert "airfc:2026-10-19" in svc.sent
+    on["v"] = True     # back at the same level
+    assert svc.check(now=_bkk(18, 19)) == []
+    assert len(pushed) == 1
+
+
+def test_dust_alert_key_clears_after_its_date(tmp_path, monkeypatch):
+    svc, _ = _svc(tmp_path, monkeypatch, air_forecast=_outlook("unhealthy"))
+    svc.check(now=_bkk(18, 18))
+    svc.sources["air_forecast"] = lambda: None
+    svc.check(now=_bkk(20, 1))    # the day after 2026-10-19, well past CLEAR_SECONDS
+    assert "airfc:2026-10-19" not in svc.sent

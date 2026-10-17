@@ -55,6 +55,7 @@ TOPICS = {
 }
 TOPIC_URL = {"flood": "/#water", "zone": "/#water", "incident": "/#dashboard", "air": "/#air", "system": "/#dashboard"}
 CHECK_SECONDS = 60
+BKK_TZ = timezone(timedelta(hours=7))
 CLEAR_SECONDS = 30 * 60
 FLOOD_CM = 20.0
 CLOSED_CM = 60.0
@@ -240,7 +241,7 @@ class AlertService:
                             "body": f"{a.get('label')} · {a.get('area') or ''} {a.get('province') or ''}".strip(),
                             "province": thai_regions.normalize(a.get("province")) or ""})
         # 17:00-21:59 Bangkok time, warn about a dusty tomorrow so people can plan (the outlook is per day)
-        if 17 <= datetime.fromtimestamp(now, timezone(timedelta(hours=7))).hour < 22:
+        if 17 <= datetime.fromtimestamp(now, BKK_TZ).hour < 22:
             fc = self._call("air_forecast") or {}
             tomorrow = next((d for d in fc.get("days") or [] if d.get("label") == "พรุ่งนี้"), None)
             dust = {"unhealthy": 1, "very_unhealthy": 2}.get((tomorrow or {}).get("level"))
@@ -300,8 +301,10 @@ class AlertService:
                     self.sent[c["key"]] = {"level": c["level"], "first": int(now), "seen": int(now)}
                 else:
                     prev["seen"] = int(now)
-            for k in [k for k, v in self.sent.items() if now - v["seen"] > CLEAR_SECONDS]:
-                del self.sent[k]
+            today = datetime.fromtimestamp(now, BKK_TZ).date().isoformat()
+            for k in [k for k, v in self.sent.items() if now - v["seen"] > CLEAR_SECONDS
+                      and not (k.startswith("airfc:") and k[len("airfc:"):] >= today)]:
+                del self.sent[k]    # a tomorrow-dust alert stays until its date has passed
             self.history.extendleft(reversed(fresh))
             self.last_check = int(now)
             self._save()
