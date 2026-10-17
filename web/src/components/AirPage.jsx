@@ -17,7 +17,7 @@ const textOn = (level) => (level === 'very_unhealthy' ? '#ffffff' : '#1a2228');
 function LevelPill({ color, level, children }) {
   return (
     <span
-      className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold leading-5 whitespace-nowrap"
+      className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold leading-4 max-w-full text-center"
       style={{ backgroundColor: color, color: textOn(level) }}
     >
       {children}
@@ -58,7 +58,7 @@ function OutlookChart({ hours }) {
       </p>
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        className="w-full h-auto touch-none"
+        className="w-full h-auto touch-pan-y"
         role="img"
         aria-label="กราฟแนวโน้มฝุ่น 3 วันข้างหน้า"
         onPointerMove={pick}
@@ -142,7 +142,9 @@ export default function AirPage({ isActive, onNavigate }) {
   const ranking = stations ? districtRanking(items) : [];
   const maxPm = ranking.length ? Math.max(...ranking.map((r) => r.pm25)) : 0;
   const shown = showAll ? ranking : ranking.slice(0, TOP_DISTRICTS);
-  const hasHours = forecast?.hours?.length > 1;
+  const days = forecast?.days || [];
+  const hours = forecast?.hours || [];
+  const hasHours = hours.length > 1;
 
   return (
     <div className="flex flex-col gap-4">
@@ -162,9 +164,9 @@ export default function AirPage({ isActive, onNavigate }) {
         {forecast && (
           <Card className="p-4">
             <h3 className="text-[15px] font-semibold text-slate-900">ฝุ่น 3 วันข้างหน้า</h3>
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {forecast.days.map((d) => (
-                <div key={d.date} className="flex flex-col items-start gap-1 rounded-lg border border-slate-200 p-2 min-w-0">
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {days.map((d) => (
+                <div key={d.date} className="flex flex-col items-center gap-1 rounded-lg border border-slate-200 p-2 min-w-0 text-center">
                   <span className="text-xs text-slate-600">{d.label}</span>
                   <LevelPill color={d.color} level={d.level}>{d.label_th}</LevelPill>
                 </div>
@@ -172,7 +174,7 @@ export default function AirPage({ isActive, onNavigate }) {
             </div>
             {hasHours && (
               <div className="mt-4">
-                <OutlookChart hours={forecast.hours} />
+                <OutlookChart hours={hours} />
               </div>
             )}
             <p className="text-xs text-slate-500 mt-2">ค่าประมาณ อาจต่างจากจุดวัดจริง</p>
