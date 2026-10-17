@@ -198,10 +198,12 @@ def air_context(air, question, forecast=None):
     counts = ", ".join(f"{k} {v}" for k, v in ((air or {}).get("counts") or {}).items())
     lines = [f"ฝุ่น PM2.5 รายชั่วโมง (AirBKK + Air4Thai {_hhmm(air.get('source_ts') or air.get('updated_at'))}): เฉลี่ย {air.get('avg_pm25')} µg/m³ "
              f"จาก {air.get('total')} สถานี ({counts})"]
+    if outlook:
+        lines.append(outlook)   # right after the header, so a tight prompt budget keeps it
     picked = [i for i in items if _asked(question, i.get("name"), i.get("area"))][:5]
     for i in picked + [i for i in items[:5] if i not in picked]:
         lines.append(f"  - {i.get('name')} ({i.get('area')} {i.get('province')}): PM2.5 {i.get('pm25')} µg/m³ {i.get('label')}")
-    return lines + ([outlook] if outlook else [])
+    return lines
 
 
 def guidance_context(guidance, question):

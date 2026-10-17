@@ -14,6 +14,8 @@ def test_air_context_adds_outlook():
     text = "\n".join(ctx.air_context(STATIONS, "ฝุ่นวันนี้", forecast=FORECAST))
     assert "พรุ่งนี้ เฉลี่ย 62 ปานกลาง" in text
     assert "วันนี้ เฉลี่ย 23 ดี สูงสุด 35" in text
+    lines = ctx.air_context(STATIONS, "ฝุ่นวันนี้", forecast=FORECAST)
+    assert lines[1].startswith("ฝุ่นคาดการณ์ กทม. (ค่าประมาณ)")
 
 
 def test_air_context_outlook_without_stations():

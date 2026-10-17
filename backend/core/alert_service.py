@@ -239,8 +239,8 @@ class AlertService:
                             "title": f"ฝุ่น PM2.5 {a.get('pm25')}: {a.get('name')}",
                             "body": f"{a.get('label')} · {a.get('area') or ''} {a.get('province') or ''}".strip(),
                             "province": thai_regions.normalize(a.get("province")) or ""})
-        # From 17:00 Bangkok time, warn about a dusty tomorrow so people can plan (the outlook is per day)
-        if datetime.fromtimestamp(now, timezone(timedelta(hours=7))).hour >= 17:
+        # 17:00-21:59 Bangkok time, warn about a dusty tomorrow so people can plan (the outlook is per day)
+        if 17 <= datetime.fromtimestamp(now, timezone(timedelta(hours=7))).hour < 22:
             fc = self._call("air_forecast") or {}
             tomorrow = next((d for d in fc.get("days") or [] if d.get("label") == "พรุ่งนี้"), None)
             dust = {"unhealthy": 1, "very_unhealthy": 2}.get((tomorrow or {}).get("level"))

@@ -230,6 +230,11 @@ def test_dust_alert_not_before_17(tmp_path, monkeypatch):
     assert [c for c in svc.candidates(now=_bkk(18, 16) + 59 * 60) if c["topic"] == "air"] == []
 
 
+def test_dust_alert_not_after_21(tmp_path, monkeypatch):
+    svc, _ = _svc(tmp_path, monkeypatch, air_forecast=_outlook("unhealthy"))
+    assert [c for c in svc.candidates(now=_bkk(18, 22)) if c["key"].startswith("airfc:")] == []
+
+
 def test_dust_alert_level_raise(tmp_path, monkeypatch):
     level = {"v": "unhealthy"}
     svc, pushed = _svc(tmp_path, monkeypatch, air_forecast=lambda: _outlook(level["v"])())
