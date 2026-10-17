@@ -387,7 +387,7 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.005em; }
 .wfx-gust { position: absolute; left: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(71, 85, 105, 0.35), transparent); animation: wfx-gust 2s linear infinite; }
 .dark .wfx-gust { background: linear-gradient(90deg, transparent, rgba(230, 238, 240, 0.4), transparent); }
 @keyframes wfx-gust { from { transform: translate3d(-30vw, 0, 0); } to { transform: translate3d(110vw, 0, 0); } }
-/* Rain over the cards (phone only, WeatherOverlay). Streak opacity = --k (0..1) times a cap: 0.14 light, 0.18 dark. */
+/* Rain over the cards (all widths, WeatherOverlay). Streak opacity = --k (0..1) times a cap: 0.14 light, 0.18 dark. */
 .wfx-overlay { position: fixed; inset: 0; z-index: 30; overflow: hidden; pointer-events: none; --wfx-rain: rgba(71, 85, 105, 0.4); }
 .dark .wfx-overlay { --wfx-rain: rgba(190, 210, 225, 0.55); }
 .wfx-overlay .wfx-streak { opacity: calc(var(--k, 1) * 0.14); }

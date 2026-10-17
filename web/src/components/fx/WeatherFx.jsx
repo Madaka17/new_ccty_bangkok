@@ -57,7 +57,7 @@ function Rain({ intensity, windy, narrow }) {
   );
 }
 
-// Faint rain over the cards, phone only (lg:hidden). Pointer-events none, aria-hidden, z-30: above main,
+// Faint rain over the cards, on every width. Pointer-events none, aria-hidden, z-30: above main,
 // below the top bar, bottom nav and pop-ups. Opacity is set per streak through --k and capped in CSS.
 function OverlayRain({ intensity, windy, narrow }) {
   const drops = useMemo(() => makeDrops(intensity, narrow, windy, 0.5), [intensity, windy, narrow]);
@@ -80,7 +80,7 @@ export function WeatherOverlay({ scene, allowed }) {
   const narrow = useMemo(() => isNarrow(), []);
   if (!allowed || !scene || !(scene.kind === 'rain' || scene.kind === 'storm')) return null;
   return (
-    <div className="wfx-overlay lg:hidden" aria-hidden="true" data-kind={scene.kind}>
+    <div className="wfx-overlay" aria-hidden="true" data-kind={scene.kind}>
       <OverlayRain intensity={scene.intensity} windy={scene.windy} narrow={narrow} />
     </div>
   );
