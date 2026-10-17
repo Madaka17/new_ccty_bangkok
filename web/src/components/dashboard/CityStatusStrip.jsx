@@ -104,22 +104,31 @@ export default function CityStatusStrip({ summary, incidents, flood, avoid, onNa
       );
     };
     load();   // Bangkok now; the viewer's own spot replaces it when located
-    if (locateTries > 0) {
-      locate();
-    } else {
-      // Older browsers have no Permissions API: then nothing is read silently and the button shows
-      let perm = null;
-      try { perm = navigator.permissions?.query?.({ name: 'geolocation' }); } catch { perm = null; }
-      perm?.then((r) => {
+    let status = null;   // the geolocation PermissionStatus, watched for changes
+    if (locateTries > 0) locate();   // a tap asks now
+    // Older browsers have no Permissions API: then nothing is read silently and the button shows
+    let perm = null;
+    try { perm = navigator.permissions?.query?.({ name: 'geolocation' }); } catch { perm = null; }
+    perm?.then((r) => {
+      if (!alive) return;
+      status = r;
+      let first = true;
+      const apply = () => {
         if (!alive) return;
-        if (r.state === 'granted') locate();
-        if (r.state === 'denied') setGeoDenied(true);
-      }).catch(() => {});
-    }
+        setGeoDenied(r.state === 'denied');
+        // granted: read silently, except right after a tap, which is already asking
+        if (r.state === 'granted' && !(first && locateTries > 0)) locate();
+        first = false;
+      };
+      apply();
+      // Allowed (or reset) later in the browser settings: follow it without a reload
+      r.onchange = apply;
+    }).catch(() => {});
     const id = setInterval(load, WEATHER_POLL_MS);
     return () => {
       alive = false;
       clearInterval(id);
+      if (status) status.onchange = null;
     };
   }, [isActive, locateTries]);
   const showLocate = !!weather && !weather.mine;   // the viewer's own spot is not in use yet

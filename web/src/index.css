@@ -395,9 +395,10 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.005em; }
 
 /* Sky tint for the phone top bar and the sidebar brand header. Gradient at most 30 % strength, drawn over the
    surface colour, so the text keeps its contrast in both themes. Clear weather has no tint. */
-.wfx-sky-rain { background-image: linear-gradient(120deg, rgba(71, 95, 130, 0.26), rgba(71, 95, 130, 0.08)); }
+/* light rain / storm: the strong end sits on the right, away from the title and its muted subtitle */
+.wfx-sky-rain { background-image: linear-gradient(120deg, rgba(71, 95, 130, 0.08), rgba(71, 95, 130, 0.24)); }
 .dark .wfx-sky-rain { background-image: linear-gradient(120deg, rgba(90, 120, 160, 0.28), rgba(90, 120, 160, 0.1)); }
-.wfx-sky-storm { background-image: linear-gradient(120deg, rgba(51, 65, 85, 0.3), rgba(109, 70, 140, 0.12)); }
+.wfx-sky-storm { background-image: linear-gradient(120deg, rgba(109, 70, 140, 0.1), rgba(51, 65, 85, 0.28)); }
 .dark .wfx-sky-storm { background-image: linear-gradient(120deg, rgba(15, 23, 42, 0.3), rgba(109, 70, 140, 0.14)); }
 .wfx-sky-cloudy { background-image: linear-gradient(120deg, rgba(120, 128, 138, 0.2), rgba(120, 128, 138, 0.1)); }
 .dark .wfx-sky-cloudy { background-image: linear-gradient(120deg, rgba(110, 118, 128, 0.2), rgba(110, 118, 128, 0.1)); }
