@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 const WEATHER_POLL_MS = 600000;
 import { fetchWaterSummary, fetchAirStations, fetchFloodReports, fetchWeatherNow } from '../../lib/api.js';
 import { flowLevel, fmtTime } from './format.js';
+import { bkkAverage } from '../../lib/air.js';
 
 // One glance, six answers: traffic / weather where the viewer is / rain-water / flood reports / dust / incidents.
 // Shown three ways: a summary sign on top (verdict band + one plain sentence + ask AI), then on a wide screen a
@@ -136,7 +137,8 @@ export default function CityStatusStrip({ summary, incidents, flood, avoid, onNa
   const repNote = citizen != null && repFailed ? `อัปเดตไม่สำเร็จ · ข้อมูล ${fmtTime(traffy.updated_at)}\u00a0น.` : null;
 
   // Air
-  const pm = air?.avg_pm25;
+  // Bangkok's own stations, the same figure as the headline on the PM2.5 page
+  const pm = bkkAverage(air?.items)?.pm25 ?? null;
   const airTone = pm == null ? 'neutral' : pm <= 25 ? 'green' : pm <= 37.5 ? 'yellow' : 'red';
   const airStatus = pm == null ? 'กำลังโหลด' : pm <= 15 ? 'อากาศดีมาก' : pm <= 25 ? 'อากาศดี' : pm <= 37.5 ? 'ปานกลาง' : pm <= 75 ? 'เริ่มมีผลต่อสุขภาพ' : 'มีผลต่อสุขภาพ';
 
@@ -154,7 +156,7 @@ export default function CityStatusStrip({ summary, incidents, flood, avoid, onNa
     { id: 'water', q: 'ฝนและน้ำ', a: waterStatus, say: waterStatus, tone: waterTone, known: !!water || flooding > 0, icon: ICONS.water, go: () => onNavigate('water') },
     { id: 'report', q: 'มีคนแจ้งน้ำท่วมไหม', sub: 'ใน 6 ชม.', a: repStatus, say: `คนแจ้งน้ำท่วม ${repStatus}`, note: repNote, tone: repTone, known: citizen != null, icon: ICONS.report, go: () => onNavigate('water') },
     { id: 'weather', q: weather?.mine ? 'อากาศตรงนี้' : 'อากาศ กทม.', a: weatherStatus, say: weatherStatus, tone: weather?.tone || 'neutral', known: !!weather, icon: ICONS.weather, go: () => onNavigate('water') },
-    { id: 'air', q: 'ฝุ่นเยอะไหม', a: airStatus, say: `ฝุ่น PM2.5 ${airStatus}`, tone: airTone, known: pm != null, icon: ICONS.air, go: () => onNavigate('air') },
+    { id: 'air', q: 'ฝุ่น PM2.5', a: pm == null ? airStatus : `${pm} ${airStatus}`, say: `ฝุ่น PM2.5 ${pm ?? ''} ${airStatus}`, tone: airTone, known: pm != null, icon: ICONS.air, go: () => onNavigate('air') },
   ];
   const reds = items.filter((i) => i.tone === 'red');
   const yellows = items.filter((i) => i.tone === 'yellow');
