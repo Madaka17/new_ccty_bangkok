@@ -63,7 +63,8 @@ describe('airAdvice', () => {
 });
 
 describe('tickStep', () => {
-  test('picks the smallest step that keeps labels 60 px apart', () => {
+  test('picks the smallest step that keeps labels 48 px apart', () => {
+    expect(tickStep(240, 49)).toBe(12);   // 360 px phone
     expect(tickStep(268, 49)).toBe(12);
     expect(tickStep(620, 49)).toBe(6);
     expect(tickStep(1200, 49)).toBe(3);
