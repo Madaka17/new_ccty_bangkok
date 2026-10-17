@@ -1,10 +1,24 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { badgeText, dropCount } from '../../lib/weatherFx.js';
 
 // Weather background behind the content (same layer approach as RiverBackdrop). Decoration only: fixed,
 // z-index -1, pointer-events none, aria-hidden. Particles are made once per scene (useMemo), and the
 // animations only move transform and opacity (index.css, "weather background").
-const isNarrow = () => typeof window !== 'undefined' && window.matchMedia?.('(max-width: 639px)').matches;
+const NARROW_QUERY = '(max-width: 639px)';
+
+// Phone width, kept up to date when the device rotates or the window resizes. Drops are re-made only when this changes.
+function useNarrow() {
+  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.(NARROW_QUERY).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(NARROW_QUERY);
+    if (!mq) return undefined;
+    const onChange = () => setNarrow(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return narrow;
+}
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -77,7 +91,7 @@ function OverlayRain({ intensity, windy, narrow }) {
 }
 
 export function WeatherOverlay({ scene, allowed }) {
-  const narrow = useMemo(() => isNarrow(), []);
+  const narrow = useNarrow();
   if (!allowed || !scene || !(scene.kind === 'rain' || scene.kind === 'storm')) return null;
   return (
     <div className="wfx-overlay" aria-hidden="true" data-kind={scene.kind}>
@@ -109,7 +123,7 @@ function Gusts({ narrow }) {
 }
 
 export default function WeatherFx({ scene, allowed }) {
-  const narrow = useMemo(() => isNarrow(), []);
+  const narrow = useNarrow();
   if (!allowed || !scene) return null;
   const { kind, intensity, cool, windy } = scene;
   const raining = kind === 'rain' || kind === 'storm';

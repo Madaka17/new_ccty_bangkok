@@ -132,7 +132,7 @@ export default function AlertPopups({ onNavigate }) {
   }, [count]);
 
   return (
-    <div className="fixed inset-x-3 bottom-[calc(72px+env(safe-area-inset-bottom))] lg:inset-x-auto lg:bottom-auto lg:top-4 lg:right-4 sm:w-96 z-[70] flex flex-col-reverse lg:flex-col gap-2 pointer-events-none" aria-live="assertive">
+    <div className="fixed inset-x-3 bottom-[calc(72px+env(safe-area-inset-bottom))] sm:left-auto sm:right-3 sm:w-96 lg:inset-x-auto lg:bottom-auto lg:top-4 lg:right-4 z-[70] flex flex-col-reverse lg:flex-col gap-2 pointer-events-none" aria-live="assertive">
       <AnimatePresence>
         {on && cards.map((a) => {
           const t = TOPIC[a.topic];

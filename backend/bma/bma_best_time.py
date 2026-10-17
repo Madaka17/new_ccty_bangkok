@@ -2,6 +2,8 @@
 Best time to travel: for each road, the hour of the day with the fewest cars.
 Built from the last 8 weeks of BMA counts (bma_history), read-only.
 """
+import json
+import os
 import re
 import sqlite3
 import threading
@@ -51,6 +53,33 @@ def _pick(with_data, hours):
     }
 
 
+HOLIDAYS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                             "config", "thai_holidays.json")
+
+
+def load_holidays(path=HOLIDAYS_FILE):
+    """Public-holiday dates (YYYY-MM-DD) from config/thai_holidays.json.
+    A missing or broken file, or a "dates" value that is not a list, gives an empty set. Entries that are not
+    valid dates are dropped. Each case prints one warning."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            dates = json.load(f)["dates"]
+        if not isinstance(dates, list):
+            raise ValueError('"dates" is not a list')
+        out, bad = set(), 0
+        for d in dates:
+            try:
+                out.add(date.fromisoformat(d).isoformat())
+            except (TypeError, ValueError):
+                bad += 1
+        if bad:
+            print(f"[BestTime] {bad} invalid holiday date(s) ignored in {path}")
+        return out
+    except Exception as e:
+        print(f"[BestTime] holidays not loaded from {path}: {e}")
+        return set()
+
+
 def _level(ratio):
     if ratio < 0.6:
         return "free"
@@ -62,8 +91,9 @@ def _level(ratio):
 class BestTime:
     """Hourly car averages per road, rebuilt from the database when older than `ttl` seconds."""
 
-    def __init__(self, db_path, cameras, ttl=3600, today=date.today, clock=time.monotonic):
+    def __init__(self, db_path, cameras, ttl=3600, today=date.today, clock=time.monotonic, holidays=None):
         self.db_path = db_path
+        self.holidays = load_holidays() if holidays is None else set(holidays)
         self.cameras = cameras
         self.ttl = ttl
         self.today = today
@@ -106,6 +136,10 @@ class BestTime:
                     print(f"[BestTime] load failed, keeping {'old' if self._cells is not None else 'no'} data: {e}")
             return self._cells
 
+    def _day_type(self, iso):
+        d = date.fromisoformat(iso)
+        return "weekend" if d.weekday() >= 5 or iso in self.holidays else "workday"
+
     def profile(self, road="", day="workday"):
         cells = self._get_cells()
         failed = cells is None
@@ -118,7 +152,7 @@ class BestTime:
         mine = [
             c for c in cells
             if c[0] in camids
-            and ("workday" if date.fromisoformat(c[1]).weekday() < 5 else "weekend") == day
+            and self._day_type(c[1]) == day
         ]
 
         by_hour = {h: [] for h in HOURS}

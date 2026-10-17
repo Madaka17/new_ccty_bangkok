@@ -33,7 +33,7 @@ import json
 import os
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from collections import deque
 
 from backend.core import thai_regions
@@ -55,6 +55,7 @@ TOPICS = {
 }
 TOPIC_URL = {"flood": "/#water", "zone": "/#water", "incident": "/#dashboard", "air": "/#air", "system": "/#dashboard"}
 CHECK_SECONDS = 60
+BKK_TZ = timezone(timedelta(hours=7))
 CLEAR_SECONDS = 30 * 60
 FLOOD_CM = 20.0
 CLOSED_CM = 60.0
@@ -82,6 +83,16 @@ VAPID_SUB = os.getenv("ALERT_VAPID_SUB", "mailto:admin@example.com")
 def _event_key(title):
     """Longdo and the BMA centre relay the same report, and follow-ups say "คืบหน้า...": key on the place."""
     return "inc:" + "".join((title or "").replace("คืบหน้า", "").split())
+
+
+def _dust_date_ahead(key, today):
+    """True for an airfc:<YYYY-MM-DD> key whose date is today or later. A malformed key is False (normal clear)."""
+    if not key.startswith("airfc:"):
+        return False
+    try:
+        return date.fromisoformat(key[len("airfc:"):][:10]) >= today
+    except ValueError:
+        return False
 
 
 class AlertService:
@@ -240,11 +251,11 @@ class AlertService:
                             "body": f"{a.get('label')} · {a.get('area') or ''} {a.get('province') or ''}".strip(),
                             "province": thai_regions.normalize(a.get("province")) or ""})
         # 17:00-21:59 Bangkok time, warn about a dusty tomorrow so people can plan (the outlook is per day)
-        if 17 <= datetime.fromtimestamp(now, timezone(timedelta(hours=7))).hour < 22:
+        if 17 <= datetime.fromtimestamp(now, BKK_TZ).hour < 22:
             fc = self._call("air_forecast") or {}
             tomorrow = next((d for d in fc.get("days") or [] if d.get("label") == "พรุ่งนี้"), None)
             dust = {"unhealthy": 1, "very_unhealthy": 2}.get((tomorrow or {}).get("level"))
-            if dust:
+            if dust and tomorrow.get("date"):
                 out.append({"topic": "air", "key": f"airfc:{tomorrow.get('date')}", "level": dust,
                             "title": f"พรุ่งนี้ฝุ่น PM2.5 {tomorrow.get('label_th')}",
                             "body": f"ค่าเฉลี่ยประมาณ {round(tomorrow.get('mean') or 0)} สูงสุดประมาณ {round(tomorrow.get('max') or 0)} · ควรเตรียมหน้ากาก N95",
@@ -300,8 +311,10 @@ class AlertService:
                     self.sent[c["key"]] = {"level": c["level"], "first": int(now), "seen": int(now)}
                 else:
                     prev["seen"] = int(now)
-            for k in [k for k, v in self.sent.items() if now - v["seen"] > CLEAR_SECONDS]:
-                del self.sent[k]
+            today = datetime.fromtimestamp(now, BKK_TZ).date()
+            for k in [k for k, v in self.sent.items() if now - v["seen"] > CLEAR_SECONDS
+                      and not _dust_date_ahead(k, today)]:
+                del self.sent[k]    # a tomorrow-dust alert stays until its date has passed
             self.history.extendleft(reversed(fresh))
             self.last_check = int(now)
             self._save()

@@ -79,7 +79,7 @@ def rule_based_reply(traffic, question, water=None, extra=None):
     if topics[0] == "weather":
         return _weather_reply(extra) + "\n" + OFFLINE_NOTE
     if topics[0] == "air":
-        lines = air_context((extra or {}).get("air"), question)
+        lines = air_context((extra or {}).get("air"), question, (extra or {}).get("air_forecast"))
         return ("\n".join(lines) if lines else "ยังไม่มีข้อมูลฝุ่นตอนนี้") + "\n" + OFFLINE_NOTE
     s = traffic.get_summary(top=5)
     if not s.get("ready"):

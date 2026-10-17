@@ -27,3 +27,9 @@ def test_air_context_outlook_without_stations():
 def test_air_context_without_outlook_unchanged():
     assert ctx.air_context(STATIONS, "ฝุ่นวันนี้", forecast=None) == ctx.air_context(STATIONS, "ฝุ่นวันนี้")
     assert ctx.air_context({"items": []}, "ฝุ่น", forecast=None) == []
+
+
+def test_offline_air_reply_has_outlook(monkeypatch):
+    from backend.agents import chat_offline as offline
+    reply = offline.rule_based_reply(None, "ฝุ่นวันนี้เป็นยังไง", None, {"air": {"items": []}, "air_forecast": FORECAST})
+    assert "พรุ่งนี้" in reply
