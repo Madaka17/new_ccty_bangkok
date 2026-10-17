@@ -214,8 +214,8 @@ const WEB_API = {
 const api = () => WEB ? WEB_API : window.pywebview.api;
 const S = { page: "overview", target: "", state: "", q: "", hours: 24, limit: 25, offset: 0, status: null, events: null, menu: null, busy: false, sel: "production", procs: null, logOff: null, logBuf: [], follow: true, errs: false, agentT: "production" };
 const STATES = ["ok", "warn", "fail", "idle", "stopped"];
-const LABEL = { production: "Production", test: "Test", enviro: "ENVIRO", gateway: "AI gateway", tunnel: "Cloudflare tunnel", camera: "Camera status", watchdog: "Watchdog", disk: "Data disk", public: "Public site" };
-const TARGETS = ["production", "test", "enviro", "gateway", "tunnel", "camera", "watchdog", "disk", "public"];
+const LABEL = { production: "Production", test: "Test", enviro: "ENVIRO", gateway: "AI gateway", tunnel: "Cloudflare tunnel", camera: "Camera status", cam_bma: "BMA cameras", cam_itic: "ITIC cameras", watchdog: "Watchdog", disk: "Data disk", public: "Public site" };
+const TARGETS = ["production", "test", "enviro", "gateway", "tunnel", "camera", "cam_bma", "cam_itic", "watchdog", "disk", "public"];
 const ACTIONS = {
   start:   { title: t => `Start ${LABEL[t]}?`,   body: t => `Runs launch\\${t}\\start.bat in the background. Its log is on the Processes page.` },
   restart: { title: t => `Restart ${LABEL[t]}?`, body: t => t === "production" ? "The public site is down for about a minute while it restarts." : `Runs launch\\${t}\\restart.bat in the background. Its log is on the Processes page.` },
@@ -314,7 +314,7 @@ function renderOverview() {
 }
 
 function targetOptions(cur) {
-  const opts = [["", "All"], ["production", "Production"], ["test", "Test"], ["enviro", "ENVIRO"], ["services", "Services"], ["gateway", "AI gateway"], ["tunnel", "Cloudflare tunnel"], ["camera", "Camera status"]];
+  const opts = [["", "All"], ["production", "Production"], ["test", "Test"], ["enviro", "ENVIRO"], ["services", "Services"], ["gateway", "AI gateway"], ["tunnel", "Cloudflare tunnel"], ["camera", "Camera status"], ["cam_bma", "BMA cameras"], ["cam_itic", "ITIC cameras"]];
   return opts.map(([v, l]) => `<option value="${v}"${cur === v ? " selected" : ""}>${l}</option>`).join("");
 }
 function stateOptions(extra) {
@@ -325,7 +325,7 @@ function targetChip() { return chip("Target", `<select data-f="target">${targetO
 function stateChip(extra) { return chip("State", `<select data-f="state">${stateOptions(extra)}</select>`, S.state); }
 function searchChip() { return `<label class="chip search"><input data-f="q" type="search" placeholder="Search…" value="${esc(S.q)}"></label>`; }
 
-const SERVICE_TARGETS = ["gateway", "tunnel", "camera", "watchdog", "disk", "public"];
+const SERVICE_TARGETS = ["gateway", "tunnel", "camera", "cam_bma", "cam_itic", "watchdog", "disk", "public"];
 function inTarget(t) { return !S.target || t === S.target || (S.target === "services" && SERVICE_TARGETS.includes(t)); }
 function renderChecks() {
   const q = S.q.trim().toLowerCase();

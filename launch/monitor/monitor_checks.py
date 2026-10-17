@@ -5,12 +5,14 @@ One round of the monitor's checks (launch\\monitor\\collector.py runs it every 3
     yolo:<target>:<name>     the YOLO switch and models, judged like launch\\yolo_status.py
     service:tunnel           the cloudflared Windows service
     service:camera           the camera status file (instances\\production\\camera_status.json) is fresh
+    service:cam_bma/cam_itic BMA / ITIC cameras working and stopped, from the same camera status file
     service:gateway          the AI gateway (launch\\gateway_status.py), only when the caller says it is due
     service:watchdog         the "BKK StreetSmart watchdog" task still writes its heartbeat (state\\heartbeat)
     service:disk             free space on the data disk (production /api/health data_disk)
     service:public           bkksmartstreet.com and /enviro/ answer through Cloudflare, only when the gateway is due
 A server that does not answer while launch\\watchdog\\state\\stopped_<port> exists was stopped on purpose: "stopped".
 """
+import json
 import subprocess
 import sys
 import time
@@ -28,8 +30,8 @@ STATE_DIR = ROOT / "launch" / "watchdog" / "state"
 CAMERA_STATUS = ROOT / "instances" / "production" / "camera_status.json"
 SERVERS = {"production": 8000, "test": 8001, "enviro": 5050}
 LABELS = {"production": "Production", "test": "Test", "enviro": "ENVIRO", "gateway": "AI gateway",
-          "tunnel": "Cloudflare tunnel", "camera": "Camera status", "watchdog": "Watchdog", "disk": "Data disk",
-          "public": "Public site"}
+          "tunnel": "Cloudflare tunnel", "camera": "Camera status", "cam_bma": "BMA cameras", "cam_itic": "ITIC cameras",
+          "watchdog": "Watchdog", "disk": "Data disk", "public": "Public site"}
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -51,6 +53,38 @@ def camera_age():
         return time.time() - CAMERA_STATUS.stat().st_mtime
     except OSError:
         return None
+
+
+def camera_counts(source):
+    """(site ok, working ids, stopped ids) of one camera source in the camera status file, None when unreadable."""
+    try:
+        data = json.loads(CAMERA_STATUS.read_text(encoding="utf-8"))
+        cams = [(cid, c.get("state")) for cid, c in (data.get("cameras") or {}).items()
+                if isinstance(c, dict) and c.get("source") == source]
+        site_ok = ((data.get("sites") or {}).get(source) or {}).get("ok", False)
+    except (OSError, ValueError, AttributeError, TypeError):
+        return None
+    return site_ok, [cid for cid, s in cams if s == "ok"], [cid for cid, s in cams if s == "down"]
+
+
+def _camera_source_status(target, source):
+    counts = camera_counts(source)
+    if counts is None:
+        return _status(f"service:{target}", "service", target, LABELS[target], "fail", "camera_status.json unreadable")
+    site_ok, working, down = counts
+    detail = f"{len(working)} working · {len(down)} stopped"
+    if down:
+        detail += ": " + ", ".join(down[:3]) + (f" +{len(down) - 3}" if len(down) > 3 else "")
+    total = len(working) + len(down)
+    if not site_ok or not working:
+        state = "fail"
+        if not site_ok:
+            detail = f"{source} site not answering · " + detail
+    elif len(down) > total * 0.2:
+        state = "warn"
+    else:
+        state = "ok"
+    return _status(f"service:{target}", "service", target, LABELS[target], state, detail)
 
 
 def health(port):
@@ -193,6 +227,8 @@ def run_round(gateway_due):
         if age is not None and age < 900:
             out.append(_status("service:camera", "service", "camera", LABELS["camera"], "ok",
                                f"updated {int(age // 60)} min ago"))
+            out.append(_camera_source_status("cam_bma", "bma"))
+            out.append(_camera_source_status("cam_itic", "itic"))
         else:
             detail = f"camera_status.json is {int(age // 60)} min old" if age is not None else "camera_status.json missing"
             out.append(_status("service:camera", "service", "camera", LABELS["camera"], "fail", detail))
@@ -203,6 +239,11 @@ def run_round(gateway_due):
         # camera_status.py reads from :8000, so its file goes stale whenever production is down
         out.append(_status("service:camera", "service", "camera", LABELS["camera"], "idle",
                            "waiting for production"))
+    camera = next(r for r in out if r["key"] == "service:camera")
+    if camera["state"] != "ok":
+        # no fresh counts: the BMA / ITIC cards follow the camera status card instead of keeping their last state
+        for t in ("cam_bma", "cam_itic"):
+            out.append(_status(f"service:{t}", "service", t, LABELS[t], camera["state"], camera["detail"]))
     age = watchdog_age()
     if age is None:
         out.append(_status("service:watchdog", "service", "watchdog", LABELS["watchdog"], "fail", "no heartbeat file"))

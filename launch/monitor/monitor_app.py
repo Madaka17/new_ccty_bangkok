@@ -56,7 +56,7 @@ class Api:
         hours = f.get("hours")
         target = f.get("target") or None
         if target == "services":
-            target = ["gateway", "tunnel", "camera", "watchdog", "disk", "public"]
+            target = ["gateway", "tunnel", "camera", "cam_bma", "cam_itic", "watchdog", "disk", "public"]
         return {"target": target, "state": f.get("state") or None, "q": f.get("q") or None,
                 "since": self._now() - float(hours) * 3600 if hours else None}
 
