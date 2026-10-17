@@ -80,15 +80,25 @@ class BmaSession:
             return None
         # No session for this camera yet, it expired, or the camera is offline: start a new ASP.NET
         # session (the home page; PlayVideo.aspx alone gets a placeholder) and bind it to this camera.
-        # The home page is the site root: index.aspx itself answers 404 since 2026-10-07.
+        # The home page is index.aspx or the site root, whichever answers: index.aspx answered 404 from 2026-10-07,
+        # and on 2026-10-17 the root reset the connection for this browser User-Agent while index.aspx answered.
         # It is a big page (386-416 KB, 2.5-7 s, longer while other workers ask too): more time than one frame
         s.cookies = requests.cookies.RequestsCookieJar()
         bind_timeout = max(timeout, 15.0)
+        home = None
+        for url in (f'{bma_site.base()}index.aspx', bma_site.base()):
+            try:
+                if s.get(url, timeout=bind_timeout).status_code == 200:
+                    home = url
+                    break
+            except Exception:
+                pass
+        if home is None:
+            return None   # no home page answered (~400 KB, may time out): BMA is busy, not this camera, so no backoff
         try:
-            s.get(bma_site.base(), timeout=bind_timeout)
-            s.get(f'{bma_site.base()}PlayVideo.aspx?ID={camid_str}', headers={'Referer': bma_site.base()}, timeout=bind_timeout)
+            s.get(f'{bma_site.base()}PlayVideo.aspx?ID={camid_str}', headers={'Referer': home}, timeout=bind_timeout)
         except Exception:
-            return None   # the home page (~400 KB) timed out: BMA is busy, not this camera, so no backoff
+            return None
         raw = self._show(s, camid_str, timeout)
         self._jars[camid_str] = s.cookies
         if raw:
