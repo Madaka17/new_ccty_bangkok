@@ -18,6 +18,8 @@ import { usePlaceLabels } from './map/placeLabels.js';
 import { useRoadFloodLayer, useCamFloodLayer, useUserReportLayer, useTraffyReportLayer, useHdmsLayer, useGaugeLayer } from './map/waterLayers.js';
 import { useRainRadar } from './map/rainRadar.js';
 import { useRoadEvents } from './map/roadEvents.js';
+import { useCalendarLayer } from './map/calendarLayer.js';
+import { readMapLayerRequest, clearMapLayerRequest } from '../lib/events.js';
 import { cameraMarker } from './map/cameraPin.js';
 
 // Vite bundles maplibre into one chunk, so its worker module must be served separately (see public/assets/)
@@ -34,7 +36,11 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const [waterSummary, setWaterSummary] = useState(null);
   // Map legend check boxes: which pin kinds are drawn (the rain radar box is showRainRadar)
   // cctv draws every camera; floodcam marks the flood-watch ones (and draws just those when cctv is off)
-  const [pinsOn, setPinsOn] = useState({ cctv: true, floodcam: false, accident: true, breakdown: false, closure: true, flood: true });
+  // calendar: the dashboard's "ดูบนแผนที่" asks for it once (lib/events.js), otherwise it stays off
+  const [pinsOn, setPinsOn] = useState(() => ({ cctv: true, floodcam: false, accident: true, breakdown: false, closure: true, flood: true, calendar: readMapLayerRequest() === 'calendar' }));
+  useEffect(() => {
+    clearMapLayerRequest();
+  }, []);
   const togglePins = (k) => setPinsOn((p) => ({ ...p, [k]: !p[k] }));
   const meMarkerRef = useRef(null);   // "ไปที่ตำแหน่งของฉัน": one dot, moved on every click
   // Phones: the options panel is a sheet over the map, opened from a button on it (desktop keeps it at the side)
@@ -217,6 +223,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   }, [currentCameras, active, isActive, pinsOn.cctv, pinsOn.floodcam]);
 
   const { incidentList, closures, flyToClosure, flyToIncident, nationFloods } = useRoadEvents(mapRef, isActive, incidents, pinsOn, setPinsOn);
+  const { calendarCount } = useCalendarLayer(mapRef, isActive, pinsOn.calendar, pinsOn.closure);
   const showThailand = () => mapRef.current?.fitBounds(THAILAND, { padding: 30, duration: 800 });
 
   // Popup button clicks (delegated)
@@ -407,6 +414,21 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                   <span className="text-[10px] bg-red-50 text-red-700 px-1.5 py-0.5 rounded font-medium">{closures.length} จุด</span>
                 </div>
                 <span className="text-[11px] text-ink-600 leading-tight">ทั่วประเทศ ปิดทั้งสาย ปิดเพราะน้ำท่วม และเบี่ยงจราจร (สี่เหลี่ยมส้ม)</span>
+              </div>
+            </label>
+
+            {/* งานใหญ่ ปิดถนนล่วงหน้า (team events and the coming closures, map/calendarLayer.js) */}
+            <label className={`flex items-center gap-2.5 cursor-pointer ${pinsOn.calendar ? '' : 'opacity-50'}`}>
+              <input type="checkbox" checked={pinsOn.calendar} onChange={() => togglePins('calendar')} className="accent-blue-600 w-4 h-4 shrink-0" />
+              <span className="w-5 h-5 rounded-md bg-indigo-600 border-2 border-white/90 shadow-xs flex items-center justify-center shrink-0">
+                <span className="block w-1.5 h-1.5 rounded-full bg-white" />
+              </span>
+              <div className="flex flex-col min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium text-ink-900">งานใหญ่ ปิดถนนล่วงหน้า</span>
+                  {calendarCount != null && <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-medium">{calendarCount} จุด</span>}
+                </div>
+                <span className="text-[11px] text-ink-600 leading-tight">กรุงเทพฯ และปริมณฑล · งานวิ่ง คอนเสิร์ต และถนนที่ประกาศปิดหรือเบี่ยงล่วงหน้า</span>
               </div>
             </label>
 

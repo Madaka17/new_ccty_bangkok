@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchTrafficSummary, fetchTrafficAreas, fetchBmaAnalytics, fetchAnalytics, fetchOnlineCount, fetchFloodStatus } from '../lib/api.js';
 import { bmaCountsLive, pickTrafficSummary } from '../lib/trafficSummary.js';
+import { readMyDistrict } from '../lib/district.js';
 import { bmaSiteDown } from './bma/BmaSiteNotice.jsx';
 import { trackView } from '../lib/telemetry.js';
 import { Button } from './dashboard/ui.jsx';
@@ -9,6 +10,7 @@ import { fmtDateTime, fmtNum } from './dashboard/format.js';
 import { PAGE_TITLES } from './Sidebar.jsx';
 import FlowOverview from './dashboard/FlowOverview.jsx';
 import IncidentPanel from './dashboard/IncidentPanel.jsx';
+import EventsPanel from './dashboard/EventsPanel.jsx';
 import DensityPanel from './dashboard/DensityPanel.jsx';
 import TrafficGuidanceCard from './dashboard/TrafficGuidanceCard.jsx';
 import BestTimeCard from './dashboard/BestTimeCard.jsx';
@@ -24,6 +26,7 @@ const SECTIONS = [
   { id: 'overview', label: 'รถติดตอนนี้' },
   { id: 'road-risk', label: 'ถนนแต่ละสาย' },
   { id: 'incidents', label: 'อุบัติเหตุและรถเสีย' },
+  { id: 'events', label: 'ปิดถนน งานใหญ่' },
   { id: 'bma-reports', label: 'ข่าวจากศูนย์ กทม.' },
 ];
 
@@ -31,6 +34,7 @@ const SECTIONS = [
 export default function DashboardPage({ isActive, liveCount, cameras = [], incidents, onAsk, onAskText, onOpenRoad, onNavigate, onOpenAI, onToast }) {
   // The summary comes from the Longdo road colours; the BMA camera count only stands in until Longdo has data
   const source = 'longdo';
+  const [myDistrict] = useState(readMyDistrict);
   const [section, setSection] = useState('overview');
   const [summary, setSummary] = useState(null);
   const [bma, setBma] = useState(null);
@@ -207,6 +211,12 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
         }
       />
 
+      <div>
+        <Button size="sm" onClick={() => onNavigate?.('district')}>
+          {myDistrict ? `เขตของฉัน: ${myDistrict} ›` : 'เลือกเขตของฉัน ›'}
+        </Button>
+      </div>
+
       {summaryError && activeSummary && !activeSummary.is_bma && (
         <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           รีเฟรชล่าสุดไม่สำเร็จ แสดงข้อมูลเมื่อ {fmtDateTime(activeSummary.updated_at)}
@@ -261,6 +271,7 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
           <IncidentPanel incidents={incidents} onOpenAI={onOpenAI} onNavigate={onNavigate} />
         </div>
       )}
+      {section === 'events' && <EventsPanel isActive={isActive && section === 'events'} onNavigate={onNavigate} />}
       {section === 'bma-reports' && <BMAEventFeed isActive={isActive && section === 'bma-reports'} onToast={onToast} />}
     </div>
   );

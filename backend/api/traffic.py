@@ -3,22 +3,53 @@ Traffic: the city summary, areas, road events and risk, guidance, tiles, acciden
 the analytics page.
 """
 import json
+import os
 import time
 from datetime import datetime
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Body, Query, Request
 from fastapi.responses import JSONResponse, Response
 
 from backend.api.flood import flood_national_map
+from backend.core.instance import CACHE_DIR
 from backend.core.response_cache import cached_json
 from backend.bma.bma_events import bma_feed
-from backend.services import bma_scanner, cameras_data, guidance, incidents
-from backend.traffic import analytics_service, area_roads, near_traffic, rsc_service
+from backend.services import air, bma_scanner, cameras_data, flood_roads, guidance, incidents, traffy_reports
+from backend.traffic import analytics_service, area_roads, district_view, near_traffic, rsc_service
+from backend.traffic.events_calendar import EventsCalendar
 from backend.traffic.area_traffic import area_traffic
 from backend.traffic.road_service import road_risk
 from backend.traffic.traffic_service import get_osm_tile, get_traffic_tile, traffic
 
 router = APIRouter()
+
+def _calendar_health():
+    """Each calendar feed: loaded (a timestamp is set) and no error. Longdo has no error field, so loaded is enough."""
+    bma_ok = bma_feed.updated_at is not None and not bma_feed.error
+    return {"closures": bool(incidents.road_events()["updated_at"]), "bma": bma_ok, "bulletins": bma_ok}
+
+events_calendar = EventsCalendar(
+    os.path.join(CACHE_DIR, "team_events.json"),
+    sources={"closures": lambda: incidents.road_events()["closures"],
+             "bma": lambda: bma_feed.get(kind="roadwork", hours=24, limit=200)["items"],
+             "bulletins": lambda: bma_feed.get(limit=1)["bulletins"]},
+    locate=area_traffic.locate,
+    health=_calendar_health)
+
+def _flood_feed():
+    """Every road water sensor plus the feed's error, for the district page (which counts live and wet ones)."""
+    return {**flood_roads.stations(limit=100000), "error": flood_roads.status()["error"]}
+
+district_sources = {
+    "air": lambda: air.status(),
+    "flood": _flood_feed,
+    "traffy": lambda: traffy_reports.status(),
+    "cameras": lambda: bma_scanner.db.get_all_latest(),
+    "area_traffic": area_traffic.status,
+    "incidents": lambda: road_events_merged(),
+    "calendar": lambda: events_calendar.calendar("all"),
+    "locate": area_traffic.locate,
+}
 
 
 @router.get("/api/traffic/summary")
@@ -61,10 +92,9 @@ def traffic_near(lat: float = Query(..., ge=5.5, le=20.5), lng: float = Query(..
     out["events"] = sorted(near, key=lambda e: e["distance_km"])[:15]
     return out
 
-@router.get("/api/road/events")
-def road_events():
-    """Accidents and closed roads in every province for the traffic map: the Longdo feed (all of Thailand) and
-    the BMA traffic centre's accident / road-work reports (Bangkok), each with its province and district."""
+def road_events_merged():
+    """Accidents and closed roads in every province: the Longdo feed (all of Thailand) plus the BMA traffic
+    centre's accident / road-work reports (Bangkok), each with its province and district."""
     out = incidents.road_events()
     bma = bma_feed.get(hours=24, limit=200)["items"]
     for e in bma:
@@ -82,6 +112,43 @@ def road_events():
     for i in out["incidents"] + out["closures"]:
         i["province"], i["amphoe"] = area_traffic.locate(i["latitude"], i["longitude"])
     return out
+
+@router.get("/api/road/events")
+def road_events():
+    """Accidents and closed roads in every province for the traffic map (see road_events_merged)."""
+    return road_events_merged()
+
+@router.get("/api/events/calendar")
+def events_calendar_view(request: Request, scope: str = Query("bkk", pattern="^(bkk|all)$")):
+    """Road closures and big events now, today, tomorrow and in the next 7 days (Bangkok time)."""
+    return cached_json(request, ("events/calendar", scope), lambda: events_calendar.calendar(scope))
+
+@router.post("/api/events/team")
+def events_team_add(body: dict = Body(...)):
+    """Operator adds an event; POST is operator-only (access_guard)."""
+    try:
+        return events_calendar.add(body)
+    except ValueError as e:
+        return JSONResponse(status_code=422, content={"error": str(e)})
+
+@router.delete("/api/events/team/{event_id}")
+def events_team_remove(event_id: str):
+    if not events_calendar.remove(event_id):
+        return JSONResponse(status_code=404, content={"error": "unknown event"})
+    return {"ok": True}
+
+@router.get("/api/district/list")
+def district_list():
+    """The 50 Bangkok districts, sorted (the names the district page accepts)."""
+    return {"districts": district_view.DISTRICTS}
+
+@router.get("/api/district/{name}")
+def district_page(name: str, request: Request):
+    """One Bangkok district at a glance (district_view.py). The name may come with or without the เขต prefix."""
+    key = district_view.normalise(name)
+    if not district_view.is_district(key):
+        return JSONResponse(status_code=404, content={"error": "unknown district"})
+    return cached_json(request, ("district", key), lambda: district_view.build(key, district_sources))
 
 @router.get("/api/traffic/guidance")
 def traffic_guidance(request: Request):

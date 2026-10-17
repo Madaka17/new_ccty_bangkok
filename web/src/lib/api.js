@@ -426,6 +426,18 @@ export async function fetchAirForecast() {
   return res.json();
 }
 
+// ---------------------------------------------------------------- เขตของฉัน (district page)
+
+// { districts: [50 names without เขต] }
+export async function fetchDistricts() {
+  return fetchJson('/api/district/list', 'district_list');
+}
+
+// One district at a glance (null sections = no data there). A 404 throws, as for any unknown name.
+export async function fetchDistrict(name) {
+  return fetchJson(`/api/district/${encodeURIComponent(name)}`, 'district');
+}
+
 // Quietest and busiest hours on a road ('' = all Bangkok) for 'workday' | 'weekend'. See bestTime.js.
 export async function fetchBestTime(road, day) {
   const res = await fetch(`/api/bma/best_time?road=${encodeURIComponent(road || '')}&day=${encodeURIComponent(day)}`);
@@ -625,3 +637,36 @@ export const subscribeAlerts = (subscription, topics, label, provinces) => postA
 export const unsubscribeAlerts = (endpoint) => postAlert('unsubscribe', { endpoint });
 
 export const testAlert = (endpoint) => postAlert('test', { endpoint });
+
+// ---------------------------------------------------------------- Road closures and big events (calendar)
+
+// { updated_at, ongoing, today, tomorrow, week }: items in Bangkok time. scope 'bkk' (default) or 'all' (the whole country)
+export async function fetchCalendar(scope = 'bkk') {
+  return fetchJson(`/api/events/calendar?scope=${encodeURIComponent(scope)}`, 'calendar');
+}
+
+// Team entry: { title, kind, place, district?, lat?, lng?, start, end, detail? } with epoch seconds. Returns the stored item.
+// Errors carry err.status (403 for a non-team visitor, 422 for bad input).
+export async function addTeamEvent(body) {
+  const res = await fetch('/api/events/team', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = new Error('team_event');
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+export async function deleteTeamEvent(id) {
+  const res = await fetch(`/api/events/team/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const err = new Error('team_event');
+    err.status = res.status;
+    throw err;
+  }
+  return res.json().catch(() => ({}));
+}
