@@ -111,6 +111,7 @@ def get(lat=None, lng=None):
     symbol = (nxt.get("summary") or {}).get("symbol_code")
     text, tone = _describe(symbol)
     return {"temp": inst.get("air_temperature"), "humidity": inst.get("relative_humidity"),
+            "wind_speed": inst.get("wind_speed"),
             "rain_1h": (nxt.get("details") or {}).get("precipitation_amount"), "symbol": symbol,
             "text": text, "tone": tone, "lat": lat, "lng": lng, "updated_at": int(now)}
 
