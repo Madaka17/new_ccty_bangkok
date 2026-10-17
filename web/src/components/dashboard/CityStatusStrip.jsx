@@ -156,7 +156,7 @@ export default function CityStatusStrip({ summary, incidents, flood, avoid, onNa
     { id: 'water', q: 'ฝนและน้ำ', a: waterStatus, say: waterStatus, tone: waterTone, known: !!water || flooding > 0, icon: ICONS.water, go: () => onNavigate('water') },
     { id: 'report', q: 'มีคนแจ้งน้ำท่วมไหม', sub: 'ใน 6 ชม.', a: repStatus, say: `คนแจ้งน้ำท่วม ${repStatus}`, note: repNote, tone: repTone, known: citizen != null, icon: ICONS.report, go: () => onNavigate('water') },
     { id: 'weather', q: weather?.mine ? 'อากาศตรงนี้' : 'อากาศ กทม.', a: weatherStatus, say: weatherStatus, tone: weather?.tone || 'neutral', known: !!weather, icon: ICONS.weather, go: () => onNavigate('water') },
-    { id: 'air', q: 'ฝุ่น PM2.5', a: pm == null ? airStatus : `${pm} ${airStatus}`, say: `ฝุ่น PM2.5 ${pm ?? ''} ${airStatus}`, tone: airTone, known: pm != null, icon: ICONS.air, go: () => onNavigate('air') },
+    { id: 'air', q: 'ฝุ่น PM2.5', a: pm == null ? airStatus : `${pm} · ${bkkAverage(air?.items).label}`, say: `ฝุ่น PM2.5 ${pm ?? ''} ${airStatus}`, tone: airTone, known: pm != null, icon: ICONS.air, go: () => onNavigate('air') },
   ];
   const reds = items.filter((i) => i.tone === 'red');
   const yellows = items.filter((i) => i.tone === 'yellow');
