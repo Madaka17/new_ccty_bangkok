@@ -221,7 +221,9 @@ export default function AirPage({ isActive, onNavigate }) {
                 <span className="h-2 rounded-full bg-slate-100 overflow-hidden">
                   <span className="block h-full rounded-full" style={{ width: `${(r.pm25 / maxPm) * 100}%`, backgroundColor: r.color }} />
                 </span>
-                <span className="text-xs text-slate-700 whitespace-nowrap">{r.label}</span>
+                <span className="text-xs text-slate-700 whitespace-nowrap" title="ไมโครกรัมต่อลูกบาศก์เมตร">
+                  <span className="font-semibold tabular-nums text-slate-900">{r.pm25}</span> {r.label}
+                </span>
               </li>
             ))}
           </ul>
