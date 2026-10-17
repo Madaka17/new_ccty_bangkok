@@ -16,6 +16,12 @@ def station(name, district, status, level, road="ถนนทดสอบ"):
     return {"short_name": name, "road": road, "district": district, "status": status, "level_cm": level}
 
 
+def calendar_payload(events, closures_ok=True):
+    """The calendar's full result: buckets plus sources_ok (the events go in the "today" bucket)."""
+    return {"updated_at": NOW, "sources_ok": {"closures": closures_ok, "bma": True, "bulletins": True},
+            "ongoing": [], "today": list(events), "tomorrow": [], "week": []}
+
+
 def sources(**over):
     base = {
         "air": {"items": []},
@@ -24,7 +30,7 @@ def sources(**over):
         "cameras": [],
         "area_traffic": {"ready": True, "provinces": []},
         "incidents": {"updated_at": NOW, "incidents": [], "closures": []},
-        "calendar": [],
+        "calendar": calendar_payload([]),
     }
     base.update(over)
     return {k: (lambda v=v: v) for k, v in base.items()}
@@ -187,10 +193,21 @@ def test_traffic_score_from_area_traffic_district():
 
 
 def test_events_filtered_by_district_and_failed_calendar_is_none():
-    cal = [{"id": "e1", "district": "ดินแดง", "title": "งาน"}, {"id": "e2", "district": "วัฒนา", "title": "อื่น"},
-           {"id": "e3", "district": "ดินแดง", "province": "นนทบุรี", "title": "นนทบุรี"}]
-    assert [e["id"] for e in build("ดินแดง", sources(calendar=cal))["events"]] == ["e1"]
+    events = [{"id": "e1", "district": "ดินแดง", "title": "งาน"}, {"id": "e2", "district": "วัฒนา", "title": "อื่น"},
+              {"id": "e3", "district": "ดินแดง", "province": "นนทบุรี", "title": "นนทบุรี"}]
+    assert [e["id"] for e in build("ดินแดง", sources(calendar=calendar_payload(events)))["events"]] == ["e1"]
     assert build("ดินแดง", sources(calendar=None))["events"] is None
+
+
+def test_events_none_when_calendar_closure_feed_not_ok_even_with_events_present():
+    events = [{"id": "e1", "district": "ดินแดง", "title": "งาน"}]
+    out = build("ดินแดง", sources(calendar=calendar_payload(events, closures_ok=False)))
+    assert out["events"] is None
+
+
+def test_events_empty_list_when_calendar_closure_feed_ok_and_nothing_here():
+    out = build("ดินแดง", sources(calendar=calendar_payload([])))
+    assert out["events"] == []
 
 
 def test_missing_sources_give_null_sections_and_never_fail():

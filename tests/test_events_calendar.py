@@ -24,9 +24,16 @@ def longdo(id_, start=None, stop=None, province="กรุงเทพมหา�
             "contributor": "", "province": province, "amphoe": amphoe}
 
 
-def make(tmp_path, closures=(), bma=(), bulletins=(), now=NOW, locate=None, name="team.json"):
+LIVE = {"closures": True, "bma": True, "bulletins": True}
+
+
+def make(tmp_path, closures=(), bma=(), bulletins=(), now=NOW, locate=None, name="team.json", health=LIVE,
+         failing=()):
     sources = {"closures": lambda: list(closures), "bma": lambda: list(bma), "bulletins": lambda: list(bulletins)}
-    return EventsCalendar(str(tmp_path / name), sources, now=lambda: now, locate=locate)
+    for key in failing:
+        sources[key] = lambda: (_ for _ in ()).throw(RuntimeError("feed down"))
+    return EventsCalendar(str(tmp_path / name), sources, now=lambda: now, locate=locate,
+                          health=lambda: dict(health))
 
 
 def ids(bucket):
@@ -234,3 +241,49 @@ def test_team_event_cap(tmp_path, monkeypatch):
         cal.add({"title": f"งาน {n}", "kind": "event", "start": bkk(20, 9), "end": bkk(20, 12)})
     with pytest.raises(ValueError, match="too many"):
         cal.add({"title": "งานที่สาม", "kind": "event", "start": bkk(20, 9), "end": bkk(20, 12)})
+
+
+def test_sources_ok_true_when_every_feed_is_live(tmp_path):
+    out = make(tmp_path, closures=[longdo("lg", start=bkk(18, 6), stop=bkk(19, 6))]).calendar()
+    assert out["sources_ok"] == {"closures": True, "bma": True, "bulletins": True}
+
+
+def test_sources_ok_closures_false_when_longdo_feed_never_loaded(tmp_path):
+    out = make(tmp_path, health={"closures": False, "bma": True, "bulletins": True}).calendar()
+    assert out["sources_ok"] == {"closures": False, "bma": True, "bulletins": True}
+
+
+def test_sources_ok_bma_and_bulletins_follow_their_own_health(tmp_path):
+    out = make(tmp_path, health={"closures": True, "bma": False, "bulletins": False}).calendar()
+    assert out["sources_ok"] == {"closures": True, "bma": False, "bulletins": False}
+
+
+def test_failed_source_call_is_not_ok_even_when_health_says_live(tmp_path):
+    out = make(tmp_path, failing=("closures",)).calendar()
+    assert out["sources_ok"]["closures"] is False
+    assert out["sources_ok"]["bma"] is True
+
+
+def test_failing_health_check_marks_every_feed_not_ok(tmp_path):
+    def boom():
+        raise RuntimeError("health down")
+    sources = {"closures": lambda: [], "bma": lambda: [], "bulletins": lambda: []}
+    cal = EventsCalendar(str(tmp_path / "team.json"), sources, now=lambda: NOW, health=boom)
+    assert cal.calendar()["sources_ok"] == {"closures": False, "bma": False, "bulletins": False}
+
+
+def test_bkk_scope_drops_feed_item_with_no_province_and_no_coordinates(tmp_path):
+    closures = [
+        longdo("nowhere", start=bkk(18, 6), stop=bkk(19, 6), province="", lat=None, lng=None),
+        longdo("placed", start=bkk(18, 6), stop=bkk(19, 6), province="", lat="13.73", lng="100.56"),
+    ]
+    out = make(tmp_path, closures=closures).calendar("bkk")
+    assert ids(out["today"]) == ["longdo-placed"]
+    assert set(ids(make(tmp_path, closures=closures).calendar("all")["today"])) == {"longdo-nowhere", "longdo-placed"}
+
+
+def test_bkk_scope_keeps_team_event_with_no_place(tmp_path):
+    cal = make(tmp_path)
+    cal.add({"title": "งานไม่ระบุที่", "kind": "event", "start": bkk(18, 9), "end": bkk(18, 20)})
+    out = cal.calendar("bkk")
+    assert [i["title"] for i in out["today"]] == ["งานไม่ระบุที่"]

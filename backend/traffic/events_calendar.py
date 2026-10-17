@@ -34,6 +34,7 @@ STOP_WORDS = {"ถนน", "ปิด", "เบี่ยง", "เบี่ย�
               "แยก", "ขาเข้า", "ขาออก", "บริเวณ"}
 BMA_REPORT_HOURS = 12        # a road-work report is news: taken to expire 12 h after it
 BULLETIN_KEEP = 5            # long construction bulletins: only the latest few
+SOURCE_KEYS = ("closures", "bma", "bulletins")
 
 _districts = None
 _districts_lock = threading.Lock()
@@ -149,13 +150,16 @@ def _validate(event, now):
 
 
 class EventsCalendar:
-    def __init__(self, store_path, sources, now=time.time, locate=None):
+    def __init__(self, store_path, sources, now=time.time, locate=None, health=None):
         """sources: name -> callable. "closures" (Longdo), "bma" (road-work), "bulletins" (BMA bulletins).
-        locate(lat, lng) -> (province, district) fills the place of items that have coordinates."""
+        locate(lat, lng) -> (province, district) fills the place of items that have coordinates.
+        health() -> {"closures": bool, "bma": bool, "bulletins": bool}: whether each feed has loaded and has no
+        error (the feed objects' own state). A source whose call fails is never ok, whatever health says."""
         self.store_path = store_path
         self.sources = sources
         self.now = now
         self.locate = locate
+        self.health = health
         self.lock = threading.Lock()
         self._warned = False
 
@@ -240,7 +244,7 @@ class EventsCalendar:
             return "", ""
         return prov or "", dist or ""
 
-    def _source(self, key):
+    def _source(self, key, failed):
         fn = self.sources.get(key)
         if fn is None:
             return []
@@ -248,7 +252,20 @@ class EventsCalendar:
             return list(fn() or [])
         except Exception as e:
             log.warning("calendar source %s failed: %s", key, e)
+            failed.add(key)
             return []
+
+    def _sources_ok(self, failed):
+        """Per source: its feed is loaded with no error (health) and its call did not fail this time."""
+        if self.health is None:
+            health = {}
+        else:
+            try:
+                health = dict(self.health() or {})
+            except Exception as e:
+                log.warning("calendar health check failed: %s", e)
+                health = {k: False for k in SOURCE_KEYS}
+        return {k: bool(health.get(k, True)) and k not in failed for k in SOURCE_KEYS}
 
     def _norm_longdo(self, e):
         lat, lng = _float(e.get("latitude")), _float(e.get("longitude"))
@@ -273,10 +290,10 @@ class EventsCalendar:
                 "title": headline, "detail": detail, "place": "", "district": "", "province": BANGKOK,
                 "lat": None, "lng": None, "start": None, "end": None, "url": None}
 
-    def _gather(self):
-        items = [self._norm_longdo(e) for e in self._source("closures") if isinstance(e, dict)]
-        items += [self._norm_bma(e) for e in self._source("bma") if isinstance(e, dict)]
-        bulletins = [b for b in self._source("bulletins")
+    def _gather(self, failed):
+        items = [self._norm_longdo(e) for e in self._source("closures", failed) if isinstance(e, dict)]
+        items += [self._norm_bma(e) for e in self._source("bma", failed) if isinstance(e, dict)]
+        bulletins = [b for b in self._source("bulletins", failed)
                      if isinstance(b, dict) and ROAD_WORDS.search(f"{b.get('headline') or ''} {b.get('detail') or ''}")]
         items += [self._norm_bulletin(b) for b in bulletins[:BULLETIN_KEEP]]
         for item in items:
@@ -307,10 +324,14 @@ class EventsCalendar:
         if scope not in ("bkk", "all"):
             raise ValueError("scope must be bkk or all")
         now = self.now()
-        items = [i for i in self._gather() if i["end"] is None or i["end"] > now]
+        failed = set()
+        items = [i for i in self._gather(failed) if i["end"] is None or i["end"] > now]
+        sources_ok = self._sources_ok(failed)
         items = self._dedup(items)
         if scope == "bkk":
-            items = [i for i in items if i["province"] in SCOPE_PROVINCES or not i["province"]]
+            # a feed item with neither a province nor coordinates cannot be placed in Bangkok: dropped
+            items = [i for i in items if i["province"] in SCOPE_PROVINCES
+                     or (not i["province"] and (i["source"] == "team" or i["lat"] is not None))]
 
         day = datetime.fromtimestamp(now, BKK).replace(hour=0, minute=0, second=0, microsecond=0)
         at = lambda days: (day + timedelta(days=days)).timestamp()
@@ -332,4 +353,4 @@ class EventsCalendar:
                                                     "province", "lat", "lng", "start", "end", "url")})
         for bucket in out.values():
             bucket.sort(key=lambda i: (i["start"] is not None, i["start"] or 0, i["title"]))
-        return {"updated_at": int(now), **out}
+        return {"updated_at": int(now), "sources_ok": sources_ok, **out}

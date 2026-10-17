@@ -162,8 +162,13 @@ def _road_items(items, name, locate):
     return out
 
 
-def _events(cal, name):
-    return [dict(e) for e in cal if normalise(e.get("district")) == name and not _not_bangkok(e.get("province"))]
+def _events(payload, name):
+    """Calendar events in the district. payload = the calendar's full result (buckets + sources_ok). None when
+    the closure feed is not ok: the calendar may be missing closures, so the page must not say "none"."""
+    if not isinstance(payload, dict) or not (payload.get("sources_ok") or {}).get("closures"):
+        return None
+    events = [e for bucket in payload.values() if isinstance(bucket, list) for e in bucket]
+    return [dict(e) for e in events if normalise(e.get("district")) == name and not _not_bangkok(e.get("province"))]
 
 
 def build(name, sources, now=None):
@@ -189,5 +194,5 @@ def build(name, sources, now=None):
         "cameras": None if cameras is None else _cameras(cameras, key),
         "incidents": _road_items(road.get("incidents"), key, locate) if road_live else None,
         "closures": _road_items(road.get("closures"), key, locate) if road_live else None,
-        "events": None if cal is None else _events(cal, key),
+        "events": _events(cal, key),
     }

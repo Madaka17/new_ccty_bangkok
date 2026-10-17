@@ -23,12 +23,18 @@ from backend.traffic.traffic_service import get_osm_tile, get_traffic_tile, traf
 
 router = APIRouter()
 
+def _calendar_health():
+    """Each calendar feed: loaded (a timestamp is set) and no error. Longdo has no error field, so loaded is enough."""
+    bma_ok = bma_feed.updated_at is not None and not bma_feed.error
+    return {"closures": bool(incidents.road_events()["updated_at"]), "bma": bma_ok, "bulletins": bma_ok}
+
 events_calendar = EventsCalendar(
     os.path.join(CACHE_DIR, "team_events.json"),
     sources={"closures": lambda: incidents.road_events()["closures"],
              "bma": lambda: bma_feed.get(kind="roadwork", hours=24, limit=200)["items"],
              "bulletins": lambda: bma_feed.get(limit=1)["bulletins"]},
-    locate=area_traffic.locate)
+    locate=area_traffic.locate,
+    health=_calendar_health)
 
 def _flood_feed():
     """Every road water sensor plus the feed's error, for the district page (which counts live and wet ones)."""
@@ -41,8 +47,7 @@ district_sources = {
     "cameras": lambda: bma_scanner.db.get_all_latest(),
     "area_traffic": area_traffic.status,
     "incidents": lambda: road_events_merged(),
-    "calendar": lambda: [e for bucket in events_calendar.calendar("all").values() if isinstance(bucket, list)
-                         for e in bucket],
+    "calendar": lambda: events_calendar.calendar("all"),
     "locate": area_traffic.locate,
 }
 
