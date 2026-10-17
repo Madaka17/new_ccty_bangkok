@@ -8,6 +8,11 @@ import { todayDayType, hourRange, LEVEL_TH } from '../../lib/bestTime.js';
 const LEVEL_TONE = { free: 'tone-green', moderate: 'tone-yellow', heavy: 'tone-red' };
 const DAY_OPTIONS = [['workday', 'วันทำงาน'], ['weekend', 'เสาร์-อาทิตย์']];
 const MAX_BAR_PX = 112; // bar area height; the tallest bar fills it
+// The commute windows, shown as one row each under the bars (start hours 06-09 and 16-19)
+const COMMUTE_ROWS = [
+  ['morning', 'ช่วงเช้า', '06:00–10:00'],
+  ['evening', 'ช่วงเย็น', '16:00–20:00'],
+];
 
 // Current hour in Bangkok (UTC+7)
 const bkkHour = (date = new Date()) => (date.getUTCHours() + 7) % 24;
@@ -48,8 +53,8 @@ export default function BestTimeCard({ isActive }) {
   const values = hours.map((h) => h.avg).filter((v) => typeof v === 'number');
   const max = values.length ? Math.max(...values) : 0;
   const now = bkkHour();
-  const best = data?.best;
-  const worst = data?.worst;
+  const commute = data?.commute;
+  const anyWindow = COMMUTE_ROWS.some(([key]) => commute?.[key]?.best);
 
   return (
     <Card className="p-4 sm:p-5 flex flex-col gap-4" aria-labelledby={`${selectId}-title`}>
@@ -132,10 +137,19 @@ export default function BestTimeCard({ isActive }) {
             ))}
           </div>
 
-          {best ? (
+          {anyWindow ? (
             <div className="flex flex-col gap-1 text-sm text-slate-900">
-              <p>รถน้อยที่สุด <span className="font-semibold tabular-nums">{hourRange(best)}</span></p>
-              {worst && <p>ควรเลี่ยง <span className="font-semibold tabular-nums">{hourRange(worst)}</span></p>}
+              {COMMUTE_ROWS.map(([key, label, span]) => {
+                const { best, worst } = commute[key] || {};
+                if (!best) return <p key={key}>{`${label} (${span}): ข้อมูลยังไม่พอ`}</p>;
+                return (
+                  <p key={key}>
+                    {`${label} (${span}): รถน้อยที่สุด `}
+                    <span className="font-semibold tabular-nums">{hourRange(best)}</span>
+                    {worst && <>{' · ควรเลี่ยง '}<span className="font-semibold tabular-nums">{hourRange(worst)}</span></>}
+                  </p>
+                );
+              })}
             </div>
           ) : (
             <p className="text-sm text-slate-600">ข้อมูลยังไม่พอ ลองเลือกถนนอื่นหรือทั้งกรุงเทพฯ</p>

@@ -152,3 +152,27 @@ def test_no_reload_inside_backoff():
     clock[0] = 61
     bt.profile()
     assert len(calls) == 2
+
+
+def test_commute_windows(tmp_path):
+    db = BmaDatabase(db_path=str(tmp_path / "v.db"))
+    cameras = [{"camid": "c1", "title": "x", "road": "ถนนสามเสน", "district": ""}]
+    for day in WORKDAYS:
+        _fill_day(db, "c1", day, {7: 2, 9: 30, 17: 40, 19: 3})
+
+    result = _profile(db.db_path, cameras)
+
+    assert result["commute"]["morning"] == {"best": {"from": 7, "to": 8}, "worst": {"from": 9, "to": 10}}
+    assert result["commute"]["evening"] == {"best": {"from": 19, "to": 20}, "worst": {"from": 17, "to": 18}}
+
+
+def test_commute_window_without_data(tmp_path):
+    db = BmaDatabase(db_path=str(tmp_path / "v.db"))
+    cameras = [{"camid": "c1", "title": "x", "road": "ถนนสามเสน", "district": ""}]
+    for day in WORKDAYS:
+        _fill_day(db, "c1", day, skip=tuple(range(10, 23)))
+
+    result = _profile(db.db_path, cameras)
+
+    assert result["commute"]["evening"] == {"best": None, "worst": None}
+    assert result["commute"]["morning"] is not None
