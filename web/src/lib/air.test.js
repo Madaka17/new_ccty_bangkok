@@ -36,6 +36,19 @@ describe('districtRanking', () => {
       { district: 'ปทุมวัน', pm25: 20, points: 2 },
     ]);
   });
+
+  test('takes the district after the last เขต and skips areas without one', () => {
+    const rows = districtRanking([
+      bkk('ริมถนนดินแดง เขตดินแดง', 20),
+      bkk('เขตดินแดง (สถานีวัด)', 40),
+      bkk('แขวงหิรัญรูจี เขตธนบุรี', 30),
+      bkk('ถนนสุขุมวิท', 99),
+    ]);
+    expect(rows.map((r) => ({ district: r.district, pm25: r.pm25, points: r.points }))).toEqual([
+      { district: 'ดินแดง', pm25: 30, points: 2 },
+      { district: 'ธนบุรี', pm25: 30, points: 1 },
+    ]);
+  });
 });
 
 describe('airAdvice', () => {

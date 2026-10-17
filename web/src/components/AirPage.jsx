@@ -1,5 +1,5 @@
 // PM2.5 page: how dusty it is now, which districts are worst, and the 3-day outlook. Public, for anyone in Bangkok.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { fetchAirForecast, fetchAirStations } from '../lib/api.js';
 import { airAdvice, bkkAverage, districtRanking } from '../lib/air.js';
 import { trackView } from '../lib/telemetry.js';
@@ -31,19 +31,33 @@ const DAY_TAGS = ['วันนี้', 'พรุ่งนี้', 'มะร�
 
 function OutlookChart({ hours }) {
   const [hover, setHover] = useState(null);
-  const W = 320;
+  const boxRef = useRef(null);
+  const [W, setW] = useState(320);
   const H = 162;
   const L = 34;
   const R = 10;
   const T = 10;
   const B = 36;
+
+  // Draw at 1 unit = 1 CSS px: the viewBox width is the container's measured width
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return undefined;
+    const measure = () => setW(Math.round(el.getBoundingClientRect().width) || 320);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const n = hours.length;
   const top = Math.max(40, Math.ceil(Math.max(...hours.map((h) => h.pm25)) / 10) * 10);
   const x = (i) => L + (i / (n - 1)) * (W - L - R);
   const y = (v) => T + (1 - v / top) * (H - T - B);
   const path = hours.map((h, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(h.pm25).toFixed(1)}`).join(' ');
   const yTicks = [0, top / 2, top];
-  const xStep = Math.max(1, Math.ceil(n / 6));
+  const xStep = Math.max(1, Math.ceil(n / Math.max(3, Math.floor((W - L - R) / 80))));
   const xLabels = hours.map((h, i) => i).filter((i) => i % xStep === 0);
   const last = hours[n - 1];
   // day tag under a tick, only where the day changes (and on the first tick)
@@ -64,13 +78,15 @@ function OutlookChart({ hours }) {
 
   const hv = hover != null ? hours[hover] : null;
   return (
-    <div>
+    <div ref={boxRef} className="w-full">
       <p className="text-xs text-slate-600 h-5" aria-live="polite">
         {hv ? `${fmtTime(hv.t)} น. ประมาณ ${Math.round(hv.pm25)}` : ' '}
       </p>
       <svg
+        width={W}
+        height={H}
         viewBox={`0 0 ${W} ${H}`}
-        className="w-full h-auto touch-pan-y"
+        className="block w-full touch-pan-y"
         role="img"
         aria-label="กราฟแนวโน้มฝุ่น 3 วันข้างหน้า"
         onPointerMove={pick}

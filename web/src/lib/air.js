@@ -34,12 +34,15 @@ export function bkkAverage(items) {
   return { pm25, ...band(pm25) };
 }
 
-// Bangkok districts by mean PM2.5, highest first. `district` drops the เขต prefix.
+// Bangkok districts by mean PM2.5, highest first. `district` is the word after the last เขต;
+// areas without เขต are skipped.
 export function districtRanking(items) {
   const groups = new Map();
   for (const s of items || []) {
     if (s?.province !== BANGKOK || !validPm(s.pm25) || !s.area) continue;
-    const district = s.area.replace(/^เขต/, '');
+    const found = [...s.area.matchAll(/เขต\s*([^\s(]+)/g)].pop();
+    if (!found) continue;
+    const district = found[1];
     const g = groups.get(district) || { sum: 0, points: 0 };
     g.sum += s.pm25;
     g.points += 1;
