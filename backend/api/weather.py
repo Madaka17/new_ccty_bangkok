@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 
 from backend.core.response_cache import cached_json
 from backend.water import water_service, weather_now, wind_field
+from backend.water.air_forecast import air_forecast
 from backend.water.air_service import air
 from backend.water.flood_feeds import tmd_warnings
 from backend.water.nasa_feeds import nasa_feeds
@@ -27,6 +28,14 @@ def weather_wind_field():
 def air_stations(request: Request):
     """PM2.5 / AQI per monitoring station in Bangkok + surrounding provinces (Air4Thai)."""
     return cached_json(request, ("air/stations",), air.status)
+
+@router.get("/api/air/forecast")
+def air_forecast_route(request: Request):
+    """PM2.5 outlook for today, tomorrow and the day after, scaled to the live stations (air_forecast.py).
+    202 until the first read."""
+    if air_forecast.status() is None:
+        return JSONResponse(status_code=202, content={"ready": False})
+    return cached_json(request, ("air/forecast",), air_forecast.status)
 
 @router.get("/api/nasa/fires")
 def nasa_fires():

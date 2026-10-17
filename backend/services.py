@@ -39,6 +39,7 @@ from backend.vision.wrongway_service import WrongWayPatrol
 from backend.vision.yolo_detector import VehicleDetectorYOLO11x
 from backend.vision.yolo_switch import YoloSwitch
 from backend.water import north_flow, water_service
+from backend.water.air_forecast import air_forecast
 from backend.water.air_service import air
 from backend.water.bkk_districts import BkkDistricts
 from backend.water.flood_feeds import hdms_floods, js100_floods, tmd_warnings, traffy_reports
@@ -233,6 +234,7 @@ def start():
     area_roads.warm()
     guidance.start()
     air.start()
+    air_forecast.start()
     nasa_feeds.start()
     flood_roads.start()
     flood_cams.start()
