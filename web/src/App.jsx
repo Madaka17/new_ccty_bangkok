@@ -50,6 +50,7 @@ const SafetyPage = lazyPage(() => import('./components/SafetyPage.jsx'));
 const VisitorsPage = lazyPage(() => import('./components/VisitorsPage.jsx'));
 const WaterPage = lazyPage(() => import('./components/WaterPage.jsx'));
 const AirPage = lazyPage(() => import('./components/AirPage.jsx'));
+const DistrictPage = lazyPage(() => import('./components/DistrictPage.jsx'));
 const ReportFloodPage = lazyPage(() => import('./components/ReportFloodPage.jsx'));
 const AlertsPage = lazyPage(() => import('./components/AlertsPage.jsx'));
 
@@ -61,7 +62,7 @@ function PageLoading() {
   );
 }
 
-const PAGES = ['dashboard', 'cameras', 'map', 'safety', 'water', 'air', 'report', 'yolo', 'ai', 'alerts', 'visitors', 'enviro'];
+const PAGES = ['dashboard', 'cameras', 'map', 'district', 'safety', 'water', 'air', 'report', 'yolo', 'ai', 'alerts', 'visitors', 'enviro'];
 // Old links to pages that are now tabs of the camera AI page
 const CAMERA_TAB_LINKS = { 'camera-search': 'search', 'bma-count': 'bma', helmet: 'helmet', wrongway: 'wrongway' };
 
@@ -381,6 +382,7 @@ export default function App() {
             {page === 'water' && <WaterPage isActive onToast={showToast} onNavigate={navigate} onAsk={askAI} onOpenRoad={openRoadCameras} />}
 
             {page === 'air' && <AirPage isActive onNavigate={navigate} />}
+            {page === 'district' && <DistrictPage isActive onNavigate={navigate} />}
             {page === 'report' && <ReportFloodPage isActive onNavigate={navigate} />}
 
             {page === 'yolo' && (

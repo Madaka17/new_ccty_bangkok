@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchTrafficSummary, fetchTrafficAreas, fetchBmaAnalytics, fetchAnalytics, fetchOnlineCount, fetchFloodStatus } from '../lib/api.js';
 import { bmaCountsLive, pickTrafficSummary } from '../lib/trafficSummary.js';
+import { readMyDistrict } from '../lib/district.js';
 import { bmaSiteDown } from './bma/BmaSiteNotice.jsx';
 import { trackView } from '../lib/telemetry.js';
 import { Button } from './dashboard/ui.jsx';
@@ -33,6 +34,7 @@ const SECTIONS = [
 export default function DashboardPage({ isActive, liveCount, cameras = [], incidents, onAsk, onAskText, onOpenRoad, onNavigate, onOpenAI, onToast }) {
   // The summary comes from the Longdo road colours; the BMA camera count only stands in until Longdo has data
   const source = 'longdo';
+  const [myDistrict] = useState(readMyDistrict);
   const [section, setSection] = useState('overview');
   const [summary, setSummary] = useState(null);
   const [bma, setBma] = useState(null);
@@ -208,6 +210,12 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
           </div>
         }
       />
+
+      <div>
+        <Button size="sm" onClick={() => onNavigate?.('district')}>
+          {myDistrict ? `เขตของฉัน: ${myDistrict} ›` : 'เลือกเขตของฉัน ›'}
+        </Button>
+      </div>
 
       {summaryError && activeSummary && !activeSummary.is_bma && (
         <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">

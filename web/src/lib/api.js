@@ -426,6 +426,18 @@ export async function fetchAirForecast() {
   return res.json();
 }
 
+// ---------------------------------------------------------------- เขตของฉัน (district page)
+
+// { districts: [50 names without เขต] }
+export async function fetchDistricts() {
+  return fetchJson('/api/district/list', 'district_list');
+}
+
+// One district at a glance (null sections = no data there). A 404 throws, as for any unknown name.
+export async function fetchDistrict(name) {
+  return fetchJson(`/api/district/${encodeURIComponent(name)}`, 'district');
+}
+
 // Quietest and busiest hours on a road ('' = all Bangkok) for 'workday' | 'weekend'. See bestTime.js.
 export async function fetchBestTime(road, day) {
   const res = await fetch(`/api/bma/best_time?road=${encodeURIComponent(road || '')}&day=${encodeURIComponent(day)}`);
