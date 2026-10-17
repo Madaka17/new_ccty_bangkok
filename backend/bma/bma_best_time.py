@@ -14,6 +14,8 @@ RETRY_SECONDS = 60      # wait this long after a failed load
 MIN_CELLS = 3          # an hour needs this many camera-days before it gets an average
 HOURS = range(6, 23)   # 6:00 .. 22:00, 17 bars
 BEST_WORST_HOURS = range(6, 22)
+MORNING_HOURS = range(6, 10)   # 06:00-10:00 commute window, by start hour
+EVENING_HOURS = range(16, 20)  # 16:00-20:00 commute window, by start hour
 
 CELLS_SQL = """
     SELECT camid, date, CAST(substr(hour, 12, 2) AS INTEGER) h, AVG(total) a, COUNT(*)
@@ -34,6 +36,19 @@ def clean_road(cam):
             return f"ถนนพระรามที่ {m.group(1)}"
         return road
     return road.strip()
+
+
+def _pick(with_data, hours):
+    """Best (fewest cars) and worst (most cars) start hour among `hours` that have data, as {from, to} spans."""
+    ranked = [x for x in with_data if x["h"] in hours]
+    if not ranked:
+        return {"best": None, "worst": None}
+    best = min(ranked, key=lambda x: x["avg"])
+    worst = max(ranked, key=lambda x: x["avg"])
+    return {
+        "best": {"from": best["h"], "to": best["h"] + 1},
+        "worst": {"from": worst["h"], "to": worst["h"] + 1},
+    }
 
 
 def _level(ratio):
@@ -123,9 +138,11 @@ class BestTime:
         for x in with_data:
             x["level"] = _level(x["avg"] / top if top else 0.0)
 
-        ranked = [x for x in with_data if x["h"] in BEST_WORST_HOURS]
-        best = min(ranked, key=lambda x: x["avg"]) if ranked else None
-        worst = max(ranked, key=lambda x: x["avg"]) if ranked else None
+        overall = _pick(with_data, BEST_WORST_HOURS)
+        commute = {
+            "morning": _pick(with_data, MORNING_HOURS),
+            "evening": _pick(with_data, EVENING_HOURS),
+        }
 
         dates = {c[1] for c in mine}
 
@@ -144,8 +161,9 @@ class BestTime:
             "day": day,
             "roads": roads,
             "hours": hours,
-            "best": {"from": best["h"], "to": best["h"] + 1} if best else None,
-            "worst": {"from": worst["h"], "to": worst["h"] + 1} if worst else None,
+            "best": overall["best"],
+            "worst": overall["worst"],
+            "commute": commute,
         }
 
 

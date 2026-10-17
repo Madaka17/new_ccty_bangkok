@@ -195,7 +195,7 @@ export default function AirPage({ isActive, onNavigate }) {
             <h3 className="text-[15px] font-semibold text-slate-900">ฝุ่น 3 วันข้างหน้า</h3>
             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
               {days.map((d) => (
-                <div key={d.date} className="flex flex-col items-center gap-1 rounded-lg border border-slate-200 p-2 min-w-0 text-center">
+                <div key={d.date} className="flex flex-row items-center justify-between gap-2 sm:flex-col sm:justify-start sm:gap-1 rounded-lg border border-slate-200 p-2 min-w-0 text-center">
                   <span className="text-xs text-slate-600">{d.label}</span>
                   <LevelPill color={d.color} level={d.level}>{d.label_th}</LevelPill>
                 </div>
@@ -221,7 +221,9 @@ export default function AirPage({ isActive, onNavigate }) {
                 <span className="h-2 rounded-full bg-slate-100 overflow-hidden">
                   <span className="block h-full rounded-full" style={{ width: `${(r.pm25 / maxPm) * 100}%`, backgroundColor: r.color }} />
                 </span>
-                <span className="text-xs text-slate-700 whitespace-nowrap">{r.label}</span>
+                <span className="text-xs text-slate-700 whitespace-nowrap" title="ไมโครกรัมต่อลูกบาศก์เมตร">
+                  <span className="font-semibold tabular-nums text-slate-900">{r.pm25}</span> {r.label}
+                </span>
               </li>
             ))}
           </ul>

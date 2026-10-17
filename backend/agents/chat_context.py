@@ -179,14 +179,27 @@ def _asked(question, *names):
     return False
 
 
-def air_context(air, question):
-    """PM2.5 per station (AirBKK + Air4Thai): city average, worst stations and any station the user named."""
+def _outlook_line(forecast):
+    """The 3-day PM2.5 outlook for Bangkok as one line, or None when there is no outlook."""
+    days = (forecast or {}).get("days") or []
+    if not days:
+        return None
+    return "ฝุ่นคาดการณ์ กทม. (ค่าประมาณ): " + "; ".join(
+        f"{d.get('label')} เฉลี่ย {round(d.get('mean') or 0)} {d.get('label_th')} สูงสุด {round(d.get('max') or 0)}" for d in days)
+
+
+def air_context(air, question, forecast=None):
+    """PM2.5 per station (AirBKK + Air4Thai): city average, worst stations and any station the user named.
+    With a forecast, one more line with the outlook for today, tomorrow and the day after."""
     items = (air or {}).get("items") or []
+    outlook = _outlook_line(forecast)
     if not items:
-        return []
+        return [outlook] if outlook else []
     counts = ", ".join(f"{k} {v}" for k, v in ((air or {}).get("counts") or {}).items())
     lines = [f"ฝุ่น PM2.5 รายชั่วโมง (AirBKK + Air4Thai {_hhmm(air.get('source_ts') or air.get('updated_at'))}): เฉลี่ย {air.get('avg_pm25')} µg/m³ "
              f"จาก {air.get('total')} สถานี ({counts})"]
+    if outlook:
+        lines.append(outlook)   # right after the header, so a tight prompt budget keeps it
     picked = [i for i in items if _asked(question, i.get("name"), i.get("area"))][:5]
     for i in picked + [i for i in items[:5] if i not in picked]:
         lines.append(f"  - {i.get('name')} ({i.get('area')} {i.get('province')}): PM2.5 {i.get('pm25')} µg/m³ {i.get('label')}")
@@ -553,7 +566,7 @@ def province_weather_context(ex, named):
 
 def site_context(question, ex):
     """Every other data set shown on the website, so the bot never says 'no data' for something on screen."""
-    return (air_context(ex.get("air"), question) + guidance_context(ex.get("guidance"), question)
+    return (air_context(ex.get("air"), question, forecast=ex.get("air_forecast")) + guidance_context(ex.get("guidance"), question)
             + road_flood_context(ex.get("road_risk"), ex.get("flood_report"), question)
             + patrol_context(ex.get("helmet"), ex.get("wrongway"), ex.get("violations"))
             + analytics_context(ex.get("analytics")))
