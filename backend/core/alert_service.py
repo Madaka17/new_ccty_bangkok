@@ -33,7 +33,7 @@ import json
 import os
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from collections import deque
 
 from backend.core import thai_regions
@@ -53,7 +53,7 @@ TOPICS = {
     "air": "ฝุ่น PM2.5",
     "system": "ระบบขัดข้อง (ผู้ดูแล)",
 }
-TOPIC_URL = {"flood": "/#water", "zone": "/#water", "incident": "/#dashboard", "air": "/#map", "system": "/#dashboard"}
+TOPIC_URL = {"flood": "/#water", "zone": "/#water", "incident": "/#dashboard", "air": "/#air", "system": "/#dashboard"}
 CHECK_SECONDS = 60
 CLEAR_SECONDS = 30 * 60
 FLOOD_CM = 20.0
@@ -239,6 +239,16 @@ class AlertService:
                             "title": f"ฝุ่น PM2.5 {a.get('pm25')}: {a.get('name')}",
                             "body": f"{a.get('label')} · {a.get('area') or ''} {a.get('province') or ''}".strip(),
                             "province": thai_regions.normalize(a.get("province")) or ""})
+        # From 17:00 Bangkok time, warn about a dusty tomorrow so people can plan (the outlook is per day)
+        if datetime.fromtimestamp(now, timezone(timedelta(hours=7))).hour >= 17:
+            fc = self._call("air_forecast") or {}
+            tomorrow = next((d for d in fc.get("days") or [] if d.get("label") == "พรุ่งนี้"), None)
+            dust = {"unhealthy": 1, "very_unhealthy": 2}.get((tomorrow or {}).get("level"))
+            if dust:
+                out.append({"topic": "air", "key": f"airfc:{tomorrow.get('date')}", "level": dust,
+                            "title": f"พรุ่งนี้ฝุ่น PM2.5 {tomorrow.get('label_th')}",
+                            "body": f"ค่าเฉลี่ยประมาณ {round(tomorrow.get('mean') or 0)} สูงสุดประมาณ {round(tomorrow.get('max') or 0)} · ควรเตรียมหน้ากาก N95",
+                            "province": BKK})
 
         h = self._call("health") or {}
         scan = h.get("scan") or {}

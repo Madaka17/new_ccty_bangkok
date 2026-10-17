@@ -14,6 +14,7 @@ from backend.core.response_cache import cached_json
 from backend.core.telemetry_service import telemetry
 from backend.services import flood_agent, incidents, province_flood
 from backend.water import water_service
+from backend.water.air_forecast import air_forecast
 from backend.water.air_service import air
 from backend.water.flood_feeds import tmd_warnings, traffy_reports
 from backend.water.flood_service import flood_roads
@@ -42,7 +43,7 @@ def telemetry_heartbeat(payload: dict = Body(...)):
 alerts = AlertService(DATA_DIR, {
     "agent": lambda: flood_agent.status()["report"],
     "flood": flood_roads.status, "water": water_service.get_summary, "incidents": incidents.status,
-    "bma_events": lambda: bma_feed.get(hours=2, limit=60), "air": air.status,
+    "bma_events": lambda: bma_feed.get(hours=2, limit=60), "air": air.status, "air_forecast": air_forecast.status,
     "traffy": traffy_reports.status, "tmd": tmd_warnings.status,
     "health": lambda: json.loads(health().body),
     "road_events": road_events, "provinces": province_flood.status,

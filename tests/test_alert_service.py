@@ -1,4 +1,6 @@
 """Alert rules: thresholds, alert once per condition, re-alert on escalation or after it cleared."""
+from datetime import datetime, timedelta, timezone
+
 from backend.core import alert_service
 from backend.core.alert_service import CLEAR_SECONDS, AlertService
 
@@ -195,3 +197,48 @@ def test_province_floods_and_closed_roads(tmp_path, monkeypatch):
     fresh = {a["key"]: a for a in svc.check(now=1060)}
     assert set(fresh) == {"prov:ระยอง", "close:longdo-3"}   # diversions never alert
     assert fresh["prov:ระยอง"]["level"] == 1 and "อ.ราชเทวี จ.กรุงเทพมหานคร" in fresh["close:longdo-3"]["body"]
+
+
+BKK_TZ = timezone(timedelta(hours=7))
+
+
+def _bkk(day, hour):
+    """Epoch seconds for a Bangkok local time, so the test does not depend on the machine timezone."""
+    return datetime(2026, 10, day, hour, 0, tzinfo=BKK_TZ).timestamp()
+
+
+def _outlook(level, label_th="มีผลต่อสุขภาพ"):
+    return lambda: {"days": [
+        {"date": "2026-10-18", "label": "วันนี้", "mean": 20, "max": 30, "level": "good", "label_th": "ดี"},
+        {"date": "2026-10-19", "label": "พรุ่งนี้", "mean": 80.4, "max": 104.6, "level": level, "label_th": label_th},
+    ]}
+
+
+def test_dust_alert_tomorrow_after_17(tmp_path, monkeypatch):
+    svc, _ = _svc(tmp_path, monkeypatch, air_forecast=_outlook("unhealthy", "เริ่มมีผลต่อสุขภาพ"))
+    found = svc.candidates(now=_bkk(18, 18))
+    dust = [c for c in found if c["topic"] == "air"]
+    assert [(c["key"], c["level"]) for c in dust] == [("airfc:2026-10-19", 1)]
+    assert dust[0]["title"] == "พรุ่งนี้ฝุ่น PM2.5 เริ่มมีผลต่อสุขภาพ"
+    assert dust[0]["body"] == "ค่าเฉลี่ยประมาณ 80 สูงสุดประมาณ 105 · ควรเตรียมหน้ากาก N95"
+    assert dust[0]["province"] == "กรุงเทพมหานคร"
+    assert alert_service.TOPIC_URL["air"] == "/#air"
+
+
+def test_dust_alert_not_before_17(tmp_path, monkeypatch):
+    svc, _ = _svc(tmp_path, monkeypatch, air_forecast=_outlook("unhealthy"))
+    assert [c for c in svc.candidates(now=_bkk(18, 16) + 59 * 60) if c["topic"] == "air"] == []
+
+
+def test_dust_alert_level_raise(tmp_path, monkeypatch):
+    level = {"v": "unhealthy"}
+    svc, pushed = _svc(tmp_path, monkeypatch, air_forecast=lambda: _outlook(level["v"])())
+    assert [c["level"] for c in svc.check(now=_bkk(18, 18))] == [1]
+    level["v"] = "very_unhealthy"
+    assert [c["level"] for c in svc.check(now=_bkk(18, 18) + 60)] == [2]
+    assert len(pushed) == 2
+
+
+def test_dust_alert_no_outlook(tmp_path, monkeypatch):
+    svc, _ = _svc(tmp_path, monkeypatch, air_forecast=lambda: None)
+    assert [c for c in svc.candidates(now=_bkk(18, 18)) if c["topic"] == "air"] == []

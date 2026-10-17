@@ -112,7 +112,7 @@ def context_sections(traffic, question, camera_stats=None, water=None, extra=Non
                         + accident_stats_context(ex.get("rsc"), ex.get("camera_risk"))
                         + patrol_context(ex.get("helmet"), ex.get("wrongway"), ex.get("violations"))
                         + analytics_accidents(ex.get("analytics")))
-    sec["air"] += air_context(ex.get("air"), question)
+    sec["air"] += air_context(ex.get("air"), question, forecast=ex.get("air_forecast"))
 
     # The whole country: first when the question names a province outside Bangkok or asks about the country,
     # after the Bangkok detail otherwise

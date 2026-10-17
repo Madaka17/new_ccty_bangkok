@@ -12,6 +12,7 @@ from backend.traffic.area_traffic import area_traffic
 from backend.traffic.road_service import road_risk
 from backend.traffic.traffic_service import traffic
 from backend.water import north_flow, water_service, weather_now
+from backend.water.air_forecast import air_forecast
 from backend.water.air_service import air
 from backend.water.flood_feeds import tmd_warnings
 from backend.water.flood_service import flood_roads
@@ -42,7 +43,7 @@ def chat_endpoint(payload: dict = Body(...)):
     for key, fn in (("incidents", incidents.status), ("bma_events", lambda: bma_feed.get(hours=12, limit=20)),
                     ("bma_analytics", bma_scanner.get_analytics), ("rsc", rsc_service.get_summary),
                     ("camera_risk", lambda: rsc_service.get_camera_risk(limit=8)),
-                    ("air", air.status), ("guidance", guidance.status),
+                    ("air", air.status), ("air_forecast", air_forecast.status), ("guidance", guidance.status),
                     ("road_risk", lambda: road_risk.status(limit=2000)), ("flood_report", flood_roads.report),
                     ("helmet", lambda: {"status": helmet.status(), "recent": helmet.recent(verdict="no_helmet", limit=5)["items"]}),
                     ("wrongway", lambda: {"status": wrongway.status(), "recent": wrongway.recent(verdict="wrong_way", limit=5)["items"]}),
