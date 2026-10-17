@@ -175,4 +175,5 @@ def test_commute_window_without_data(tmp_path):
     result = _profile(db.db_path, cameras)
 
     assert result["commute"]["evening"] == {"best": None, "worst": None}
-    assert result["commute"]["morning"] is not None
+    # all four morning hours read 10 cars, so the first hour is both the best and the worst
+    assert result["commute"]["morning"] == {"best": {"from": 6, "to": 7}, "worst": {"from": 6, "to": 7}}

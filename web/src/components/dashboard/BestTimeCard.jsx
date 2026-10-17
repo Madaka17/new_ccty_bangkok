@@ -146,7 +146,9 @@ export default function BestTimeCard({ isActive }) {
                   <p key={key}>
                     {`${label} (${span}): รถน้อยที่สุด `}
                     <span className="font-semibold tabular-nums">{hourRange(best)}</span>
-                    {worst && <>{' · ควรเลี่ยง '}<span className="font-semibold tabular-nums">{hourRange(worst)}</span></>}
+                    {worst && worst.from !== best.from && (
+                      <>{' · ควรเลี่ยง '}<span className="font-semibold tabular-nums">{hourRange(worst)}</span></>
+                    )}
                   </p>
                 );
               })}
