@@ -426,6 +426,13 @@ export async function fetchAirForecast() {
   return res.json();
 }
 
+// Quietest and busiest hours on a road ('' = all Bangkok) for 'workday' | 'weekend'. See bestTime.js.
+export async function fetchBestTime(road, day) {
+  const res = await fetch(`/api/bma/best_time?road=${encodeURIComponent(road || '')}&day=${encodeURIComponent(day)}`);
+  if (!res.ok) throw new Error('best_time');
+  return res.json();
+}
+
 // NASA FIRMS fire hotspots in Thailand and along its borders (last 24 h, with the analysis); null until the
 // server's first read (202). See nasa_feeds.py.
 export async function fetchNasaFires() {
