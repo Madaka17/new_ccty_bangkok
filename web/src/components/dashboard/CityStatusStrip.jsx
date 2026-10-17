@@ -147,13 +147,14 @@ export default function CityStatusStrip({ summary, incidents, flood, avoid, onNa
   const incTone = !incidents ? 'neutral' : total === 0 ? 'green' : total <= 2 ? 'yellow' : 'red';
   const incStatus = !incidents ? 'กำลังโหลด' : total === 0 ? 'ไม่มีเหตุ' : `${total} จุด`;
 
+  // Roads first (what a trip needs), then water, then the weather and the air
   const items = [
     { id: 'traffic', q: 'รถติดไหม', a: trafficStatus, say: `รถ${level.label}`, tone: trafficTone, known: flow != null, icon: ICONS.traffic, go: () => onNavigate('map') },
-    { id: 'weather', q: weather?.mine ? 'อากาศตรงนี้' : 'อากาศ กทม.', a: weatherStatus, say: weatherStatus, tone: weather?.tone || 'neutral', known: !!weather, icon: ICONS.weather, go: () => onNavigate('water') },
+    { id: 'incident', q: 'มีอุบัติเหตุไหม', a: incStatus, say: `อุบัติเหตุและรถเสีย ${incStatus}`, tone: incTone, known: !!incidents, icon: ICONS.incident, go: () => (onIncidents ? onIncidents() : onNavigate('dashboard')) },
     { id: 'water', q: 'ฝนและน้ำ', a: waterStatus, say: waterStatus, tone: waterTone, known: !!water || flooding > 0, icon: ICONS.water, go: () => onNavigate('water') },
     { id: 'report', q: 'มีคนแจ้งน้ำท่วมไหม', sub: 'ใน 6 ชม.', a: repStatus, say: `คนแจ้งน้ำท่วม ${repStatus}`, note: repNote, tone: repTone, known: citizen != null, icon: ICONS.report, go: () => onNavigate('water') },
+    { id: 'weather', q: weather?.mine ? 'อากาศตรงนี้' : 'อากาศ กทม.', a: weatherStatus, say: weatherStatus, tone: weather?.tone || 'neutral', known: !!weather, icon: ICONS.weather, go: () => onNavigate('water') },
     { id: 'air', q: 'ฝุ่นเยอะไหม', a: airStatus, say: `ฝุ่น PM2.5 ${airStatus}`, tone: airTone, known: pm != null, icon: ICONS.air, go: () => onNavigate('air') },
-    { id: 'incident', q: 'มีอุบัติเหตุไหม', a: incStatus, say: `อุบัติเหตุและรถเสีย ${incStatus}`, tone: incTone, known: !!incidents, icon: ICONS.incident, go: () => (onIncidents ? onIncidents() : onNavigate('dashboard')) },
   ];
   const reds = items.filter((i) => i.tone === 'red');
   const yellows = items.filter((i) => i.tone === 'yellow');
