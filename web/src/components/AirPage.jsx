@@ -60,7 +60,9 @@ function OutlookChart({ hours }) {
   // ticks at Bangkok hours that are a multiple of the step (so 00:00 / 12:00 stay on the clock, not index math)
   const xStep = tickStep(W - L - R, n);
   const bkkHourOf = (t) => new Date((t + 7 * 3600) * 1000).getUTCHours();
-  const xLabels = hours.map((h, i) => i).filter((i) => bkkHourOf(hours[i].t) % xStep === 0);
+  // a 24 h step labels noon, the middle of each day, so the ticks do not all read 00:00
+  const tickHour = (i) => (xStep === 24 ? bkkHourOf(hours[i].t) === 12 : bkkHourOf(hours[i].t) % xStep === 0);
+  const xLabels = hours.map((h, i) => i).filter(tickHour);
   const last = hours[n - 1];
   // day tag under a tick, only where the day changes (and on the first tick)
   const today = bkkDay(Date.now() / 1000);
