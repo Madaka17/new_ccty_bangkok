@@ -1,5 +1,5 @@
 import ThemeToggle from './ThemeToggle.jsx';
-import { WeatherBadge, WeatherFxToggle } from './fx/WeatherFx.jsx';
+import { WeatherBadge, WeatherFxToggle, skyClass } from './fx/WeatherFx.jsx';
 
 // Left navigation, grouped by what the page is for. `hint` is the one-liner shown as the
 // tooltip; the label is also the page's title in its header and the mobile top bar.
@@ -64,7 +64,7 @@ export default function Sidebar({ page, onNavigate, aiActive, liveCount = 0, onC
   };
   return (
     <div className="sidebar-glass h-full flex flex-col bg-[var(--c-surface)] text-[var(--c-ink)] border-r border-[var(--c-border)]">
-      <div className="px-4 pt-5 pb-3 flex items-center gap-3">
+      <div className={`px-4 pt-5 pb-3 flex items-center gap-3 ${skyClass(weatherScene)}`}>
         <LogoMark />
         <div className="min-w-0 flex-1">
           <p className="font-display text-[17px] font-bold tracking-tight leading-tight">BKK StreetSmart</p>

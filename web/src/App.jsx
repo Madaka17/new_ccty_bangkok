@@ -14,7 +14,7 @@ import { fetchCameras, fetchAllCameras, fetchAIStats, fetchIncidents, fetchSurve
 import { useActiveCameras, useFavorites } from './lib/store.js';
 import { trackView, startHeartbeat } from './lib/telemetry.js';
 import RiverBackdrop from './components/fx/RiverBackdrop.jsx';
-import WeatherFx, { WeatherBadge } from './components/fx/WeatherFx.jsx';
+import WeatherFx, { WeatherBadge, WeatherOverlay, skyClass } from './components/fx/WeatherFx.jsx';
 import useWeatherScene from './lib/useWeatherScene.js';
 
 // Every page but the dashboard (the first page) loads when it is first opened: the maps (maplibre-gl),
@@ -287,7 +287,7 @@ export default function App() {
       </aside>
 
       {/* Mobile top bar + drawer */}
-      <div className="lg:hidden sticky top-0 z-40 bg-[var(--c-surface)] border-b border-[var(--c-border)] pl-2 pr-2 h-14 flex items-center gap-2">
+      <div className={`lg:hidden sticky top-0 z-40 bg-[var(--c-surface)] border-b border-[var(--c-border)] pl-2 pr-2 h-14 flex items-center gap-2 ${skyClass(weather.scene)}`}>
         <button
           type="button"
           onClick={() => setMenuOpen(true)}
@@ -319,6 +319,7 @@ export default function App() {
       )}
       <RiverBackdrop />
       <WeatherFx scene={weather.scene} allowed={weather.allowed} />
+      <WeatherOverlay scene={weather.scene} allowed={weather.allowed} />
       <BottomNav page={page} onNavigate={navigate} onMenu={() => setMenuOpen(true)} onReport={openFloodReport} />
       <EmergencyButton />
 

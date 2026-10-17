@@ -8,8 +8,9 @@ const isNarrow = () => typeof window !== 'undefined' && window.matchMedia?.('(ma
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
-function makeDrops(intensity, narrow, windy) {
-  const n = dropCount(intensity, narrow);
+// scale < 1 gives fewer drops (the phone overlay uses half the background count).
+function makeDrops(intensity, narrow, windy, scale = 1) {
+  const n = Math.floor(dropCount(intensity, narrow) * scale);
   const slant = windy ? 25 : 12;
   return Array.from({ length: n }, (_, i) => ({
     key: i,
@@ -54,6 +55,46 @@ function Rain({ intensity, windy, narrow }) {
       ))}
     </>
   );
+}
+
+// Faint rain over the cards, phone only (lg:hidden). Pointer-events none, aria-hidden, z-30: above main,
+// below the top bar, bottom nav and pop-ups. Opacity is set per streak through --k and capped in CSS.
+function OverlayRain({ intensity, windy, narrow }) {
+  const drops = useMemo(() => makeDrops(intensity, narrow, windy, 0.5), [intensity, windy, narrow]);
+  return drops.map((d) => (
+    <span key={d.key} className="wfx-drop" style={{ left: `${d.x}%`, transform: `rotate(${d.angle}deg)` }}>
+      <i
+        className="wfx-streak"
+        style={{
+          height: `${d.len}px`,
+          '--k': String(d.opacity),
+          animationDelay: `${d.delay}s`,
+          animationDuration: `${d.dur}s`,
+        }}
+      />
+    </span>
+  ));
+}
+
+export function WeatherOverlay({ scene, allowed }) {
+  const narrow = useMemo(() => isNarrow(), []);
+  if (!allowed || !scene || !(scene.kind === 'rain' || scene.kind === 'storm')) return null;
+  return (
+    <div className="wfx-overlay lg:hidden" aria-hidden="true" data-kind={scene.kind}>
+      <OverlayRain intensity={scene.intensity} windy={scene.windy} narrow={narrow} />
+    </div>
+  );
+}
+
+// Class for the sky tint (header and sidebar brand). Colour only, so it ignores `allowed`. Clear has no tint.
+export function skyClass(scene) {
+  if (!scene) return '';
+  if (scene.kind === 'rain') return 'wfx-sky-rain';
+  if (scene.kind === 'storm') return 'wfx-sky-storm';
+  if (scene.kind === 'cloudy') return 'wfx-sky-cloudy';
+  if (scene.kind === 'sunny') return 'wfx-sky-sunny';
+  if (scene.cool) return 'wfx-sky-cool';
+  return '';
 }
 
 function Gusts({ narrow }) {
