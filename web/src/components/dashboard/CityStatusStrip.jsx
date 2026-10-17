@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 
 const WEATHER_POLL_MS = 600000;
 import { fetchWaterSummary, fetchAirStations, fetchFloodReports, fetchWeatherNow } from '../../lib/api.js';
@@ -83,8 +83,9 @@ export default function CityStatusStrip({ summary, incidents, flood, avoid, onNa
     };
   }, [isActive]);
 
-  // Weather now at the viewer's location (/api/weather/now, MET Norway via the server); Bangkok centre until
-  // the browser allows location, or if it never does
+  // Weather now at the viewer's location (/api/weather/now, MET Norway via the server). Bangkok centre first;
+  // the browser's position is read only if the viewer taps ใช้ตำแหน่งของฉัน, or silently when location is already granted
+  const [askedLocation, setAskedLocation] = useState(false);
   useEffect(() => {
     if (!isActive) return;
     let alive = true;
@@ -94,18 +95,30 @@ export default function CityStatusStrip({ summary, incidents, flood, avoid, onNa
         .then((d) => alive && setWeather({ ...d, mine: !!spot }))
         .catch(() => {});
     };
-    load();   // Bangkok now; the viewer's own spot replaces it once the browser allows location
-    navigator.geolocation?.getCurrentPosition(
-      (p) => { spot = { lat: p.coords.latitude.toFixed(2), lng: p.coords.longitude.toFixed(2) }; load(); },
-      () => {},
-      { timeout: 8000, maximumAge: 600000 },
-    );
+    const locate = () => {
+      navigator.geolocation?.getCurrentPosition(
+        (p) => { if (!alive) return; spot = { lat: p.coords.latitude.toFixed(2), lng: p.coords.longitude.toFixed(2) }; load(); },
+        () => {},
+        { timeout: 8000, maximumAge: 600000 },
+      );
+    };
+    load();   // Bangkok now; the viewer's own spot replaces it when located
+    if (askedLocation) {
+      locate();
+    } else {
+      // Older browsers have no Permissions API: then nothing is read silently and the button shows
+      let perm = null;
+      try { perm = navigator.permissions?.query?.({ name: 'geolocation' }); } catch { perm = null; }
+      perm?.then((r) => { if (alive && r.state === 'granted') locate(); }).catch(() => {});
+    }
     const id = setInterval(load, WEATHER_POLL_MS);
     return () => {
       alive = false;
       clearInterval(id);
     };
-  }, [isActive]);
+  }, [isActive, askedLocation]);
+  const showLocate = !!weather && !weather.mine;   // the viewer's own spot is not in use yet
+  const askLocation = () => setAskedLocation(true);
   const weatherStatus = !weather ? 'กำลังโหลด' : `${Math.round(weather.temp)}°C ${weather.text}`;
 
   // Traffic
@@ -202,11 +215,11 @@ export default function CityStatusStrip({ summary, incidents, flood, avoid, onNa
         </div>
         <ul className="fx-tiles grid grid-cols-3 xl:grid-cols-6 gap-3">
           {items.map((i) => (
-            <li key={i.id} className={`tone-${i.tone}`}>
+            <li key={i.id} className={`tone-${i.tone} flex flex-col`}>
               <button
                 type="button"
                 onClick={i.go}
-                className="fx-tile group relative cursor-pointer w-full h-full overflow-hidden rounded-md border border-[var(--c-border)] bg-[var(--c-raised)] px-4 pt-5 pb-4 flex flex-col gap-3 text-left transition duration-200 hover:-translate-y-0.5 hover:border-[var(--t-ring)] hover:shadow-[var(--c-shadow)] focus-visible:outline-2 focus-visible:outline-[var(--t-ring)]"
+                className="fx-tile group relative cursor-pointer w-full h-full flex-1 overflow-hidden rounded-md border border-[var(--c-border)] bg-[var(--c-raised)] px-4 pt-5 pb-4 flex flex-col gap-3 text-left transition duration-200 hover:-translate-y-0.5 hover:border-[var(--t-ring)] hover:shadow-[var(--c-shadow)] focus-visible:outline-2 focus-visible:outline-[var(--t-ring)]"
               >
                 <span aria-hidden="true" className="fx-tile-line absolute inset-x-0 top-0 h-1 bg-[var(--t-ring)]" />
                 <span className="flex items-center justify-between gap-2">
@@ -227,6 +240,7 @@ export default function CityStatusStrip({ summary, incidents, flood, avoid, onNa
                   {i.note && <span className="text-xs text-amber-700 dark:text-amber-400">{i.note}</span>}
                 </span>
               </button>
+              {i.id === 'weather' && showLocate && <LocateHint onAsk={askLocation} />}
             </li>
           ))}
         </ul>
@@ -238,7 +252,8 @@ export default function CityStatusStrip({ summary, incidents, flood, avoid, onNa
           <>
             <h2 className="text-[15px] font-semibold text-[var(--act-text)]">ต้องระวัง {care.length} เรื่อง</h2>
             {care.map((i) => (
-              <button key={i.id} type="button" onClick={i.go} className={`tone-${i.tone} cursor-pointer w-full text-left flex items-center gap-3.5 rounded-md px-4 py-4 bg-[var(--t-tint)]`}>
+              <Fragment key={i.id}>
+              <button type="button" onClick={i.go} className={`tone-${i.tone} cursor-pointer w-full text-left flex items-center gap-3.5 rounded-md px-4 py-4 bg-[var(--t-tint)]`}>
                 <span className="flex-1 min-w-0">
                   <span className="block text-base text-[var(--c-ink)]">
                     {i.q}
@@ -251,24 +266,36 @@ export default function CityStatusStrip({ summary, incidents, flood, avoid, onNa
                   <span className="w-6 h-6">{i.icon}</span>
                 </span>
               </button>
+              {i.id === 'weather' && showLocate && <LocateHint onAsk={askLocation} />}
+              </Fragment>
             ))}
           </>
         )}
-        {calm.length > 0 && <QuietList title={`ปกติดี ${calm.length} เรื่อง`} titleClass="text-[var(--ok-text)]" rows={calm} />}
-        {pending.length > 0 && <QuietList title={`ยังไม่มีข้อมูล ${pending.length} เรื่อง`} titleClass="text-[var(--c-muted)]" rows={pending} />}
+        {calm.length > 0 && <QuietList title={`ปกติดี ${calm.length} เรื่อง`} titleClass="text-[var(--ok-text)]" rows={calm} showLocate={showLocate} onAsk={askLocation} />}
+        {pending.length > 0 && <QuietList title={`ยังไม่มีข้อมูล ${pending.length} เรื่อง`} titleClass="text-[var(--c-muted)]" rows={pending} showLocate={showLocate} onAsk={askLocation} />}
       </section>
     </>
   );
 }
 
+// Under the weather answer, when it is Bangkok's and not the viewer's: asks for the position on tap
+function LocateHint({ onAsk }) {
+  return (
+    <button type="button" onClick={onAsk} className="cursor-pointer self-start text-xs font-semibold text-[var(--t-text)] underline underline-offset-2 py-1">
+      ใช้ตำแหน่งของฉัน
+    </button>
+  );
+}
+
 // Phones: a short list of answers with nothing to watch (or no data yet); a stale answer keeps its note
-function QuietList({ title, titleClass, rows }) {
+function QuietList({ title, titleClass, rows, showLocate, onAsk }) {
   return (
     <>
       <h2 className={`mt-1 text-[15px] font-semibold ${titleClass}`}>{title}</h2>
       <div className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] overflow-hidden divide-y divide-[var(--c-border)]">
         {rows.map((i) => (
-          <button key={i.id} type="button" onClick={i.go} className={`tone-${i.tone} cursor-pointer w-full min-h-15 px-4 py-2 flex items-center gap-3 text-left`}>
+          <Fragment key={i.id}>
+          <button type="button" onClick={i.go} className={`tone-${i.tone} cursor-pointer w-full min-h-15 px-4 py-2 flex items-center gap-3 text-left`}>
             <span className="flex-1 min-w-0 text-base text-[var(--c-muted)]">{i.q}</span>
             <span className="text-right">
               <span className="block font-display text-lg font-bold text-[var(--t-text)]">{i.a}</span>
@@ -278,6 +305,8 @@ function QuietList({ title, titleClass, rows }) {
               <path d="M6 4l4 4-4 4" />
             </svg>
           </button>
+          {i.id === 'weather' && showLocate && <div className="px-4 pb-2"><LocateHint onAsk={onAsk} /></div>}
+          </Fragment>
         ))}
       </div>
     </>
