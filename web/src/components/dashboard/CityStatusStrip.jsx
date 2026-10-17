@@ -152,7 +152,7 @@ export default function CityStatusStrip({ summary, incidents, flood, avoid, onNa
     { id: 'weather', q: weather?.mine ? 'อากาศตรงนี้' : 'อากาศ กทม.', a: weatherStatus, say: weatherStatus, tone: weather?.tone || 'neutral', known: !!weather, icon: ICONS.weather, go: () => onNavigate('water') },
     { id: 'water', q: 'ฝนและน้ำ', a: waterStatus, say: waterStatus, tone: waterTone, known: !!water || flooding > 0, icon: ICONS.water, go: () => onNavigate('water') },
     { id: 'report', q: 'มีคนแจ้งน้ำท่วมไหม', sub: 'ใน 6 ชม.', a: repStatus, say: `คนแจ้งน้ำท่วม ${repStatus}`, note: repNote, tone: repTone, known: citizen != null, icon: ICONS.report, go: () => onNavigate('water') },
-    { id: 'air', q: 'ฝุ่นเยอะไหม', a: airStatus, say: `ฝุ่น PM2.5 ${airStatus}`, tone: airTone, known: pm != null, icon: ICONS.air, go: () => onNavigate('map') },
+    { id: 'air', q: 'ฝุ่นเยอะไหม', a: airStatus, say: `ฝุ่น PM2.5 ${airStatus}`, tone: airTone, known: pm != null, icon: ICONS.air, go: () => onNavigate('air') },
     { id: 'incident', q: 'มีอุบัติเหตุไหม', a: incStatus, say: `อุบัติเหตุและรถเสีย ${incStatus}`, tone: incTone, known: !!incidents, icon: ICONS.incident, go: () => (onIncidents ? onIncidents() : onNavigate('dashboard')) },
   ];
   const reds = items.filter((i) => i.tone === 'red');

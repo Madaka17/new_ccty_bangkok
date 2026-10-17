@@ -418,6 +418,14 @@ export async function fetchAirStations() {
   return fetchJson('/api/air/stations', 'air');
 }
 
+// PM2.5 outlook for 3 days (Open-Meteo model, scaled to the stations); null until the server's first read (202)
+export async function fetchAirForecast() {
+  const res = await fetch('/api/air/forecast');
+  if (res.status === 202) return null;
+  if (!res.ok) throw new Error('air_forecast');
+  return res.json();
+}
+
 // NASA FIRMS fire hotspots in Thailand and along its borders (last 24 h, with the analysis); null until the
 // server's first read (202). See nasa_feeds.py.
 export async function fetchNasaFires() {
