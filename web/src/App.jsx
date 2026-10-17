@@ -13,6 +13,8 @@ import { fetchCameras, fetchAllCameras, fetchAIStats, fetchIncidents, fetchSurve
 import { useActiveCameras, useFavorites } from './lib/store.js';
 import { trackView, startHeartbeat } from './lib/telemetry.js';
 import RiverBackdrop from './components/fx/RiverBackdrop.jsx';
+import WeatherFx, { WeatherBadge, WeatherFxToggle } from './components/fx/WeatherFx.jsx';
+import useWeatherScene from './lib/useWeatherScene.js';
 
 // Every page but the dashboard (the first page) loads when it is first opened: the maps (maplibre-gl),
 // the live video (hls.js) and the camera AI pages stay out of the first download
@@ -271,7 +273,8 @@ export default function App() {
 
  const openFloodReport = useCallback(() => navigate('report'), [navigate]);
 
- const sidebarProps = { page, onNavigate: navigate, aiActive, liveCount: activeCams.length };
+ const weather = useWeatherScene();
+ const sidebarProps = { page, onNavigate: navigate, aiActive, liveCount: activeCams.length, weatherPref: weather.pref, onWeatherPref: weather.setPref };
 
   return (
     <div className="min-h-full lg:grid lg:grid-cols-[244px_1fr]">
@@ -300,6 +303,8 @@ export default function App() {
             ดูสด {activeCams.length} กล้อง
           </button>
         )}
+        <WeatherBadge scene={weather.scene} />
+        <WeatherFxToggle pref={weather.pref} onChange={weather.setPref} />
         <ThemeToggle />
       </div>
       {menuOpen && (
@@ -311,6 +316,7 @@ export default function App() {
         </div>
       )}
       <RiverBackdrop />
+      <WeatherFx scene={weather.scene} allowed={weather.allowed} />
       <BottomNav page={page} onNavigate={navigate} onMenu={() => setMenuOpen(true)} onReport={openFloodReport} />
       <EmergencyButton />
 

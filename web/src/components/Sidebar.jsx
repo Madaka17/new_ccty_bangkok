@@ -1,4 +1,5 @@
 import ThemeToggle from './ThemeToggle.jsx';
+import { WeatherFxToggle } from './fx/WeatherFx.jsx';
 
 // Left navigation, grouped by what the page is for. `hint` is the one-liner shown as the
 // tooltip; the label is also the page's title in its header and the mobile top bar.
@@ -56,7 +57,7 @@ function LogoMark() {
   );
 }
 
-export default function Sidebar({ page, onNavigate, aiActive, liveCount = 0, onClose }) {
+export default function Sidebar({ page, onNavigate, aiActive, liveCount = 0, onClose, weatherPref, onWeatherPref }) {
   const badges = {
     ai: aiActive ? 'พร้อม' : null,
     cameras: liveCount ? `${liveCount}` : null,
@@ -140,8 +141,9 @@ export default function Sidebar({ page, onNavigate, aiActive, liveCount = 0, onC
         })}
       </nav>
 
-      <div className="px-3 py-3 border-t border-[var(--c-border)]">
+      <div className="px-3 py-3 border-t border-[var(--c-border)] flex flex-col items-start gap-1">
         <ThemeToggle withLabel />
+        {onWeatherPref && <WeatherFxToggle withLabel pref={weatherPref} onChange={onWeatherPref} className="justify-start" />}
       </div>
     </div>
   );

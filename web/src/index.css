@@ -356,6 +356,42 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.005em; }
 .river-current-near { fill: color-mix(in srgb, var(--c-primary) 12%, transparent); animation: river-flow 17s linear infinite; }
 @keyframes river-flow { to { transform: translateX(-1200px); } }
 
+/* Weather background (WeatherFx.jsx): same layer as the river, behind the content. Only transform and opacity move. */
+.wfx-layer { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; --wfx-rain: rgba(71, 85, 105, 0.4); }
+.dark .wfx-layer { --wfx-rain: rgba(190, 210, 225, 0.55); }
+.wfx-sky { position: absolute; inset: 0; background: rgba(30, 50, 70, 0.08); }
+.wfx-sky[data-i='heavy'] { background: rgba(30, 50, 70, 0.15); }
+.wfx-drop { position: absolute; top: -30px; width: 1px; height: 0; }
+.wfx-streak { position: absolute; top: 0; left: 0; width: 1px; display: block; background: var(--wfx-rain); animation: wfx-fall 0.9s linear infinite; }
+@keyframes wfx-fall { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(0, 115vh, 0); } }
+.wfx-flash { position: absolute; inset: 0; background: #e8f0ff; opacity: 0; animation: wfx-flash 9s linear infinite; }
+@keyframes wfx-flash { 0%, 100% { opacity: 0; } 0.6% { opacity: 0.35; } 1.3% { opacity: 0; } }
+.wfx-veil { position: absolute; inset: 0; background: rgba(100, 110, 120, 0.1); }
+.dark .wfx-veil { background: rgba(120, 135, 150, 0.18); }
+.wfx-cloud { position: absolute; width: 56vmax; height: 20vmax; border-radius: 50%; background: radial-gradient(ellipse, rgba(255, 255, 255, 0.45), transparent 70%); animation: wfx-cloud 75s ease-in-out infinite alternate; }
+.dark .wfx-cloud { background: radial-gradient(ellipse, rgba(200, 215, 225, 0.14), transparent 70%); }
+.wfx-cloud-a { top: 4vh; left: -20vmax; }
+.wfx-cloud-b { top: 30vh; left: 10vmax; width: 44vmax; animation-duration: 90s; animation-delay: -30s; }
+.wfx-cloud-c { top: 58vh; left: -30vmax; width: 60vmax; animation-duration: 60s; animation-delay: -15s; }
+@keyframes wfx-cloud { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(38vmax, 0, 0); } }
+.wfx-sun { position: absolute; top: -22vmax; right: -22vmax; width: 80vmax; height: 80vmax; border-radius: 50%; background: radial-gradient(circle, rgba(251, 191, 36, 0.1), transparent 65%); }
+.dark .wfx-sun { background: radial-gradient(circle, rgba(251, 191, 36, 0.14), transparent 65%); }
+.wfx-rays { position: absolute; top: 0; right: 0; width: 0; height: 0; animation: wfx-spin 90s linear infinite; }
+.wfx-ray { position: absolute; top: 0; left: -2vmax; width: 4vmax; height: 120vmax; transform-origin: 50% 0; background: linear-gradient(180deg, rgba(251, 191, 36, 0.08), transparent 60%); }
+@keyframes wfx-spin { to { transform: rotate(360deg); } }
+.wfx-cool { position: absolute; inset: 0; background: rgba(120, 170, 220, 0.06); }
+.dark .wfx-cool { background: rgba(90, 150, 210, 0.1); }
+.wfx-mist { position: absolute; left: -20%; bottom: 0; width: 140%; height: 18vh; background: linear-gradient(0deg, rgba(200, 225, 240, 0.28), transparent); animation: wfx-mist 75s ease-in-out infinite alternate; }
+.dark .wfx-mist { background: linear-gradient(0deg, rgba(160, 200, 225, 0.14), transparent); }
+@keyframes wfx-mist { from { transform: translate3d(-6%, 0, 0); } to { transform: translate3d(6%, 0, 0); } }
+.wfx-gust { position: absolute; left: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(71, 85, 105, 0.35), transparent); animation: wfx-gust 2s linear infinite; }
+.dark .wfx-gust { background: linear-gradient(90deg, transparent, rgba(230, 238, 240, 0.4), transparent); }
+@keyframes wfx-gust { from { transform: translate3d(-30vw, 0, 0); } to { transform: translate3d(110vw, 0, 0); } }
+@media (prefers-reduced-motion: reduce) {
+  .wfx-layer, .wfx-layer * { animation: none !important; }
+  .wfx-layer { display: none; }
+}
+
 /* Frosted cards: the sky shows faintly through; a border light and a lift of shadow under the pointer. No
    backdrop-filter: it would make each card the frame of any fixed popup drawn inside it. */
 .rounded-xl.border.bg-white, .rounded-2xl.border.bg-white, .glass, .glass-strong {
