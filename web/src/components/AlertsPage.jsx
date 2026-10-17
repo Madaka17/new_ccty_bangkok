@@ -330,9 +330,9 @@ export default function AlertsPage({ isActive, onToast }) {
         ) : (
           <ul className="divide-y divide-slate-100">
             {recent.map((a) => (
-              <li key={`${a.key}-${a.ts}`} className="py-2.5 flex gap-3">
-                <Badge tone={TOPIC_TONE[a.topic]} className="shrink-0 self-start">{topicNames[a.topic] || a.topic}</Badge>
-                <div className="min-w-0 flex-1">
+              <li key={`${a.key}-${a.ts}`} className="py-2.5 flex flex-col gap-1.5 sm:flex-row sm:gap-3">
+                <Badge tone={TOPIC_TONE[a.topic]} className="shrink-0 self-start max-w-full">{topicNames[a.topic] || a.topic}</Badge>
+                <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                   <p className="text-sm text-slate-900 leading-5">{a.title}</p>
                   {a.body && <p className="text-xs text-slate-600 leading-5 whitespace-pre-line">{a.body}</p>}
                 </div>
