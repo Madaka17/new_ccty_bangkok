@@ -7,13 +7,26 @@ import { Badge } from './dashboard/ui.jsx';
 // card for each alert newer than the last one this browser has seen. Unlike Web Push it needs no
 // subscription and no https, but it only works while the site is open.
 const POLL_MS = 30000;
-const HIDE_MS = 20000;        // a severe alert (level 2) stays until it is closed
+const HIDE_MS = 8000;         // a severe alert (level 2) stays until it is closed
 const MAX_CARDS = 3;
 const SEEN_KEY = 'alerts.lastSeen';
 const ON_KEY = 'alerts.inPage';
 const ON_EVENT = 'alerts-inpage';
 const PLACE_KEY = 'alerts.province';
 const DEFAULT_PLACE = 'กรุงเทพมหานคร';
+const COUNT_EVENT = 'alertpopups:change';   // detail.count = cards on screen; the phone buttons hide while > 0
+
+let cardCount = 0;
+export function useAlertPopupCount() {
+  const [n, setN] = useState(() => cardCount);
+  useEffect(() => {
+    const sync = (e) => setN(e.detail.count);
+    window.addEventListener(COUNT_EVENT, sync);
+    setN(cardCount);   // a change may have happened before this listener was added
+    return () => window.removeEventListener(COUNT_EVENT, sync);
+  }, []);
+  return n;
+}
 
 const TOPIC = {
   flood: { label: 'น้ำท่วมถนน', tone: 'blue', page: 'water' },
@@ -112,8 +125,14 @@ export default function AlertPopups({ onNavigate }) {
 
   useEffect(() => () => Object.values(timers.current).forEach(clearTimeout), []);
 
+  const count = on ? cards.length : 0;
+  useEffect(() => {
+    cardCount = count;
+    window.dispatchEvent(new CustomEvent(COUNT_EVENT, { detail: { count } }));
+  }, [count]);
+
   return (
-    <div className="fixed top-4 right-4 left-4 sm:left-auto sm:w-96 z-[70] flex flex-col gap-2 pointer-events-none" aria-live="assertive">
+    <div className="fixed inset-x-3 bottom-[calc(72px+env(safe-area-inset-bottom))] lg:inset-x-auto lg:bottom-auto lg:top-4 lg:right-4 sm:w-96 z-[70] flex flex-col-reverse lg:flex-col gap-2 pointer-events-none" aria-live="assertive">
       <AnimatePresence>
         {on && cards.map((a) => {
           const t = TOPIC[a.topic];

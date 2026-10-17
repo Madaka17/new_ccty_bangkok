@@ -7,13 +7,14 @@ import BottomNav from './components/BottomNav.jsx';
 import NavIcon from './components/NavIcons.jsx';
 import BotFace from './components/BotFace.jsx';
 import ThemeToggle from './components/ThemeToggle.jsx';
-import AlertPopups from './components/AlertPopups.jsx';
+import AlertPopups, { useAlertPopupCount } from './components/AlertPopups.jsx';
+import { useScrollDirection } from './lib/scrollDirection.js';
 import EmergencyButton from './components/EmergencyButton.jsx';
 import { fetchCameras, fetchAllCameras, fetchAIStats, fetchIncidents, fetchSurveyRanking, fetchRoadCameras } from './lib/api.js';
 import { useActiveCameras, useFavorites } from './lib/store.js';
 import { trackView, startHeartbeat } from './lib/telemetry.js';
 import RiverBackdrop from './components/fx/RiverBackdrop.jsx';
-import WeatherFx, { WeatherBadge } from './components/fx/WeatherFx.jsx';
+import WeatherFx, { WeatherBadge, WeatherOverlay, skyClass } from './components/fx/WeatherFx.jsx';
 import useWeatherScene from './lib/useWeatherScene.js';
 
 // Every page but the dashboard (the first page) loads when it is first opened: the maps (maplibre-gl),
@@ -87,6 +88,8 @@ export default function App() {
  const [toast, setToast] = useState('');
  const [incidents, setIncidents] = useState(null);
  const [camStatus, setCamStatus] = useState({}); // camid -> latest AI measurement (level, rate, ...)
+ const scrollVisible = useScrollDirection();
+ const alertCount = useAlertPopupCount();
  // Every camera (ours, iTIC, BMA) for the live camera page; the other pages keep ours only
  const [allCameras, setAllCameras] = useState(null);
  const [allFailed, setAllFailed] = useState(false);   // then the page shows ours only
@@ -284,7 +287,7 @@ export default function App() {
       </aside>
 
       {/* Mobile top bar + drawer */}
-      <div className="lg:hidden sticky top-0 z-40 bg-[var(--c-surface)] border-b border-[var(--c-border)] pl-2 pr-2 h-14 flex items-center gap-2">
+      <div className={`lg:hidden sticky top-0 z-40 bg-[var(--c-surface)] border-b border-[var(--c-border)] pl-2 pr-2 h-14 flex items-center gap-2 ${skyClass(weather.scene)}`}>
         <button
           type="button"
           onClick={() => setMenuOpen(true)}
@@ -316,6 +319,7 @@ export default function App() {
       )}
       <RiverBackdrop />
       <WeatherFx scene={weather.scene} allowed={weather.allowed} />
+      <WeatherOverlay scene={weather.scene} allowed={weather.allowed} />
       <BottomNav page={page} onNavigate={navigate} onMenu={() => setMenuOpen(true)} onReport={openFloodReport} />
       <EmergencyButton />
 
@@ -425,11 +429,11 @@ export default function App() {
           <button
             type="button"
             onClick={() => askAI('')}
-            className="fixed bottom-20 lg:bottom-8 right-5 lg:right-8 z-30 w-14 h-14 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-xl shadow-blue-500/35 hover:shadow-blue-500/55 hover:scale-108 active:scale-95 transition-all duration-200 flex items-center justify-center cursor-pointer group"
+            className={`fixed bottom-20 lg:bottom-8 right-5 lg:right-8 z-30 h-12 w-12 lg:h-14 lg:w-14 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-xl shadow-blue-500/35 hover:shadow-blue-500/55 hover:scale-108 active:scale-95 transition-[translate,scale,opacity] duration-200 flex items-center justify-center cursor-pointer group ${!scrollVisible || alertCount > 0 ? "motion-safe:max-lg:translate-y-24 motion-safe:max-lg:opacity-0 motion-safe:max-lg:pointer-events-none motion-safe:focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:pointer-events-auto" : ""}`}
             title="ถาม AI"
             aria-label="ถาม AI"
           >
-            <BotFace className="w-11 h-11 group-hover:scale-110 transition-transform duration-200" />
+            <BotFace className="w-9 h-9 lg:w-11 lg:h-11 group-hover:scale-110 transition-transform duration-200" />
           </button>
         )}
 

@@ -387,9 +387,29 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.005em; }
 .wfx-gust { position: absolute; left: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(71, 85, 105, 0.35), transparent); animation: wfx-gust 2s linear infinite; }
 .dark .wfx-gust { background: linear-gradient(90deg, transparent, rgba(230, 238, 240, 0.4), transparent); }
 @keyframes wfx-gust { from { transform: translate3d(-30vw, 0, 0); } to { transform: translate3d(110vw, 0, 0); } }
+/* Rain over the cards (all widths, WeatherOverlay). Streak opacity = --k (0..1) times a cap: 0.14 light, 0.18 dark. */
+.wfx-overlay { position: fixed; inset: 0; z-index: 30; overflow: hidden; pointer-events: none; --wfx-rain: rgba(71, 85, 105, 0.4); }
+.dark .wfx-overlay { --wfx-rain: rgba(190, 210, 225, 0.55); }
+.wfx-overlay .wfx-streak { opacity: calc(var(--k, 1) * 0.14); }
+.dark .wfx-overlay .wfx-streak { opacity: calc(var(--k, 1) * 0.18); }
+
+/* Sky tint for the phone top bar and the sidebar brand header. Gradient at most 30 % strength, drawn over the
+   surface colour, so the text keeps its contrast in both themes. Clear weather has no tint. */
+.wfx-sky-rain { background-image: linear-gradient(120deg, rgba(71, 95, 130, 0.26), rgba(71, 95, 130, 0.08)); }
+.dark .wfx-sky-rain { background-image: linear-gradient(120deg, rgba(90, 120, 160, 0.28), rgba(90, 120, 160, 0.1)); }
+.wfx-sky-storm { background-image: linear-gradient(120deg, rgba(51, 65, 85, 0.3), rgba(109, 70, 140, 0.12)); }
+.dark .wfx-sky-storm { background-image: linear-gradient(120deg, rgba(15, 23, 42, 0.3), rgba(109, 70, 140, 0.14)); }
+.wfx-sky-cloudy { background-image: linear-gradient(120deg, rgba(120, 128, 138, 0.2), rgba(120, 128, 138, 0.1)); }
+.dark .wfx-sky-cloudy { background-image: linear-gradient(120deg, rgba(110, 118, 128, 0.2), rgba(110, 118, 128, 0.1)); }
+.wfx-sky-sunny { background-image: linear-gradient(100deg, rgba(251, 191, 36, 0.22), rgba(56, 189, 248, 0.14)); }
+.dark .wfx-sky-sunny { background-image: linear-gradient(100deg, rgba(251, 191, 36, 0.14), rgba(56, 189, 248, 0.1)); }
+.wfx-sky-cool { background-image: linear-gradient(120deg, rgba(120, 170, 220, 0.22), rgba(120, 170, 220, 0.08)); }
+.dark .wfx-sky-cool { background-image: linear-gradient(120deg, rgba(90, 150, 210, 0.2), rgba(90, 150, 210, 0.08)); }
+
 @media (prefers-reduced-motion: reduce) {
   .wfx-layer, .wfx-layer * { animation: none !important; }
   .wfx-layer { display: none; }
+  .wfx-overlay, .wfx-overlay * { animation: none !important; display: none; }
 }
 
 /* Frosted cards: the sky shows faintly through; a border light and a lift of shadow under the pointer. No
