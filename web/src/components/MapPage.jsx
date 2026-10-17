@@ -223,7 +223,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   }, [currentCameras, active, isActive, pinsOn.cctv, pinsOn.floodcam]);
 
   const { incidentList, closures, flyToClosure, flyToIncident, nationFloods } = useRoadEvents(mapRef, isActive, incidents, pinsOn, setPinsOn);
-  const { calendarCount } = useCalendarLayer(mapRef, isActive, pinsOn.calendar);
+  const { calendarCount } = useCalendarLayer(mapRef, isActive, pinsOn.calendar, pinsOn.closure);
   const showThailand = () => mapRef.current?.fitBounds(THAILAND, { padding: 30, duration: 800 });
 
   // Popup button clicks (delegated)
@@ -428,7 +428,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                   <span className="font-medium text-ink-900">งานใหญ่ ปิดถนนล่วงหน้า</span>
                   {calendarCount != null && <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-medium">{calendarCount} จุด</span>}
                 </div>
-                <span className="text-[11px] text-ink-600 leading-tight">งานวิ่ง คอนเสิร์ต และถนนที่ประกาศปิดหรือเบี่ยงล่วงหน้า ทั่วประเทศ</span>
+                <span className="text-[11px] text-ink-600 leading-tight">กรุงเทพฯ และปริมณฑล · งานวิ่ง คอนเสิร์ต และถนนที่ประกาศปิดหรือเบี่ยงล่วงหน้า</span>
               </div>
             </label>
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { kindLabel, sourceLabel, timeRange, bangkokInputToEpoch, mapItemsWithCoords } from './events.js';
+import { kindLabel, sourceLabel, timeRange, bangkokInputToEpoch, mapItemsWithCoords, isDuplicateOfClosure } from './events.js';
 
 // epoch seconds of a Bangkok wall-clock time (UTC+7)
 const bkk = (s) => Math.floor(Date.parse(`${s}+07:00`) / 1000);
@@ -29,24 +29,50 @@ describe('sourceLabel', () => {
 });
 
 describe('timeRange', () => {
+  const NOW = bkk('2026-10-18T09:00:00');
+  const tr = (a, b) => timeRange(a, b, NOW);
   test('same day shows both times', () => {
-    expect(timeRange(bkk('2026-10-18T06:00:00'), bkk('2026-10-18T12:00:00'))).toBe('18 ต.ค. 06:00 – 12:00');
+    expect(tr(bkk('2026-10-18T06:00:00'), bkk('2026-10-18T12:00:00'))).toBe('18 ต.ค. 06:00 – 12:00');
   });
   test('across days shows the two dates', () => {
-    expect(timeRange(bkk('2026-10-18T06:00:00'), bkk('2026-10-20T22:00:00'))).toBe('18 ต.ค. – 20 ต.ค.');
+    expect(tr(bkk('2026-10-18T06:00:00'), bkk('2026-10-20T22:00:00'))).toBe('18 ต.ค. – 20 ต.ค.');
   });
   test('no end says until announced', () => {
-    expect(timeRange(bkk('2026-10-18T06:00:00'), null)).toBe('จนกว่าจะประกาศ');
+    expect(tr(bkk('2026-10-18T06:00:00'), null)).toBe('จนกว่าจะประกาศ');
   });
   test('formats in Bangkok time whatever the browser zone is', () => {
     // 23:30 on 17 Oct in Bangkok is 16:30 UTC on 17 Oct
-    expect(timeRange(bkk('2026-10-17T23:30:00'), bkk('2026-10-18T01:00:00'))).toBe('17 ต.ค. – 18 ต.ค.');
+    expect(tr(bkk('2026-10-17T23:30:00'), bkk('2026-10-18T01:00:00'))).toBe('17 ต.ค. – 18 ต.ค.');
   });
   test('no start shows only the end', () => {
-    expect(timeRange(null, bkk('2026-10-18T12:00:00'))).toBe('ถึง 18 ต.ค. 12:00');
+    expect(tr(null, bkk('2026-10-18T12:00:00'))).toBe('ถึง 18 ต.ค. 12:00');
   });
   test('neither time gives a plain note', () => {
-    expect(timeRange(null, null)).toBe('ไม่ระบุเวลา');
+    expect(tr(null, null)).toBe('ไม่ระบุเวลา');
+  });
+});
+
+describe('timeRange year', () => {
+  const now = bkk('2026-10-18T09:00:00');
+  test('same year as now: no year', () => {
+    expect(timeRange(bkk('2026-01-18T06:00:00'), bkk('2026-01-18T12:00:00'), now)).toBe('18 ม.ค. 06:00 – 12:00');
+  });
+  test('another year: Buddhist-era short year', () => {
+    // 2027 + 543 = 2570, last two digits 70
+    expect(timeRange(bkk('2027-01-18T06:00:00'), bkk('2027-01-18T12:00:00'), now)).toBe('18 ม.ค. 70 06:00 – 12:00');
+    expect(timeRange(bkk('2025-12-30T00:00:00'), bkk('2026-01-02T00:00:00'), now)).toBe('30 ธ.ค. 68 – 2 ม.ค.');
+  });
+});
+
+describe('isDuplicateOfClosure', () => {
+  test('a Longdo closure or diversion is covered by the closures layer', () => {
+    expect(isDuplicateOfClosure({ source: 'longdo', kind: 'closed' })).toBe(true);
+    expect(isDuplicateOfClosure({ source: 'longdo', kind: 'diversion' })).toBe(true);
+  });
+  test('team, BMA and other kinds are not covered', () => {
+    expect(isDuplicateOfClosure({ source: 'team', kind: 'closure' })).toBe(false);
+    expect(isDuplicateOfClosure({ source: 'bma', kind: 'roadwork' })).toBe(false);
+    expect(isDuplicateOfClosure({ source: 'longdo', kind: 'event' })).toBe(false);
   });
 });
 

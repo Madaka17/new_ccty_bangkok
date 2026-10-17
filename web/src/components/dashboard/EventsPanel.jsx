@@ -33,6 +33,7 @@ function ItemRow({ item, canDelete, onDelete, onMap, busy }) {
           </div>
           {place && <p className="text-[13px] text-slate-600 mt-0.5">{place}</p>}
           <p className="text-xs text-slate-700 tabular-nums mt-0.5">{timeRange(item.start, item.end)}</p>
+          {item.detail && <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{item.detail}</p>}
           <p className="text-xs text-slate-500 mt-0.5">
             {sourceLabel(item.source)}
             {item.url && /^https?:\/\//.test(item.url) && (
@@ -79,6 +80,10 @@ function TeamForm({ onAdded, onNotTeam }) {
     }
     if (start >= end) {
       setError('วันสิ้นสุดต้องอยู่หลังวันเริ่ม');
+      return;
+    }
+    if (end > Date.now() / 1000 + 120 * 86400) {
+      setError('วันสิ้นสุดต้องไม่เกิน 120 วันจากวันนี้');
       return;
     }
     const body = { title, kind: form.kind, place: form.place.trim(), start, end };
@@ -135,13 +140,13 @@ function TeamForm({ onAdded, onNotTeam }) {
           ))}
         </select>
       </label>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <label className="flex flex-col gap-1 text-xs text-slate-600">
-          วันเริ่ม
+          วันเริ่ม (เวลาไทย)
           <input type="datetime-local" className={INPUT} value={form.start} onChange={set('start')} required />
         </label>
         <label className="flex flex-col gap-1 text-xs text-slate-600">
-          วันสิ้นสุด
+          วันสิ้นสุด (เวลาไทย)
           <input type="datetime-local" className={INPUT} value={form.end} onChange={set('end')} required />
         </label>
       </div>

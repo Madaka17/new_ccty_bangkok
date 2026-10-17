@@ -29,23 +29,35 @@ function bkkParts(epoch) {
   return {
     day: d.getUTCDate(),
     month: d.getUTCMonth(),
+    year: d.getUTCFullYear(),
     dayKey: Math.floor((epoch + BKK_OFFSET_S) / 86400),
     hh: String(d.getUTCHours()).padStart(2, '0'),
     mm: String(d.getUTCMinutes()).padStart(2, '0'),
   };
 }
 
-const dayText = (p) => `${p.day} ${TH_MON[p.month]}`;
+// "18 ต.ค."; a date outside the current Bangkok year gets the Buddhist-era short year: "18 ม.ค. 70"
+const dayText = (p, nowYear) => {
+  const base = `${p.day} ${TH_MON[p.month]}`;
+  return p.year === nowYear ? base : `${base} ${String((p.year + 543) % 100).padStart(2, '0')}`;
+};
 
-// A Thai short time range: "18 ต.ค. 06:00 – 12:00", "18 ต.ค. – 20 ต.ค.", "จนกว่าจะประกาศ"
-export function timeRange(start, end) {
+// A Thai short time range: "18 ต.ค. 06:00 – 12:00", "18 ต.ค. – 20 ต.ค.", "จนกว่าจะประกาศ".
+// now (epoch seconds) decides the current year, so a date in another year shows its year.
+export function timeRange(start, end, now = Date.now() / 1000) {
   if (start == null && end == null) return 'ไม่ระบุเวลา';
   if (end == null) return 'จนกว่าจะประกาศ';
+  const nowYear = bkkParts(now).year;
   const e = bkkParts(end);
-  if (start == null) return `ถึง ${dayText(e)} ${e.hh}:${e.mm}`;
+  if (start == null) return `ถึง ${dayText(e, nowYear)} ${e.hh}:${e.mm}`;
   const s = bkkParts(start);
-  if (s.dayKey === e.dayKey) return `${dayText(s)} ${s.hh}:${s.mm} – ${e.hh}:${e.mm}`;
-  return `${dayText(s)} – ${dayText(e)}`;
+  if (s.dayKey === e.dayKey) return `${dayText(s, nowYear)} ${s.hh}:${s.mm} – ${e.hh}:${e.mm}`;
+  return `${dayText(s, nowYear)} – ${dayText(e, nowYear)}`;
+}
+
+// Longdo closures and diversions are already drawn by the closures layer (ถนนปิด), so the calendar skips them
+export function isDuplicateOfClosure(item) {
+  return item.source === 'longdo' && ['closed', 'closure', 'diversion'].includes(item.kind);
 }
 
 // A datetime-local value ("2026-10-18T06:00") read as Bangkok time, as epoch seconds; null when it is not a date
@@ -56,13 +68,14 @@ export function bangkokInputToEpoch(value) {
 }
 
 // Calendar items with coordinates from the four buckets, each item once (by id)
-export function mapItemsWithCoords(calendar) {
+export function mapItemsWithCoords(calendar, { skipClosures = false } = {}) {
   if (!calendar) return [];
   const seen = new Set();
   const out = [];
   for (const bucket of ['ongoing', 'today', 'tomorrow', 'week']) {
     for (const item of calendar[bucket] || []) {
       if (item.lat == null || item.lng == null || seen.has(item.id)) continue;
+      if (skipClosures && isDuplicateOfClosure(item)) continue;
       seen.add(item.id);
       out.push(item);
     }

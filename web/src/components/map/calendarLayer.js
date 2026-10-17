@@ -1,5 +1,6 @@
 // Calendar pins on the map: team events and the coming road closures and big events that have coordinates
-// (the whole country, scope 'all'). Off by default; the toggle is "งานใหญ่ ปิดถนนล่วงหน้า".
+// (Bangkok and vicinity, scope 'bkk', the same as the dashboard tab). Off by default; the toggle is
+// "งานใหญ่ ปิดถนนล่วงหน้า". While the closures layer (ถนนปิด) is on, its Longdo closures are not drawn twice.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import { fetchCalendar } from '../../lib/api.js';
@@ -23,15 +24,19 @@ function calendarEl(item) {
   return el;
 }
 
-export function useCalendarLayer(mapRef, isActive, on) {
-  const [items, setItems] = useState(null);
+export function useCalendarLayer(mapRef, isActive, on, closuresOn = false) {
+  const [calendar, setCalendar] = useState(null);
   const markersRef = useRef([]);
+  const items = useMemo(
+    () => (calendar ? mapItemsWithCoords(calendar, { skipClosures: closuresOn }) : null),
+    [calendar, closuresOn],
+  );
 
   useEffect(() => {
     if (!isActive || !on) return undefined;
     const load = () => {
-      fetchCalendar('all')
-        .then((c) => setItems(mapItemsWithCoords(c)))
+      fetchCalendar('bkk')
+        .then((c) => setCalendar(c))
         .catch(() => {});
     };
     load();
