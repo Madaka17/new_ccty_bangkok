@@ -3,22 +3,32 @@ Traffic: the city summary, areas, road events and risk, guidance, tiles, acciden
 the analytics page.
 """
 import json
+import os
 import time
 from datetime import datetime
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Body, Query, Request
 from fastapi.responses import JSONResponse, Response
 
 from backend.api.flood import flood_national_map
+from backend.core.instance import CACHE_DIR
 from backend.core.response_cache import cached_json
 from backend.bma.bma_events import bma_feed
 from backend.services import bma_scanner, cameras_data, guidance, incidents
 from backend.traffic import analytics_service, area_roads, near_traffic, rsc_service
+from backend.traffic.events_calendar import EventsCalendar
 from backend.traffic.area_traffic import area_traffic
 from backend.traffic.road_service import road_risk
 from backend.traffic.traffic_service import get_osm_tile, get_traffic_tile, traffic
 
 router = APIRouter()
+
+events_calendar = EventsCalendar(
+    os.path.join(CACHE_DIR, "team_events.json"),
+    sources={"closures": lambda: incidents.road_events()["closures"],
+             "bma": lambda: bma_feed.get(kind="roadwork", hours=72, limit=200)["items"],
+             "bulletins": lambda: bma_feed.get(limit=1)["bulletins"]},
+    locate=area_traffic.locate)
 
 
 @router.get("/api/traffic/summary")
@@ -82,6 +92,25 @@ def road_events():
     for i in out["incidents"] + out["closures"]:
         i["province"], i["amphoe"] = area_traffic.locate(i["latitude"], i["longitude"])
     return out
+
+@router.get("/api/events/calendar")
+def events_calendar_view(request: Request, scope: str = Query("bkk", pattern="^(bkk|all)$")):
+    """Road closures and big events now, today, tomorrow and in the next 7 days (Bangkok time)."""
+    return cached_json(request, ("events/calendar", scope), lambda: events_calendar.calendar(scope))
+
+@router.post("/api/events/team")
+def events_team_add(body: dict = Body(...)):
+    """Operator adds an event; POST is operator-only (access_guard)."""
+    try:
+        return events_calendar.add(body)
+    except ValueError as e:
+        return JSONResponse(status_code=422, content={"error": str(e)})
+
+@router.delete("/api/events/team/{event_id}")
+def events_team_remove(event_id: str):
+    if not events_calendar.remove(event_id):
+        return JSONResponse(status_code=404, content={"error": "unknown event"})
+    return {"ok": True}
 
 @router.get("/api/traffic/guidance")
 def traffic_guidance(request: Request):
