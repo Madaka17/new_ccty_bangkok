@@ -56,7 +56,7 @@ export default function BestTimeCard({ isActive }) {
       <SectionHeader
         id={`${selectId}-title`}
         title="ออกกี่โมงดี"
-        description={data ? `ช่วงที่รถน้อยและรถมาก จากกล้อง กทม. ${data.days_of_data} วันที่ผ่านมา` : 'ช่วงที่รถน้อยและรถมาก จากกล้อง กทม.'}
+        description={data ? `ช่วงที่รถน้อยและรถมาก จากกล้อง กทม. ${data.days_of_data} วัน` : 'ช่วงที่รถน้อยและรถมาก จากกล้อง กทม.'}
       />
 
       <div className="flex flex-wrap items-center gap-2">
@@ -116,7 +116,7 @@ export default function BestTimeCard({ isActive }) {
             {hours.map((h) => (
               <span
                 key={h.h}
-                className={`flex-1 min-w-0 text-center text-[10px] leading-4 tabular-nums text-slate-600 ${h.h % 2 ? 'hidden sm:block' : ''}`}
+                className={`flex-1 min-w-0 text-center text-[10px] leading-4 tabular-nums text-slate-600 ${h.h % 2 ? 'invisible sm:visible' : ''}`}
               >
                 {String(h.h).padStart(2, '0')}
               </span>

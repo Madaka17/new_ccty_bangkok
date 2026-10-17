@@ -25,14 +25,18 @@ function LevelPill({ color, level, children }) {
   );
 }
 
+// Bangkok calendar day of a unix time, as 'YYYY-MM-DD'
+const bkkDay = (t) => new Date(t * 1000 + 7 * 3600 * 1000).toISOString().slice(0, 10);
+const DAY_TAGS = ['วันนี้', 'พรุ่งนี้', 'มะรืนนี้'];
+
 function OutlookChart({ hours }) {
   const [hover, setHover] = useState(null);
   const W = 320;
-  const H = 150;
+  const H = 162;
   const L = 34;
   const R = 10;
   const T = 10;
-  const B = 24;
+  const B = 36;
   const n = hours.length;
   const top = Math.max(40, Math.ceil(Math.max(...hours.map((h) => h.pm25)) / 10) * 10);
   const x = (i) => L + (i / (n - 1)) * (W - L - R);
@@ -42,6 +46,14 @@ function OutlookChart({ hours }) {
   const xStep = Math.max(1, Math.ceil(n / 6));
   const xLabels = hours.map((h, i) => i).filter((i) => i % xStep === 0);
   const last = hours[n - 1];
+  // day tag under a tick, only where the day changes (and on the first tick)
+  const today = bkkDay(Date.now() / 1000);
+  const dayOf = (t) => Math.round((Date.parse(bkkDay(t)) - Date.parse(today)) / 86400000);
+  const dayTag = (i, pos) => {
+    const d = dayOf(hours[i].t);
+    if (pos > 0 && d === dayOf(hours[xLabels[pos - 1]].t)) return '';
+    return DAY_TAGS[d] || '';
+  };
 
   const pick = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -73,9 +85,10 @@ function OutlookChart({ hours }) {
             </text>
           </g>
         ))}
-        {xLabels.map((i) => (
-          <text key={i} x={x(i)} y={H - 6} textAnchor={i === 0 ? 'start' : 'middle'} className="text-[10px]" style={{ fill: 'var(--c-muted)' }}>
+        {xLabels.map((i, pos) => (
+          <text key={i} x={x(i)} y={H - 20} textAnchor={i === 0 ? 'start' : 'middle'} className="text-[10px]" style={{ fill: 'var(--c-muted)' }}>
             {fmtTime(hours[i].t)}
+            <tspan x={x(i)} dy="13" style={{ fontWeight: 600 }}>{dayTag(i, pos)}</tspan>
           </text>
         ))}
         <path d={path} fill="none" style={{ stroke: 'var(--c-primary)' }} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
