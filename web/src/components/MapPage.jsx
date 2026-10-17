@@ -298,7 +298,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
       <aside
         id="map-options"
         aria-label="สิ่งที่แสดงบนแผนที่"
-        className={`${panelOpen ? 'flex' : 'hidden'} fixed inset-x-0 bottom-0 z-50 max-h-[75dvh] rounded-t-2xl pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl lg:static lg:z-auto lg:flex lg:max-h-none lg:rounded-xl lg:pb-4 lg:shadow-none lg:order-1 glass p-4 flex-col gap-3 overflow-y-auto scroll-soft`}
+        className={`${panelOpen ? 'flex' : 'hidden'} fixed inset-x-0 bottom-0 z-50 max-h-[75dvh] rounded-t-2xl pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl lg:relative lg:z-auto lg:flex lg:max-h-none lg:rounded-xl lg:pb-4 lg:shadow-none lg:order-1 glass p-4 flex-col gap-3 overflow-y-auto scroll-soft`}
       >
         <div className="lg:hidden flex items-center justify-between gap-2 -mt-1">
           <p className="text-sm font-semibold text-ink-900">เลือกสิ่งที่แสดงบนแผนที่</p>
