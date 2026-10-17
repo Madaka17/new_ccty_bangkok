@@ -11,6 +11,7 @@ import FlowOverview from './dashboard/FlowOverview.jsx';
 import IncidentPanel from './dashboard/IncidentPanel.jsx';
 import DensityPanel from './dashboard/DensityPanel.jsx';
 import TrafficGuidanceCard from './dashboard/TrafficGuidanceCard.jsx';
+import BestTimeCard from './dashboard/BestTimeCard.jsx';
 import CityStatusStrip from './dashboard/CityStatusStrip.jsx';
 import RoadRiskPanel from './dashboard/RoadRiskPanel.jsx';
 import NewsCard from './dashboard/NewsCard.jsx';
@@ -244,6 +245,7 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
         <>
           <FlowOverview summary={activeSummary} areas={areas} error={summaryError} onRetry={load} retrying={refreshing} onArea={setRoadArea} />
           <TrafficGuidanceCard province={roadArea?.province} amphoe={roadArea?.amphoe} />
+          <BestTimeCard isActive={isActive} />
         </>
       )}
       {/* The road-colour shares (Longdo lines) sit with the per-road views: on the overview they read as a second,
