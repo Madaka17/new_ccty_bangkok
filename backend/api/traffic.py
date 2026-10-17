@@ -14,8 +14,8 @@ from backend.api.flood import flood_national_map
 from backend.core.instance import CACHE_DIR
 from backend.core.response_cache import cached_json
 from backend.bma.bma_events import bma_feed
-from backend.services import bma_scanner, cameras_data, guidance, incidents
-from backend.traffic import analytics_service, area_roads, near_traffic, rsc_service
+from backend.services import air, bma_scanner, cameras_data, flood_roads, guidance, incidents, traffy_reports
+from backend.traffic import analytics_service, area_roads, district_view, near_traffic, rsc_service
 from backend.traffic.events_calendar import EventsCalendar
 from backend.traffic.area_traffic import area_traffic
 from backend.traffic.road_service import road_risk
@@ -29,6 +29,18 @@ events_calendar = EventsCalendar(
              "bma": lambda: bma_feed.get(kind="roadwork", hours=24, limit=200)["items"],
              "bulletins": lambda: bma_feed.get(limit=1)["bulletins"]},
     locate=area_traffic.locate)
+
+district_sources = {
+    "air": lambda: air.status(),
+    "flood": lambda: flood_roads.status(),
+    "traffy": lambda: traffy_reports.status(),
+    "cameras": lambda: bma_scanner.db.get_all_latest(),
+    "area_traffic": area_traffic.status,
+    "incidents": incidents.road_events,
+    "calendar": lambda: [e for bucket in events_calendar.calendar("all").values() if isinstance(bucket, list)
+                         for e in bucket],
+    "locate": area_traffic.locate,
+}
 
 
 @router.get("/api/traffic/summary")
@@ -111,6 +123,19 @@ def events_team_remove(event_id: str):
     if not events_calendar.remove(event_id):
         return JSONResponse(status_code=404, content={"error": "unknown event"})
     return {"ok": True}
+
+@router.get("/api/district/list")
+def district_list():
+    """The 50 Bangkok districts, sorted (the names the district page accepts)."""
+    return {"districts": district_view.DISTRICTS}
+
+@router.get("/api/district/{name}")
+def district_page(name: str, request: Request):
+    """One Bangkok district at a glance (district_view.py). The name may come with or without the เขต prefix."""
+    key = district_view.normalise(name)
+    if not district_view.is_district(key):
+        return JSONResponse(status_code=404, content={"error": "unknown district"})
+    return cached_json(request, ("district", key), lambda: district_view.build(key, district_sources))
 
 @router.get("/api/traffic/guidance")
 def traffic_guidance(request: Request):
