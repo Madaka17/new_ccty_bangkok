@@ -16,21 +16,26 @@ export default function BestTimeCard({ isActive }) {
   const [road, setRoad] = useState('');
   const [day, setDay] = useState(() => todayDayType());
   const [data, setData] = useState(null);
+  // The road list is kept apart from `data` so the select keeps its options and value while loading or after an error
+  const [roads, setRoads] = useState([]);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [retryTick, setRetryTick] = useState(0);
   const selectId = useId();
 
   // No polling: the profile changes hourly. Refetch on each picker change, and when the page becomes active.
+  // Each request clears the previous bars, so stale bars never sit under a changed picker.
   useEffect(() => {
     if (!isActive) return undefined;
     let live = true;
     setLoading(true);
+    setData(null);
+    setError(false);
     fetchBestTime(road, day)
       .then((d) => {
         if (!live) return;
         setData(d);
-        setError(false);
+        if (d.roads?.length) setRoads(d.roads);
       })
       .catch(() => live && setError(true))
       .finally(() => live && setLoading(false));
@@ -60,17 +65,18 @@ export default function BestTimeCard({ isActive }) {
           id={selectId}
           value={road}
           onChange={(e) => setRoad(e.target.value)}
-          className="min-w-0 max-w-full flex-1 h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900"
+          style={{ backgroundColor: 'var(--c-surface)', color: 'var(--c-ink)', borderColor: 'var(--c-border)' }}
+          className="min-w-0 max-w-full flex-1 h-9 rounded-lg border px-2 text-sm"
         >
           <option value="">ทั้งกรุงเทพฯ</option>
-          {(data?.roads || []).map((r) => (
-            <option key={r.road} value={r.road}>{`ถนน ${r.road} (${r.cameras} กล้อง)`}</option>
+          {roads.map((r) => (
+            <option key={r.road} value={r.road}>{`${r.road} (${r.cameras} กล้อง)`}</option>
           ))}
         </select>
         <Segmented label="เลือกวัน" options={DAY_OPTIONS} value={day} onChange={setDay} />
       </div>
 
-      {error && !data ? (
+      {error ? (
         <ErrorState message="โหลดข้อมูลไม่สำเร็จ" onRetry={() => setRetryTick((n) => n + 1)} retrying={loading} />
       ) : !data ? (
         <Skeleton className="h-40" />
