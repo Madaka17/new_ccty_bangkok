@@ -52,3 +52,14 @@ def test_past_hours_and_nulls_are_dropped():
     assert len(out["hours"]) == 1
     assert out["hours"][0]["pm25"] == 20.0
     assert out["hours"][0]["t"] == int(datetime(2026, 10, 17, 22, tzinfo=BKK).timestamp())
+
+
+def test_today_stays_after_its_hours_pass():
+    # 22:00 on the 17th: the 06-21 values of today are past, but today keeps its stats
+    values = [100 if h < 6 or h > 21 else 10 for h in range(24)] + [30] * 24
+    model = hourly(datetime(2026, 10, 17, 0), values)
+    out = build(model, None, datetime(2026, 10, 17, 22, 0))
+    assert out["days"][0]["label"] == "วันนี้"
+    assert out["days"][0]["mean"] == 10.0
+    assert out["days"][0]["max"] == 10.0
+    assert all(h["t"] >= int(datetime(2026, 10, 17, 22, tzinfo=BKK).timestamp()) for h in out["hours"])

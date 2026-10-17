@@ -47,14 +47,15 @@ def build(model, station_avg, now):
     else:
         ratio = min(2.0, max(0.5, station_avg / model_now))
 
-    hours = []
-    adjusted = []  # (local time, value) for the days below
+    hours = []  # future hours only
+    adjusted = []  # every hour with data, so a day's stats hold after its hours pass
     for when, v in pairs:
-        if when < current or v is None:
+        if v is None:
             continue
         adj = round(v * ratio, 1)
-        hours.append({"t": int(when.replace(tzinfo=BKK_TZ).timestamp()), "pm25": adj})
         adjusted.append((when, adj))
+        if when >= current:
+            hours.append({"t": int(when.replace(tzinfo=BKK_TZ).timestamp()), "pm25": adj})
 
     days = []
     today = now.date()
@@ -92,7 +93,11 @@ class AirForecast:
         req = urllib.request.Request(FORECAST_URL, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
         with urllib.request.urlopen(req, timeout=30) as resp:
             model = json.loads(resp.read().decode("utf-8"))
-        station_avg = air.status()["avg_pm25"]
+        try:
+            station_avg = air.status()["avg_pm25"]
+        except Exception as e:
+            print(f"[AirForecast] station average unavailable, using model only: {e}")
+            station_avg = None
         result = build(model, station_avg, datetime.now(BKK_TZ))
         with self.lock:
             self.result = result
