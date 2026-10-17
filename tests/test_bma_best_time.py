@@ -2,7 +2,7 @@
 from datetime import date
 
 from backend.bma import bma_db
-from backend.bma.bma_best_time import BestTime, clean_road
+from backend.bma.bma_best_time import BestTime, clean_road, load_holidays
 from backend.bma.bma_db import BmaDatabase
 
 TODAY = date(2026, 10, 9)
@@ -188,3 +188,26 @@ def test_holiday_counts_as_weekend(tmp_path):
     bt = BestTime(db.db_path, cams, today=lambda: TODAY, holidays={friday})
     assert bt.profile(day="weekend")["days_of_data"] == 1
     assert bt.profile(day="workday")["days_of_data"] == 0
+
+
+def test_load_holidays_missing_file_is_empty(tmp_path):
+    assert load_holidays(str(tmp_path / "nope.json")) == set()
+
+
+def test_load_holidays_broken_file_is_empty(tmp_path):
+    p = tmp_path / "bad.json"
+    p.write_text("{not json", encoding="utf-8")
+    assert load_holidays(str(p)) == set()
+    p.write_text('{"dates": "2026-10-13"}', encoding="utf-8")
+    assert load_holidays(str(p)) == set()
+
+
+def test_load_holidays_keeps_only_valid_dates(tmp_path):
+    p = tmp_path / "h.json"
+    p.write_text('{"dates": ["2026-10-13", "13/10/2026", 5, "2026-02-30"]}', encoding="utf-8")
+    assert load_holidays(str(p)) == {"2026-10-13"}
+
+
+def test_shipped_holiday_file_loads():
+    holidays = load_holidays()
+    assert "2026-10-13" in holidays and "2027-01-01" in holidays

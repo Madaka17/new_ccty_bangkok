@@ -267,3 +267,16 @@ def test_dust_alert_key_clears_after_its_date(tmp_path, monkeypatch):
     svc.sources["air_forecast"] = lambda: None
     svc.check(now=_bkk(20, 1))    # the day after 2026-10-19, well past CLEAR_SECONDS
     assert "airfc:2026-10-19" not in svc.sent
+
+
+def test_malformed_dust_key_clears_after_normal_window(tmp_path, monkeypatch):
+    svc, _ = _svc(tmp_path, monkeypatch)
+    svc.sent["airfc:None"] = {"level": 1, "first": 0, "seen": _bkk(18, 18) - 3600}
+    svc.check(now=_bkk(18, 18))    # absent, and older than CLEAR_SECONDS: not kept by the date rule
+    assert "airfc:None" not in svc.sent
+
+
+def test_dust_candidate_needs_tomorrow_date(tmp_path, monkeypatch):
+    fc = {"days": [{"label": "พรุ่งนี้", "mean": 80, "max": 100, "level": "unhealthy", "label_th": "x"}]}
+    svc, _ = _svc(tmp_path, monkeypatch, air_forecast=lambda: fc)
+    assert [c for c in svc.candidates(now=_bkk(18, 18)) if c["topic"] == "air"] == []

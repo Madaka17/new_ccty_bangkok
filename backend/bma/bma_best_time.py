@@ -58,10 +58,23 @@ HOLIDAYS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.
 
 
 def load_holidays(path=HOLIDAYS_FILE):
-    """Public-holiday dates (YYYY-MM-DD) from config/thai_holidays.json. Missing or broken file: an empty set."""
+    """Public-holiday dates (YYYY-MM-DD) from config/thai_holidays.json.
+    A missing or broken file, or a "dates" value that is not a list, gives an empty set. Entries that are not
+    valid dates are dropped. Each case prints one warning."""
     try:
         with open(path, encoding="utf-8") as f:
-            return set(json.load(f)["dates"])
+            dates = json.load(f)["dates"]
+        if not isinstance(dates, list):
+            raise ValueError('"dates" is not a list')
+        out, bad = set(), 0
+        for d in dates:
+            try:
+                out.add(date.fromisoformat(d).isoformat())
+            except (TypeError, ValueError):
+                bad += 1
+        if bad:
+            print(f"[BestTime] {bad} invalid holiday date(s) ignored in {path}")
+        return out
     except Exception as e:
         print(f"[BestTime] holidays not loaded from {path}: {e}")
         return set()
