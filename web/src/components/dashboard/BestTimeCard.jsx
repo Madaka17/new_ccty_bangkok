@@ -64,14 +64,14 @@ export default function BestTimeCard({ isActive }) {
         description={data ? `ช่วงที่รถน้อยและรถมาก จากกล้อง กทม. ${data.days_of_data} วัน` : 'ช่วงที่รถน้อยและรถมาก จากกล้อง กทม.'}
       />
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <label htmlFor={selectId} className="sr-only">เลือกถนน</label>
         <select
           id={selectId}
           value={road}
           onChange={(e) => setRoad(e.target.value)}
           style={{ backgroundColor: 'var(--c-surface)', color: 'var(--c-ink)', borderColor: 'var(--c-border)' }}
-          className="min-w-0 max-w-full flex-1 h-9 rounded-lg border px-2 text-sm"
+          className="min-w-0 max-w-full w-full sm:w-auto sm:flex-1 h-9 rounded-lg border px-2 text-sm"
         >
           <option value="">ทั้งกรุงเทพฯ</option>
           {roads.map((r) => (
