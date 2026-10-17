@@ -10,6 +10,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 WINDOW_DAYS = 56
+RETRY_SECONDS = 60      # wait this long after a failed load
 MIN_CELLS = 3          # an hour needs this many camera-days before it gets an average
 HOURS = range(6, 23)   # 6:00 .. 22:00, 17 bars
 BEST_WORST_HOURS = range(6, 22)
@@ -46,16 +47,23 @@ def _level(ratio):
 class BestTime:
     """Hourly car averages per road, rebuilt from the database when older than `ttl` seconds."""
 
-    def __init__(self, db_path, cameras, ttl=3600, today=date.today):
+    def __init__(self, db_path, cameras, ttl=3600, today=date.today, clock=time.monotonic):
         self.db_path = db_path
         self.cameras = cameras
         self.ttl = ttl
         self.today = today
+        self.clock = clock
         self.lock = threading.Lock()
         self.road_of = {str(c.get("camid")): clean_road(c) for c in cameras}
         self._cells = None
         self._built_at = 0.0
         self._built_ts = 0
+        self._retry_at = 0.0   # after a failed load, no new attempt before this time
+        self._known_roads = set(self.road_of.values()) | {""}
+
+    def is_known_road(self, road):
+        """True for '' (all roads) and for any road of the configured cameras."""
+        return road in self._known_roads
 
     def _load_cells(self):
         cutoff = (self.today() - timedelta(days=WINDOW_DAYS)).isoformat()
@@ -70,14 +78,23 @@ class BestTime:
 
     def _get_cells(self):
         with self.lock:
-            if self._cells is None or time.monotonic() - self._built_at >= self.ttl:
-                self._cells = self._load_cells()
-                self._built_at = time.monotonic()
-                self._built_ts = int(time.time())
+            now = self.clock()
+            stale = self._cells is None or now - self._built_at >= self.ttl
+            if stale and now >= self._retry_at:
+                try:
+                    self._cells = self._load_cells()
+                    self._built_at = now
+                    self._built_ts = int(time.time())
+                except Exception as e:
+                    # keep any old cells; try again in a minute, not on every request
+                    self._retry_at = now + RETRY_SECONDS
+                    print(f"[BestTime] load failed, keeping {'old' if self._cells is not None else 'no'} data: {e}")
             return self._cells
 
     def profile(self, road="", day="workday"):
         cells = self._get_cells()
+        failed = cells is None
+        cells = cells or []
         if road:
             camids = {camid for camid, r in self.road_of.items() if r == road}
         else:
@@ -116,7 +133,7 @@ class BestTime:
         for r in self.road_of.values():
             counts[r] = counts.get(r, 0) + 1
         roads = [{"road": r, "cameras": n} for r, n in counts.items()
-                 if r.startswith("ถนน") and n >= 2]
+                 if r.startswith("ถนน") and n >= 2 and not failed]
         roads.sort(key=lambda x: (-x["cameras"], x["road"]))
 
         return {

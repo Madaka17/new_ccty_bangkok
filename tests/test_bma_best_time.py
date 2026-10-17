@@ -99,3 +99,56 @@ def test_road_filter_and_road_list(tmp_path):
     hour_10 = next(h for h in result["hours"] if h["h"] == 10)
     assert hour_10["samples"] == 2 * len(WORKDAYS)
     assert hour_10["avg"] == 10.0
+
+
+def _cams():
+    return [{"camid": "c1", "title": "x", "road": "ถนนสามเสน", "district": ""},
+            {"camid": "c2", "title": "x", "road": "ถนนสามเสน", "district": ""}]
+
+
+def test_is_known_road():
+    bt = BestTime("unused.db", _cams())
+    assert bt.is_known_road("")
+    assert bt.is_known_road("ถนนสามเสน")
+    assert not bt.is_known_road("ถนนที่ไม่มี")
+
+
+def test_failed_reload_keeps_old_cells(tmp_path):
+    clock = [0.0]
+    bt = BestTime("unused.db", _cams(), ttl=10, clock=lambda: clock[0])
+    bt._load_cells = lambda: [("c1", "2026-10-05", 10, 5.0, 1)]
+    bt.profile()
+    def boom():
+        raise RuntimeError("db busy")
+    bt._load_cells = boom
+    clock[0] = 11
+    result = bt.profile()
+    assert next(h for h in result["hours"] if h["h"] == 10)["samples"] == 1
+
+
+def test_first_load_failure_gives_empty_profile():
+    bt = BestTime("unused.db", _cams())
+    def boom():
+        raise RuntimeError("no table")
+    bt._load_cells = boom
+    result = bt.profile()
+    assert all(h["avg"] is None for h in result["hours"])
+    assert result["best"] is None and result["worst"] is None
+    assert result["roads"] == []
+
+
+def test_no_reload_inside_backoff():
+    clock = [0.0]
+    calls = []
+    bt = BestTime("unused.db", _cams(), clock=lambda: clock[0])
+    def boom():
+        calls.append(1)
+        raise RuntimeError("busy")
+    bt._load_cells = boom
+    bt.profile()
+    clock[0] = 30
+    bt.profile()
+    assert len(calls) == 1
+    clock[0] = 61
+    bt.profile()
+    assert len(calls) == 2

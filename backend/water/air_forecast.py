@@ -15,6 +15,8 @@ from backend.water.air_service import LEVELS, _pm25_band, air
 FORECAST_URL = ("https://air-quality-api.open-meteo.com/v1/air-quality?latitude=13.75&longitude=100.52"
                 "&hourly=pm2_5&timezone=Asia%2FBangkok&forecast_days=3")
 REFRESH_SECONDS = 3600
+RETRY_SECONDS = 300       # after a failed refresh
+MAX_AGE_SECONDS = 6 * 3600  # an older outlook is hidden, not shown as today
 BKK_TZ = timezone(timedelta(hours=7))
 DAY_LABELS = ["วันนี้", "พรุ่งนี้", "มะรืนนี้"]
 DAY_HOURS = range(6, 22)  # 06:00 to 21:00 local
@@ -80,6 +82,12 @@ def build(model, station_avg, now):
     return {"updated_at": int(time.time()), "ratio": round(ratio, 3), "hours": hours, "days": days}
 
 
+def bkk_average(items):
+    """Mean PM2.5 of the Bangkok stations (same set as the page headline), or None."""
+    vals = [i["pm25"] for i in items if i.get("province") == "กรุงเทพมหานคร" and i.get("pm25") is not None]
+    return round(sum(vals) / len(vals), 1) if vals else None
+
+
 class AirForecast:
     def __init__(self):
         self.lock = threading.Lock()
@@ -94,7 +102,7 @@ class AirForecast:
         with urllib.request.urlopen(req, timeout=30) as resp:
             model = json.loads(resp.read().decode("utf-8"))
         try:
-            station_avg = air.status()["avg_pm25"]
+            station_avg = bkk_average(air.status()["items"])
         except Exception as e:
             print(f"[AirForecast] station average unavailable, using model only: {e}")
             station_avg = None
@@ -103,17 +111,26 @@ class AirForecast:
             self.result = result
         print(f"[AirForecast] {len(result['days'])} days, ratio {result['ratio']}")
 
+    def _delay(self, ok):
+        return REFRESH_SECONDS if ok else RETRY_SECONDS
+
     def _loop(self):
         while True:
             try:
                 self.refresh()
+                ok = True
             except Exception as e:
+                ok = False
                 print(f"[AirForecast] refresh error: {e}")
-            time.sleep(REFRESH_SECONDS)
+            time.sleep(self._delay(ok))
 
-    def status(self):
+    def status(self, now=time.time):
         with self.lock:
-            return self.result
+            r = self.result
+        if r is None:
+            return None
+        t = now() if callable(now) else now
+        return r if t - r["updated_at"] <= MAX_AGE_SECONDS else None
 
 
 air_forecast = AirForecast()

@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from backend.bma import bma_best_time as best_time
 from backend.bma.bma_service import RAW_DIR as BMA_RAW_DIR
@@ -37,8 +37,10 @@ def get_bma_analytics(request: Request):
 @router.get("/api/bma/best_time")
 def get_bma_best_time(request: Request, road: str = "", day: str = Query("workday", pattern="^(workday|weekend)$")):
     """Hour-by-hour car averages for a road (or all roads), with the quietest and busiest hour."""
-    return cached_json(request, ("bma/best_time", road, day),
-                       lambda: best_time.shared(bma_scanner).profile(road, day))
+    bt = best_time.shared(bma_scanner)
+    if not bt.is_known_road(road):  # keeps junk values out of the shared response cache
+        return JSONResponse({"error": "unknown road"}, status_code=404)
+    return cached_json(request, ("bma/best_time", road, day), lambda: bt.profile(road, day))
 
 @router.post("/api/bma/scan")
 def trigger_bma_scan():
