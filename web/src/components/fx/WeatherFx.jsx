@@ -133,17 +133,18 @@ export function WeatherBadge({ scene }) {
 }
 
 // On / off for the weather background. Same button style as ThemeToggle.
-export function WeatherFxToggle({ pref, onChange, withLabel = false, className = '' }) {
-  const on = pref !== 'off';
-  const label = on ? 'ปิดเอฟเฟกต์อากาศ' : 'เปิดเอฟเฟกต์อากาศ';
+export function WeatherFxToggle({ pref, onChange, blocked = false, withLabel = false, className = '' }) {
+  const on = pref !== 'off' && !blocked;
+  const label = blocked ? 'เอฟเฟกต์อากาศปิดอยู่ตามการตั้งค่าเครื่อง' : on ? 'ปิดเอฟเฟกต์อากาศ' : 'เปิดเอฟเฟกต์อากาศ';
   return (
     <button
       type="button"
       onClick={() => onChange(on ? 'off' : 'on')}
+      disabled={blocked}
       aria-pressed={on}
       aria-label={label}
       title={label}
-      className={`cursor-pointer inline-flex items-center justify-center gap-2 min-h-11 min-w-11 rounded-md text-[var(--c-ink)] hover:bg-[var(--c-raised)] transition-colors duration-150 ${withLabel ? 'px-3 text-sm font-medium' : ''} ${className}`}
+      className={`cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 inline-flex items-center justify-center gap-2 min-h-11 min-w-11 rounded-md text-[var(--c-ink)] hover:bg-[var(--c-raised)] transition-colors duration-150 ${withLabel ? 'px-3 text-sm font-medium' : ''} ${className}`}
     >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 shrink-0" aria-hidden="true">
         <path d="M7 18a4.5 4.5 0 0 1-.6-8.96 6 6 0 0 1 11.7 1.5A4 4 0 0 1 17 18H7z" />

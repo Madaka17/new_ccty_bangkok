@@ -13,7 +13,7 @@ import { fetchCameras, fetchAllCameras, fetchAIStats, fetchIncidents, fetchSurve
 import { useActiveCameras, useFavorites } from './lib/store.js';
 import { trackView, startHeartbeat } from './lib/telemetry.js';
 import RiverBackdrop from './components/fx/RiverBackdrop.jsx';
-import WeatherFx, { WeatherBadge, WeatherFxToggle } from './components/fx/WeatherFx.jsx';
+import WeatherFx, { WeatherBadge } from './components/fx/WeatherFx.jsx';
 import useWeatherScene from './lib/useWeatherScene.js';
 
 // Every page but the dashboard (the first page) loads when it is first opened: the maps (maplibre-gl),
@@ -274,7 +274,7 @@ export default function App() {
  const openFloodReport = useCallback(() => navigate('report'), [navigate]);
 
  const weather = useWeatherScene();
- const sidebarProps = { page, onNavigate: navigate, aiActive, liveCount: activeCams.length, weatherPref: weather.pref, onWeatherPref: weather.setPref };
+ const sidebarProps = { page, onNavigate: navigate, aiActive, liveCount: activeCams.length, weatherPref: weather.pref, onWeatherPref: weather.setPref, weatherScene: weather.scene, weatherBlocked: weather.blocked };
 
   return (
     <div className="min-h-full lg:grid lg:grid-cols-[244px_1fr]">
@@ -304,7 +304,6 @@ export default function App() {
           </button>
         )}
         <WeatherBadge scene={weather.scene} />
-        <WeatherFxToggle pref={weather.pref} onChange={weather.setPref} />
         <ThemeToggle />
       </div>
       {menuOpen && (

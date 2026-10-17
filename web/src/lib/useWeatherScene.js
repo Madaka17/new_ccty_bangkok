@@ -84,5 +84,8 @@ export default function useWeatherScene() {
   const scene = useMemo(() => forcedScene(window.location.search) ?? weatherScene(now), [now]);
   const allowed = fxAllowed({ pref, reducedMotion, saveData, battery });
 
-  return { scene, allowed, pref, setPref };
+  // Blocked by the device or data settings, whatever the viewer chose
+  const blocked = !fxAllowed({ pref: 'on', reducedMotion, saveData, battery });
+
+  return { scene, allowed, pref, setPref, blocked };
 }
