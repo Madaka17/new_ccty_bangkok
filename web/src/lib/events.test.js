@@ -1,8 +1,29 @@
 import { describe, expect, test } from 'vitest';
-import { kindLabel, sourceLabel, timeRange, bangkokInputToEpoch, mapItemsWithCoords, isDuplicateOfClosure } from './events.js';
+import {
+  kindLabel, sourceLabel, timeRange, bangkokInputToEpoch, mapItemsWithCoords, isDuplicateOfClosure,
+  anySourceNotOk, emptySectionText, PARTIAL_NOTE, UNKNOWN_EMPTY, NONE_LISTED,
+} from './events.js';
 
 // epoch seconds of a Bangkok wall-clock time (UTC+7)
 const bkk = (s) => Math.floor(Date.parse(`${s}+07:00`) / 1000);
+
+describe('sources_ok', () => {
+  test('all feeds ok: no partial flag, an empty section says none listed', () => {
+    const ok = { closures: true, bma: true, bulletins: true };
+    expect(anySourceNotOk(ok)).toBe(false);
+    expect(emptySectionText(ok)).toBe(NONE_LISTED);
+  });
+  test('one feed not ok: partial flag, an empty section says the data is missing', () => {
+    const down = { closures: false, bma: true, bulletins: true };
+    expect(anySourceNotOk(down)).toBe(true);
+    expect(emptySectionText(down)).toBe(UNKNOWN_EMPTY);
+    expect(PARTIAL_NOTE).toBe('ข้อมูลบางส่วนยังไม่มา รายการอาจไม่ครบ');
+  });
+  test('a missing sources_ok map (older server) counts as ok', () => {
+    expect(anySourceNotOk(undefined)).toBe(false);
+    expect(emptySectionText(null)).toBe(NONE_LISTED);
+  });
+});
 
 describe('kindLabel', () => {
   test('names each kind in plain Thai', () => {

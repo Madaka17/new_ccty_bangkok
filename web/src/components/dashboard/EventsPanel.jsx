@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { fetchCalendar, addTeamEvent, deleteTeamEvent } from '../../lib/api.js';
-import { kindLabel, sourceLabel, timeRange, bangkokInputToEpoch, requestMapLayer } from '../../lib/events.js';
+import {
+  kindLabel, sourceLabel, timeRange, bangkokInputToEpoch, requestMapLayer,
+  anySourceNotOk, emptySectionText, PARTIAL_NOTE,
+} from '../../lib/events.js';
 import { BKK_DISTRICTS } from '../../lib/bkkDistricts.js';
 import { Card, SectionHeader, Badge, Button, Skeleton, ErrorState, Truncate, FOCUS } from './ui.jsx';
 
@@ -239,6 +242,7 @@ export default function EventsPanel({ isActive, onNavigate }) {
           title="ถนนปิดและงานใหญ่ในกรุงเทพฯ"
           description="ดูว่าถนนไหนปิด เบี่ยงจราจร หรือมีงานใหญ่ในช่วง 7 วันข้างหน้า"
         />
+        {anySourceNotOk(data.sources_ok) && <p className="mt-2 text-xs text-slate-500">{PARTIAL_NOTE}</p>}
         <div className="mt-4 space-y-5">
           {SECTIONS.map(([key, title]) => {
             const items = data[key] || [];
@@ -248,7 +252,7 @@ export default function EventsPanel({ isActive, onNavigate }) {
                   {title} <span className="text-slate-500 font-normal tabular-nums">({items.length})</span>
                 </h4>
                 {items.length === 0 ? (
-                  <p className="text-[13px] text-slate-500 mt-2">ไม่มีรายการ</p>
+                  <p className="text-[13px] text-slate-500 mt-2">{emptySectionText(data.sources_ok)}</p>
                 ) : (
                   <ul className="mt-1 divide-y divide-slate-100">
                     {items.map((item) => (

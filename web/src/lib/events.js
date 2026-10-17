@@ -21,6 +21,16 @@ const TH_MON = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.'
 const BKK_OFFSET_S = 7 * 3600;
 
 export const kindLabel = (kind) => KIND_LABEL[kind] || 'ประกาศ';
+
+export const PARTIAL_NOTE = 'ข้อมูลบางส่วนยังไม่มา รายการอาจไม่ครบ';
+export const UNKNOWN_EMPTY = 'ยังไม่มีข้อมูลครบ';
+export const NONE_LISTED = 'ไม่มีรายการ';
+
+// True when the calendar says some feed is not ok (sources_ok value false). A missing map counts as ok.
+export const anySourceNotOk = (sourcesOk) => Object.values(sourcesOk || {}).some((v) => v === false);
+
+// The text for an empty section: while a feed is not ok, "none" would be a lie, so say the data is missing.
+export const emptySectionText = (sourcesOk) => (anySourceNotOk(sourcesOk) ? UNKNOWN_EMPTY : NONE_LISTED);
 export const sourceLabel = (source) => SOURCE_LABEL[source] || 'ประกาศ';
 
 // Bangkok wall clock of an epoch-seconds value, read through UTC so the browser's own zone does not matter
