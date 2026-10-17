@@ -9,6 +9,7 @@ import { fmtDateTime, fmtNum } from './dashboard/format.js';
 import { PAGE_TITLES } from './Sidebar.jsx';
 import FlowOverview from './dashboard/FlowOverview.jsx';
 import IncidentPanel from './dashboard/IncidentPanel.jsx';
+import EventsPanel from './dashboard/EventsPanel.jsx';
 import DensityPanel from './dashboard/DensityPanel.jsx';
 import TrafficGuidanceCard from './dashboard/TrafficGuidanceCard.jsx';
 import BestTimeCard from './dashboard/BestTimeCard.jsx';
@@ -24,6 +25,7 @@ const SECTIONS = [
   { id: 'overview', label: 'รถติดตอนนี้' },
   { id: 'road-risk', label: 'ถนนแต่ละสาย' },
   { id: 'incidents', label: 'อุบัติเหตุและรถเสีย' },
+  { id: 'events', label: 'ปิดถนน งานใหญ่' },
   { id: 'bma-reports', label: 'ข่าวจากศูนย์ กทม.' },
 ];
 
@@ -261,6 +263,7 @@ export default function DashboardPage({ isActive, liveCount, cameras = [], incid
           <IncidentPanel incidents={incidents} onOpenAI={onOpenAI} onNavigate={onNavigate} />
         </div>
       )}
+      {section === 'events' && <EventsPanel isActive={isActive && section === 'events'} onNavigate={onNavigate} />}
       {section === 'bma-reports' && <BMAEventFeed isActive={isActive && section === 'bma-reports'} onToast={onToast} />}
     </div>
   );
