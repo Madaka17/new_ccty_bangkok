@@ -1,7 +1,7 @@
 // PM2.5 page: how dusty it is now, which districts are worst, and the 3-day outlook. Public, for anyone in Bangkok.
 import { useEffect, useRef, useState } from 'react';
 import { fetchAirForecast, fetchAirStations } from '../lib/api.js';
-import { airAdvice, bkkAverage, districtRanking } from '../lib/air.js';
+import { airAdvice, bkkAverage, districtRanking, tickStep } from '../lib/air.js';
 import { trackView } from '../lib/telemetry.js';
 import { Button, Card, ErrorState, Skeleton } from './dashboard/ui.jsx';
 import { PageHeader } from './dashboard/primitives.jsx';
@@ -57,8 +57,10 @@ function OutlookChart({ hours }) {
   const y = (v) => T + (1 - v / top) * (H - T - B);
   const path = hours.map((h, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(h.pm25).toFixed(1)}`).join(' ');
   const yTicks = [0, top / 2, top];
-  const xStep = Math.max(1, Math.ceil(n / Math.max(3, Math.floor((W - L - R) / 80))));
-  const xLabels = hours.map((h, i) => i).filter((i) => i % xStep === 0);
+  // ticks at Bangkok hours that are a multiple of the step (so 00:00 / 12:00 stay on the clock, not index math)
+  const xStep = tickStep(W - L - R, n);
+  const bkkHourOf = (t) => new Date((t + 7 * 3600) * 1000).getUTCHours();
+  const xLabels = hours.map((h, i) => i).filter((i) => bkkHourOf(hours[i].t) % xStep === 0);
   const last = hours[n - 1];
   // day tag under a tick, only where the day changes (and on the first tick)
   const today = bkkDay(Date.now() / 1000);
@@ -102,7 +104,7 @@ function OutlookChart({ hours }) {
           </g>
         ))}
         {xLabels.map((i, pos) => (
-          <text key={i} x={x(i)} y={H - 20} textAnchor={i === 0 ? 'start' : 'middle'} className="text-[10px]" style={{ fill: 'var(--c-muted)' }}>
+          <text key={i} x={x(i)} y={H - 20} textAnchor={i === 0 ? 'start' : W - x(i) <= 15 ? 'end' : 'middle'} className="text-[10px]" style={{ fill: 'var(--c-muted)' }}>
             {fmtTime(hours[i].t)}
             <tspan x={x(i)} dy="13" style={{ fontWeight: 600 }}>{dayTag(i, pos)}</tspan>
           </text>

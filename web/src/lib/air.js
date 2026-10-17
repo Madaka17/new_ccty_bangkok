@@ -60,3 +60,10 @@ export function districtRanking(items) {
 export function airAdvice(level) {
   return ADVICE[level] ?? '';
 }
+
+// Hours between x-axis labels: the smallest step (3, 6, 12 or 24 h) that leaves at least 60 px between
+// labels on a plot of `plotWidth` px spanning `n` hourly points. Falls back to 24 when even that is too tight.
+export function tickStep(plotWidth, n) {
+  const pxPerHour = plotWidth / Math.max(1, n - 1);
+  return [3, 6, 12, 24].find((s) => s * pxPerHour >= 60) ?? 24;
+}

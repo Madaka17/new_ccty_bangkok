@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { airAdvice, bkkAverage, band, districtRanking } from './air.js';
+import { airAdvice, bkkAverage, band, districtRanking, tickStep } from './air.js';
 
 const bkk = (area, pm25) => ({ province: 'กรุงเทพมหานคร', area, pm25 });
 
@@ -59,5 +59,14 @@ describe('airAdvice', () => {
 
   test('gives an empty string for an unknown level', () => {
     expect(airAdvice('x')).toBe('');
+  });
+});
+
+describe('tickStep', () => {
+  test('picks the smallest step that keeps labels 60 px apart', () => {
+    expect(tickStep(268, 49)).toBe(12);
+    expect(tickStep(620, 49)).toBe(6);
+    expect(tickStep(1200, 49)).toBe(3);
+    expect(tickStep(100, 49)).toBe(24);
   });
 });

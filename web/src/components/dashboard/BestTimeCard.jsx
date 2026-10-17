@@ -141,15 +141,26 @@ export default function BestTimeCard({ isActive }) {
             <div className="flex flex-col gap-1 text-sm text-slate-900">
               {COMMUTE_ROWS.map(([key, label, span]) => {
                 const { best, worst } = commute[key] || {};
-                if (!best) return <p key={key}>{`${label} (${span}): ข้อมูลยังไม่พอ`}</p>;
                 return (
-                  <p key={key}>
-                    {`${label} (${span}): รถน้อยที่สุด `}
-                    <span className="font-semibold tabular-nums">{hourRange(best)}</span>
-                    {worst && worst.from !== best.from && (
-                      <>{' · ควรเลี่ยง '}<span className="font-semibold tabular-nums">{hourRange(worst)}</span></>
+                  <div key={key} className="flex flex-col gap-0.5">
+                    <p className="font-semibold">{`${label} (${span})`}</p>
+                    {best ? (
+                      <p className="flex flex-wrap gap-x-3">
+                        <span className="whitespace-nowrap">
+                          {'รถน้อยที่สุด '}
+                          <span className="font-semibold tabular-nums">{hourRange(best)}</span>
+                        </span>
+                        {worst && worst.from !== best.from && (
+                          <span className="whitespace-nowrap">
+                            {'ควรเลี่ยง '}
+                            <span className="font-semibold tabular-nums">{hourRange(worst)}</span>
+                          </span>
+                        )}
+                      </p>
+                    ) : (
+                      <p>ข้อมูลยังไม่พอ</p>
                     )}
-                  </p>
+                  </div>
                 );
               })}
             </div>
