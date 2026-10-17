@@ -40,8 +40,8 @@ def test_bucket_placement_with_fixed_now(tmp_path):
         longdo("tomorrow", start=bkk(19, 8), stop=bkk(19, 20)),
         longdo("tomorrow-edge", start=bkk(19, 0), stop=bkk(19, 20)),
         longdo("week", start=bkk(20, 0), stop=bkk(21, 20)),
-        longdo("week-last", start=bkk(25, 23), stop=bkk(26, 20)),
-        longdo("beyond", start=bkk(26, 0), stop=bkk(27, 20)),
+        longdo("week-last", start=bkk(24, 23), stop=bkk(25, 20)),
+        longdo("beyond", start=bkk(25, 0), stop=bkk(26, 20)),
     ]
     out = make(tmp_path, closures=closures).calendar()
     assert set(ids(out["today"])) == {"longdo-today", "longdo-today-edge"}
@@ -135,6 +135,7 @@ def test_add_validation_rules_each_give_value_error(tmp_path):
         {"district": "เชียงใหม่"},
         {"start": bkk(20, 12), "end": bkk(20, 6)},
         {"start": bkk(20, 6), "end": bkk(18, 6) + 130 * 86400},
+        {"end": None},
         {"start": "tomorrow"},
         {"start": True},
         {"url": "javascript:alert(1)"},
@@ -168,7 +169,7 @@ def test_broken_store_file_gives_empty_list_without_exception(tmp_path):
     assert ids(out["ongoing"]) == ["longdo-lg"]
     assert all(i["source"] != "team" for k in out for i in (out[k] if isinstance(out[k], list) else []))
     # a later write replaces the broken file
-    cal.add({"title": "งานใหม่", "kind": "event", "start": bkk(20, 9), "end": None})
+    cal.add({"title": "งานใหม่", "kind": "event", "start": bkk(20, 9), "end": bkk(20, 12)})
     assert json.loads((tmp_path / "team.json").read_text(encoding="utf-8"))
 
 
@@ -181,3 +182,55 @@ def test_events_ended_over_30_days_ago_are_pruned_on_write(tmp_path):
     stored = json.loads((tmp_path / "team.json").read_text(encoding="utf-8"))
     titles = [e["title"] for e in stored]
     assert titles == ["งานใหม่"]
+
+
+def test_bma_roadwork_expires_12_hours_after_report(tmp_path):
+    bma = [
+        {"id": 1, "kind": "roadwork", "title": "ซ่อมท่อ", "desc": "", "ts": bkk(17, 7), "lat": None, "lng": None},
+        {"id": 2, "kind": "roadwork", "title": "ซ่อมสะพาน", "desc": "", "ts": bkk(18, 7), "lat": None, "lng": None},
+    ]
+    out = make(tmp_path, bma=bma).calendar()          # now 12:00: report 2 ends 19:00, report 1 ended 19:00 yesterday
+    assert ids(out["today"]) == ["bma-2"] and out["today"][0]["end"] == bkk(18, 19)
+    late = make(tmp_path, bma=bma, now=bkk(18, 20)).calendar()
+    assert late["today"] == [] and late["ongoing"] == []
+
+
+def test_bulletins_keep_latest_five(tmp_path):
+    bulletins = [{"id": f"b{n}", "headline": f"ปิดช่องจราจร {n}", "detail": "", "image": None, "source": ""}
+                 for n in range(7)]
+    out = make(tmp_path, bulletins=bulletins).calendar()
+    assert len(out["ongoing"]) == 5
+    assert {i["id"] for i in out["ongoing"]} == {f"bma_bulletin-b{n}" for n in range(5)}
+
+
+def test_common_words_alone_do_not_make_reports_the_same(tmp_path):
+    closures = [longdo("lg", start=bkk(18, 6), stop=bkk(19, 6), title="ถนน รัชดา ปิดช่องจราจร", lat="13.7300", lng="100.5600")]
+    bma = [{"id": 5, "kind": "roadwork", "title": "ถนน สุขุมวิท ซ่อมท่อ", "desc": "", "ts": bkk(18, 7),
+            "lat": 13.7302, "lng": 100.5601, "url": None}]
+    out = make(tmp_path, closures=closures, bma=bma).calendar()
+    assert set(ids(out["today"])) == {"longdo-lg", "bma-5"}
+
+
+def test_team_event_needs_an_end(tmp_path):
+    with pytest.raises(ValueError):
+        make(tmp_path).add({"title": "งาน", "kind": "event", "start": bkk(20, 9)})
+
+
+def test_hand_edited_rows_with_bad_end_are_skipped_not_fatal(tmp_path):
+    rows = [{"id": "team-bad", "source": "team", "title": "เสีย", "kind": "event", "start": 1.0, "end": "abc"},
+            {"id": "team-ok", "source": "team", "title": "ใช้ได้", "kind": "event", "start": bkk(20, 9), "end": bkk(20, 12)}]
+    (tmp_path / "team.json").write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
+    cal = make(tmp_path)
+    assert ids(cal.calendar()["week"]) == ["team-ok"]
+    cal.add({"title": "งานใหม่", "kind": "event", "start": bkk(21, 9), "end": bkk(21, 12)})   # prune must not crash
+    assert [e["title"] for e in json.loads((tmp_path / "team.json").read_text(encoding="utf-8"))] == ["ใช้ได้", "งานใหม่"]
+
+
+def test_team_event_cap(tmp_path, monkeypatch):
+    from backend.traffic import events_calendar
+    monkeypatch.setattr(events_calendar, "TEAM_MAX_EVENTS", 2)
+    cal = make(tmp_path)
+    for n in range(2):
+        cal.add({"title": f"งาน {n}", "kind": "event", "start": bkk(20, 9), "end": bkk(20, 12)})
+    with pytest.raises(ValueError, match="too many"):
+        cal.add({"title": "งานที่สาม", "kind": "event", "start": bkk(20, 9), "end": bkk(20, 12)})

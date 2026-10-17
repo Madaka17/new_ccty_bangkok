@@ -30,6 +30,10 @@ TEAM_MAX_AHEAD = 120 * 86400          # an end time may be at most this far ahea
 DISTRICTS_FILE = os.path.join(BASE_DIR, "config", "thailand_districts.geojson")
 DEDUP_METERS = 300
 ROAD_WORDS = re.compile("ปิด|เบี่ยง")
+STOP_WORDS = {"ถนน", "ปิด", "เบี่ยง", "เบี่ยงการจราจร", "ซอย", "ช่วง", "จราจร", "การจราจร", "ซ่อม", "ก่อสร้าง",
+              "แยก", "ขาเข้า", "ขาออก", "บริเวณ"}
+BMA_REPORT_HOURS = 12        # a road-work report is news: taken to expire 12 h after it
+BULLETIN_KEEP = 5            # long construction bulletins: only the latest few
 
 _districts = None
 _districts_lock = threading.Lock()
@@ -96,9 +100,12 @@ def _words(title):
 
 
 def _share_word(a, b):
-    """Two titles share a word: the same word of 2+ characters, or a 4+ character part of one inside the other."""
+    """Two titles share a word: the same word of 2+ characters (not a stop word), or a 4+ character part of one
+    inside the other."""
     for x in _words(a):
         for y in _words(b):
+            if x in STOP_WORDS or y in STOP_WORDS:
+                continue
             if x == y and len(x) >= 2:
                 return True
             if min(len(x), len(y)) >= 4 and (x in y or y in x):
@@ -129,13 +136,11 @@ def _validate(event, now):
     if district and district not in bangkok_districts():
         raise ValueError("district must be one of the 50 Bangkok districts")
     start = _num(event.get("start"), "start")
-    end = event.get("end")
-    if end is not None:
-        end = _num(end, "end")
-        if start >= end:
-            raise ValueError("start must be before end")
-        if end > now + TEAM_MAX_AHEAD:
-            raise ValueError("end must be within 120 days from now")
+    end = _num(event.get("end"), "end")
+    if start >= end:
+        raise ValueError("start must be before end")
+    if end > now + TEAM_MAX_AHEAD:
+        raise ValueError("end must be within 120 days from now")
     url = _text(event, "url", 300) or None
     if url is not None and not re.match(r"^https?://\S+$", url):
         raise ValueError("url must be an http or https link")
@@ -172,7 +177,19 @@ class EventsCalendar:
         if not isinstance(data, list) or not all(isinstance(e, dict) for e in data):
             self._warn_once("team events file has the wrong shape, treated as empty")
             return []
-        return data
+        rows = []
+        for e in data:
+            start, end = _float(e.get("start")), _float(e.get("end"))
+            if start is None or end is None:
+                self._warn_once("team events file has a row without usable start/end, row skipped")
+                continue
+            rows.append({"id": str(e.get("id") or ""), "source": "team", "kind": str(e.get("kind") or "event"),
+                         "title": str(e.get("title") or ""), "detail": str(e.get("detail") or ""),
+                         "place": str(e.get("place") or ""), "district": str(e.get("district") or ""),
+                         "province": str(e.get("province") or ""), "lat": _float(e.get("lat")),
+                         "lng": _float(e.get("lng")), "start": start, "end": end,
+                         "url": e.get("url") or None})
+        return rows
 
     def _write_store(self, events):
         os.makedirs(os.path.dirname(self.store_path), exist_ok=True)
@@ -183,7 +200,7 @@ class EventsCalendar:
 
     @staticmethod
     def _prune(events, now):
-        return [e for e in events if e.get("end") is None or e["end"] >= now - TEAM_KEEP_AFTER_END]
+        return [e for e in events if e["end"] >= now - TEAM_KEEP_AFTER_END]
 
     def add(self, event):
         """Validate and store one team event; returns the stored item with its new id."""
@@ -242,10 +259,12 @@ class EventsCalendar:
                 "url": None}
 
     def _norm_bma(self, e):
+        start = _float(e.get("ts"))
         return {"id": f"bma-{e.get('id')}", "source": "bma", "kind": "roadwork", "title": e.get("title") or "",
                 "detail": e.get("desc") or "", "place": "", "district": "", "province": BANGKOK,
                 "lat": _float(e.get("lat")), "lng": _float(e.get("lng")),
-                "start": _float(e.get("ts")), "end": None, "url": e.get("url") or None}
+                "start": start, "end": None if start is None else start + BMA_REPORT_HOURS * 3600,
+                "url": e.get("url") or None}
 
     def _norm_bulletin(self, b):
         headline, detail = b.get("headline") or "", b.get("detail") or ""
@@ -257,9 +276,9 @@ class EventsCalendar:
     def _gather(self):
         items = [self._norm_longdo(e) for e in self._source("closures") if isinstance(e, dict)]
         items += [self._norm_bma(e) for e in self._source("bma") if isinstance(e, dict)]
-        for b in self._source("bulletins"):
-            if isinstance(b, dict) and ROAD_WORDS.search(f"{b.get('headline') or ''} {b.get('detail') or ''}"):
-                items.append(self._norm_bulletin(b))
+        bulletins = [b for b in self._source("bulletins")
+                     if isinstance(b, dict) and ROAD_WORDS.search(f"{b.get('headline') or ''} {b.get('detail') or ''}")]
+        items += [self._norm_bulletin(b) for b in bulletins[:BULLETIN_KEEP]]
         for item in items:
             if self.locate and item["lat"] is not None and (not item["province"] or not item["district"]):
                 prov, dist = self._located(item["lat"], item["lng"])
@@ -295,7 +314,7 @@ class EventsCalendar:
 
         day = datetime.fromtimestamp(now, BKK).replace(hour=0, minute=0, second=0, microsecond=0)
         at = lambda days: (day + timedelta(days=days)).timestamp()
-        t0, t1, t2, t8 = at(0), at(1), at(2), at(8)
+        t0, t1, t2, t7 = at(0), at(1), at(2), at(7)
         out = {"ongoing": [], "today": [], "tomorrow": [], "week": []}
         for i in items:
             s = i["start"]
@@ -305,7 +324,7 @@ class EventsCalendar:
                 bucket = "today"
             elif s < t2:
                 bucket = "tomorrow"
-            elif s < t8:
+            elif s < t7:
                 bucket = "week"
             else:
                 continue

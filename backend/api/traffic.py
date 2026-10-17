@@ -26,7 +26,7 @@ router = APIRouter()
 events_calendar = EventsCalendar(
     os.path.join(CACHE_DIR, "team_events.json"),
     sources={"closures": lambda: incidents.road_events()["closures"],
-             "bma": lambda: bma_feed.get(kind="roadwork", hours=72, limit=200)["items"],
+             "bma": lambda: bma_feed.get(kind="roadwork", hours=24, limit=200)["items"],
              "bulletins": lambda: bma_feed.get(limit=1)["bulletins"]},
     locate=area_traffic.locate)
 
