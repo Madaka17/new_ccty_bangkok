@@ -30,13 +30,17 @@ events_calendar = EventsCalendar(
              "bulletins": lambda: bma_feed.get(limit=1)["bulletins"]},
     locate=area_traffic.locate)
 
+def _flood_feed():
+    """Every road water sensor plus the feed's error, for the district page (which counts live and wet ones)."""
+    return {**flood_roads.stations(limit=100000), "error": flood_roads.status()["error"]}
+
 district_sources = {
     "air": lambda: air.status(),
-    "flood": lambda: flood_roads.status(),
+    "flood": _flood_feed,
     "traffy": lambda: traffy_reports.status(),
     "cameras": lambda: bma_scanner.db.get_all_latest(),
     "area_traffic": area_traffic.status,
-    "incidents": incidents.road_events,
+    "incidents": lambda: road_events_merged(),
     "calendar": lambda: [e for bucket in events_calendar.calendar("all").values() if isinstance(bucket, list)
                          for e in bucket],
     "locate": area_traffic.locate,
@@ -83,10 +87,9 @@ def traffic_near(lat: float = Query(..., ge=5.5, le=20.5), lng: float = Query(..
     out["events"] = sorted(near, key=lambda e: e["distance_km"])[:15]
     return out
 
-@router.get("/api/road/events")
-def road_events():
-    """Accidents and closed roads in every province for the traffic map: the Longdo feed (all of Thailand) and
-    the BMA traffic centre's accident / road-work reports (Bangkok), each with its province and district."""
+def road_events_merged():
+    """Accidents and closed roads in every province: the Longdo feed (all of Thailand) plus the BMA traffic
+    centre's accident / road-work reports (Bangkok), each with its province and district."""
     out = incidents.road_events()
     bma = bma_feed.get(hours=24, limit=200)["items"]
     for e in bma:
@@ -104,6 +107,11 @@ def road_events():
     for i in out["incidents"] + out["closures"]:
         i["province"], i["amphoe"] = area_traffic.locate(i["latitude"], i["longitude"])
     return out
+
+@router.get("/api/road/events")
+def road_events():
+    """Accidents and closed roads in every province for the traffic map (see road_events_merged)."""
+    return road_events_merged()
 
 @router.get("/api/events/calendar")
 def events_calendar_view(request: Request, scope: str = Query("bkk", pattern="^(bkk|all)$")):

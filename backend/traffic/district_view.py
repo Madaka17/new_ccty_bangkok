@@ -1,8 +1,9 @@
 """One Bangkok district (khet) at a glance: dust, flood sensors, flood reports, traffic, cameras, accidents,
 closures and calendar events, all read from data the server already holds (no new external calls).
 
-build(name, sources) takes callables/values for each source (see SOURCE_KEYS) so it can be tested without the
-live services. A section with no data is None (or [] for list sections), never a made-up 0.
+build(name, sources) takes callables/values for each source (see the routes in api/traffic.py) so it can be
+tested without the live services. A section whose feed is down or never loaded is None; a live feed with
+nothing in the district is an empty list (or, for air/flood/traffy, None because there is no reading to show).
 """
 import re
 import time
@@ -40,6 +41,11 @@ def _items(status):
     return list(status or [])
 
 
+def _not_bangkok(province):
+    """True when an item says it is outside Bangkok (items with no province are kept)."""
+    return bool(province) and province != BANGKOK
+
+
 def _last_khet(text):
     """The district after the last เขต in an area label (the same rule as the web districtRanking)."""
     found = KHET_RE.findall(text or "")
@@ -47,7 +53,7 @@ def _last_khet(text):
 
 
 def _call(sources, key):
-    """The value of one source, None when it is missing or fails."""
+    """The value of one source, None when it is missing or fails (= the feed is down or never loaded)."""
     src = sources.get(key)
     if src is None:
         return None
@@ -57,11 +63,22 @@ def _call(sources, key):
         return None
 
 
+def _locate_district(locate, lat, lng):
+    """District at a position through area_traffic.locate, only when that spot is inside Bangkok."""
+    if locate is None or lat is None or lng is None:
+        return ""
+    try:
+        province, district = locate(lat, lng)
+    except Exception:  # noqa: BLE001 - a bad position is just unplaced
+        return ""
+    return normalise(district) if province == BANGKOK else ""
+
+
 def _air(status, name):
     stations = []
     for it in _items(status):
         pm25 = it.get("pm25")
-        if not isinstance(pm25, (int, float)) or pm25 < 0:
+        if not isinstance(pm25, (int, float)) or pm25 < 0 or it.get("province") != BANGKOK:
             continue
         if _last_khet(it.get("area")) == name:
             stations.append(pm25)
@@ -72,32 +89,20 @@ def _air(status, name):
     return {"pm25": avg, "level": lv["level"], "label": lv["label"], "points": len(stations)}
 
 
-def _flood(status, name):
-    if isinstance(status, dict):
-        wet = status.get("wet")
-        if wet is None:
-            wet = [i for i in status.get("items") or [] if i.get("status") in ("flood", "slight")]
-    else:
-        wet = list(status or [])
-    points = []
-    for it in wet:
-        if normalise(it.get("district")) != name:
-            continue
-        points.append({"where": it.get("short_name") or it.get("name") or "", "road": it.get("road"),
-                       "level_cm": it.get("level_cm"), "status": it.get("status")})
-    if not points:
+def _flood(feed, name):
+    """Road water sensors in the district. feed = every station plus the feed's error and updated_at.
+    None when the feed is down or never loaded, or the district has no live sensor (offline ones do not count)."""
+    if not isinstance(feed, dict) or feed.get("updated_at") is None or feed.get("error"):
         return None
-    return {"points": points, "max_cm": max((p["level_cm"] or 0) for p in points)}
-
-
-def _locate_district(locate, lat, lng):
-    """District at a position through area_traffic.locate, '' when unknown or no position."""
-    if locate is None or lat is None or lng is None:
-        return ""
-    try:
-        return normalise(locate(lat, lng)[1])
-    except Exception:  # noqa: BLE001 - a bad position is just unplaced
-        return ""
+    live = [i for i in feed.get("items") or []
+            if i.get("status") != "offline" and normalise(i.get("district")) == name]
+    if not live:
+        return None
+    wet = [i for i in live if i.get("status") in ("flood", "slight")]
+    points = [{"where": i.get("short_name") or i.get("name") or "", "road": i.get("road"),
+               "level_cm": i.get("level_cm"), "status": i.get("status")} for i in wet]
+    return {"sensors": len(live), "wet": len(wet), "points": points,
+            "max_cm": max((i.get("level_cm") or 0) for i in live)}
 
 
 def _reports(status, name, locate, now):
@@ -137,7 +142,7 @@ def _traffic(area, name):
 
 def _cameras(rows, name):
     out = []
-    for r in rows or []:
+    for r in rows:
         if normalise(r.get("district")) == name:
             out.append({k: r.get(k) for k in ("camid", "title", "road", "level", "total", "status")})
     return out
@@ -146,6 +151,8 @@ def _cameras(rows, name):
 def _road_items(items, name, locate):
     out = []
     for it in items or []:
+        if _not_bangkok(it.get("province")):
+            continue
         district = normalise(it.get("amphoe") or it.get("district"))
         if not district:
             district = _locate_district(locate, it.get("latitude"), it.get("longitude"))
@@ -155,6 +162,10 @@ def _road_items(items, name, locate):
     return out
 
 
+def _events(cal, name):
+    return [dict(e) for e in cal if normalise(e.get("district")) == name and not _not_bangkok(e.get("province"))]
+
+
 def build(name, sources, now=None):
     """The district's page data, or None when the name is not one of the 50 Bangkok districts."""
     key = normalise(name)
@@ -162,19 +173,21 @@ def build(name, sources, now=None):
         return None
     now = time.time() if now is None else now
     locate = sources.get("locate")
-    road = _call(sources, "incidents") or {}
-    cal = _call(sources, "calendar") or []
+    road = _call(sources, "incidents")
+    cameras = _call(sources, "cameras")
+    cal = _call(sources, "calendar")
     flood = _call(sources, "flood")
     traffy = _call(sources, "traffy")
+    road_live = isinstance(road, dict) and road.get("updated_at") is not None
     return {
         "district": key,
         "updated_at": int(now),
         "air": _air(_call(sources, "air") or [], key),
-        "flood": _flood(flood, key) if flood is not None else None,
+        "flood": _flood(flood, key),
         "reports": _reports(traffy, key, locate, now) if traffy is not None else None,
         "traffic": _traffic(_call(sources, "area_traffic"), key),
-        "cameras": _cameras(_call(sources, "cameras") or [], key),
-        "incidents": _road_items(road.get("incidents"), key, locate),
-        "closures": _road_items(road.get("closures"), key, locate),
-        "events": [dict(e) for e in cal if normalise(e.get("district")) == key],
+        "cameras": None if cameras is None else _cameras(cameras, key),
+        "incidents": _road_items(road.get("incidents"), key, locate) if road_live else None,
+        "closures": _road_items(road.get("closures"), key, locate) if road_live else None,
+        "events": None if cal is None else _events(cal, key),
     }
