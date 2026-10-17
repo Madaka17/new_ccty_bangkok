@@ -428,7 +428,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => askAI('')}
-            className={`fixed bottom-20 lg:bottom-8 right-5 lg:right-8 z-30 h-12 w-12 lg:h-14 lg:w-14 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-xl shadow-blue-500/35 hover:shadow-blue-500/55 hover:scale-108 active:scale-95 transition-[transform,opacity] duration-200 flex items-center justify-center cursor-pointer group ${!scrollVisible || alertCount > 0 ? "motion-safe:max-lg:translate-y-24 motion-safe:max-lg:opacity-0 max-lg:pointer-events-none" : ""}`}
+            className={`fixed bottom-20 lg:bottom-8 right-5 lg:right-8 z-30 h-12 w-12 lg:h-14 lg:w-14 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-xl shadow-blue-500/35 hover:shadow-blue-500/55 hover:scale-108 active:scale-95 transition-[translate,scale,opacity] duration-200 flex items-center justify-center cursor-pointer group ${!scrollVisible || alertCount > 0 ? "motion-safe:max-lg:translate-y-24 motion-safe:max-lg:opacity-0 motion-safe:max-lg:pointer-events-none motion-safe:focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:pointer-events-auto" : ""}`}
             title="ถาม AI"
             aria-label="ถาม AI"
           >

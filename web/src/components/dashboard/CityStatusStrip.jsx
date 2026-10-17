@@ -85,7 +85,8 @@ export default function CityStatusStrip({ summary, incidents, flood, avoid, onNa
 
   // Weather now at the viewer's location (/api/weather/now, MET Norway via the server). Bangkok centre first;
   // the browser's position is read only if the viewer taps ใช้ตำแหน่งของฉัน, or silently when location is already granted
-  const [askedLocation, setAskedLocation] = useState(false);
+  const [locateTries, setLocateTries] = useState(0);   // +1 on each tap, so every tap runs the request again
+  const [geoDenied, setGeoDenied] = useState(false);
   useEffect(() => {
     if (!isActive) return;
     let alive = true;
@@ -98,27 +99,32 @@ export default function CityStatusStrip({ summary, incidents, flood, avoid, onNa
     const locate = () => {
       navigator.geolocation?.getCurrentPosition(
         (p) => { if (!alive) return; spot = { lat: p.coords.latitude.toFixed(2), lng: p.coords.longitude.toFixed(2) }; load(); },
-        () => {},
+        (err) => { if (alive && err?.code === 1) setGeoDenied(true); },   // 1 = PERMISSION_DENIED
         { timeout: 8000, maximumAge: 600000 },
       );
     };
     load();   // Bangkok now; the viewer's own spot replaces it when located
-    if (askedLocation) {
+    if (locateTries > 0) {
       locate();
     } else {
       // Older browsers have no Permissions API: then nothing is read silently and the button shows
       let perm = null;
       try { perm = navigator.permissions?.query?.({ name: 'geolocation' }); } catch { perm = null; }
-      perm?.then((r) => { if (alive && r.state === 'granted') locate(); }).catch(() => {});
+      perm?.then((r) => {
+        if (!alive) return;
+        if (r.state === 'granted') locate();
+        if (r.state === 'denied') setGeoDenied(true);
+      }).catch(() => {});
     }
     const id = setInterval(load, WEATHER_POLL_MS);
     return () => {
       alive = false;
       clearInterval(id);
     };
-  }, [isActive, askedLocation]);
+  }, [isActive, locateTries]);
   const showLocate = !!weather && !weather.mine;   // the viewer's own spot is not in use yet
-  const askLocation = () => setAskedLocation(true);
+  const askLocation = () => setLocateTries((n) => n + 1);
+  const locateHint = <LocateHint onAsk={askLocation} denied={geoDenied} />;
   const weatherStatus = !weather ? 'กำลังโหลด' : `${Math.round(weather.temp)}°C ${weather.text}`;
 
   // Traffic
@@ -240,7 +246,7 @@ export default function CityStatusStrip({ summary, incidents, flood, avoid, onNa
                   {i.note && <span className="text-xs text-amber-700 dark:text-amber-400">{i.note}</span>}
                 </span>
               </button>
-              {i.id === 'weather' && showLocate && <LocateHint onAsk={askLocation} />}
+              {i.id === 'weather' && showLocate && locateHint}
             </li>
           ))}
         </ul>
@@ -266,29 +272,30 @@ export default function CityStatusStrip({ summary, incidents, flood, avoid, onNa
                   <span className="w-6 h-6">{i.icon}</span>
                 </span>
               </button>
-              {i.id === 'weather' && showLocate && <LocateHint onAsk={askLocation} />}
+              {i.id === 'weather' && showLocate && locateHint}
               </Fragment>
             ))}
           </>
         )}
-        {calm.length > 0 && <QuietList title={`ปกติดี ${calm.length} เรื่อง`} titleClass="text-[var(--ok-text)]" rows={calm} showLocate={showLocate} onAsk={askLocation} />}
-        {pending.length > 0 && <QuietList title={`ยังไม่มีข้อมูล ${pending.length} เรื่อง`} titleClass="text-[var(--c-muted)]" rows={pending} showLocate={showLocate} onAsk={askLocation} />}
+        {calm.length > 0 && <QuietList title={`ปกติดี ${calm.length} เรื่อง`} titleClass="text-[var(--ok-text)]" rows={calm} locate={showLocate ? locateHint : null} />}
+        {pending.length > 0 && <QuietList title={`ยังไม่มีข้อมูล ${pending.length} เรื่อง`} titleClass="text-[var(--c-muted)]" rows={pending} locate={showLocate ? locateHint : null} />}
       </section>
     </>
   );
 }
 
 // Under the weather answer, when it is Bangkok's and not the viewer's: asks for the position on tap
-function LocateHint({ onAsk }) {
+function LocateHint({ onAsk, denied }) {
+  if (denied) return <p className="self-start min-h-11 flex items-center text-xs text-[var(--c-muted)]">เปิดสิทธิ์ตำแหน่งในเบราว์เซอร์ก่อน</p>;
   return (
-    <button type="button" onClick={onAsk} className="cursor-pointer self-start text-xs font-semibold text-[var(--t-text)] underline underline-offset-2 py-1">
+    <button type="button" onClick={onAsk} className="cursor-pointer self-start min-h-11 flex items-center text-xs font-semibold text-[var(--c-ink)] underline underline-offset-2">
       ใช้ตำแหน่งของฉัน
     </button>
   );
 }
 
 // Phones: a short list of answers with nothing to watch (or no data yet); a stale answer keeps its note
-function QuietList({ title, titleClass, rows, showLocate, onAsk }) {
+function QuietList({ title, titleClass, rows, locate }) {
   return (
     <>
       <h2 className={`mt-1 text-[15px] font-semibold ${titleClass}`}>{title}</h2>
@@ -305,7 +312,7 @@ function QuietList({ title, titleClass, rows, showLocate, onAsk }) {
               <path d="M6 4l4 4-4 4" />
             </svg>
           </button>
-          {i.id === 'weather' && showLocate && <div className="px-4 pb-2"><LocateHint onAsk={onAsk} /></div>}
+          {i.id === 'weather' && locate && <div className="px-4 pb-2">{locate}</div>}
           </Fragment>
         ))}
       </div>

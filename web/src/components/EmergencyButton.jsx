@@ -267,7 +267,7 @@ export default function EmergencyButton() {
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
         aria-label="ฉุกเฉิน: เบอร์โทร ที่พักพิง โรงพยาบาล และแชร์ตำแหน่ง"
-        className={`cursor-pointer fixed z-40 right-5 bottom-[calc(148px+env(safe-area-inset-bottom))] lg:right-8 lg:bottom-26 h-12 w-12 lg:h-14 lg:w-14 rounded-full bg-red-600 text-white text-xs font-bold shadow-lg ring-4 ring-white/70 hover:bg-red-700 focus-visible:outline-none focus-visible:ring-red-300 transition-[transform,opacity] duration-200 ${hide ? "motion-safe:max-lg:translate-y-24 motion-safe:max-lg:opacity-0 max-lg:pointer-events-none" : ""}`}
+        className={`cursor-pointer fixed z-40 right-5 bottom-[calc(148px+env(safe-area-inset-bottom))] lg:right-8 lg:bottom-26 h-12 w-12 lg:h-14 lg:w-14 rounded-full bg-red-600 text-white text-xs font-bold shadow-lg ring-4 ring-white/70 hover:bg-red-700 focus-visible:outline-none focus-visible:ring-red-300 transition-[translate,scale,opacity] duration-200 ${hide ? "motion-safe:max-lg:translate-y-24 motion-safe:max-lg:opacity-0 motion-safe:max-lg:pointer-events-none motion-safe:focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:pointer-events-auto" : ""}`}
       >
         ฉุกเฉิน
       </button>
