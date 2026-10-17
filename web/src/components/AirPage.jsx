@@ -35,7 +35,7 @@ function OutlookChart({ hours }) {
   const [W, setW] = useState(320);
   const H = 162;
   const L = 34;
-  const R = 10;
+  const R = 16;
   const T = 10;
   const B = 36;
 

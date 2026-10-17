@@ -41,11 +41,12 @@ describe('districtRanking', () => {
     const rows = districtRanking([
       bkk('ริมถนนดินแดง เขตดินแดง', 20),
       bkk('เขตดินแดง (สถานีวัด)', 40),
+      bkk('(เขตดินแดง)', 30),
       bkk('แขวงหิรัญรูจี เขตธนบุรี', 30),
       bkk('ถนนสุขุมวิท', 99),
     ]);
     expect(rows.map((r) => ({ district: r.district, pm25: r.pm25, points: r.points }))).toEqual([
-      { district: 'ดินแดง', pm25: 30, points: 2 },
+      { district: 'ดินแดง', pm25: 30, points: 3 },
       { district: 'ธนบุรี', pm25: 30, points: 1 },
     ]);
   });

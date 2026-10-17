@@ -40,7 +40,7 @@ export function districtRanking(items) {
   const groups = new Map();
   for (const s of items || []) {
     if (s?.province !== BANGKOK || !validPm(s.pm25) || !s.area) continue;
-    const found = [...s.area.matchAll(/เขต\s*([^\s(]+)/g)].pop();
+    const found = [...s.area.matchAll(/เขต\s*([฀-๿]+)/g)].pop();
     if (!found) continue;
     const district = found[1];
     const g = groups.get(district) || { sum: 0, points: 0 };
