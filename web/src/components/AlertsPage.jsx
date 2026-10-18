@@ -2,13 +2,19 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchAlertStatus, fetchAlertRecent, subscribeAlerts, unsubscribeAlerts, testAlert, fetchFloodReports, fetchWeatherWarnings } from '../lib/api.js';
 import { inPageAlertsOn, setInPageAlerts, alertProvince, setAlertProvince } from './AlertPopups.jsx';
 import { Card, Badge, Button, Skeleton, EmptyState } from './dashboard/ui.jsx';
-import { PageHeader, StatusBanner } from './dashboard/primitives.jsx';
+import { PageHeader, StatusBanner, Tabs } from './dashboard/primitives.jsx';
 import { fmtDateTime } from './dashboard/format.js';
 import { PAGE_TITLES } from './Sidebar.jsx';
 import NationwideAlertsCard from './NationwideAlertsCard.jsx';
 
 const POLL_MS = 30000;
 const REPORTS_SHOWN = 3;   // per district, until the district is expanded
+// Recent alerts are shown per kind. The "system" topic (ระบบขัดข้อง) is for the team and is not shown on this page.
+const ALERT_GROUPS = [
+  { id: 'flood', label: 'น้ำท่วม', topics: ['flood', 'zone'] },
+  { id: 'incident', label: 'อุบัติเหตุ', topics: ['incident'] },
+  { id: 'air', label: 'ฝุ่น PM2.5', topics: ['air'] },
+];
 const TOPIC_TONE = { flood: 'blue', zone: 'red', incident: 'yellow', air: 'neutral', system: 'green' };
 const SUPPORTED = typeof window !== 'undefined' && window.isSecureContext
   && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
@@ -41,6 +47,7 @@ export default function AlertsPage({ isActive, onToast }) {
   const [reports, setReports] = useState(null);
   const [reportsFailed, setReportsFailed] = useState(false);   // this page's last request for the reports failed
   const [openDistrict, setOpenDistrict] = useState(null);
+  const [alertTab, setAlertTab] = useState('flood');
 
   const load = useCallback(async (endpoint) => {
     try {
@@ -79,7 +86,7 @@ export default function AlertsPage({ isActive, onToast }) {
       setSub(current);
       const st = await load(current?.endpoint);
       if (!cancelled && st) {
-        setTopics(st.my_topics || Object.keys(st.topics));
+        setTopics((st.my_topics || Object.keys(st.topics)).filter((t) => t !== 'system'));
         if (st.my_provinces) {   // this browser is subscribed: the server holds its choice
           setPlace(st.my_provinces[0] || '');
           setAlertProvince(st.my_provinces[0] || '');
@@ -169,6 +176,8 @@ export default function AlertsPage({ isActive, onToast }) {
 
   const toggle = (t) => saveTopics(topics.includes(t) ? topics.filter((x) => x !== t) : [...topics, t]);
   const topicNames = status?.topics || {};
+  const alertGroup = ALERT_GROUPS.find((g) => g.id === alertTab) || ALERT_GROUPS[0];
+  const shownRecent = (recent || []).filter((a) => alertGroup.topics.includes(a.topic));
 
   return (
     <div className="space-y-4">
@@ -212,7 +221,7 @@ export default function AlertsPage({ isActive, onToast }) {
         <fieldset>
           <legend className="text-xs font-medium text-slate-700 mb-2">เรื่องที่ต้องการรับ</legend>
           <div className="flex flex-wrap gap-2">
-            {Object.entries(topicNames).map(([id, name]) => (
+            {Object.entries(topicNames).filter(([id]) => id !== 'system').map(([id, name]) => (
               <label key={id} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 h-9 text-sm text-slate-800 cursor-pointer hover:bg-slate-50">
                 <input type="checkbox" className="accent-blue-600" checked={topics.includes(id)} onChange={() => toggle(id)}
                        disabled={busy === 'topics'} />
@@ -323,13 +332,16 @@ export default function AlertsPage({ isActive, onToast }) {
 
       <Card className="p-4">
         <p className="text-sm font-semibold text-slate-900 mb-3">แจ้งเตือนล่าสุด</p>
+        <div className="mb-3">
+          <Tabs label="ประเภทแจ้งเตือน" value={alertTab} onChange={setAlertTab} tabs={ALERT_GROUPS.map((g) => ({ id: g.id, label: g.label }))} />
+        </div>
         {recent === null ? (
           <div className="space-y-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-12" />)}</div>
-        ) : recent.length === 0 ? (
+        ) : shownRecent.length === 0 ? (
           <EmptyState title="ยังไม่มีแจ้งเตือน" description="เมื่อมีเรื่องที่ต้องเตือน จะขึ้นที่นี่และส่งไปยังเครื่องที่เปิดรับแจ้งเตือน" />
         ) : (
           <ul className="divide-y divide-slate-100">
-            {recent.map((a) => (
+            {shownRecent.map((a) => (
               <li key={`${a.key}-${a.ts}`} className="py-2.5 flex flex-col gap-1.5 sm:flex-row sm:gap-3">
                 <Badge tone={TOPIC_TONE[a.topic]} className="shrink-0 self-start max-w-full">{topicNames[a.topic] || a.topic}</Badge>
                 <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
