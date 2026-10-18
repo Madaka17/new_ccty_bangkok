@@ -42,6 +42,22 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
     clearMapLayerRequest();
   }, []);
   const togglePins = (k) => setPinsOn((p) => ({ ...p, [k]: !p[k] }));
+  // One tap sets a whole view: traffic, flood and rain, or everything off (PM2.5 / wind / NASA keep their own toggles)
+  const applyPreset = (k) => {
+    const traffic = k === 'traffic';
+    const water = k === 'water';
+    setShowTraffic(traffic);
+    setShowRail(false);
+    setPinsOn({ cctv: traffic, floodcam: water, accident: traffic, breakdown: false, closure: traffic, flood: water, calendar: false });
+    setShowRainRadar(water);
+    setShowCamFlood(water);
+    setShowFlood(water);
+    setShowUserReports(false);
+    setShowReports(false);
+    setShowHdms(false);
+    setShowGauges(false);
+    setShowPlaces(false);
+  };
   const meMarkerRef = useRef(null);   // "ไปที่ตำแหน่งของฉัน": one dot, moved on every click
   // Phones: the options panel is a sheet over the map, opened from a button on it (desktop keeps it at the side)
   const [panelOpen, setPanelOpen] = useState(false);
@@ -312,6 +328,11 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
           <Button size="sm" onClick={() => setPanelOpen(false)}>
             เสร็จ
           </Button>
+        </div>
+        <div className="flex flex-wrap gap-2" role="group" aria-label="ดูแบบเร็ว">
+          <Button size="sm" onClick={() => applyPreset('traffic')}>ดูรถติด</Button>
+          <Button size="sm" onClick={() => applyPreset('water')}>ดูน้ำท่วมและฝน</Button>
+          <Button size="sm" onClick={() => applyPreset('none')}>ปิดทั้งหมด</Button>
         </div>
         <LayerGroup title="รถติดและกล้อง" hint="สีรถติด กล้อง อุบัติเหตุ และรถไฟฟ้า" on={trafficOn} defaultOpen>
           <div>
