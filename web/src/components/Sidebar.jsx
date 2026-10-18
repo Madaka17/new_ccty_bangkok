@@ -9,7 +9,6 @@ export const NAV_GROUPS = [
     items: [
       { id: 'dashboard', label: 'ภาพรวม', hint: 'รถติดตรงไหน มีเหตุอะไรบนถนน และควรเลี่ยงทางไหน' },
       { id: 'map', label: 'แผนที่', hint: 'แผนที่รถติด กล้อง น้ำท่วม และจุดอันตราย' },
-      { id: 'district', label: 'เขตของฉัน', hint: 'ฝุ่น น้ำท่วม รถติด อุบัติเหตุ และกล้องในเขตที่เลือก' },
     ],
   },
   {
@@ -17,7 +16,6 @@ export const NAV_GROUPS = [
     items: [
       { id: 'alerts', label: 'ประกาศเตือน', hint: 'ประกาศเตือนภัย และตั้งให้เว็บเตือนเมื่อมีเหตุ' },
       { id: 'water', label: 'น้ำท่วม', hint: 'ระดับน้ำ น้ำเหนือ ถนนที่น้ำท่วม จุดพักพิง และ AI สรุปสถานการณ์' },
-      { id: 'air', label: 'ฝุ่น PM2.5', hint: 'ฝุ่นตอนนี้ แต่ละเขต และแนวโน้ม 3 วัน' },
       { id: 'enviro', label: 'แผ่นดินไหว', hint: 'เฝ้าระวังและเตือนภัยแผ่นดินไหว' },
       { id: 'safety', label: 'จุดเสี่ยงอุบัติเหตุ', hint: 'จุดที่เกิดอุบัติเหตุบ่อย และจุดเสี่ยงในกรุงเทพฯ' },
     ],
@@ -44,7 +42,12 @@ export const NAV_GROUPS = [
   },
 ];
 
-export const PAGE_TITLES = Object.fromEntries(NAV_GROUPS.flatMap((g) => g.items).map((i) => [i.id, i.label]));
+// Pages reached from the home screen (PM2.5 tile, "เขตของฉัน" button) stay out of the menu but keep their titles
+export const PAGE_TITLES = {
+  ...Object.fromEntries(NAV_GROUPS.flatMap((g) => g.items).map((i) => [i.id, i.label])),
+  air: 'ฝุ่น PM2.5',
+  district: 'เขตของฉัน',
+};
 
 // Menu drawn as a river: one wavy teal stream runs down the left (.river-rail in index.css), every page is a
 // pier on it, and each group is a quiet heading beside a small buoy. The page you are on is the orange pier
