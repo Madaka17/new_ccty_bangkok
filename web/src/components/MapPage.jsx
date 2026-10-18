@@ -334,6 +334,52 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
           <Button size="sm" onClick={() => applyPreset('water')}>ดูน้ำท่วมและฝน</Button>
           <Button size="sm" onClick={() => applyPreset('none')}>ปิดทั้งหมด</Button>
         </div>
+        {incidentList.length > 0 && (
+          <div className="rounded-lg bg-red-50 border border-red-200 p-3">
+            <p className="text-xs font-semibold text-red-700 mb-1.5">อุบัติเหตุและรถเสียตอนนี้ ({incidentList.length})</p>
+            <div className="max-h-36 overflow-y-auto scroll-soft flex flex-col gap-1">
+              {incidentList.map((i) => (
+                <button key={i.id} type="button" onClick={() => flyToIncident(i)} className="cursor-pointer text-left rounded-lg px-2.5 py-1.5 text-sm text-ink-900 hover:bg-white transition-colors duration-200">
+                  <span className="line-clamp-1">{i.title}</span>
+                  <span className="block text-[11px] text-ink-600">{KIND_TH[i.kind] || 'เหตุบนถนน'} · {placeTh(i) || sourceTh(i)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {closures.length > 0 && (
+          <div className="rounded-lg bg-orange-50 border border-orange-200 p-3">
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <p className="text-xs font-semibold text-orange-800">ถนนปิดตอนนี้ ({closures.length})</p>
+              <button type="button" onClick={showThailand} className="cursor-pointer text-[11px] font-medium text-blue-700 hover:underline">ดูทั้งประเทศ</button>
+            </div>
+            <div className="max-h-48 overflow-y-auto scroll-soft flex flex-col gap-1">
+              {[...closures].sort((a, b) => (a.province || 'ฮ').localeCompare(b.province || 'ฮ', 'th')).map((c) => (
+                <button key={c.id} type="button" onClick={() => flyToClosure(c)} className="cursor-pointer text-left rounded-lg px-2.5 py-1.5 text-sm text-ink-900 hover:bg-white transition-colors duration-200">
+                  <span className="line-clamp-1">{c.title}</span>
+                  <span className="block text-[11px] text-ink-600">{closureTh(c)}{placeTh(c) ? ` · ${placeTh(c)}` : ''}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-col">
+          <p className="text-xs text-ink-600 mb-2">กล้องที่เปิดอยู่ ({activeCams.length})</p>
+          {activeCams.length === 0 ? (
+            <p className="text-sm text-ink-400">ยังไม่ได้เปิดกล้อง กดหมุดกล้องบนแผนที่ได้เลย</p>
+          ) : (
+            <div className="max-h-56 overflow-y-auto scroll-soft flex flex-col gap-1.5">
+              {activeCams.map((c) => (
+                <button key={c.camid} type="button" onClick={() => flyToCam(c)} className="cursor-pointer text-left rounded-lg px-3 py-2 text-sm text-ink-900 hover:bg-slate-50 transition-colors duration-200 flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: PIN_COLOR[c.province] || PIN }} />
+                  <span className="line-clamp-1">{c.short_title}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <LayerGroup title="รถติดและกล้อง" hint="สีรถติด กล้อง อุบัติเหตุ และรถไฟฟ้า" on={trafficOn} defaultOpen>
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -753,52 +799,6 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
           </div>
         </LayerGroup>
 
-        {incidentList.length > 0 && (
-          <div className="rounded-lg bg-red-50 border border-red-200 p-3">
-            <p className="text-xs font-semibold text-red-700 mb-1.5">อุบัติเหตุและรถเสียตอนนี้ ({incidentList.length})</p>
-            <div className="max-h-36 overflow-y-auto scroll-soft flex flex-col gap-1">
-              {incidentList.map((i) => (
-                <button key={i.id} type="button" onClick={() => flyToIncident(i)} className="cursor-pointer text-left rounded-lg px-2.5 py-1.5 text-sm text-ink-900 hover:bg-white transition-colors duration-200">
-                  <span className="line-clamp-1">{i.title}</span>
-                  <span className="block text-[11px] text-ink-600">{KIND_TH[i.kind] || 'เหตุบนถนน'} · {placeTh(i) || sourceTh(i)}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {closures.length > 0 && (
-          <div className="rounded-lg bg-orange-50 border border-orange-200 p-3">
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <p className="text-xs font-semibold text-orange-800">ถนนปิดตอนนี้ ({closures.length})</p>
-              <button type="button" onClick={showThailand} className="cursor-pointer text-[11px] font-medium text-blue-700 hover:underline">ดูทั้งประเทศ</button>
-            </div>
-            <div className="max-h-48 overflow-y-auto scroll-soft flex flex-col gap-1">
-              {[...closures].sort((a, b) => (a.province || 'ฮ').localeCompare(b.province || 'ฮ', 'th')).map((c) => (
-                <button key={c.id} type="button" onClick={() => flyToClosure(c)} className="cursor-pointer text-left rounded-lg px-2.5 py-1.5 text-sm text-ink-900 hover:bg-white transition-colors duration-200">
-                  <span className="line-clamp-1">{c.title}</span>
-                  <span className="block text-[11px] text-ink-600">{closureTh(c)}{placeTh(c) ? ` · ${placeTh(c)}` : ''}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="flex-1 min-h-40 flex flex-col">
-          <p className="text-xs text-ink-600 mb-2">กล้องที่เปิดอยู่ ({activeCams.length})</p>
-          {activeCams.length === 0 ? (
-            <p className="text-sm text-ink-400">ยังไม่ได้เปิดกล้อง กดหมุดกล้องบนแผนที่ได้เลย</p>
-          ) : (
-            <div className="flex-1 overflow-y-auto scroll-soft flex flex-col gap-1.5">
-              {activeCams.map((c) => (
-                <button key={c.camid} type="button" onClick={() => flyToCam(c)} className="cursor-pointer text-left rounded-lg px-3 py-2 text-sm text-ink-900 hover:bg-slate-50 transition-colors duration-200 flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: PIN_COLOR[c.province] || PIN }} />
-                  <span className="line-clamp-1">{c.short_title}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
       </aside>
 
       <section aria-label="แผนที่จราจร" className="order-1 lg:order-2 glass rounded-xl overflow-hidden min-h-[560px] relative">
