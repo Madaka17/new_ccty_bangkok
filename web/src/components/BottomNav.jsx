@@ -5,9 +5,9 @@ import NavIcon from './NavIcons.jsx';
 import { FOCUS } from './dashboard/ui.jsx';
 
 const ITEMS = [
-  { id: 'dashboard', label: 'แดชบอร์ด' },
+  { id: 'dashboard', label: 'ภาพรวม' },
   { id: 'map', label: 'แผนที่' },
-  { id: 'yolo', label: 'กล้อง AI' },
+  { id: 'alerts', label: 'ประกาศเตือน' },
   { id: 'cameras', label: 'กล้องสด' },
 ];
 
