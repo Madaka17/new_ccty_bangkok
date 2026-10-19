@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { fetchFloodReports } from '../lib/api.js';
+import { leftOutNote, waterNow } from '../lib/floodReports.js';
 import { Card, Badge, FOCUS } from './dashboard/ui.jsx';
 import { PageHeader } from './dashboard/primitives.jsx';
 import { PAGE_TITLES } from './Sidebar.jsx';
@@ -54,7 +55,7 @@ export default function FloodPinPage({ isActive }) {
   const load = useCallback(() => {
     fetchFloodReports()
       .then((d) => {
-        setData(d);
+        setData(waterNow(d));
         setFailed(false);
       })
       .catch(() => setFailed(true));
@@ -175,6 +176,7 @@ export default function FloodPinPage({ isActive }) {
 
           <Card className="p-0 overflow-hidden">
             <p className="px-4 pt-3 pb-2 text-xs font-semibold text-slate-600">แจ้งล่าสุด</p>
+            {leftOutNote(data) && <p className="px-4 -mt-1 pb-2 text-xs text-slate-500">{leftOutNote(data)}</p>}
             {latest.length === 0 ? (
               <p className="px-4 pb-4 text-sm text-slate-500">{data?.updated_at ? 'ยังไม่มีเรื่องน้ำท่วมใน 6 ชั่วโมงล่าสุด' : data || failed ? 'ยังโหลดเรื่องจาก Traffy ไม่ได้ ระบบจะลองใหม่เอง' : 'กำลังโหลด…'}</p>
             ) : (

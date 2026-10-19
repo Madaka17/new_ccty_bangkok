@@ -6,6 +6,7 @@ import * as maplibregl from 'maplibre-gl';
 import { fetchFloodStatus, fetchFloodStations, fetchFloodCameras, fetchUserReports, fetchFloodReports, fetchHdmsFloods } from '../../lib/api.js';
 import { FLOOD_STYLE, esc, CAM_FLOOD_STYLE, CAM_WET, agoTh, USER_REPORT_COLOR, REPORT_COLOR, REPORT_FRESH_S, HDMS_COLOR, GAUGE_STYLE } from './markers.js';
 import { fmtTime } from '../dashboard/format.js';
+import { waterNow } from '../../lib/floodReports.js';
 
 export function useRoadFloodLayer(mapRef, isActive) {
   // BMA road-flood sensors (Bangkok)
@@ -206,7 +207,7 @@ export function useTraffyReportLayer(mapRef, isActive) {
       fetchFloodReports()
         .then((d) => {
           if (!alive) return;
-          setReports(d);
+          setReports(waterNow(d));
           setReportsFailed(false);
         })
         .catch(() => alive && setReportsFailed(true));

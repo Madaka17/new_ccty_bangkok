@@ -92,7 +92,7 @@ export default function TrafficGuidanceCard({ province = '', amphoe = '' }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 self-start sm:self-auto">
-          {chip('all', `ทั้งหมด ${items.length}`, 'bg-ink-900 text-white dark:bg-slate-100 dark:text-slate-900')}
+          {chip('all', `ทั้งหมด ${items.length}`, 'bg-[var(--c-sel-bg)] text-[var(--c-sel-text)]')}
           {chip('congested', `รถติด ${countCongested}`, 'bg-red-600 text-white')}
           {chip('free', `คล่องตัว ${countFree}`, 'bg-emerald-600 text-white')}
           {countIncidents > 0 && chip('incidents', `มีเหตุ ${countIncidents}`, 'bg-amber-600 text-white')}

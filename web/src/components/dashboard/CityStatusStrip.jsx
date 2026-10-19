@@ -1,54 +1,24 @@
-import { Fragment, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const WEATHER_POLL_MS = 600000;
 import { fetchWaterSummary, fetchAirStations, fetchFloodReports, fetchWeatherNow } from '../../lib/api.js';
 import { flowLevel, fmtTime } from './format.js';
 import { bkkAverage } from '../../lib/air.js';
+import { cityVerdict } from '../../lib/cityVerdict.js';
+import { incidentCheck, waterCheck, waterReportCount } from '../../lib/cityChecks.js';
+import { freshness, FRESH_LIMIT } from '../../lib/freshness.js';
 
 // One glance, six answers: traffic / weather where the viewer is / rain-water / flood reports / dust / incidents.
-// Shown three ways: a summary sign on top (verdict band + one plain sentence + ask AI), then on a wide screen a
-// grid of cards (icon, tone chip, answer), on a phone question cards with the ones that need care first.
+// Shown as a status panel on top (verdict + one plain sentence + ask AI), then on a wide screen the six checks as
+// the stages of one pipeline, on a phone one list of rows with the ones that need care first.
 // Every answer is a link to its page.
 // tone: green = fine, yellow = watch, red = act, neutral = no data (colours: .tone-* in index.css).
 // `known` = the answer has data. An answer without data is never counted as fine: the summary says the data is
-// not all in yet instead of "ปกติ", while a danger already known is shown at once.
+// not all in yet instead of "ออกได้", while a danger already known is shown at once (rules in lib/cityVerdict.js).
 
 const TONE_LABEL = { green: 'ปกติ', yellow: 'เฝ้าดู', red: 'ควรระวัง', neutral: 'รอข้อมูล' };
 
-const ICONS = {
-  traffic: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
-      <path d="M5 17h14M5 12h14M5 7h14" />
-    </svg>
-  ),
-  water: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
-      <path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z" />
-    </svg>
-  ),
-  air: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
-      <path d="M3 8h11a3 3 0 1 0-3-3M3 14h14a3 3 0 1 1-3 3M3 11h7" />
-    </svg>
-  ),
-  weather: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
-      <path d="M7 18a4 4 0 1 1 .9-7.9A5 5 0 0 1 17.6 11 3.5 3.5 0 1 1 17.5 18H7z" />
-    </svg>
-  ),
-  report: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
-      <path d="M4 5h16v11H8l-4 4V5zM12 8v4M12 14.5h.01" />
-    </svg>
-  ),
-  incident: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
-      <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01" />
-    </svg>
-  ),
-};
-
-export default function CityStatusStrip({ summary, incidents, flood, avoid, onNavigate, onIncidents, onAskText, isActive }) {
+export default function CityStatusStrip({ summary, bkkFlow, trafficAt, incidents, flood, avoid, onNavigate, onIncidents, onAskText, isActive, emergency }) {
   const [water, setWater] = useState(null);
   const [air, setAir] = useState(null);
   const [traffy, setTraffy] = useState(null);
@@ -136,31 +106,25 @@ export default function CityStatusStrip({ summary, incidents, flood, avoid, onNa
   const locateHint = <LocateHint onAsk={askLocation} denied={geoDenied} />;
   const weatherStatus = !weather ? 'กำลังโหลด' : `${Math.round(weather.temp)}°C ${weather.text}`;
 
-  // Traffic
-  const flow = summary?.flow_index;
+  // Traffic: Bangkok's score from every road with a colour on the map (traffic/areas, ~3,300 km), the same figure
+  // as Bangkok on the traffic panel; the main-roads summary (68 roads) only stands in until it has loaded
+  const flow = bkkFlow ?? summary?.flow_index;
   const level = flowLevel(flow);
   const trafficTone = level.key;
   const trafficStatus = flow == null ? 'กำลังโหลด' : level.label;
 
-  // Rain + water. Flooded-road counts come from the BMA drainage sensors (flood_service.py, ~250
-  // stations); ThaiWater relays only about 107 of them, so it is the fallback.
-  const roads = water?.flood_roads;
-  const flooding = flood
-    ? (flood.counts?.flood || 0) + (flood.counts?.slight || 0)
-    : (roads?.flooding || 0) + (roads?.slight || 0);
-  const overflow = water?.river_counts?.overflow || 0;
-  const heavyRain = (water?.ntw?.rain_counts?.heavy || 0) + (water?.ntw?.rain_counts?.extreme || 0);
-  const worstZone = water?.weather?.[0];
-  const waterTone = flooding > 0 || worstZone?.watch === 'red' ? 'red' : !water ? 'neutral' : heavyRain > 0 || overflow > 0 || worstZone?.watch === 'yellow' ? 'yellow' : 'green';
-  const waterStatus = flooding > 0 ? `ถนนน้ำท่วม ${flooding} จุด` : !water ? 'กำลังโหลด' : worstZone?.watch === 'red' ? `เฝ้าระวัง ${worstZone.name}` : overflow > 0 ? `น้ำล้นตลิ่ง ${overflow} จุด` : heavyRain > 0 ? `ฝนหนัก ${heavyRain} จุด` : 'ปกติ';
+  // Rain and water in Bangkok (lib/cityChecks.js: what counts, and what is only named as ปริมณฑล)
+  const wc = waterCheck(water, flood);
+  const { flooding } = wc;
 
-  // Flood reports: people on Traffy Fondue in the last 6 h only, the same count as the map and the report page.
-  // Flooded roads from traffic news are not people's reports and stay out of it.
-  // Until Traffy has answered once there is no count: "no reports" would be a wrong all-clear.
-  // After that a failed update (Traffy on the server, or this page's request) keeps the old count, marked as old.
-  const citizen = traffy?.updated_at ? traffy.items?.length ?? 0 : null;
+  // Flood reports: people on Traffy Fondue in the last 6 h who say the water is there now. Aid requests for a past
+  // flood and drain complaints are left out (the server's report_kind). Flooded roads from traffic news are not
+  // people's reports and stay out of it. Until Traffy has answered once there is no count: "no reports" would be a
+  // wrong all-clear. After that a failed update keeps the old count, marked as old.
+  const citizen = waterReportCount(traffy);
   const repFailed = !!traffy?.error || traffyFailed;
-  const repTone = citizen == null ? 'neutral' : citizen === 0 ? 'green' : citizen < 20 ? 'yellow' : 'red';
+  // People's reports are a reason to look, never a reason to stay home: at most "watch"
+  const repTone = citizen == null ? 'neutral' : citizen === 0 ? 'green' : 'yellow';
   const repStatus = citizen != null ? (citizen === 0 ? 'ไม่มีคนแจ้ง' : `${citizen} เรื่อง`) : repFailed ? 'ยังโหลดไม่ได้' : 'กำลังโหลด';
   const repNote = citizen != null && repFailed ? `อัปเดตไม่สำเร็จ · ข้อมูล ${fmtTime(traffy.updated_at)}\u00a0น.` : null;
 
@@ -170,126 +134,164 @@ export default function CityStatusStrip({ summary, incidents, flood, avoid, onNa
   const airTone = pm == null ? 'neutral' : pm <= 25 ? 'green' : pm <= 37.5 ? 'yellow' : 'red';
   const airStatus = pm == null ? 'กำลังโหลด' : pm <= 15 ? 'อากาศดีมาก' : pm <= 25 ? 'อากาศดี' : pm <= 37.5 ? 'ปานกลาง' : pm <= 75 ? 'เริ่มมีผลต่อสุขภาพ' : 'มีผลต่อสุขภาพ';
 
-  // Incidents
-  const cam = incidents?.camera || [];
-  const longdo = incidents?.longdo || [];
-  const total = cam.length + longdo.length;
-  const incTone = !incidents ? 'neutral' : total === 0 ? 'green' : total <= 2 ? 'yellow' : 'red';
-  const incStatus = !incidents ? 'กำลังโหลด' : total === 0 ? 'ไม่มีเหตุ' : `${total} จุด`;
+  // Accidents and breakdowns, counted apart (lib/cityChecks.js)
+  const inc = incidentCheck(incidents);
 
   // Roads first (what a trip needs), then water, then the weather and the air
   const items = [
-    { id: 'traffic', q: 'รถติดไหม', a: trafficStatus, say: `รถ${level.label}`, tone: trafficTone, known: flow != null, icon: ICONS.traffic, go: () => onNavigate('map') },
-    { id: 'incident', q: 'มีอุบัติเหตุไหม', a: incStatus, say: `อุบัติเหตุและรถเสีย ${incStatus}`, tone: incTone, known: !!incidents, icon: ICONS.incident, go: () => (onIncidents ? onIncidents() : onNavigate('dashboard')) },
-    { id: 'water', q: 'ฝนและน้ำ', a: waterStatus, say: waterStatus, tone: waterTone, known: !!water || flooding > 0, icon: ICONS.water, go: () => onNavigate('water') },
-    { id: 'report', q: 'มีคนแจ้งน้ำท่วมไหม', sub: 'ใน 6 ชม.', a: repStatus, say: `คนแจ้งน้ำท่วม ${repStatus}`, note: repNote, tone: repTone, known: citizen != null, icon: ICONS.report, go: () => onNavigate('water') },
-    { id: 'weather', q: weather?.mine ? 'อากาศตรงนี้' : 'อากาศ กทม.', a: weatherStatus, say: weatherStatus, tone: weather?.tone || 'neutral', known: !!weather, icon: ICONS.weather, go: () => onNavigate('water') },
-    { id: 'air', q: 'ฝุ่น PM2.5', a: pm == null ? airStatus : `${pm} · ${bkkAverage(air?.items).label}`, say: `ฝุ่น PM2.5 ${pm ?? ''} ${airStatus}`, tone: airTone, known: pm != null, icon: ICONS.air, go: () => onNavigate('air') },
+    { id: 'traffic', q: 'รถติดไหม', a: trafficStatus, say: `รถ${level.label}`, tone: trafficTone, known: flow != null, at: trafficAt, limit: FRESH_LIMIT.traffic, go: () => onNavigate('map') },
+    { id: 'incident', q: 'มีเหตุบนถนนไหม', a: inc.status, say: inc.total ? inc.status : 'ไม่มีอุบัติเหตุ', tone: inc.tone, known: inc.known, at: incidents?.updated, limit: FRESH_LIMIT.incident, go: () => (onIncidents ? onIncidents() : onNavigate('dashboard')) },
+    { id: 'water', q: 'ฝนและน้ำ', a: wc.status, say: wc.status, tone: wc.tone, known: wc.known, at: water?.updated_at || flood?.updated_at, limit: FRESH_LIMIT.water, go: () => onNavigate('water') },
+    { id: 'report', q: 'มีคนแจ้งว่าน้ำท่วมไหม', sub: 'ใน 6 ชม.', a: repStatus, say: `คนแจ้งว่าน้ำท่วม ${repStatus}`, note: repNote, tone: repTone, known: citizen != null, at: traffy?.updated_at, limit: FRESH_LIMIT.report, go: () => onNavigate('water') },
+    { id: 'weather', q: weather?.mine ? 'อากาศตรงนี้' : 'อากาศ กทม.', a: weatherStatus, say: weatherStatus, tone: weather?.tone || 'neutral', known: !!weather, at: weather?.updated_at, limit: FRESH_LIMIT.weather, go: () => onNavigate('water') },
+    { id: 'air', q: 'ฝุ่น PM2.5', a: pm == null ? airStatus : `${pm} · ${bkkAverage(air?.items).label}`, say: `ฝุ่น PM2.5 ${pm ?? ''} ${airStatus}`, tone: airTone, known: pm != null, at: air?.source_ts || air?.updated_at, limit: FRESH_LIMIT.air, go: () => onNavigate('air') },
   ];
-  const reds = items.filter((i) => i.tone === 'red');
-  const yellows = items.filter((i) => i.tone === 'yellow');
-  const care = [...reds, ...yellows];
-  const calm = items.filter((i) => i.known && !care.includes(i));    // has data and nothing to watch
-  const pending = items.filter((i) => !i.known);                     // loading, or could not be loaded
+  // The summary: one answer word and one sentence, made from the six answers (rules, no AI: lib/cityVerdict.js)
+  const { care, calm, pending, ...verdict } = cityVerdict({ items, trafficTone, flooding, avoid: avoid || [] });
+  const { headline, detail } = verdict;
 
-  // The summary: one verdict word and one sentence, made from the six answers (rules, no AI)
-  const avoidText = avoid?.length ? avoid.slice(0, 2).join(' กับ') : null;
-  const verdict = reds.length
-    ? { tone: 'red', label: 'ควรระวัง' }
-    : yellows.length
-      ? { tone: 'yellow', label: 'เฝ้าดู' }
-      : pending.length
-        ? { tone: 'neutral', label: calm.length ? 'ข้อมูลยังไม่ครบ' : 'กำลังโหลด' }
-        : { tone: 'green', label: 'ปกติ' };
-  const headline = flooding > 0
-      ? `มีถนนน้ำท่วม ${flooding} จุด ดูเส้นทางก่อนออกเดินทาง`
-      : trafficTone === 'red'
-        ? (avoidText ? `รถติดหลายจุด เลี่ยง${avoidText}` : 'รถติดหลายจุด ดูทางเลี่ยงก่อนออกเดินทาง')
-        : trafficTone === 'yellow'
-          ? (avoidText ? `ออกเดินทางได้ แต่เลี่ยง${avoidText}` : 'ออกเดินทางได้ แต่เผื่อเวลา')
-          : care.length
-            ? 'ออกเดินทางได้ มีบางเรื่องต้องระวัง'
-            : pending.length
-              ? 'กำลังรวมข้อมูลของเมือง ยังสรุปไม่ได้'
-              : 'ออกเดินทางได้ตามปกติ';
-  const detail = [
-    ...care.map((i) => i.say),
-    ...(care.length && calm.length && !pending.length ? ['เรื่องอื่นปกติ'] : []),
-    ...(pending.length ? [`ยังไม่มีข้อมูล: ${pending.map((i) => i.q).join(', ')}`] : []),
-  ].join(' · ');
+  // Phones read the checks as one list, the ones that need care first; wide screens keep the fixed pipeline order
+  const ranked = [...care, ...calm, ...pending];
+  const counts = [
+    care.length ? `ระวัง ${care.length}` : null,
+    calm.length ? `ปกติ ${calm.length}` : null,
+    pending.length ? `รอข้อมูล ${pending.length}` : null,
+  ].filter(Boolean).join(' · ');
 
   return (
     <>
-      <CityHero verdict={verdict} headline={headline} detail={detail} onAskText={onAskText} />
+      <CityHero verdict={verdict} headline={headline} detail={detail} onAskText={onAskText} emergency={emergency} />
 
-      {/* wide screens: one card per answer, in a fixed order; the chip names the tone so colour is never the only sign */}
-      <section aria-labelledby="city-now" className="hidden md:block rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] p-5 lg:p-6">
-        <div className="flex flex-wrap items-baseline justify-between gap-2 pb-4">
-          <h2 id="city-now" className="text-xl font-bold">เมืองตอนนี้</h2>
-          <p className="text-sm text-[var(--c-muted)]">แตะเพื่อดูรายละเอียด</p>
+      {/* wide screens: the six checks as the stages of one pipeline, in a fixed order. The seam between two stages is
+          solid when both have data, dashed while one is still waiting. The glyph's shape names the tone, so colour
+          is never the only sign. */}
+      <section aria-labelledby="city-now" className="hidden md:block rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-1.5 min-h-12 border-b border-[var(--c-border)]">
+          <h2 id="city-now" className="panel-label">เช็กก่อนออก 6 เรื่อง</h2>
+          <div className="flex items-center gap-3">
+            <p className="text-xs text-[var(--c-muted)]">{counts} · แตะเพื่อดูรายละเอียด</p>
+            {showLocate && locateHint}
+          </div>
         </div>
-        <ul className="fx-tiles grid grid-cols-3 xl:grid-cols-6 gap-3">
-          {items.map((i) => (
-            <li key={i.id} className={`tone-${i.tone} flex flex-col`}>
-              <button
-                type="button"
-                onClick={i.go}
-                className="fx-tile group relative cursor-pointer w-full h-full flex-1 overflow-hidden rounded-md border border-[var(--c-border)] bg-[var(--c-raised)] px-4 pt-5 pb-4 flex flex-col gap-3 text-left transition duration-200 hover:-translate-y-0.5 hover:border-[var(--t-ring)] hover:shadow-[var(--c-shadow)] focus-visible:outline-2 focus-visible:outline-[var(--t-ring)]"
-              >
-                <span aria-hidden="true" className="fx-tile-line absolute inset-x-0 top-0 h-1 bg-[var(--t-ring)]" />
-                <span className="flex items-center justify-between gap-2">
-                  <span aria-hidden="true" className="fx-tile-icon w-10 h-10 shrink-0 rounded-full bg-[var(--t-tint)] text-[var(--t-text)] grid place-items-center">
-                    <span className="w-5 h-5">{i.icon}</span>
+        <ol className="grid grid-cols-3 xl:grid-cols-6 gap-4 p-5">
+          {items.map((i, idx) => {
+            const next = items[idx + 1];
+            const solid = items.slice(0, idx + 2).every((x) => x.known);   // every check up to the next one has data
+            const md = idx % 3 !== 2;
+            const xl = idx < items.length - 1;
+            return (
+              <li key={i.id} className={`tone-${i.tone} relative flex flex-col`}>
+                <button
+                  type="button"
+                  onClick={i.go}
+                  className="group cursor-pointer w-full h-full flex-1 rounded-md border border-[var(--c-border)] bg-[var(--c-raised)] px-3.5 py-3 flex flex-col gap-1.5 text-left transition-colors duration-150 hover:border-[var(--t-ring)] focus-visible:outline-2 focus-visible:outline-[var(--t-ring)]"
+                >
+                  <span className="flex items-start gap-2 min-w-0">
+                    <StateGlyph tone={i.tone} known={i.known} className="w-[18px] h-[18px] shrink-0 mt-0.5" />
+                    <span className="text-sm leading-snug text-[var(--c-muted)]">
+                      {i.q}
+                      {i.sub && <span className="text-xs"> · {i.sub}</span>}
+                    </span>
                   </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--t-tint)] px-2.5 py-0.5 text-xs font-semibold text-[var(--t-text)]">
-                    <span aria-hidden="true" className="w-2 h-2 rounded-full bg-[var(--t-ring)]" />
+                  <span className="text-lg font-bold leading-snug text-[var(--t-text)]">{i.a}</span>
+                  <span className="text-xs text-[var(--t-text)]">
                     {TONE_LABEL[i.tone]}
+                    <Fresh at={i.at} limit={i.limit} />
                   </span>
-                </span>
-                <span className="flex flex-col gap-0.5">
-                  <span className="text-[15px] leading-snug text-[var(--c-muted)]">
-                    {i.q}
-                    {i.sub && <span className="text-xs"> · {i.sub}</span>}
+                  {i.note && <span className="text-xs text-[var(--watch-text)]">{i.note}</span>}
+                </button>
+                {next && (
+                  <span
+                    aria-hidden="true"
+                    className={`hidden ${md ? 'md:block' : ''} ${xl ? 'xl:block' : 'xl:hidden'} absolute top-[22px] -right-4 w-4 border-t border-[var(--c-border-strong)] ${solid ? 'border-solid' : 'border-dashed'}`}
+                  >
+                    {solid && <span className="seam-fill block -mt-px h-px bg-[var(--c-muted)]" style={{ animationDelay: `${idx * 70}ms` }} />}
                   </span>
-                  <span className="font-display text-[22px] font-bold leading-tight text-[var(--t-text)]">{i.a}</span>
-                  {i.note && <span className="text-xs text-amber-700 dark:text-amber-400">{i.note}</span>}
-                </span>
-              </button>
-              {i.id === 'weather' && showLocate && locateHint}
-            </li>
-          ))}
-        </ul>
+                )}
+              </li>
+            );
+          })}
+        </ol>
       </section>
 
-      {/* phones: questions, the ones that need care first and big */}
-      <section aria-label="เมืองตอนนี้" className="md:hidden flex flex-col gap-3">
-        {care.length > 0 && (
-          <>
-            <h2 className="text-[15px] font-semibold text-[var(--act-text)]">ต้องระวัง {care.length} เรื่อง</h2>
-            {care.map((i) => (
-              <Fragment key={i.id}>
-              <button type="button" onClick={i.go} className={`tone-${i.tone} cursor-pointer w-full text-left flex items-center gap-3.5 rounded-md px-4 py-4 bg-[var(--t-tint)]`}>
-                <span className="flex-1 min-w-0">
-                  <span className="block text-base text-[var(--c-ink)]">
+      {/* phones: one panel of rows, the ones that need care first */}
+      <section aria-labelledby="city-now-m" className="md:hidden rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] overflow-hidden">
+        <div className="flex items-baseline justify-between gap-2 px-4 py-2.5 border-b border-[var(--c-border)]">
+          <h2 id="city-now-m" className="panel-label">เช็กก่อนออก 6 เรื่อง</h2>
+          <p className="text-xs text-[var(--c-muted)]">{counts}</p>
+        </div>
+        <ul className="divide-y divide-[var(--c-border)]">
+          {ranked.map((i) => {
+            const big = care.includes(i);
+            return (
+              <li key={i.id}>
+                <button type="button" onClick={i.go} className={`tone-${i.tone} cursor-pointer w-full min-h-14 px-4 py-2.5 flex items-center gap-3 text-left hover:bg-[var(--c-raised)]`}>
+                  <StateGlyph tone={i.tone} known={i.known} className="w-5 h-5 shrink-0" />
+                  <span className="flex-1 min-w-0 text-[15px] text-[var(--c-muted)]">
                     {i.q}
-                    {i.sub && <span className="text-sm text-[var(--c-muted)]"> ({i.sub})</span>}
+                    {i.sub && <span className="text-xs"> ({i.sub})</span>}
                   </span>
-                  <span className="block font-display text-[28px] font-bold leading-tight text-[var(--t-text)]">{i.a}</span>
-                  {i.note && <span className="block text-xs text-amber-700">{i.note}</span>}
-                </span>
-                <span aria-hidden="true" className="w-12 h-12 shrink-0 rounded-md bg-[var(--c-surface)] text-[var(--t-text)] grid place-items-center">
-                  <span className="w-6 h-6">{i.icon}</span>
-                </span>
-              </button>
-              {i.id === 'weather' && showLocate && locateHint}
-              </Fragment>
-            ))}
-          </>
+                  <span className="text-right min-w-0 max-w-[55%]">
+                    <span className={`block font-bold leading-snug text-[var(--t-text)] ${big ? 'text-lg' : 'text-base'}`}>{i.a}</span>
+                    <span className="block text-xs"><Fresh at={i.at} limit={i.limit} lead="" /></span>
+                    {i.note && <span className="block text-xs text-[var(--watch-text)]">{i.note}</span>}
+                  </span>
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 shrink-0 text-[var(--c-muted)]" aria-hidden="true">
+                    <path d="M6 4l4 4-4 4" />
+                  </svg>
+                </button>
+                {i.id === 'weather' && showLocate && <div className="px-4 pb-2 -mt-1">{locateHint}</div>}
+              </li>
+            );
+          })}
+        </ul>
+        {onAskText && (
+          <div className="px-4 pt-1 pb-4 border-t border-[var(--c-border)]">
+            <AskForm id="city-ask-m" onAskText={onAskText} />
+          </div>
         )}
-        {calm.length > 0 && <QuietList title={`ปกติดี ${calm.length} เรื่อง`} titleClass="text-[var(--ok-text)]" rows={calm} locate={showLocate ? locateHint : null} />}
-        {pending.length > 0 && <QuietList title={`ยังไม่มีข้อมูล ${pending.length} เรื่อง`} titleClass="text-[var(--c-muted)]" rows={pending} locate={showLocate ? locateHint : null} />}
       </section>
     </>
+  );
+}
+
+// How old a check's data is: muted while fresh, in the watch colour once older than its source should be
+function Fresh({ at, limit, lead = ' · ' }) {
+  const f = freshness(at, limit);
+  if (!f) return null;
+  return (
+    <span className={f.stale ? 'text-[var(--watch-text)] font-semibold' : 'text-[var(--c-muted)] font-normal'}>
+      {lead}{f.stale ? `ข้อมูลเก่า ${f.text}` : f.text}
+    </span>
+  );
+}
+
+// The state of one check as a shape, in its tone's colour: a tick (fine), a half-filled ring (keep an eye on it),
+// a warning triangle (take care), a dashed ring (no data yet)
+function StateGlyph({ tone, known, className = '' }) {
+  const shape = !known || tone === 'neutral' ? 'none' : tone;
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className={`${className} text-[var(--t-ring)]`} aria-hidden="true">
+      {shape === 'green' && (
+        <>
+          <circle cx="10" cy="10" r="8.25" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M6.5 10.2l2.4 2.4 4.6-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </>
+      )}
+      {shape === 'yellow' && (
+        <>
+          <circle cx="10" cy="10" r="8.25" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M10 3.75a6.25 6.25 0 0 1 0 12.5z" fill="currentColor" />
+        </>
+      )}
+      {shape === 'red' && (
+        <>
+          <path d="M8.6 2.9 1.9 14.6a1.6 1.6 0 0 0 1.4 2.4h13.4a1.6 1.6 0 0 0 1.4-2.4L11.4 2.9a1.6 1.6 0 0 0-2.8 0z" fill="currentColor" />
+          <path d="M10 7.5v3.6M10 13.9h.01" stroke="var(--c-surface)" strokeWidth="1.8" strokeLinecap="round" />
+        </>
+      )}
+      {shape === 'none' && <circle cx="10" cy="10" r="8.25" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 2.5" />}
+    </svg>
   );
 }
 
@@ -303,82 +305,59 @@ function LocateHint({ onAsk, denied }) {
   );
 }
 
-// Phones: a short list of answers with nothing to watch (or no data yet); a stale answer keeps its note
-function QuietList({ title, titleClass, rows, locate }) {
+// The summary as the console's status panel: the verdict with its glyph and the emergency button beside it, one
+// plain sentence, the detail, and on wide screens a box to ask AI about a road (phones get it under the checks)
+function CityHero({ verdict, headline, detail, onAskText, emergency }) {
   return (
-    <>
-      <h2 className={`mt-1 text-[15px] font-semibold ${titleClass}`}>{title}</h2>
-      <div className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] overflow-hidden divide-y divide-[var(--c-border)]">
-        {rows.map((i) => (
-          <Fragment key={i.id}>
-          <button type="button" onClick={i.go} className={`tone-${i.tone} cursor-pointer w-full min-h-15 px-4 py-2 flex items-center gap-3 text-left`}>
-            <span className="flex-1 min-w-0 text-base text-[var(--c-muted)]">{i.q}</span>
-            <span className="text-right">
-              <span className="block font-display text-lg font-bold text-[var(--t-text)]">{i.a}</span>
-              {i.note && <span className="block text-xs text-amber-700 dark:text-amber-400">{i.note}</span>}
+    <section aria-labelledby="city-verdict" className={`tone-${verdict.tone} rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]`}>
+      <div className="px-5 sm:px-6 pt-5 pb-5 flex flex-col gap-2">
+        {/* the emergency button drops under the answer when a narrow phone has no room beside it */}
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+          <h2 id="city-verdict" className="min-w-0 inline-flex items-center gap-2.5 text-[28px] sm:text-[36px] font-bold leading-tight text-[var(--t-text)]">
+            <span className="sr-only">ตอนนี้ออกไปได้ไหม: </span>
+            <StateGlyph tone={verdict.tone} known={verdict.tone !== 'neutral'} className="w-7 h-7 sm:w-8 sm:h-8 shrink-0" />
+            {/* breaks only between words ("ออกได้ / แต่ระวัง"), never inside one */}
+            <span className="text-balance">
+              {verdict.label.split(' ').map((w, k) => <span key={k} className="whitespace-nowrap">{k ? ' ' : ''}{w}</span>)}
             </span>
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 shrink-0 text-[var(--c-muted)]" aria-hidden="true">
-              <path d="M6 4l4 4-4 4" />
-            </svg>
-          </button>
-          {i.id === 'weather' && locate && <div className="px-4 pb-2">{locate}</div>}
-          </Fragment>
-        ))}
-      </div>
-    </>
-  );
-}
-
-// The summary as a platform sign: a band in the verdict's colour with the verdict word, the sentence under it
-function CityHero({ verdict, headline, detail, onAskText }) {
-  const [q, setQ] = useState('');
-  return (
-    <section aria-label="สรุปตอนนี้" className={`tone-${verdict.tone} rounded-md overflow-hidden border border-[var(--c-border)] bg-[var(--c-surface)]`}>
-      {/* drops rippling out on the water behind the sentence, in the verdict's colour */}
-      <span className="fx-ripples" aria-hidden="true"><span /><span /><span /></span>
-      <div className={`fx-band relative z-[1] flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-5 sm:px-6 py-2.5 bg-[var(--t-band)] text-[var(--t-on)]`}>
-        <span className="inline-flex items-center gap-2 font-display text-xl font-bold">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5" aria-hidden="true">
-            {verdict.tone === 'green' ? (
-              <path d="M5 12.5l4.5 4.5L19 7.5" />
-            ) : (
-              <>
-                <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
-                <path d="M12 9v4M12 17h.01" />
-              </>
-            )}
-          </svg>
-          {verdict.label}
-        </span>
-        <span className="text-sm font-medium">สรุปจาก 6 เรื่องด้านล่าง</span>
-      </div>
-      <div className="relative z-[1] px-5 sm:px-6 pt-5 pb-6 flex flex-col gap-3">
-        <p className="font-display text-[26px] sm:text-[34px] font-bold leading-tight max-w-[26em]">{headline}</p>
-        {detail && <p className="text-base leading-relaxed text-[var(--c-muted)] max-w-[44em]">{detail}</p>}
+          </h2>
+          {emergency}
+        </div>
+        <p className="text-xl sm:text-2xl font-semibold leading-snug max-w-[30em] text-balance">{headline}</p>
+        {detail && <p className="text-[15px] leading-relaxed text-[var(--c-muted)] max-w-[48em]">{detail}</p>}
         {onAskText && (
-          <form
-            className="flex flex-wrap gap-2 mt-3 pt-4 border-t-2 border-[var(--c-ink)]"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const text = q.trim();
-              if (text) onAskText(text);
-            }}
-          >
-            <label htmlFor="city-ask" className="basis-full font-display text-base font-bold">ถาม AI เรื่องถนนที่จะไป</label>
-            <input
-              id="city-ask"
-              type="text"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="เช่น ลาดพร้าวตอนนี้ติดไหม"
-              className="flex-[1_1_160px] min-w-0 h-12 px-4 rounded-[4px] bg-[var(--c-surface)] border-2 border-[var(--c-border-strong)] text-base text-[var(--c-ink)] placeholder:text-[var(--c-muted)]"
-            />
-            <button type="submit" className="cursor-pointer h-12 px-6 rounded-[4px] bg-[var(--c-ink)] text-[var(--c-surface)] text-base font-bold hover:opacity-90">
-              ถาม
-            </button>
-          </form>
+          <div className="hidden md:block mt-3 pt-4 border-t border-[var(--c-border)]">
+            <AskForm id="city-ask" onAskText={onAskText} />
+          </div>
         )}
       </div>
     </section>
+  );
+}
+
+function AskForm({ id, onAskText }) {
+  const [q, setQ] = useState('');
+  return (
+    <form
+      className="flex flex-wrap gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const text = q.trim();
+        if (text) onAskText(text);
+      }}
+    >
+      <label htmlFor={id} className="basis-full text-sm font-semibold pt-2">ถาม AI เรื่องถนนที่จะไป</label>
+      <input
+        id={id}
+        type="text"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="เช่น ลาดพร้าวตอนนี้ติดไหม"
+        className="flex-[1_1_160px] min-w-0 h-11 px-3.5 rounded-md bg-[var(--c-ground)] border border-[var(--c-border-strong)] text-base text-[var(--c-ink)] placeholder:text-[var(--c-muted)] focus:outline-none focus:border-[var(--c-primary)] focus:ring-2 focus:ring-[var(--c-primary-tint)]"
+      />
+      <button type="submit" className="cursor-pointer h-11 px-5 rounded-md bg-[var(--c-primary-fill)] text-[var(--c-on-primary)] text-base font-semibold hover:bg-[var(--c-primary-hover)] transition-colors duration-150">
+        ถาม
+      </button>
+    </form>
   );
 }

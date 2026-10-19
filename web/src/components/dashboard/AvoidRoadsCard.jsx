@@ -12,11 +12,11 @@ const LEVEL = {
 export default function AvoidRoadsCard({ summary, onNavigate }) {
   const rows = (summary?.congested || []).slice(0, 5);
   return (
-    <section aria-labelledby="avoid-h" className="h-full min-w-0 rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] p-5 sm:p-6">
+    <section aria-labelledby="avoid-h" className="h-full min-w-0 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id="avoid-h" className="text-xl font-bold">ถนนที่ควรเลี่ยงตอนนี้</h2>
+        <h2 id="avoid-h" className="text-lg font-bold">ถนนที่ควรเลี่ยงตอนนี้</h2>
         {onNavigate && (
-          <button type="button" onClick={() => onNavigate('map')} className="cursor-pointer min-h-11 text-[15px] font-semibold underline underline-offset-4 hover:opacity-80">
+          <button type="button" onClick={() => onNavigate('map')} className="cursor-pointer min-h-11 text-[15px] font-semibold text-[var(--c-primary)] hover:underline underline-offset-4">
             ดูทุกสาย
           </button>
         )}
@@ -31,7 +31,7 @@ export default function AvoidRoadsCard({ summary, onNavigate }) {
             const lv = LEVEL[ROAD_LEVEL[r.level] || 'neutral'];
             return (
               <li key={r.name} className={`${lv.tone} flex items-center gap-3 py-3 border-t border-[var(--c-border)] first:border-t-0`}>
-                <span className="w-9 h-9 shrink-0 rounded-md bg-[var(--c-line)] text-[var(--c-surface)] font-display text-[17px] font-bold grid place-items-center">{i + 1}</span>
+                <span className="num w-7 shrink-0 text-[15px] font-semibold text-[var(--c-muted)] text-right">{i + 1}</span>
                 <span className="flex-1 min-w-0">
                   <span className="block truncate text-base font-semibold" title={r.name}>{r.name}</span>
                   <span className="block text-sm text-[var(--c-muted)]">{r.red_km ? `ติดยาว ${r.red_km} กม. จาก ${r.length_km} กม.` : `ช่วงที่มีข้อมูล ${r.length_km} กม.`}</span>

@@ -44,7 +44,7 @@ alerts = AlertService(DATA_DIR, {
     "agent": lambda: flood_agent.status()["report"],
     "flood": flood_roads.status, "water": water_service.get_summary, "incidents": incidents.status,
     "bma_events": lambda: bma_feed.get(hours=2, limit=60), "air": air.status, "air_forecast": air_forecast.status,
-    "traffy": traffy_reports.status, "tmd": tmd_warnings.status,
+    "traffy": traffy_reports.water_status, "tmd": tmd_warnings.status,
     "health": lambda: json.loads(health().body),
     "road_events": road_events, "provinces": province_flood.status,
 })

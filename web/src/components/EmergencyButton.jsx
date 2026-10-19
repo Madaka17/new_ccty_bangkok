@@ -253,13 +253,33 @@ function EmergencyPanel({ onClose }) {
   );
 }
 
-export default function EmergencyButton() {
+// `inline`: an in-flow button (home status panel) in the console's dashed destructive frame, never hidden on scroll
+export default function EmergencyButton({ inline = false }) {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
   const scrollVisible = useScrollDirection();
   const alertCount = useAlertPopupCount();
   // Phones only (max-lg): hidden while scrolling, or while a pop-up is on screen. Never while its dialog is open.
   const hide = !open && (!scrollVisible || alertCount > 0);
+  if (inline) {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-haspopup="dialog"
+          aria-label="ฉุกเฉิน: เบอร์โทร ที่พักพิง โรงพยาบาล และแชร์ตำแหน่ง"
+          className="cursor-pointer shrink-0 inline-flex items-center gap-2 h-11 px-4 rounded-md border border-dashed border-[var(--act-ring)] text-[var(--act-text)] text-[15px] font-bold hover:bg-[var(--act-tint)] transition-colors duration-150"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5" aria-hidden="true">
+            <path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" />
+          </svg>
+          ฉุกเฉิน
+        </button>
+        {open && <EmergencyPanel onClose={close} />}
+      </>
+    );
+  }
   return (
     <>
       <button
@@ -267,7 +287,7 @@ export default function EmergencyButton() {
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
         aria-label="ฉุกเฉิน: เบอร์โทร ที่พักพิง โรงพยาบาล และแชร์ตำแหน่ง"
-        className={`cursor-pointer fixed z-40 right-5 bottom-[calc(148px+env(safe-area-inset-bottom))] lg:right-8 lg:bottom-26 h-12 w-12 lg:h-14 lg:w-14 rounded-full bg-red-600 text-white text-xs font-bold shadow-lg ring-4 ring-white/70 hover:bg-red-700 focus-visible:outline-none focus-visible:ring-red-300 transition-[translate,scale,opacity] duration-200 ${hide ? "motion-safe:max-lg:translate-y-24 motion-safe:max-lg:opacity-0 motion-safe:max-lg:pointer-events-none motion-safe:focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:pointer-events-auto" : ""}`}
+        className={`cursor-pointer fixed z-40 right-5 bottom-[calc(148px+env(safe-area-inset-bottom))] lg:right-8 lg:bottom-26 h-12 w-12 lg:h-14 lg:w-14 rounded-full bg-red-600 text-white text-xs font-bold shadow-lg ring-4 ring-[var(--c-ground)] hover:bg-red-700 focus-visible:outline-none focus-visible:ring-red-300 transition-[translate,scale,opacity] duration-200 ${hide ? "motion-safe:max-lg:translate-y-24 motion-safe:max-lg:opacity-0 motion-safe:max-lg:pointer-events-none motion-safe:focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:pointer-events-auto" : ""}`}
       >
         ฉุกเฉิน
       </button>

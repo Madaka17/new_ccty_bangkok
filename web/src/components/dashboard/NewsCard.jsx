@@ -82,9 +82,9 @@ export default function NewsCard({ isActive }) {
   const state = !news ? (failed ? 'failed' : 'loading') : !read ? (news.error ? 'failed' : 'loading') : 'read';
 
   return (
-    <section aria-labelledby="news-h" className="min-w-0 flex flex-col rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] p-5 sm:p-6 lg:absolute lg:inset-0">
+    <section aria-labelledby="news-h" className="min-w-0 flex flex-col rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-5 sm:p-6 lg:absolute lg:inset-0">
       <div className="flex items-baseline justify-between gap-2">
-        <h2 id="news-h" className="text-xl font-bold">ข่าวน้ำท่วม อุบัติเหตุ</h2>
+        <h2 id="news-h" className="text-lg font-bold">ข่าวน้ำท่วม อุบัติเหตุ</h2>
         <span className="text-sm text-[var(--c-muted)]">ทั่วประเทศ</span>
       </div>
       <div role="group" aria-label="ประเภทข่าว" className="mt-2 flex flex-wrap gap-1">

@@ -13,7 +13,6 @@ import EmergencyButton from './components/EmergencyButton.jsx';
 import { fetchCameras, fetchAllCameras, fetchAIStats, fetchIncidents, fetchSurveyRanking, fetchRoadCameras } from './lib/api.js';
 import { useActiveCameras, useFavorites } from './lib/store.js';
 import { trackView, startHeartbeat } from './lib/telemetry.js';
-import RiverBackdrop from './components/fx/RiverBackdrop.jsx';
 import WeatherFx, { WeatherBadge, WeatherOverlay, skyClass } from './components/fx/WeatherFx.jsx';
 import useWeatherScene from './lib/useWeatherScene.js';
 
@@ -281,7 +280,7 @@ export default function App() {
  const sidebarProps = { page, onNavigate: navigate, aiActive, liveCount: activeCams.length, weatherPref: weather.pref, onWeatherPref: weather.setPref, weatherScene: weather.scene, weatherBlocked: weather.blocked };
 
   return (
-    <div className="min-h-full lg:grid lg:grid-cols-[244px_1fr]">
+    <div className="min-h-full lg:grid lg:grid-cols-[232px_1fr]">
       {/* Desktop sidebar */}
       <aside className="hidden lg:block sticky top-0 h-screen">
         <Sidebar {...sidebarProps} />
@@ -299,7 +298,7 @@ export default function App() {
           <NavIcon name="menu" className="w-6 h-6" />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="font-display text-base font-bold leading-tight truncate">{PAGE_TITLES[page]}</p>
+          <p className="text-base font-bold leading-tight truncate">{PAGE_TITLES[page]}</p>
           <p className="text-xs text-[var(--c-muted)] leading-tight">BKK StreetSmart</p>
         </div>
         {activeCams.length > 0 && (
@@ -312,17 +311,17 @@ export default function App() {
       </div>
       {menuOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex" role="dialog" aria-modal="true" aria-label="เมนู">
-          <div className="w-72 max-w-[85vw] h-full">
+          <div className="panel-open-x w-72 max-w-[85vw] h-full">
             <Sidebar {...sidebarProps} onClose={() => setMenuOpen(false)} />
           </div>
           <button type="button" aria-label="ปิดเมนู" onClick={() => setMenuOpen(false)} className="flex-1 bg-slate-900/50" />
         </div>
       )}
-      <RiverBackdrop />
       <WeatherFx scene={weather.scene} allowed={weather.allowed} />
       <WeatherOverlay scene={weather.scene} allowed={weather.allowed} />
       <BottomNav page={page} onNavigate={navigate} onMenu={() => setMenuOpen(true)} onReport={openFloodReport} />
-      <EmergencyButton />
+      {/* home carries its own emergency button in the status panel, clear of the check rows */}
+      {page !== 'dashboard' && <EmergencyButton />}
 
       {/* Earthquake scrolls inside its frame, so on desktop the page itself must fit the screen */}
       <div className={`min-h-full flex flex-col pt-4 pb-24 min-w-0 ${page === 'enviro' ? 'lg:pb-4' : ''}`}>
@@ -426,12 +425,12 @@ export default function App() {
           </motion.div>
         </main>
 
-        {/* ปุ่มกลมไอคอน AI ลอยด้านล่างขวาทุกหน้า (ยกเว้นหน้าคุยกับ AI อยู่แล้ว) */}
-        {page !== 'ai' && page !== 'enviro' && (
+        {/* ปุ่มกลมไอคอน AI ลอยด้านล่างขวา ยกเว้นหน้าคุยกับ AI และหน้าแรก (หน้าแรกมีช่องถาม AI ในกล่องสรุปแล้ว) */}
+        {page !== 'ai' && page !== 'enviro' && page !== 'dashboard' && (
           <button
             type="button"
             onClick={() => askAI('')}
-            className={`fixed bottom-20 lg:bottom-8 right-5 lg:right-8 z-30 h-12 w-12 lg:h-14 lg:w-14 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-xl shadow-blue-500/35 hover:shadow-blue-500/55 hover:scale-108 active:scale-95 transition-[translate,scale,opacity] duration-200 flex items-center justify-center cursor-pointer group ${!scrollVisible || alertCount > 0 ? "motion-safe:max-lg:translate-y-24 motion-safe:max-lg:opacity-0 motion-safe:max-lg:pointer-events-none motion-safe:focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:pointer-events-auto" : ""}`}
+            className={`fixed bottom-20 lg:bottom-8 right-5 lg:right-8 z-30 h-12 w-12 lg:h-14 lg:w-14 rounded-full bg-[var(--c-primary-fill)] text-white border border-[var(--c-border-strong)] shadow-[0_6px_16px_-6px_rgba(1,4,9,0.5)] hover:bg-[var(--c-primary-hover)] active:scale-95 transition-[translate,scale,opacity,background-color] duration-200 flex items-center justify-center cursor-pointer group ${!scrollVisible || alertCount > 0 ? "motion-safe:max-lg:translate-y-24 motion-safe:max-lg:opacity-0 motion-safe:max-lg:pointer-events-none motion-safe:focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:pointer-events-auto" : ""}`}
             title="ถาม AI"
             aria-label="ถาม AI"
           >
@@ -448,7 +447,7 @@ export default function App() {
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 16 }}
-              className="fixed bottom-20 lg:bottom-6 left-1/2 -translate-x-1/2 z-[60] rounded-lg bg-slate-900 text-white px-4 py-2.5 text-sm max-w-[calc(100vw-2rem)]"
+              className="fixed bottom-20 lg:bottom-6 left-1/2 -translate-x-1/2 z-[60] rounded-md border border-[var(--c-border-strong)] bg-[var(--c-raised)] text-[var(--c-ink)] shadow-[0_8px_20px_-8px_rgba(1,4,9,0.5)] px-4 py-2.5 text-sm max-w-[calc(100vw-2rem)]"
             >
               {toast}
             </motion.div>

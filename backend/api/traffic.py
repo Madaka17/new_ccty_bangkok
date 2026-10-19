@@ -43,7 +43,7 @@ def _flood_feed():
 district_sources = {
     "air": lambda: air.status(),
     "flood": _flood_feed,
-    "traffy": lambda: traffy_reports.status(),
+    "traffy": lambda: traffy_reports.water_status(),
     "cameras": lambda: bma_scanner.db.get_all_latest(),
     "area_traffic": area_traffic.status,
     "incidents": lambda: road_events_merged(),

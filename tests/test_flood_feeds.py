@@ -197,3 +197,37 @@ def test_js100_keeps_recent_flood_items_in_the_area():
     items = parse_js100(JS100_PAGE, now=NOW)
     assert [i["text"] for i in items] == ["น้ำท่วมขังเสมอฟุตบาท ถนนเทพรัตน ขาเข้า ตั้งแต่หน้าเมกาบางนา"]
     assert items[0]["ts"] == NOW - 1400   # 20:50 Bangkok time, NOW is 21:13:20
+
+
+@pytest.mark.parametrize("text, kind", [
+    ("น้ำท่วมสูงประมาณหน้าแข้ง ถนนลาดกระบัง และถนนในซอย", "water"),
+    ("ภายในซอยพบน้ำท่วมขังสูงประมาณ 30 เซนติเมตร พบเห็นมาหลายวันแล้ว", "water"),
+    ("ท่อระบายน้ำอุดตัน ส่งผลให้มีน้ำท่วมขังและเน่าเสีย", "water"),
+    ("ทางเท้าชำรุด และมีน้ำขัง", "water"),
+    ("ลงทะเบียนเงินเยียวยาน้ำท่วมในแอพทางรัฐไปไม่อัพเดทสถานะเลย ความสูงระดับหัวเข่า", "aid"),
+    ("แจ้งเรื่องเยี่ยวยาน้ำท่วมค่ะ จะส่งรูปภาพน่ำท่วมค่ะ", "aid"),
+    ("สถานะยื่นขอน้ำท่วมไม่ขยับเลย ความสูงระดับหัวเข่า 24กย-2 ตคค่ะ", "aid"),
+    ("บนสะพานเวลาฝนตกจะมีน้ำท่วมขังบนสะพาน", "recurring"),
+    ("ถนนเป็นหลุมลึก ฝนตกมีน้ำขัง", "recurring"),
+    ("บริเวณเกาะกลางถนน ภายหลังเกิดเหตุการณ์น้ำท่วม พบต้นไม้ตาย", "after"),
+    ("ตัดหญ้า ที่ขวางทาง ท่อระบายน้ำ ป้องกันน้ำขังในซอย", "other"),
+    ("มีการทำถนนเจาะในเวลากลางคืน", "other"),
+])
+def test_traffy_report_kind(text, kind):
+    assert flood_feeds.report_kind(text) == kind
+
+
+def test_traffy_counts_water_now_apart_from_aid_requests():
+    feed = TraffyFloodReports()
+    feed.items = [{"id": "a", "ts": NOW, "kind": "water"}, {"id": "b", "ts": NOW, "kind": "aid"},
+                  {"id": "c", "ts": NOW}]   # an item without a kind (older read) still counts as water
+    st = feed.status()
+    assert st["total"] == 3 and st["water_now"] == 2
+
+
+def test_traffy_water_status_keeps_water_now_reports_only():
+    feed = TraffyFloodReports()
+    feed.items = [{"id": "a", "ts": NOW, "kind": "water"}, {"id": "b", "ts": NOW, "kind": "aid"}, {"id": "c", "ts": NOW}]
+    st = feed.water_status()
+    assert [i["id"] for i in st["items"]] == ["a", "c"] and st["total"] == 2
+    assert feed.status()["total"] == 3   # the full list is unchanged

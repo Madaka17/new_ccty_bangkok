@@ -60,7 +60,7 @@ export function Button({ variant = 'secondary', size = 'md', loading = false, di
       type="button"
       disabled={off}
       aria-busy={loading || undefined}
-      className={`inline-flex items-center justify-center gap-2 rounded-lg border font-medium transition-colors duration-150 ${FOCUS} ${BTN_VARIANT[variant]} ${BTN_SIZE[size]} ${off ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-md border font-medium transition-colors duration-150 ${FOCUS} ${BTN_VARIANT[variant]} ${BTN_SIZE[size]} ${off ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'} ${className}`}
       {...rest}
     >
       {loading && <Spinner className="w-3.5 h-3.5" />}

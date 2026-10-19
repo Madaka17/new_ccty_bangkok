@@ -8,7 +8,7 @@ import { fetchTrafficNear } from '../../lib/api.js';
 import { roughWarning } from '../../lib/geo.js';
 
 // Horizontal HUD meter: gradient track (red -> amber -> green), threshold ticks at the
-// flowLevel cut-offs, glowing marker at the current value. Replaces the old ring gauge.
+// flowLevel cut-offs, a flat marker at the current value. Replaces the old ring gauge.
 // Every position is a percentage of the track, so the meter follows the card width when the window changes.
 const ZONES = [
   { from: 0, to: 45, label: 'ติดขัด', key: 'red' },
@@ -26,14 +26,14 @@ function Meter({ value, colorHex }) {
           className="absolute inset-0 rounded-full opacity-40"
           style={{ background: 'linear-gradient(90deg, #dc2626 0%, #dc2626 45%, #d97706 45%, #d97706 75%, #059669 75%, #059669 100%)' }}
         />
-        {/* lit portion up to the value. Its own overflow keeps the sheen inside it; the glow is its own shadow and
-            still shows. Both ends are percentages ('0%' too: mixed units would make framer-motion fix them in px). */}
+        {/* lit portion up to the value, flat. Both ends are percentages ('0%' too: mixed units would make framer-motion
+            fix them in px). */}
         <motion.div
           className="absolute inset-y-0 left-0 rounded-full overflow-hidden"
           initial={{ width: '0%' }}
           animate={{ width: `${v}%` }}
           transition={{ type: 'spring', stiffness: 60, damping: 18 }}
-          style={{ background: `linear-gradient(90deg, ${colorHex}66, ${colorHex})`, boxShadow: `0 0 14px ${colorHex}80` }}
+          style={{ background: colorHex }}
         >
           <span className="meter-sheen" aria-hidden="true" />
         </motion.div>
@@ -49,10 +49,10 @@ function Meter({ value, colorHex }) {
           transition={{ type: 'spring', stiffness: 60, damping: 18 }}
           aria-hidden="true"
         >
-          <span className="block w-6 h-6 rounded-full border-2 border-white" style={{ background: colorHex, boxShadow: `0 0 0 3px ${colorHex}33, 0 0 18px ${colorHex}` }} />
+          <span className="block w-5 h-5 rounded-full border-2 border-[var(--c-surface)]" style={{ background: colorHex, boxShadow: '0 1px 3px rgba(1, 4, 9, 0.45)' }} />
         </motion.div>
       </div>
-      <div className="relative mt-2 h-4 text-[11px] text-slate-500">
+      <div className="relative mt-2 h-5 text-xs text-slate-500">
         {ZONES.map((z) => (
           <span
             key={z.key}
@@ -146,8 +146,10 @@ export default function FlowOverview({ summary, areas, error, onRetry, retrying,
   const provinces = useMemo(() => (areas?.ready ? [...areas.provinces].sort((a, b) => a.province.localeCompare(b.province, 'th')) : []), [areas]);
   const prov = provinces.find((p) => p.code === provCode);
   const amp = prov?.amphoes.find((a) => a.code === ampCode);
-  // A picked province or district shows its own score from the map's lines; none picked: the Bangkok summary
-  const area = near || amp || prov;
+  // A picked province or district shows its own score from the map's lines. None picked: Bangkok from the map's
+  // lines too, the same figure as the home page's traffic check; the main-roads summary only until areas load.
+  const bkk = provinces.find((p) => p.code === BANGKOK);
+  const area = near || amp || prov || bkk;
   const pickProvince = (code) => { setProvCode(code); setAmpCode(''); setNear(null); };
   const pickAmphoe = (code) => { setAmpCode(code); setNear(null); };
   const locate = () => {
@@ -206,11 +208,11 @@ export default function FlowOverview({ summary, areas, error, onRetry, retrying,
             </p>
           ) : area ? (
             <p className="text-[13px] text-slate-600 mt-0.5">
-              {amp ? `${areaName(prov.code, amp.name)} ${prov.province}` : prov.province} · คิดจากสีเส้นจราจรบนถนนสายหลัก {fmtNum(area.total_km)} กม.
+              {amp ? `${areaName(prov.code, amp.name)} ${prov.province}` : (prov || bkk).province} · คิดจากสีเส้นจราจรของทุกถนนบนแผนที่ {fmtNum(area.total_km)} กม.
             </p>
           ) : summary && (
             <p className="text-[13px] text-slate-600 mt-0.5">
-              {summary.is_bma ? `ใช้ข้อมูลจากกล้อง กทม. ${fmtNum(summary.camera_count)} ตัว` : 'คิดจากสีเส้นจราจรบนแผนที่'}
+              {summary.is_bma ? `ใช้ข้อมูลจากกล้อง กทม. ${fmtNum(summary.camera_count)} ตัว` : `กรุงเทพฯ · ถนนสายหลัก ${fmtNum(summary.road_count)} สาย ${fmtNum(summary.total_km)} กม.`}
             </p>
           )}
         </div>

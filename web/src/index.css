@@ -4,9 +4,11 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  /* Looped Thai (with heads) for reading, Bai Jamjuree for headings and big status words */
-  --font-sans: "IBM Plex Sans Thai Looped", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Bai Jamjuree", "IBM Plex Sans Thai Looped", ui-sans-serif, sans-serif;
+  /* Console look (Oct 2026): one compact looped Thai face for all text (heads keep it readable for everyone),
+     a monospaced face for figures and times only */
+  --font-sans: "Noto Sans Thai Looped", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Noto Sans Thai Looped", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", monospace;
 
   /* Readability: Thai glyphs run small, so every size step is one notch larger than
      Tailwind's default (xs 12->13px, sm 14->15px, base 16->17px) with roomier line-height. */
@@ -20,13 +22,13 @@
   /* Legacy token names mapped onto the neutral system: cream/ink = slate, sage = emerald,
      lavender = blue (accent), apricot = red, gold = amber. Keeps older pages on one palette. */
   --color-cream: #ffffff;
-  --color-cream-100: #f8fafc;
-  --color-cream-200: #e2e8f0;
-  --color-cream-300: #cbd5e1;
+  --color-cream-100: #f6f8fa;
+  --color-cream-200: #d8dee4;
+  --color-cream-300: #c4ccd4;
 
-  --color-ink-900: #0f172a;
-  --color-ink-600: #475569;
-  --color-ink-400: #94a3b8;
+  --color-ink-900: #0d1117;
+  --color-ink-600: #57606a;
+  --color-ink-400: #8c959f;
 
   --color-sage-50: #ecfdf5;
   --color-sage-100: #d1fae5;
@@ -35,12 +37,12 @@
   --color-sage-600: #059669;
   --color-sage-700: #047857;
 
-  --color-lavender-50: #eff6ff;
-  --color-lavender-100: #dbeafe;
-  --color-lavender-200: #bfdbfe;
-  --color-lavender-400: #60a5fa;
-  --color-lavender-600: #2563eb;
-  --color-lavender-700: #1d4ed8;
+  --color-lavender-50: #ddf4ff;
+  --color-lavender-100: #b6e3ff;
+  --color-lavender-200: #80ccff;
+  --color-lavender-400: #218bff;
+  --color-lavender-600: #0969da;
+  --color-lavender-700: #0550ae;
 
   --color-apricot-50: #fef2f2;
   --color-apricot-100: #fee2e2;
@@ -57,104 +59,103 @@
   --color-gold-700: #b45309;
 
   --shadow-soft: 0 0 0 1px var(--c-border);
-  --shadow-lift: 0 0 0 1px var(--c-border), 0 8px 22px -12px rgba(15, 110, 116, 0.25);
+  --shadow-lift: 0 0 0 1px var(--c-border), 0 8px 20px -12px rgba(1, 4, 9, 0.35);
 }
 
-/* ---------------------------------------------------------------- city look (light and dark)
-   One set of colours for the whole site, read by the shell (Sidebar, BottomNav), the city status line and
-   the summary card. The station line is --c-line, the page you are on is --c-here. Status tones:
-   ok = fine, watch = keep an eye on it, act = take care, none = no data yet. */
+/* ---------------------------------------------------------------- console look (light and dark)
+   Dark first: a graphite ground, panels split by 1px seams and one step of elevation, no glass and no glow.
+   Colour carries state only: --c-primary = action and "running", ok / watch / act = fine / keep an eye on it /
+   take care, none = no data yet, --c-yours = what belongs to the viewer (my district, my route).
+   --c-here marks the page you are on. Light keeps the same grammar on a cool white. */
 :root {
-  /* River look: light is warm paper by the water (no pure white), dark is the Chao Phraya at night (no pure
-     black). Primary = canal teal, here = evening light on the water. */
-  --c-ground: #f4f1ea;
-  --c-surface: #fffdf8;
-  --c-raised: #f9f6ef;
-  --c-border: #e4ded2;
-  --c-border-strong: #d3cbbb;
-  --c-ink: #1a2228;
-  --c-muted: #4e5a62;
-  --c-line: #12424a;
-  --c-here: #c2691a;
-  --c-here-tint: #fbeedd;
-  --c-here-text: #8f4a0c;
-  --c-primary: #0f6e74;
-  --c-primary-hover: #0b5a5f;
-  --c-primary-tint: #e3f1ef;
+  --c-ground: #f6f8fa;
+  --c-surface: #ffffff;
+  --c-raised: #f0f2f5;
+  --c-border: #d8dee4;
+  --c-border-strong: #c4ccd4;
+  --c-ink: #0d1117;
+  --c-muted: #57606a;
+  --c-line: #0d1117;
+  --c-here: #0969da;
+  --c-here-tint: #ddf4ff;
+  --c-here-text: #0550ae;
+  --c-primary: #0969da;
+  --c-primary-fill: #0969da;
+  --c-primary-hover: #0550ae;
+  --c-primary-tint: #ddf4ff;
   --c-on-primary: #ffffff;
-  --c-sel-bg: #0f6e74;
+  --c-sel-bg: #0d1117;
   --c-sel-text: #ffffff;
-  --c-wave: #5fa8a6;
-  --c-shadow: 0 1px 2px rgba(26, 34, 40, 0.04), 0 8px 22px -14px rgba(15, 110, 116, 0.28);
+  --c-wave: #c4ccd4;
+  --c-yours: #8250df;
+  --c-yours-tint: #fbefff;
+  --c-shadow: 0 1px 0 rgba(13, 17, 23, 0.04);
 
-  --ok-ring: #1e9e57;   --ok-fill: var(--c-surface);   --ok-text: #17733f;   --ok-tint: #e3f2e6;
-  --watch-ring: #e09a0b; --watch-fill: #fce7b8;        --watch-text: #8a5300; --watch-tint: #fbefd6;
-  --act-ring: #d63a2c;  --act-fill: #d63a2c;           --act-text: #b42318;  --act-tint: #f9e1dc;
-  --none-ring: #9a9f9f; --none-fill: var(--c-surface); --none-text: #4e5a62; --none-tint: #ebe7de;
+  --ok-ring: #1a7f37;   --ok-fill: var(--c-surface);   --ok-text: #1a7f37;   --ok-tint: #dafbe1;
+  --watch-ring: #bf8700; --watch-fill: #fff8c5;        --watch-text: #7d4e00; --watch-tint: #fff8c5;
+  --act-ring: #cf222e;  --act-fill: #cf222e;           --act-text: #b3141f;  --act-tint: #ffebe9;
+  --none-ring: #8c959f; --none-fill: var(--c-surface); --none-text: #57606a; --none-tint: #eaeef2;
 }
 .dark {
-  --c-ground: #0e1a22;
-  --c-surface: #15242e;
-  --c-raised: #1b2c37;
-  --c-border: #263a46;
-  --c-border-strong: #34505e;
-  --c-ink: #e6eef0;
-  --c-muted: #a3b5bd;
-  --c-line: #5fa8b0;
-  --c-here: #f2a65a;
-  --c-here-tint: rgba(242, 166, 90, 0.16);
-  --c-here-text: #f7c08a;
-  --c-primary: #4fc1b9;
-  --c-primary-hover: #6fd0c9;
-  --c-primary-tint: rgba(79, 193, 185, 0.14);
-  --c-on-primary: #0b1a1f;
-  --c-sel-bg: #4fc1b9;
-  --c-sel-text: #0b1a1f;
-  --c-wave: #3f8f92;
-  --c-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02), 0 10px 24px -14px rgba(0, 0, 0, 0.7);
+  --c-ground: #0d1117;
+  --c-surface: #151a22;
+  --c-raised: #1b212b;
+  --c-border: #262c36;
+  --c-border-strong: #363d48;
+  --c-ink: #e6edf3;
+  --c-muted: #8b949e;
+  --c-line: #e6edf3;
+  --c-here: #79c0ff;
+  --c-here-tint: rgba(121, 192, 255, 0.12);
+  --c-here-text: #79c0ff;
+  --c-primary: #79c0ff;
+  --c-primary-fill: #1f6feb;
+  --c-primary-hover: #388bfd;
+  --c-primary-tint: rgba(121, 192, 255, 0.12);
+  --c-on-primary: #ffffff;
+  --c-sel-bg: #e6edf3;
+  --c-sel-text: #0d1117;
+  --c-wave: #363d48;
+  --c-yours: #c678dd;
+  --c-yours-tint: rgba(198, 120, 221, 0.14);
+  --c-shadow: 0 1px 0 rgba(1, 4, 9, 0.4);
 
-  --ok-text: #6ee7a0;   --ok-tint: rgba(30, 158, 87, 0.16);
-  --watch-ring: #f2b33d; --watch-fill: #5c4210; --watch-text: #fcd34d; --watch-tint: rgba(242, 179, 61, 0.14);
-  --act-ring: #f0564a;  --act-fill: #f0564a;  --act-text: #fca5a5;  --act-tint: rgba(240, 86, 74, 0.16);
-  --none-ring: #6a7d88; --none-text: #a3b5bd; --none-tint: #1b2c37;
+  --ok-ring: #56d364;   --ok-text: #56d364;   --ok-tint: rgba(86, 211, 100, 0.12);
+  --watch-ring: #e3b341; --watch-fill: rgba(227, 179, 65, 0.25); --watch-text: #e3b341; --watch-tint: rgba(227, 179, 65, 0.12);
+  --act-ring: #f85149;  --act-fill: #f85149;  --act-text: #ff7b72;  --act-tint: rgba(248, 81, 73, 0.12);
+  --none-ring: #6e7681; --none-text: #8b949e; --none-tint: #1b212b;
 }
 /* A status colour set on one element, read by its children as --t-* */
-.tone-green { --t-ring: var(--ok-ring); --t-fill: var(--ok-fill); --t-text: var(--ok-text); --t-tint: var(--ok-tint); --t-band: #1e7d49; --t-on: #ffffff; }
-.tone-yellow { --t-ring: var(--watch-ring); --t-fill: var(--watch-fill); --t-text: var(--watch-text); --t-tint: var(--watch-tint); --t-band: #f2b33d; --t-on: #12161d; }
-.tone-red { --t-ring: var(--act-ring); --t-fill: var(--act-fill); --t-text: var(--act-text); --t-tint: var(--act-tint); --t-band: #c62f22; --t-on: #ffffff; }
-.tone-neutral { --t-ring: var(--none-ring); --t-fill: var(--none-fill); --t-text: var(--none-text); --t-tint: var(--none-tint); --t-band: #5f6875; --t-on: #ffffff; }
+.tone-green { --t-ring: var(--ok-ring); --t-fill: var(--ok-fill); --t-text: var(--ok-text); --t-tint: var(--ok-tint); --t-band: #1a7f37; --t-on: #ffffff; }
+.tone-yellow { --t-ring: var(--watch-ring); --t-fill: var(--watch-fill); --t-text: var(--watch-text); --t-tint: var(--watch-tint); --t-band: #e3b341; --t-on: #0d1117; }
+.tone-red { --t-ring: var(--act-ring); --t-fill: var(--act-fill); --t-text: var(--act-text); --t-tint: var(--act-tint); --t-band: #cf222e; --t-on: #ffffff; }
+.tone-neutral { --t-ring: var(--none-ring); --t-fill: var(--none-fill); --t-text: var(--none-text); --t-tint: var(--none-tint); --t-band: #57606a; --t-on: #ffffff; }
 
-/* Light: Tailwind's cool slate and blue are moved onto the warm paper neutrals and the canal teal, so every
-   page follows the river look without editing its classes. Dark remaps the same names further down. */
+/* Light: Tailwind's slate and blue are moved onto the console neutrals and the action blue, so every page
+   follows the look without editing its classes. Dark remaps the same names further down. */
 :root:not(.dark) {
-  --color-slate-50: #f9f6ef;
-  --color-slate-100: #f1ece2;
-  --color-slate-200: #e4ded2;
-  --color-slate-300: #d3cbbb;
-  --color-slate-400: #9a9d98;
-  --color-slate-500: #5f6b73;
-  --color-slate-600: #4e5a62;
-  --color-slate-700: #3a454c;
-  --color-slate-800: #232d33;
-  --color-slate-900: #1a2228;
+  --color-slate-50: #f6f8fa;
+  --color-slate-100: #eaeef2;
+  --color-slate-200: #d8dee4;
+  --color-slate-300: #c4ccd4;
+  --color-slate-400: #8c959f;
+  --color-slate-500: #636c76;
+  --color-slate-600: #57606a;
+  --color-slate-700: #424a53;
+  --color-slate-800: #32383f;
+  --color-slate-900: #0d1117;
 }
 :root {
-  --color-blue-50: #e6f3f2;
-  --color-blue-100: #cce7e5;
-  --color-blue-200: #a6d5d2;
-  --color-blue-300: #79bfbb;
-  --color-blue-400: #3fa7a2;
-  --color-blue-500: #178a88;
-  --color-blue-600: #0f6e74;
-  --color-blue-700: #0b5a5f;
-  --color-blue-800: #0a4a4e;
-  --color-blue-900: #0a3c40;
-  --color-lavender-50: #e6f3f2;
-  --color-lavender-100: #cce7e5;
-  --color-lavender-200: #a6d5d2;
-  --color-lavender-400: #3fa7a2;
-  --color-lavender-600: #0f6e74;
-  --color-lavender-700: #0b5a5f;
+  --color-blue-50: #ddf4ff;
+  --color-blue-100: #b6e3ff;
+  --color-blue-200: #80ccff;
+  --color-blue-300: #54aeff;
+  --color-blue-400: #218bff;
+  --color-blue-500: #0969da;
+  --color-blue-600: #0969da;
+  --color-blue-700: #0550ae;
+  --color-blue-800: #033d8b;
+  --color-blue-900: #0a3069;
 }
 
 html, body, #root { height: 100%; }
@@ -166,83 +167,67 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Every page, in the look of station signs: headings in the display face, small square-ish corners,
-   the selected tab a filled block, the main button in the action colour */
 h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.005em; }
-/* Cards: soft rounded panels resting on the paper / water, a thin border and a low shadow */
-.rounded-xl.border, .rounded-2xl.border { border-radius: 14px; }
-.rounded-xl.border.bg-white, .rounded-2xl.border.bg-white { box-shadow: var(--c-shadow); }
-[role="tab"][aria-selected="true"] {
-  background: var(--c-sel-bg);
-  color: var(--c-sel-text);
-  border-color: transparent;
-  border-radius: 999px;
-}
-::selection { background: var(--c-primary-tint); color: var(--c-ink); }
+/* Panels: flat, a 1px seam, small corners; no shadow, no glass */
+.rounded-xl.border, .rounded-2xl.border { border-radius: 8px; }
+.rounded-xl.border.bg-white, .rounded-2xl.border.bg-white, .glass, .glass-strong { box-shadow: none; }
+::selection { background: color-mix(in srgb, var(--c-primary) 30%, transparent); color: var(--c-ink); }
+/* Figures and times read in the mono face, columns line up */
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+/* Small panel heading: the console's quiet section label */
+.panel-label { font-size: 0.8125rem; line-height: 1.25rem; font-weight: 600; color: var(--c-muted); letter-spacing: 0.02em; }
 
-/* Signature: a thin wave under each page title (PageHeader) */
-.wave-rule { display: block; width: 88px; height: 8px; margin-top: 6px; color: var(--c-wave); }
-/* The same wave standing up: the river the menu's piers sit on (Sidebar). Masked, so it takes the token colour. */
-.river-rail {
-  background: var(--c-wave);
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 24'%3E%3Cpath d='M4 0C7 6 7 6 4 12S1 18 4 24' fill='none' stroke='black' stroke-width='2'/%3E%3C/svg%3E") repeat-y center top / 8px 24px;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 24'%3E%3Cpath d='M4 0C7 6 7 6 4 12S1 18 4 24' fill='none' stroke='black' stroke-width='2'/%3E%3C/svg%3E") repeat-y center top / 8px 24px;
-}
-.bg-blue-600, .bg-lavender-600 { background-color: var(--c-primary); color: var(--c-on-primary); }
-.border-blue-600 { border-color: var(--c-primary); }
+.bg-blue-600, .bg-lavender-600 { background-color: var(--c-primary-fill); color: var(--c-on-primary); }
+.border-blue-600 { border-color: var(--c-primary-fill); }
 .hover\:bg-blue-700:hover, .hover\:bg-lavender-700:hover { background-color: var(--c-primary-hover); }
 .hover\:border-blue-700:hover { border-color: var(--c-primary-hover); }
 
-/* Flat panel (name kept for older pages) */
 .bg-white, .glass, .glass-strong { background-color: var(--c-surface); }
-.glass,
-.glass-strong {
-  border: 1px solid var(--c-border);
-}
+.glass, .glass-strong { border: 1px solid var(--c-border); }
 
-.scroll-soft::-webkit-scrollbar { width: 8px; }
+.scroll-soft::-webkit-scrollbar { width: 8px; height: 8px; }
 .scroll-soft::-webkit-scrollbar-track { background: transparent; }
 .scroll-soft::-webkit-scrollbar-thumb { background: var(--c-border); border-radius: 999px; }
 .scroll-soft::-webkit-scrollbar-thumb:hover { background: var(--c-border-strong); }
+html { scrollbar-color: var(--c-border-strong) var(--c-ground); }
+input, textarea { caret-color: var(--c-primary); }
 
 :focus-visible {
-  outline: 2px solid var(--c-here);
+  outline: 2px solid var(--c-primary);
   outline-offset: 2px;
 }
 
-@keyframes glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.45); }
-  50% { box-shadow: 0 0 0 6px rgba(5, 150, 105, 0); }
+/* A live source: the dot breathes a soft ring, offset-free but neutral in size, never a coloured glow field */
+@keyframes live-ring {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok-ring) 45%, transparent); }
+  50% { box-shadow: 0 0 0 5px transparent; }
 }
-.live-dot { animation: glow 2.4s ease-in-out infinite; }
+.live-dot { animation: live-ring 2.4s ease-in-out infinite; }
 
-/* Traffic meter (FlowOverview): a light that sweeps along the lit part of the bar, then rests. The bar clips it,
-   and the steps are percentages of its own width, so it never leaves the bar and follows the window width. */
-@keyframes meter-sheen {
-  0% { transform: translateX(-100%); }
-  68%, 100% { transform: translateX(250%); }
-}
-.meter-sheen {
-  position: absolute;
-  inset-block: 0;
-  left: 0;
-  width: 40%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
-  animation: meter-sheen 3.8s linear infinite;
-  pointer-events: none;
-}
+/* Kept for FlowOverview's markup; the console draws the meter flat */
+.meter-sheen { display: none; }
+
+/* Panels expand along one axis only (the console's one motion) */
+@keyframes panel-open { from { opacity: 0; clip-path: inset(0 0 100% 0); } to { opacity: 1; clip-path: inset(0 0 0 0); } }
+.panel-open { animation: panel-open 0.28s cubic-bezier(0.16, 1, 0.3, 1) both; }
+/* The phone menu drawer opens sideways, from the left edge it sits on */
+@keyframes panel-open-x { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+.panel-open-x { animation: panel-open-x 0.26s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* The pipeline seam between two checks fills from the left when the page opens */
+@keyframes seam-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.seam-fill { transform-origin: left center; animation: seam-fill 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
 @media (prefers-reduced-motion: reduce) {
-  .live-dot { animation: none; }
-  .meter-sheen { display: none; }
+  .live-dot, .panel-open, .panel-open-x, .seam-fill { animation: none; }
   * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }
 
-/* MapLibre soft look */
+/* MapLibre */
 .maplibregl-map { font-family: var(--font-sans); }
-.maplibregl-popup-content { border-radius: 12px; border: 1px solid var(--c-border); box-shadow: 0 4px 12px -4px rgba(15, 23, 42, 0.12); padding: 12px 14px; font-family: var(--font-sans); }
+.maplibregl-popup-content { border-radius: 8px; border: 1px solid var(--c-border); box-shadow: 0 6px 16px -8px rgba(1, 4, 9, 0.3); padding: 12px 14px; font-family: var(--font-sans); }
 .maplibregl-popup-close-button { font-size: 18px; color: var(--color-ink-600); right: 6px; top: 4px; }
-.maplibregl-ctrl-group { border-radius: 8px !important; overflow: hidden; box-shadow: 0 0 0 1px var(--c-border) !important; }
+.maplibregl-ctrl-group { border-radius: 6px !important; overflow: hidden; box-shadow: 0 0 0 1px var(--c-border) !important; }
 .maplibregl-ctrl-group button { width: 36px; height: 36px; }
 .maplibregl-ctrl-attrib { border-radius: 6px 0 0 0; font-size: 10px; }
 
@@ -253,74 +238,73 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.005em; }
 }
 
 /* ---------------------------------------------------------------- dark theme
-   Enabled by the `dark` class on <html> (index.html picks it before the first paint; lib/theme.js switches it).
-   Tailwind v4 utilities read colour tokens through var(--color-*), so the light
-   tints and neutral surfaces are remapped once here instead of adding dark:
-   variants to every element. Text shades are overridden per utility because the
-   same token (slate-900) is a dark surface in one place and dark text in another. */
+   Enabled by the `dark` class on <html> (public/theme-init.js picks it before the first paint; lib/theme.js
+   switches it). Tailwind v4 utilities read colour tokens through var(--color-*), so the light tints and neutral
+   surfaces are remapped once here instead of adding dark: variants to every element. Text shades are overridden
+   per utility because the same token (slate-900) is a dark surface in one place and dark text in another. */
 .dark {
   color-scheme: dark;
-  --color-slate-50: #1b2c37;
-  --color-slate-100: #20333f;
-  --color-slate-200: #263a46;
-  --color-slate-300: #34505e;
-  --color-emerald-50: #052e16;
-  --color-emerald-100: #064e3b;
-  --color-emerald-200: #065f46;
-  --color-amber-50: #451a03;
-  --color-amber-100: #78350f;
-  --color-amber-200: #92400e;
-  --color-red-50: #450a0a;
-  --color-red-100: #7f1d1d;
-  --color-red-200: #991b1b;
-  --color-blue-50: #10343a;
-  --color-blue-100: #13444a;
-  --color-blue-200: #1a5a5f;
-  --color-cream: #15242e;
-  --color-cream-100: #1b2c37;
-  --color-cream-200: #263a46;
-  --color-ink-900: #e6eef0;
-  --color-ink-600: #bccbd1;
-  --color-sage-50: #052e16;
-  --color-sage-100: #064e3b;
-  --color-sage-200: #065f46;
-  --color-lavender-50: #10343a;
-  --color-lavender-100: #13444a;
-  --color-lavender-200: #1a5a5f;
-  --color-apricot-50: #450a0a;
-  --color-apricot-100: #7f1d1d;
-  --color-apricot-200: #991b1b;
-  --color-gold-50: #451a03;
-  --color-gold-100: #78350f;
-  --color-gold-200: #92400e;
+  --color-slate-50: #1b212b;
+  --color-slate-100: #212833;
+  --color-slate-200: #262c36;
+  --color-slate-300: #363d48;
+  --color-emerald-50: #0f2a19;
+  --color-emerald-100: #12361f;
+  --color-emerald-200: #174a2a;
+  --color-amber-50: #2b2111;
+  --color-amber-100: #3a2c12;
+  --color-amber-200: #4d3a15;
+  --color-red-50: #2d1517;
+  --color-red-100: #3d1a1d;
+  --color-red-200: #552226;
+  --color-blue-50: #11233f;
+  --color-blue-100: #142d52;
+  --color-blue-200: #1a3a6b;
+  --color-cream: #151a22;
+  --color-cream-100: #1b212b;
+  --color-cream-200: #262c36;
+  --color-ink-900: #e6edf3;
+  --color-ink-600: #a8b1bb;
+  --color-sage-50: #0f2a19;
+  --color-sage-100: #12361f;
+  --color-sage-200: #174a2a;
+  --color-lavender-50: #11233f;
+  --color-lavender-100: #142d52;
+  --color-lavender-200: #1a3a6b;
+  --color-apricot-50: #2d1517;
+  --color-apricot-100: #3d1a1d;
+  --color-apricot-200: #552226;
+  --color-gold-50: #2b2111;
+  --color-gold-100: #3a2c12;
+  --color-gold-200: #4d3a15;
 }
 .dark body { background: var(--c-ground); color: var(--c-ink); }
 .dark .glass, .dark .glass-strong { border-color: var(--c-border); }
 .dark .text-slate-900, .dark .text-slate-800 { color: var(--c-ink); }
-.dark .text-slate-700 { color: #d6e2e6; }
-.dark .text-slate-600 { color: #bccbd1; }
-.dark .text-slate-500 { color: #93a6ae; }
-.dark .text-emerald-700, .dark .text-emerald-800, .dark .text-emerald-900 { color: #6ee7b7; }
-.dark .text-amber-700, .dark .text-amber-800, .dark .text-amber-900 { color: #fcd34d; }
-.dark .text-red-700, .dark .text-red-800, .dark .text-red-900 { color: #fca5a5; }
-.dark .text-blue-700, .dark .text-blue-800, .dark .text-blue-900 { color: #7fd6cf; }
+.dark .text-slate-700 { color: #c9d1d9; }
+.dark .text-slate-600 { color: #a8b1bb; }
+.dark .text-slate-500 { color: #8b949e; }
+.dark .text-emerald-700, .dark .text-emerald-800, .dark .text-emerald-900 { color: #56d364; }
+.dark .text-amber-700, .dark .text-amber-800, .dark .text-amber-900 { color: #e3b341; }
+.dark .text-red-700, .dark .text-red-800, .dark .text-red-900 { color: #ff7b72; }
+.dark .text-blue-700, .dark .text-blue-800, .dark .text-blue-900 { color: #79c0ff; }
 .dark .hover\:text-slate-900:hover { color: #ffffff; }
-.dark .hover\:bg-slate-50:hover, .dark .hover\:bg-slate-100:hover { background-color: #20333f; }
+.dark .hover\:bg-slate-50:hover, .dark .hover\:bg-slate-100:hover { background-color: #212833; }
 .dark .hover\:bg-white:hover { background-color: var(--c-raised); }
-.dark .bg-slate-900\/80 { background-color: rgba(4, 12, 17, 0.8); }
-.dark .bg-slate-900\/60, .dark .bg-slate-900\/50 { background-color: rgba(4, 12, 17, 0.7); }
+.dark .bg-slate-900\/80 { background-color: rgba(1, 4, 9, 0.8); }
+.dark .bg-slate-900\/60, .dark .bg-slate-900\/50 { background-color: rgba(1, 4, 9, 0.7); }
 .dark .scroll-soft::-webkit-scrollbar-thumb { background: var(--c-border-strong); }
 .dark .maplibregl-popup-content { background: var(--c-surface); color: var(--c-ink); border-color: var(--c-border); }
-.dark svg text { fill: #93a6ae; }
+.dark svg text { fill: #8b949e; }
 
 /* Camera AI & Analysis view switch (CameraAiPage.jsx) */
 .seg-tray { background: var(--c-ground); border: 1px solid var(--c-border); }
 .seg-off { color: var(--c-muted); }
 .seg-off:hover { background: var(--c-raised); color: var(--c-ink); }
-.seg-on { background: var(--c-surface); color: var(--c-primary); box-shadow: var(--c-shadow); }
+.seg-on { background: var(--c-surface); color: var(--c-primary); box-shadow: 0 0 0 1px var(--c-border); }
 .seg-icon { background: var(--c-raised); color: var(--c-muted); }
 .seg-hint { color: var(--c-muted); font-weight: 400; }
-.dark .seg-on { background: var(--c-raised); color: var(--c-primary); box-shadow: 0 0 0 1px var(--c-border-strong), 0 6px 16px rgba(0, 0, 0, 0.35); }
+.dark .seg-on { background: var(--c-raised); color: var(--c-primary); box-shadow: 0 0 0 1px var(--c-border-strong); }
 
 /* Floating AI button robot (BotFace.jsx): blink every few seconds, antenna bulb glows */
 .bot-eyes { transform-box: fill-box; transform-origin: center; animation: bot-blink 4.5s infinite; }
@@ -329,34 +313,17 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.005em; }
 @keyframes bot-glow { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 @media (prefers-reduced-motion: reduce) { .bot-eyes, .bot-bulb { animation: none; } }
 
-/* ---------------------------------------------------------------- river, in motion (Oct 2026)
-   The river look with depth and movement: a drifting sky and a flowing current behind the page
-   (RiverBackdrop.jsx), frosted cards that glow on hover, sections that rise in one after another when a page
-   opens, a wave under each title and a river in the menu that actually flow, and a sliding pill on tabs.
-   All of it stands still under "reduce motion" (last block). */
-.river-backdrop { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
-.river-glow { position: absolute; border-radius: 50%; opacity: 0.42; will-change: transform; }
-.river-glow-a {
-  width: 46vmax; height: 46vmax; left: -12vmax; top: -18vmax;
-  background: radial-gradient(circle, color-mix(in srgb, var(--c-primary) 55%, transparent), transparent 68%);
-  animation: river-drift-a 38s ease-in-out infinite alternate;
-}
-.river-glow-b {
-  width: 38vmax; height: 38vmax; right: -14vmax; top: 8vmax;
-  background: radial-gradient(circle, color-mix(in srgb, var(--c-here) 45%, transparent), transparent 70%);
-  animation: river-drift-b 46s ease-in-out infinite alternate;
-}
-.dark .river-glow { opacity: 0.5; }
-.dark .river-current-far { fill: color-mix(in srgb, var(--c-wave) 22%, transparent); }
-.dark .river-current-near { fill: color-mix(in srgb, var(--c-primary) 16%, transparent); }
-@keyframes river-drift-a { to { transform: translate(18vmax, 10vmax) scale(1.15); } }
-@keyframes river-drift-b { to { transform: translate(-16vmax, 14vmax) scale(0.9); } }
-.river-current { position: absolute; left: 0; bottom: 0; width: 200%; height: 18vh; min-height: 90px; }
-.river-current-far { fill: color-mix(in srgb, var(--c-wave) 16%, transparent); animation: river-flow 28s linear infinite; }
-.river-current-near { fill: color-mix(in srgb, var(--c-primary) 12%, transparent); animation: river-flow 17s linear infinite; }
-@keyframes river-flow { to { transform: translateX(-1200px); } }
+/* Tabs: the selected tab carries a 2px rule under it that slides from tab to tab (Tabs draws it with
+   framer-motion's layoutId); ViewSwitch keeps its segmented tray */
+[role="tab"].tab-slide[aria-selected="true"] { color: var(--c-ink); }
+.tab-pill { position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--c-primary); }
+.seg-pill { position: absolute; inset: 0; border-radius: 6px; background: var(--c-surface); box-shadow: 0 0 0 1px var(--c-border-strong); }
+.dark .seg-pill { background: var(--c-raised); }
+[role="tab"].seg-slide[aria-selected="true"] { background: transparent; color: var(--c-primary); }
 
-/* Weather background (WeatherFx.jsx): same layer as the river, behind the content. Only transform and opacity move. */
+/* ---------------------------------------------------------------- weather (WeatherFx.jsx)
+   The viewer's own switch: rain, cloud and sun behind the content, and rain over the cards. Only transform and
+   opacity move. */
 .wfx-layer { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; --wfx-rain: rgba(71, 85, 105, 0.4); }
 .dark .wfx-layer { --wfx-rain: rgba(190, 210, 225, 0.55); }
 .wfx-sky { position: absolute; inset: 0; background: rgba(30, 50, 70, 0.08); }
@@ -395,7 +362,6 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.005em; }
 
 /* Sky tint for the phone top bar and the sidebar brand header. Gradient at most 30 % strength, drawn over the
    surface colour, so the text keeps its contrast in both themes. Clear weather has no tint. */
-/* light rain / storm: the strong end sits on the right, away from the title and its muted subtitle */
 .wfx-sky-rain { background-image: linear-gradient(120deg, rgba(71, 95, 130, 0.08), rgba(71, 95, 130, 0.24)); }
 .dark .wfx-sky-rain { background-image: linear-gradient(120deg, rgba(90, 120, 160, 0.28), rgba(90, 120, 160, 0.1)); }
 .wfx-sky-storm { background-image: linear-gradient(120deg, rgba(109, 70, 140, 0.1), rgba(51, 65, 85, 0.28)); }
@@ -411,169 +377,4 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.005em; }
   .wfx-layer, .wfx-layer * { animation: none !important; }
   .wfx-layer { display: none; }
   .wfx-overlay, .wfx-overlay * { animation: none !important; display: none; }
-}
-
-/* Frosted cards: the sky shows faintly through; a border light and a lift of shadow under the pointer. No
-   backdrop-filter: it would make each card the frame of any fixed popup drawn inside it. */
-.rounded-xl.border.bg-white, .rounded-2xl.border.bg-white, .glass, .glass-strong {
-  background-color: color-mix(in srgb, var(--c-surface) 88%, transparent);
-  transition: box-shadow 0.35s ease, border-color 0.35s ease, transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-.rounded-xl.border.bg-white:hover, .rounded-2xl.border.bg-white:hover, .glass:hover {
-  border-color: color-mix(in srgb, var(--c-primary) 38%, var(--c-border));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--c-primary) 18%, transparent), 0 16px 34px -18px color-mix(in srgb, var(--c-primary) 55%, transparent);
-}
-/* A card that is a link or a button also rises a little */
-a.rounded-xl.border:hover, button.rounded-xl.border:hover { transform: translateY(-2px); }
-
-/* A page's sections rise in one after another when it opens (App.jsx wraps every page in .page-stage).
-   "backwards": the start state holds through the delay, and nothing is left on the element afterwards. */
-@keyframes rise-in { from { opacity: 0; transform: translateY(14px); filter: blur(3px); } to { opacity: 1; transform: none; filter: none; } }
-.page-stage > :not(.flex-col), .page-stage > .flex-col > * { animation: rise-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) backwards; }
-.page-stage > .flex-col > :nth-child(2) { animation-delay: 0.06s; }
-.page-stage > .flex-col > :nth-child(3) { animation-delay: 0.12s; }
-.page-stage > .flex-col > :nth-child(4) { animation-delay: 0.18s; }
-.page-stage > .flex-col > :nth-child(5) { animation-delay: 0.24s; }
-.page-stage > .flex-col > :nth-child(6) { animation-delay: 0.3s; }
-.page-stage > .flex-col > :nth-child(n + 7) { animation-delay: 0.36s; }
-
-/* The wave under each page title flows, and its light runs from canal teal to evening orange */
-.wave-rule { overflow: hidden; }
-.wave-rule path { animation: wave-flow 2.6s linear infinite; }
-@keyframes wave-flow { to { transform: translateX(-22px); } }
-/* The river in the menu flows down past the piers */
-.river-rail { animation: rail-flow 3.2s linear infinite; }
-@keyframes rail-flow { to { -webkit-mask-position: center 24px; mask-position: center 24px; } }
-/* The pier you are on breathes a soft ring of evening light */
-.here-pulse { animation: here-pulse 2.8s ease-out infinite; }
-@keyframes here-pulse {
-  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c-here) 55%, transparent); }
-  70%, 100% { box-shadow: 0 0 0 10px transparent; }
-}
-
-/* Tabs: the selected pill slides from tab to tab (Tabs and ViewSwitch draw it with framer-motion's layoutId) */
-[role="tab"].tab-slide[aria-selected="true"] { background: transparent; }
-.tab-pill { position: absolute; inset: 0; border-radius: 999px; background: var(--c-sel-bg);
-  box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--c-sel-bg) 75%, transparent); }
-.seg-pill { position: absolute; inset: 0; border-radius: 0.75rem; background: var(--c-surface);
-  box-shadow: var(--c-shadow), 0 0 0 1px color-mix(in srgb, var(--c-primary) 30%, transparent); }
-.dark .seg-pill { background: var(--c-raised); }
-[role="tab"].seg-slide[aria-selected="true"] { background: transparent; color: var(--c-primary); }
-
-/* The main button: a light sweeps across it under the pointer (buttons in the page flow only: a positioned
-   one keeps its own position) */
-button.bg-blue-600:not(.absolute):not(.fixed):not(.sticky) { position: relative; overflow: hidden; }
-button.bg-blue-600:not(.absolute):not(.fixed):not(.sticky)::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
-  transform: translateX(-120%);
-}
-button.bg-blue-600:not(.absolute):not(.fixed):not(.sticky):hover::after { transform: translateX(120%); transition: transform 0.7s ease; }
-
-@media (prefers-reduced-motion: reduce) {
-  .river-glow, .river-current-far, .river-current-near, .wave-rule path, .river-rail, .here-pulse { animation: none; }
-  .page-stage > :not(.flex-col), .page-stage > .flex-col > * { animation: none; }
-  button.bg-blue-600::after { display: none; }
-  a.rounded-xl.border:hover, button.rounded-xl.border:hover { transform: none; }
-}
-
-/* ---------------------------------------------------------------- river glass (Oct 2026, second pass)
-   Real frosted glass. The blur sits on a ::before layer behind the card's content, not on the card itself, so a
-   fixed popup drawn inside a card still covers the whole screen. Covers both card patterns of the site
-   (.bg-white cards and the newer var(--c-surface) panels) plus .fx-glass. Position and isolation live in the
-   components layer, so a card that says absolute / sticky keeps it. */
-@layer components {
-  .rounded-xl.border.bg-white, .rounded-2xl.border.bg-white, .glass, .glass-strong,
-  .rounded-md.border.bg-\[var\(--c-surface\)\], .fx-glass { position: relative; isolation: isolate; }
-}
-.rounded-xl.border.bg-white, .rounded-2xl.border.bg-white, .glass, .glass-strong,
-.rounded-md.border.bg-\[var\(--c-surface\)\], .fx-glass {
-  background: transparent;
-  border-color: color-mix(in srgb, var(--c-border) 70%, transparent);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 1px 2px rgba(26, 34, 40, 0.04), 0 18px 40px -26px rgba(15, 110, 116, 0.35);
-}
-.rounded-xl.border.bg-white::before, .rounded-2xl.border.bg-white::before, .glass::before, .glass-strong::before,
-.rounded-md.border.bg-\[var\(--c-surface\)\]::before, .fx-glass::before {
-  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
-  background:
-    radial-gradient(120% 80% at 0% 0%, rgba(255, 255, 255, 0.55), transparent 55%),
-    color-mix(in srgb, var(--c-surface) 82%, transparent);
-}
-/* A live blur only where there is one big pane: on every card it was redrawn each frame the sky moved */
-.fx-glass::before { -webkit-backdrop-filter: blur(16px) saturate(150%); backdrop-filter: blur(16px) saturate(150%); }
-.dark .rounded-xl.border.bg-white, .dark .rounded-2xl.border.bg-white, .dark .glass, .dark .glass-strong,
-.dark .rounded-md.border.bg-\[var\(--c-surface\)\], .dark .fx-glass {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 20px 44px -26px rgba(0, 0, 0, 0.85);
-}
-.dark .rounded-xl.border.bg-white::before, .dark .rounded-2xl.border.bg-white::before, .dark .glass::before,
-.dark .glass-strong::before, .dark .rounded-md.border.bg-\[var\(--c-surface\)\]::before, .dark .fx-glass::before {
-  background:
-    radial-gradient(120% 80% at 0% 0%, rgba(79, 193, 185, 0.1), transparent 55%),
-    color-mix(in srgb, var(--c-surface) 80%, transparent);
-}
-.rounded-md.border.bg-\[var\(--c-surface\)\] { transition: box-shadow 0.35s ease, border-color 0.35s ease; }
-.rounded-md.border.bg-\[var\(--c-surface\)\]:hover {
-  border-color: color-mix(in srgb, var(--c-primary) 35%, var(--c-border));
-}
-
-/* A richer sky behind the glass: a third light (river cyan) wanders through the middle */
-.river-glow { opacity: 0.55; }
-.dark .river-glow { opacity: 0.6; }
-.river-glow-c {
-  width: 34vmax; height: 34vmax; left: 30%; top: 42%;
-  background: radial-gradient(circle, color-mix(in srgb, #38bdf8 40%, transparent), transparent 70%);
-  animation: river-drift-c 52s ease-in-out infinite alternate;
-}
-@keyframes river-drift-c { to { transform: translate(-14vmax, -12vmax) scale(1.2); } }
-
-/* The menu: a pane of glass over the sky, the current pier lit like evening on the water */
-.sidebar-glass { background: color-mix(in srgb, var(--c-surface) 72%, transparent) !important;
-  -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); }
-.sidebar-glass [aria-current="page"] > span:last-child {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--c-here) 26%, transparent), transparent);
-  box-shadow: 0 8px 20px -12px var(--c-here);
-}
-
-/* Summary sign (CityStatusStrip): the verdict band shimmers, and drops ripple out from its corner */
-.fx-band { position: relative; overflow: hidden;
-  background-image: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.18) 45%, transparent 70%);
-  background-size: 250% 100%; animation: band-sheen 6s ease-in-out infinite; }
-@keyframes band-sheen { 0% { background-position: 120% 0; } 60%, 100% { background-position: -120% 0; } }
-.fx-ripples { position: absolute; right: -60px; top: 40px; width: 300px; height: 300px; pointer-events: none; z-index: 0; }
-.fx-ripples span { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--t-ring); opacity: 0;
-  animation: ripple 6s cubic-bezier(0.2, 0.6, 0.3, 1) infinite; }
-.fx-ripples span:nth-child(2) { animation-delay: 2s; }
-.fx-ripples span:nth-child(3) { animation-delay: 4s; }
-@keyframes ripple { 0% { transform: scale(0.15); opacity: 0.55; } 100% { transform: scale(1); opacity: 0; } }
-
-/* "เมืองตอนนี้" tiles: a glowing top line, an icon chip that holds a little light, and a rise with the tone's
-   glow under the pointer; they come in one after another */
-.fx-tile { transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1), box-shadow 0.35s ease, border-color 0.35s ease; }
-.fx-tile:hover { transform: translateY(-4px);
-  border-color: color-mix(in srgb, var(--t-ring) 55%, var(--c-border));
-  box-shadow: 0 18px 34px -20px color-mix(in srgb, var(--t-ring) 70%, transparent); }
-.fx-tile-line { box-shadow: 0 0 14px 1px var(--t-ring); }
-.fx-tile-icon { background: radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--t-ring) 35%, transparent), var(--t-tint) 70%) !important;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--t-ring) 25%, transparent), 0 6px 16px -8px var(--t-ring); }
-@keyframes tile-in { from { opacity: 0; transform: translateY(18px) scale(0.96); } to { opacity: 1; transform: none; } }
-.fx-tiles > li { animation: tile-in 0.55s cubic-bezier(0.34, 1.4, 0.64, 1) backwards; }
-.fx-tiles > li:nth-child(2) { animation-delay: 0.07s; }
-.fx-tiles > li:nth-child(3) { animation-delay: 0.14s; }
-.fx-tiles > li:nth-child(4) { animation-delay: 0.21s; }
-.fx-tiles > li:nth-child(5) { animation-delay: 0.28s; }
-.fx-tiles > li:nth-child(6) { animation-delay: 0.35s; }
-
-/* Page titles: a deeper ink that warms toward the river's evening light */
-.page-title { background: linear-gradient(92deg, var(--c-ink) 55%, color-mix(in srgb, var(--c-primary) 85%, var(--c-ink)));
-  -webkit-background-clip: text; background-clip: text; color: transparent; }
-
-@media (prefers-reduced-motion: reduce) {
-  .river-glow-c, .fx-band, .fx-ripples span, .fx-tiles > li { animation: none; }
-  .fx-ripples { display: none; }
-  .fx-tile:hover { transform: none; }
-}
-@media (prefers-reduced-transparency: reduce) {
-  .rounded-xl.border.bg-white::before, .rounded-2xl.border.bg-white::before, .glass::before, .glass-strong::before,
-  .rounded-md.border.bg-\[var\(--c-surface\)\]::before, .fx-glass::before { background: var(--c-surface); backdrop-filter: none; }
-  .sidebar-glass { background: var(--c-surface) !important; backdrop-filter: none; }
 }

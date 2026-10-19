@@ -49,6 +49,39 @@ FLOODED_NOW = re.compile(
 AFTER_FLOOD = re.compile(
     r"ขยะ|หลังน้ำ|หลังจากน้ำ|น้ำลด|ท่วมลด|น้ำลงแล้ว|โคลน|ฟูก|ที่นอน|เยียวยา|เงินช่วยเหลือ|ถุงยังชีพ|บริจาค|"
     r"เสนอแนะ|โรงเรียน|ศูนย์เด็กเล็ก|เสียงดัง|แมว|สุนัข")
+# What a kept report is about, so a count can mean "people say the water is there now" (the home page):
+#   water      the water is on the spot now
+#   aid        flood aid, registration or paperwork for a past flood (the "ทางรัฐ" app, "เยียวยา")
+#   recurring  it floods whenever it rains, not said to be flooded now
+#   after      what a past flood left (damage, clean-up)
+#   other      drains, roads, prevention, nothing about water on the spot
+# Traffy files most aid requests under its own flood type, so that type alone does not decide.
+REPORT_AID = re.compile(r"เยียวยา|เยี่ยวยา|เงินช่วยเหลือ|ทางรัฐ|ลงทะเบียน|คำร้อง|ยื่น(?:เรื่อง|เอกสาร|ขอ|คำ|เงิน)|เอกสาร|"
+                        r"แนบรูป|ส่งรูป|พร้อมเพย์|อนุมัติ|ที่อยู่อาศัยประจำ")
+REPORT_STILL = re.compile(r"ยังท่วม|ท่วมอยู่|น้ำ(?:ก็)?ยังไม่ลด|น้ำไม่ลด")
+REPORT_WHEN_RAIN = re.compile(r"(?:เวลา|เมื่อ|พอ)ฝน(?:ตก)?|ฝนตกทีไร|ฝนตก(?:ที|ครั้ง)?(?:ก็|จะ)?(?:มี)?น้ำ(?:ท่วม)?ขัง")
+REPORT_PAST = re.compile(r"ภายหลัง(?:เกิด)?เหตุการณ์|จากเหตุการณ์น้ำท่วม|ที่ผ่านมา")
+REPORT_PREVENT = re.compile(r"ป้องกัน")
+REPORT_WATER_NOW = re.compile(r"ท่วมขัง|น้ำขัง|น้ำท่วม|นำ้ท่วม|ท่วมสูง|ล้อมรอบ|ระดับน้ำ|น้ำเข้าบ้าน|น้ำรอการระบาย|น้ำไม่ระบาย|"
+                              r"ระบายน้ำไม่ทัน")
+
+
+def report_kind(text):
+    """water | aid | recurring | after | other, for one Traffy report's text (see above)."""
+    text = text or ""
+    if REPORT_AID.search(text):
+        return "aid"
+    if REPORT_STILL.search(text):
+        return "water"
+    if REPORT_WHEN_RAIN.search(text):
+        return "recurring"
+    if (AFTER_FLOOD.search(text) or REPORT_PAST.search(text)) and not re.search(r"ท่วมขัง|น้ำขัง", text):
+        return "after"
+    if REPORT_PREVENT.search(text):
+        return "other"
+    return "water" if REPORT_WATER_NOW.search(text) else "other"
+
+
 # The Traffy form appends "ความสูงระดับ<ข้อเท้า|หน้าแข้ง|เข่า|...>" to flood reports
 DEPTH = re.compile(r"ความสูงระดับ\s*([^\s,]+)")
 # Contact details people type into a report: Traffy shows them on its own site, but this one does not
@@ -155,6 +188,7 @@ def parse_traffy(results, now=None):
             lng = lat = None
         out.append({"id": r.get("ticket_id"), "ts": int(ts), "district": district.group(1) if district else None,
                     "address": addr, "state": r.get("state"), "depth": depth.group(1) if depth else None,
+                    "kind": report_kind(text),
                     "text": hide_contacts(text)[:300], "lat": lat, "lng": lng, "photo": r.get("photo_url") or None,
                     "url": f"https://share.traffy.in.th/teamchadchart/{r.get('ticket_id')}"})
     out.sort(key=lambda i: -i["ts"])
@@ -308,6 +342,20 @@ class _Poller:
 class TraffyFloodReports(_Poller):
     name = "Traffy"
     refresh_seconds = TRAFFY_REFRESH
+
+    def status(self):
+        st = super().status()
+        # reports that say the water is there now (report_kind); "total" stays every flood-related report
+        st["water_now"] = sum(1 for i in st["items"] if i.get("kind", "water") == "water")
+        return st
+
+    def water_status(self):
+        """status() with only the reports that say the water is there now: what alerts, district scores, the
+        flood map and the province reports read. An aid request for last month's flood is not water today."""
+        st = self.status()
+        st["items"] = [i for i in st["items"] if i.get("kind", "water") == "water"]
+        st["total"] = len(st["items"])
+        return st
 
     def fetch(self):
         # The search API has every ticket but only the newest ones; the map API has the whole 6 h but only

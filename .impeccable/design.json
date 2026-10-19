@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-19T00:00:00Z",
+  "title": "Design System: BKK StreetSmart",
+  "extensions": {
+    "colorMeta": {
+      "ground-dark": { "role": "neutral", "displayName": "Graphite Ground", "canonical": "#0d1117", "tonalRamp": ["#010409", "#0d1117", "#151a22", "#1b212b", "#262c36", "#363d48", "#8b949e", "#e6edf3"] },
+      "surface-dark": { "role": "neutral", "displayName": "Panel Graphite", "canonical": "#151a22", "tonalRamp": ["#0d1117", "#11161d", "#151a22", "#1b212b", "#212833", "#262c36", "#363d48", "#6e7681"] },
+      "action-dark": { "role": "primary", "displayName": "Console Blue", "canonical": "#79c0ff", "tonalRamp": ["#0a3069", "#033d8b", "#0550ae", "#1f6feb", "#388bfd", "#54aeff", "#79c0ff", "#b6e3ff"] },
+      "action-light": { "role": "primary", "displayName": "Action Blue (light)", "canonical": "#0969da", "tonalRamp": ["#0a3069", "#033d8b", "#0550ae", "#0969da", "#218bff", "#54aeff", "#80ccff", "#ddf4ff"] },
+      "ok-dark": { "role": "state", "displayName": "Fine Green", "canonical": "#56d364", "tonalRamp": ["#0f2a19", "#12361f", "#174a2a", "#1a7f37", "#2ea043", "#3fb950", "#56d364", "#dafbe1"] },
+      "watch-dark": { "role": "state", "displayName": "Watch Amber", "canonical": "#e3b341", "tonalRamp": ["#2b2111", "#3a2c12", "#4d3a15", "#7d4e00", "#bf8700", "#d4a72c", "#e3b341", "#fff8c5"] },
+      "act-dark": { "role": "state", "displayName": "Act Red", "canonical": "#f85149", "tonalRamp": ["#2d1517", "#3d1a1d", "#552226", "#b3141f", "#cf222e", "#f85149", "#ff7b72", "#ffebe9"] },
+      "yours-dark": { "role": "secondary", "displayName": "Yours Violet", "canonical": "#c678dd", "tonalRamp": ["#2a1535", "#4a2a5c", "#6b3d86", "#8250df", "#a371f7", "#c678dd", "#d9a3ea", "#fbefff"] },
+      "none-dark": { "role": "state", "displayName": "No-data Grey", "canonical": "#6e7681", "tonalRamp": ["#1b212b", "#262c36", "#363d48", "#57606a", "#6e7681", "#8c959f", "#afb8c1", "#eaeef2"] }
+    },
+    "typographyMeta": {
+      "verdict": { "displayName": "Verdict", "purpose": "The one-word answer beside its state glyph." },
+      "headline": { "displayName": "Headline", "purpose": "The single plain sentence under the verdict." },
+      "page-title": { "displayName": "Page title", "purpose": "PageHeader h1 on inner pages." },
+      "answer": { "displayName": "Answer", "purpose": "A check's result in its tone text colour." },
+      "body": { "displayName": "Body", "purpose": "Details, nav labels, tabs." },
+      "panel-label": { "displayName": "Panel label", "purpose": "Heading of a panel or nav group; real heading, sentence case." },
+      "figure": { "displayName": "Figure", "purpose": "Every count, time and measurement (.num)." }
+    },
+    "shadows": [
+      { "name": "hairline", "value": "0 0 0 1px var(--c-border)", "purpose": "Seam as a ring (shadow-soft); the only panel 'shadow'." },
+      { "name": "popup-drop", "value": "0 6px 16px -8px rgba(1, 4, 9, 0.3)", "purpose": "Map popups only (older treatment, not for new panels)." }
+    ],
+    "motion": [
+      { "name": "ease-console", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Panel, drawer and seam reveals." },
+      { "name": "panel-open", "value": "0.28s clip-path reveal downward", "purpose": "Panels expand along one axis only." },
+      { "name": "panel-open-x", "value": "0.26s clip-path reveal sideways", "purpose": "Phone menu drawer from the left edge." },
+      { "name": "seam-fill", "value": "0.5s scaleX from left, 70ms stagger", "purpose": "Solid pipeline joins draw in on page open." },
+      { "name": "tab-rule", "value": "spring stiffness 520 damping 40", "purpose": "2px tab rule slides between tabs." },
+      { "name": "color-transition", "value": "150ms", "purpose": "Hover and state colour changes." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Status Panel",
+      "kind": "card",
+      "refersTo": "status-panel",
+      "description": "Verdict with glyph, emergency button beside it, one plain sentence, detail.",
+      "html": "<section class=\"ds-status\"><div class=\"ds-status-top\"><h2 class=\"ds-verdict\"><svg viewBox=\"0 0 20 20\" width=\"28\" height=\"28\" fill=\"none\"><circle cx=\"10\" cy=\"10\" r=\"8.25\" stroke=\"currentColor\" stroke-width=\"1.5\"/><path d=\"M6.5 10.2l2.4 2.4 4.6-5\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>ปกติ</h2><button class=\"ds-emergency\">ฉุกเฉิน</button></div><p class=\"ds-headline\">ออกเดินทางได้ตามปกติ</p></section>",
+      "css": ".ds-status{background:var(--c-surface,#151a22);border:1px solid var(--c-border,#262c36);border-radius:8px;padding:20px 24px;color:var(--c-ink,#e6edf3);font-family:'Noto Sans Thai Looped',sans-serif}.ds-status-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.ds-verdict{display:inline-flex;align-items:center;gap:10px;margin:0;font-size:30px;font-weight:700;line-height:1.25;color:#56d364}.ds-headline{margin:8px 0 0;font-size:20px;font-weight:600;line-height:1.375}.ds-emergency{height:44px;padding:0 16px;border-radius:6px;border:1px dashed #f85149;background:transparent;color:#ff7b72;font-size:15px;font-weight:700;cursor:pointer;transition:background-color .15s}.ds-emergency:hover{background:rgba(248,81,73,.12)}.ds-emergency:focus-visible{outline:2px solid #79c0ff;outline-offset:2px}"
+    },
+    {
+      "name": "Check Card",
+      "kind": "card",
+      "refersTo": "check-card",
+      "description": "One pipeline stage: glyph, question, answer in tone colour, tone word.",
+      "html": "<button class=\"ds-check\"><span class=\"ds-check-q\"><svg viewBox=\"0 0 20 20\" width=\"18\" height=\"18\" fill=\"none\"><path d=\"M8.6 2.9 1.9 14.6a1.6 1.6 0 0 0 1.4 2.4h13.4a1.6 1.6 0 0 0 1.4-2.4L11.4 2.9a1.6 1.6 0 0 0-2.8 0z\" fill=\"currentColor\"/><path d=\"M10 7.5v3.6M10 13.9h.01\" stroke=\"#151a22\" stroke-width=\"1.8\" stroke-linecap=\"round\"/></svg>รถติดไหม</span><span class=\"ds-check-a\">ติดมาก</span><span class=\"ds-check-t\">ควรระวัง</span></button>",
+      "css": ".ds-check{display:flex;flex-direction:column;gap:6px;text-align:left;width:220px;padding:12px 14px;border-radius:6px;border:1px solid var(--c-border,#262c36);background:var(--c-raised,#1b212b);color:#ff7b72;font-family:'Noto Sans Thai Looped',sans-serif;cursor:pointer;transition:border-color .15s}.ds-check:hover{border-color:#f85149}.ds-check:focus-visible{outline:2px solid #f85149;outline-offset:2px}.ds-check-q{display:flex;gap:8px;align-items:flex-start;font-size:15px;color:var(--c-muted,#8b949e)}.ds-check-q svg{color:#f85149;flex:none;margin-top:2px}.ds-check-a{font-size:18px;font-weight:700}.ds-check-t{font-size:13px}"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "chip",
+      "refersTo": "button-primary",
+      "description": "Filled action button, 44px, used for ask-AI submit and primary actions.",
+      "html": "<button class=\"ds-btn-primary\">ถาม</button>",
+      "css": ".ds-btn-primary{height:44px;padding:0 20px;border-radius:6px;border:0;background:#1f6feb;color:#fff;font-family:'Noto Sans Thai Looped',sans-serif;font-size:17px;font-weight:600;cursor:pointer;transition:background-color .15s}.ds-btn-primary:hover{background:#388bfd}.ds-btn-primary:focus-visible{outline:2px solid #79c0ff;outline-offset:2px}"
+    },
+    {
+      "name": "Emergency Button",
+      "kind": "custom",
+      "refersTo": "button-emergency",
+      "description": "Inline dashed destructive control beside the verdict.",
+      "html": "<button class=\"ds-emerg\"><svg viewBox=\"0 0 24 24\" width=\"20\" height=\"20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2\"/></svg>ฉุกเฉิน</button>",
+      "css": ".ds-emerg{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 16px;border-radius:6px;border:1px dashed #f85149;background:transparent;color:#ff7b72;font-family:'Noto Sans Thai Looped',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:background-color .15s}.ds-emerg:hover{background:rgba(248,81,73,.12)}.ds-emerg:focus-visible{outline:2px solid #79c0ff;outline-offset:2px}"
+    },
+    {
+      "name": "Ask Input",
+      "kind": "input",
+      "refersTo": "input-ask",
+      "description": "AI question field: ground fill, strong seam, action focus ring.",
+      "html": "<input class=\"ds-input\" placeholder=\"เช่น ลาดพร้าวตอนนี้ติดไหม\">",
+      "css": ".ds-input{height:44px;width:260px;padding:0 14px;border-radius:6px;border:1px solid #363d48;background:#0d1117;color:#e6edf3;font-family:'Noto Sans Thai Looped',sans-serif;font-size:17px}.ds-input::placeholder{color:#8b949e}.ds-input:focus{outline:none;border-color:#79c0ff;box-shadow:0 0 0 2px rgba(121,192,255,.12)}"
+    },
+    {
+      "name": "Sidebar Row",
+      "kind": "nav",
+      "refersTo": "nav-row",
+      "description": "Menu row; the current page sits on the raised step with an action-coloured icon.",
+      "html": "<button class=\"ds-nav ds-nav-on\"><svg viewBox=\"0 0 24 24\" width=\"20\" height=\"20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"2\"/></svg>ภาพรวม</button><button class=\"ds-nav\"><svg viewBox=\"0 0 24 24\" width=\"20\" height=\"20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"2\"/></svg>แผนที่</button>",
+      "css": ".ds-nav{display:flex;align-items:center;gap:12px;width:200px;min-height:44px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:#8b949e;font-family:'Noto Sans Thai Looped',sans-serif;font-size:15px;font-weight:500;cursor:pointer;transition:background-color .15s,color .15s}.ds-nav:hover{background:#1b212b;color:#e6edf3}.ds-nav-on{background:#1b212b;color:#e6edf3;font-weight:600}.ds-nav-on svg{color:#79c0ff}.ds-nav:focus-visible{outline:2px solid #79c0ff;outline-offset:2px}"
+    },
+    {
+      "name": "Tabs",
+      "kind": "nav",
+      "refersTo": "nav-row",
+      "description": "Underline tabs on a seam; selected tab has a 2px action rule.",
+      "html": "<div class=\"ds-tabs\" role=\"tablist\"><button role=\"tab\" aria-selected=\"true\" class=\"ds-tab\">ภาพรวม</button><button role=\"tab\" aria-selected=\"false\" class=\"ds-tab\">รถติด</button></div>",
+      "css": ".ds-tabs{display:flex;gap:4px;border-bottom:1px solid #262c36}.ds-tab{position:relative;height:44px;padding:0 14px;border:0;border-radius:6px;background:transparent;color:#8b949e;font-family:'Noto Sans Thai Looped',sans-serif;font-size:15px;font-weight:600;cursor:pointer;transition:color .15s}.ds-tab:hover{color:#e6edf3;background:#1b212b}.ds-tab[aria-selected=true]{color:#e6edf3}.ds-tab[aria-selected=true]::after{content:'';position:absolute;left:10px;right:10px;bottom:-1px;height:2px;border-radius:2px;background:#79c0ff}.ds-tab:focus-visible{outline:2px solid #79c0ff;outline-offset:2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The City Console",
+    "overview": "The site reads like a developer console that watches the city. One status panel states the verdict (the answer to \"ตอนนี้ออกไปได้ไหม\"), and six checks run under it as the stages of a pipeline. Dark is the first theme: a graphite ground, panels split by 1px seams, one step of elevation. Light keeps the same grammar on a cool white. There is no glass, no glow, no gradient on content, and no mosaic of equal tiles; the verdict is bigger than everything else on the screen.\n\nColour carries state and nothing else. Blue means action and \"you are here\", green/amber/red mean fine/watch/act, grey means no data yet, purple means what belongs to the viewer. Every state also has a shape, so colour is never the only sign. Figures and times are set in a monospaced face so columns line up.\n\nThis is a measured build: the home page and the app shell carry the system. Everything below the fold and every other page inherit only the tokens.",
+    "keyCharacteristics": [
+      "Dark-first graphite console with a full light twin; the theme follows the device and can be toggled.",
+      "Flat: 1px seams and tonal steps, no shadows on panels.",
+      "One verdict, six pipeline stages; the check rows with care needed come first on a phone.",
+      "State is colour plus glyph shape plus a Thai word.",
+      "One looped Thai face for all text, mono for figures only."
+    ],
+    "rules": [
+      { "name": "The State-Only Colour Rule", "body": "Hue appears only to say fine, watch, act, no data, action, or yours. A surface that needs emphasis uses a seam or the raised step, not a hue.", "section": "colors" },
+      { "name": "The Honest Grey Rule", "body": "A check with no data is grey with a dashed ring and the words \"รอข้อมูล\"; it is never drawn green. The verdict says the data is not all in rather than \"ปกติ\".", "section": "colors" },
+      { "name": "The Figures-In-Mono Rule", "body": "Numbers and times use the mono face with tabular numerals; words never do.", "section": "typography" },
+      { "name": "The Seam Not Shadow Rule", "body": "Separate panels with a 1px seam and, at most, the raised step. A panel that needs a shadow to be seen is placed wrong.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do put the verdict and its one sentence first on any new top-level screen, with the state glyph beside the word.",
+      "Do pair every status colour with its glyph shape and a Thai word.",
+      "Do set figures and times in the mono face with `.num`.",
+      "Do build new surfaces from seams, the raised step and the `tone-*` classes; reach for the `--c-*` tokens before any Tailwind palette colour.",
+      "Do keep touch targets at 44px or more and body text at 15px or more."
+    ],
+    "donts": [
+      "Don't use glass, glow, gradients on content, or soft drop shadows on panels.",
+      "Don't colour a surface for decoration; hue means state, action or \"yours\".",
+      "Don't draw a check with missing data as fine.",
+      "Don't nest rounded cards inside cards on new work, or use saturated chart bars.",
+      "Don't set text below 12px; new work stays at 13px or above.",
+      "Don't make the emergency control louder than the verdict; it stays dashed and in the flow of the status panel."
+    ]
+  }
+}

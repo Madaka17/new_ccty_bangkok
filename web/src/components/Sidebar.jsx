@@ -1,4 +1,5 @@
 import ThemeToggle from './ThemeToggle.jsx';
+import NavIcon from './NavIcons.jsx';
 import { WeatherBadge, WeatherFxToggle, skyClass } from './fx/WeatherFx.jsx';
 
 // Left navigation, grouped by what the page is for. `hint` is the one-liner shown as the
@@ -49,14 +50,13 @@ export const PAGE_TITLES = {
   district: 'เขตของฉัน',
 };
 
-// Menu drawn as a river: one wavy teal stream runs down the left (.river-rail in index.css), every page is a
-// pier on it, and each group is a quiet heading beside a small buoy. The page you are on is the orange pier
-// with "อยู่ที่นี่". Pills sit to the right of the stream so hover and the current page never cut the river.
-// Colours come from the river tokens in index.css, so it follows light / dark.
+// Console menu: a graphite rail split from the page by a 1px seam. Each group is a small quiet label; each page is
+// a row with its icon. The page you are on sits on the one raised step, its icon and label in the action colour.
+// Colours come from the tokens in index.css, so it follows light / dark.
 function LogoMark() {
   // Small skyline mark, matches the icon stroke style used in the menu.
   return (
-    <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-9 h-9 text-[var(--c-line)]" aria-hidden="true">
+    <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-[var(--c-ink)]" aria-hidden="true">
       <path d="M3 27h26" />
       <path d="M6 27V13l4-3 4 3v14" />
       <path d="M14 27V8l5-4 5 4v19" />
@@ -72,11 +72,11 @@ export default function Sidebar({ page, onNavigate, aiActive, liveCount = 0, onC
     cameras: liveCount ? `${liveCount}` : null,
   };
   return (
-    <div className="sidebar-glass h-full flex flex-col bg-[var(--c-surface)] text-[var(--c-ink)] border-r border-[var(--c-border)]">
-      <div className={`px-4 pt-5 pb-3 flex items-center gap-3 ${skyClass(weatherScene)}`}>
+    <div className="h-full flex flex-col bg-[var(--c-surface)] text-[var(--c-ink)] border-r border-[var(--c-border)]">
+      <div className={`h-16 px-4 flex items-center gap-3 border-b border-[var(--c-border)] ${skyClass(weatherScene)}`}>
         <LogoMark />
         <div className="min-w-0 flex-1">
-          <p className="font-display text-[17px] font-bold tracking-tight leading-tight">BKK StreetSmart</p>
+          <p className="text-base font-bold leading-tight">BKK StreetSmart</p>
           <p className="text-xs text-[var(--c-muted)] leading-tight">จราจรและน้ำท่วม</p>
         </div>
         {onClose && (
@@ -93,61 +93,40 @@ export default function Sidebar({ page, onNavigate, aiActive, liveCount = 0, onC
         )}
       </div>
 
-      <nav aria-label="หน้าหลัก" className="flex-1 overflow-y-auto px-3 pb-4 scroll-soft">
-        {NAV_GROUPS.map((group, gi) => {
-          const last = gi === NAV_GROUPS.length - 1;
-          return (
-            <div key={group.label} className="relative pt-3">
-              {/* the river, running on to the next group's buoy */}
-              <span aria-hidden="true" className={`river-rail absolute left-[13px] top-6 w-2 ${last ? 'bottom-5' : '-bottom-6'}`} />
-              <p className="relative flex items-center gap-2.5 min-h-8">
-                <span className="w-[34px] shrink-0 grid place-items-center" aria-hidden="true">
-                  <span className="w-2.5 h-2.5 rounded-full bg-[var(--c-primary)] ring-4 ring-[var(--c-surface)]" />
-                </span>
-                <span className="font-display text-[13px] font-semibold tracking-wide text-[var(--c-muted)]">{group.label}</span>
-              </p>
-              <ul className="flex flex-col gap-0.5 pt-0.5">
-                {group.items.map((item) => {
-                  const on = page === item.id;
-                  const badge = badges[item.id];
-                  return (
-                    <li key={item.id}>
-                      <button
-                        type="button"
-                        title={item.hint}
-                        onClick={() => {
-                          onNavigate(item.id);
-                          onClose?.();
-                        }}
-                        aria-current={on ? 'page' : undefined}
-                        className="group relative cursor-pointer w-full text-left min-h-11 flex items-center text-[15px] rounded-full"
-                      >
-                        <span className="w-[34px] shrink-0 grid place-items-center" aria-hidden="true">
-                          {on ? (
-                            <span className="here-pulse w-4 h-4 rounded-full bg-[var(--c-here)] border-[3px] border-[var(--c-surface)] ring-4 ring-[var(--c-here-tint)]" />
-                          ) : (
-                            <span className="w-3 h-3 rounded-full bg-[var(--c-surface)] border-2 border-[var(--c-wave)] transition-colors duration-150 group-hover:border-[var(--c-primary)]" />
-                          )}
-                        </span>
-                        <span
-                          className={`ml-1 flex-1 min-w-0 min-h-10 px-3 rounded-full flex items-center gap-2 transition-colors duration-150 ${
-                            on ? 'bg-[var(--c-here-tint)] font-bold' : 'font-medium group-hover:bg-[var(--c-raised)]'
-                          }`}
-                        >
-                          <span className="truncate flex-1">{item.label}</span>
-                          {on && <span className="shrink-0 text-xs font-semibold text-[var(--c-here-text)]">อยู่ที่นี่</span>}
-                          {!on && badge && (
-                            <span className="shrink-0 text-[11px] px-2 py-0.5 rounded-full tabular-nums bg-[var(--c-primary-tint)] text-[var(--c-primary)]">{badge}</span>
-                          )}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          );
-        })}
+      <nav aria-label="หน้าหลัก" className="flex-1 overflow-y-auto px-3 py-3 scroll-soft">
+        {NAV_GROUPS.map((group, gi) => (
+          <div key={group.label} className={gi ? 'mt-5' : ''}>
+            <p className="panel-label px-3 pb-1.5">{group.label}</p>
+            <ul className="flex flex-col gap-0.5">
+              {group.items.map((item) => {
+                const on = page === item.id;
+                const badge = badges[item.id];
+                return (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      title={item.hint}
+                      onClick={() => {
+                        onNavigate(item.id);
+                        onClose?.();
+                      }}
+                      aria-current={on ? 'page' : undefined}
+                      className={`group cursor-pointer w-full min-h-11 px-3 rounded-md flex items-center gap-3 text-left text-[15px] transition-colors duration-150 ${
+                        on ? 'bg-[var(--c-raised)] text-[var(--c-ink)] font-semibold' : 'text-[var(--c-muted)] font-medium hover:bg-[var(--c-raised)] hover:text-[var(--c-ink)]'
+                      }`}
+                    >
+                      <NavIcon name={item.id} className={`w-5 h-5 shrink-0 ${on ? 'text-[var(--c-primary)]' : ''}`} />
+                      <span className="truncate flex-1">{item.label}</span>
+                      {badge && (
+                        <span className="num shrink-0 text-[11px] px-1.5 rounded-full border border-[var(--c-border)] text-[var(--c-ink)]">{badge}</span>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
       </nav>
 
       <div className="px-3 py-3 border-t border-[var(--c-border)] flex flex-col items-start gap-1">

@@ -6,6 +6,7 @@ import { PageHeader, StatusBanner, Tabs } from './dashboard/primitives.jsx';
 import { fmtDateTime } from './dashboard/format.js';
 import { PAGE_TITLES } from './Sidebar.jsx';
 import NationwideAlertsCard from './NationwideAlertsCard.jsx';
+import { leftOutNote, waterNow } from '../lib/floodReports.js';
 
 const POLL_MS = 30000;
 const REPORTS_SHOWN = 3;   // per district, until the district is expanded
@@ -55,7 +56,7 @@ export default function AlertsPage({ isActive, onToast }) {
       fetchWeatherWarnings().then(setWarnings).catch(() => {});
       fetchFloodReports()
         .then((r) => {
-          setReports(r);
+          setReports(waterNow(r));
           setReportsFailed(false);
         })
         .catch(() => setReportsFailed(true));
@@ -287,6 +288,7 @@ export default function AlertsPage({ isActive, onToast }) {
         </div>
         <p className="text-xs text-slate-500 mb-3">
           จากแอป Traffy Fondue ยังไม่ได้ตรวจสอบโดยเขต · จะเตือนเมื่อเขตเดียวกันมีคนแจ้ง 3 เรื่องขึ้นไปใน 1 ชม.
+          {leftOutNote(reports) && <> · {leftOutNote(reports)}</>}
         </p>
         {reports?.updated_at && (reports.error || reportsFailed) && (
           <p role="status" className="mb-3 rounded-lg px-3 py-2 text-xs text-amber-800 bg-amber-50 border border-amber-200">

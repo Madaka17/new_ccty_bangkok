@@ -1,6 +1,7 @@
-// Mobile bottom navigation: the four most used pages, "แจ้งน้ำท่วม" raised in the middle, and "เพิ่มเติม" for the rest.
-// Desktop keeps the sidebar (hidden lg:block in App.jsx); this bar is lg:hidden. Same rail look as the sidebar:
-// a line along the top edge, the page you are on marked by an orange station sitting on it.
+// Mobile bottom navigation: the three most used pages, "แจ้งน้ำท่วม" in the middle on the one filled square, and
+// "เพิ่มเติม" for the rest. Desktop keeps the sidebar (hidden lg:block in App.jsx); this bar is lg:hidden. Console
+// look like the sidebar: a 1px seam along the top edge, the page you are on marked by a 2px rule in the action
+// colour on that seam.
 import NavIcon from './NavIcons.jsx';
 import { FOCUS } from './dashboard/ui.jsx';
 
@@ -8,7 +9,6 @@ const ITEMS = [
   { id: 'dashboard', label: 'ภาพรวม' },
   { id: 'map', label: 'แผนที่' },
   { id: 'alerts', label: 'ประกาศเตือน' },
-  { id: 'cameras', label: 'กล้องสด' },
 ];
 
 function NavButton({ it, page, onNavigate }) {
@@ -19,12 +19,12 @@ function NavButton({ it, page, onNavigate }) {
         type="button"
         onClick={() => onNavigate(it.id)}
         aria-current={on ? 'page' : undefined}
-        className={`relative cursor-pointer w-full h-15 flex flex-col items-center justify-center gap-0.5 text-xs transition-colors duration-150 ${FOCUS} ${
-          on ? 'text-[var(--c-ink)] font-bold' : 'text-[var(--c-muted)] font-medium hover:text-[var(--c-ink)]'
+        className={`relative cursor-pointer w-full h-15 flex flex-col items-center justify-center gap-0.5 text-xs whitespace-nowrap transition-colors duration-150 ${FOCUS} ${
+          on ? 'text-[var(--c-ink)] font-semibold' : 'text-[var(--c-muted)] font-medium hover:text-[var(--c-ink)]'
         }`}
       >
         {on && <Station />}
-        <NavIcon name={it.id} className="w-6 h-6" />
+        <NavIcon name={it.id} className={`w-6 h-6 ${on ? 'text-[var(--c-primary)]' : ''}`} />
         {it.label}
       </button>
     </li>
@@ -32,7 +32,7 @@ function NavButton({ it, page, onNavigate }) {
 }
 
 function Station() {
-  return <span aria-hidden="true" className="absolute -top-[7px] left-1/2 -ml-2 w-4 h-4 rounded-full bg-[var(--c-here)] border-3 border-[var(--c-surface)] ring-2 ring-[var(--c-here)]" />;
+  return <span aria-hidden="true" className="absolute top-0 inset-x-3 h-0.5 rounded-full bg-[var(--c-primary)]" />;
 }
 
 export default function BottomNav({ page, onNavigate, onMenu, onReport }) {
@@ -40,20 +40,20 @@ export default function BottomNav({ page, onNavigate, onMenu, onReport }) {
   return (
     <nav
       aria-label="เมนูหลัก"
-      className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-[var(--c-surface)] pb-[env(safe-area-inset-bottom)]"
+      className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-[var(--c-surface)] border-t border-[var(--c-border)] pb-[env(safe-area-inset-bottom)]"
     >
-      <span aria-hidden="true" className="absolute inset-x-0 top-0 h-1 bg-[var(--c-line)]" />
-      <ul className="grid grid-cols-6">
+      <ul className="grid grid-cols-5">
         {ITEMS.slice(0, 2).map((it) => <NavButton key={it.id} it={it} page={page} onNavigate={onNavigate} />)}
         <li>
           <button
             type="button"
             onClick={onReport}
             aria-current={page === 'report' ? 'page' : undefined}
-            className={`cursor-pointer w-full h-15 flex flex-col items-center justify-end pb-1 gap-0.5 text-[11px] whitespace-nowrap font-bold text-cyan-700 dark:text-cyan-300 ${FOCUS}`}
+            className={`relative cursor-pointer w-full h-15 flex flex-col items-center justify-center gap-0.5 text-xs whitespace-nowrap font-semibold text-[var(--c-ink)] ${FOCUS}`}
           >
-            <span className={`-mt-5 w-12 h-12 rounded-full text-white grid place-items-center shadow-md ring-4 ring-[var(--c-surface)] ${page === 'report' ? 'bg-cyan-800' : 'bg-cyan-700'}`}>
-              <NavIcon name="report" className="w-6 h-6" />
+            {page === 'report' && <Station />}
+            <span className="w-9 h-7 rounded-md bg-[var(--c-primary-fill)] text-[var(--c-on-primary)] grid place-items-center">
+              <NavIcon name="report" className="w-5 h-5" />
             </span>
             แจ้งน้ำท่วม
           </button>
@@ -64,12 +64,12 @@ export default function BottomNav({ page, onNavigate, onMenu, onReport }) {
             type="button"
             onClick={onMenu}
             aria-haspopup="dialog"
-            className={`relative cursor-pointer w-full h-15 flex flex-col items-center justify-center gap-0.5 text-xs transition-colors duration-150 ${FOCUS} ${
-              !inBar ? 'text-[var(--c-ink)] font-bold' : 'text-[var(--c-muted)] font-medium hover:text-[var(--c-ink)]'
+            className={`relative cursor-pointer w-full h-15 flex flex-col items-center justify-center gap-0.5 text-xs whitespace-nowrap transition-colors duration-150 ${FOCUS} ${
+              !inBar ? 'text-[var(--c-ink)] font-semibold' : 'text-[var(--c-muted)] font-medium hover:text-[var(--c-ink)]'
             }`}
           >
             {!inBar && <Station />}
-            <NavIcon name="menu" className="w-6 h-6" />
+            <NavIcon name="menu" className={`w-6 h-6 ${!inBar ? 'text-[var(--c-primary)]' : ''}`} />
             เพิ่มเติม
           </button>
         </li>

@@ -81,7 +81,7 @@ def water_map():
                           "credit": h["depot"]})
     # What people report (not verified): Traffy Fondue in Bangkok, this site's report form, the BMA traffic
     # centre's flood reports; JS100 radio news has no position, so it comes as text beside the map
-    for t in traffy_reports.status()["items"]:
+    for t in traffy_reports.water_status()["items"]:
         try:
             lat, lng = float(t["lat"]), float(t["lng"])
         except (TypeError, ValueError, KeyError):

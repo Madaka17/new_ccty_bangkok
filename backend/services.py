@@ -185,7 +185,7 @@ flood_router = FloodRouter(hazards=route_hazards, jams=route_jams)
 flood_agent = FloodAgent(DATA_DIR, {
     "flood": flood_roads.status, "water": water_service.get_summary, "north_flow": north_flow.brief,
     "forecast": lambda: analytics_service.get_summary().get("flood"),
-    "traffy": traffy_reports.status, "tmd": tmd_warnings.status,
+    "traffy": traffy_reports.water_status, "tmd": tmd_warnings.status,
     "road_risk": lambda: road_risk.status(limit=2000),
     "bma_events": lambda: bma_feed.get(kind="flood", hours=6, limit=20),
     "longdo_floods": lambda: incidents.floods(hours=6),
@@ -202,7 +202,7 @@ def citizen_flood_reports():
              "ts": r["ts"], "lat": r["lat"], "lng": r["lng"]} for r in user_reports.recent()["items"]]
     out += [{"source": "Traffy Fondue", "title": f"เขต{t['district']} กรุงเทพฯ" if t["district"] else "กรุงเทพมหานคร",
              "text": t["text"], "depth": t["depth"], "ts": t["ts"], "lat": t["lat"], "lng": t["lng"]}
-            for t in traffy_reports.status()["items"] if t["lat"] is not None]
+            for t in traffy_reports.water_status()["items"] if t["lat"] is not None]
     return out
 
 # Flood situation in every province, with the same local model's analysis
@@ -214,7 +214,7 @@ north_route = NorthRoute(DATA_DIR, national_forecast)
 # Each Bangkok district: canals, main gauges, road water, rain and Traffy reports, read by the same model
 bkk_districts = BkkDistricts(DATA_DIR, {
     "water": water_service.get_map, "roads": flood_roads.status, "rain": water_service.rain_stations,
-    "reports": lambda: traffy_reports.status()["items"],
+    "reports": lambda: traffy_reports.water_status()["items"],
     "river": lambda: next((p["days"] for p in north_route.status().get("provinces") or [] if p["province"] == "นนทบุรี-กรุงเทพฯ"), []),
 })
 

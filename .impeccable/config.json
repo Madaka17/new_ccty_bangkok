@@ -1,0 +1,107 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "cream-palette",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/challenger-mascot.html"
+        ],
+        "createdAt": "2026-10-19T15:09:49.598Z",
+        "reason": "decision-round sketch of a direction the user did not choose; not shipped (agent triage)"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/r1/assigned.html"
+        ],
+        "createdAt": "2026-10-19T15:09:50.014Z",
+        "reason": "decision-round sketch of a direction the user did not choose; not shipped (agent triage)"
+      },
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/r1/model-pick.html"
+        ],
+        "createdAt": "2026-10-19T15:09:50.363Z",
+        "reason": "decision-round sketch of a direction the user did not choose; not shipped (agent triage)"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/assigned.html"
+        ],
+        "createdAt": "2026-10-19T15:17:40.667Z",
+        "reason": "decision-round sketch of a direction not chosen; its own fonts by design, not shipped (agent triage)"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/model-pick.html"
+        ],
+        "createdAt": "2026-10-19T15:17:41.014Z",
+        "reason": "decision-round sketch of a direction not chosen; its own fonts by design, not shipped (agent triage)"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/challenger-mascot.html"
+        ],
+        "createdAt": "2026-10-19T15:17:41.371Z",
+        "reason": "decision-round sketch of a direction not chosen; its own fonts by design, not shipped (agent triage)"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/canon.html"
+        ],
+        "createdAt": "2026-10-19T15:17:41.753Z",
+        "reason": "decision-round sketch of a direction not chosen; its own fonts by design, not shipped (agent triage)"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/r1/assigned.html"
+        ],
+        "createdAt": "2026-10-19T15:17:42.144Z",
+        "reason": "decision-round sketch of a direction not chosen; its own fonts by design, not shipped (agent triage)"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/r1/model-pick.html"
+        ],
+        "createdAt": "2026-10-19T15:17:42.530Z",
+        "reason": "decision-round sketch of a direction not chosen; its own fonts by design, not shipped (agent triage)"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/r1/challenger-airport.html"
+        ],
+        "createdAt": "2026-10-19T15:17:42.904Z",
+        "reason": "decision-round sketch of a direction not chosen; its own fonts by design, not shipped (agent triage)"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/r1/canon.html"
+        ],
+        "createdAt": "2026-10-19T15:17:43.289Z",
+        "reason": "decision-round sketch of a direction not chosen; its own fonts by design, not shipped (agent triage)"
+      }
+    ]
+  }
+}
