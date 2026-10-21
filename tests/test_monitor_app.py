@@ -86,3 +86,13 @@ def test_processes_and_log_api(tmp_path, monkeypatch):
     assert api.log_tail("test")["lines"] == ["hello"]
     assert api.log_tail("../../x").get("error") == "unknown"
     assert api.open_log("nope") == {"ok": False}
+
+
+def test_flow_builds_graph(tmp_path):
+    api, store, _, _ = make(tmp_path)
+    store.apply([{"key": "server:production", "group": "server", "target": "production", "name": "Production",
+                  "state": "ok", "detail": "", "extra": None}], 1000.0)
+    got = api.flow("production")
+    assert "server" in {n["id"] for n in got["nodes"]}
+    assert got["target"] == "production"
+    assert api.flow("bad") == {"error": "unknown target", "nodes": [], "edges": [], "stages": []}

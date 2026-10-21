@@ -22,6 +22,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE), str(HERE.parent)]
 import yolo_switch  # noqa: E402
+import monitor_flow  # noqa: E402
 from monitor_checks import ROOT, SERVERS  # noqa: E402
 import monitor_processes  # noqa: E402
 from monitor_store import DEFAULT_DB, Store  # noqa: E402
@@ -93,6 +94,11 @@ class Api:
             return {"ok": True, "message": f"YOLO {'on' if out.get('enabled') else 'off'} on {target}"}
         return {"ok": False, "message": "not allowed"}
 
+    def flow(self, target="production"):
+        if target not in ("production", "test"):
+            return {"error": "unknown target", "nodes": [], "edges": [], "stages": []}
+        return monitor_flow.build(self._store.current(), target)
+
     def processes(self):
         return [monitor_processes.info(n) for n in monitor_processes.NAMES]
 
@@ -134,7 +140,8 @@ def main():
     api = Api(Store(DEFAULT_DB))
     api._window = webview.create_window("BKK Monitor", str(HERE / "ui" / "index.html"), js_api=api,
                                          width=1360, height=860, min_size=(980, 640), background_color="#0b0d10")
-    webview.start()
+    # http_server: pywebview serves ui\ on a local port; ES modules and the import map do not load from file://
+    webview.start(http_server=True)
 
 
 if __name__ == "__main__":

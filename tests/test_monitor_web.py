@@ -41,6 +41,9 @@ class FakeApi:
         self.calls.append("start_collector")
         return {"ok": True}
 
+    def flow(self, target="production"):
+        return {"nodes": [], "edges": [], "stages": [], "target": target}
+
 
 @pytest.fixture
 def srv():
@@ -156,3 +159,29 @@ def test_second_copy_exits_quietly(monkeypatch, tmp_path):
         assert "already running" in (tmp_path / "web.log").read_text(encoding="utf-8")
     finally:
         busy.server_close()
+
+
+def test_flow_is_read_only_method(srv):
+    api, base = srv
+    assert "flow" in monitor_web.READ_ONLY
+    code, body, _ = req(base + "/api/flow", ["production"])
+    assert code == 200 and json.loads(body)["target"] == "production"
+
+
+def test_static_whitelist_only(srv, monkeypatch, tmp_path):
+    _, base = srv
+    fake = tmp_path / "flow3d.js"
+    fake.write_text("export function mount() {}", encoding="utf-8")
+    monkeypatch.setitem(monitor_web.STATIC, "flow3d.js", fake)
+    code, body, headers = req(base + "/flow3d.js")
+    assert code == 200 and body == fake.read_bytes()
+    assert headers["Content-Type"].startswith("text/javascript")
+    assert req(base + "/vendor/three.module.min.js")[0] == 200
+    for path in ["/vendor/../state/monitor.db", "/vendor/x.py", "/monitor_web.py", "/api/../monitor_web.py"]:
+        assert req(base + path)[0] == 404
+
+
+def test_static_missing_file_is_404(srv, monkeypatch, tmp_path):
+    _, base = srv
+    monkeypatch.setitem(monitor_web.STATIC, "flow3d.js", tmp_path / "not_there.js")
+    assert req(base + "/flow3d.js")[0] == 404
