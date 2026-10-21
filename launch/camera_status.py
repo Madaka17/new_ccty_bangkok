@@ -48,7 +48,8 @@ HOST_LIMIT = 4              # requests at once to one host
 HOST_GIVE_UP = 8            # this many connection failures in a row: the host's other cameras are not tried
 # hosts that answer HTTP 429 to HOST_LIMIT at once: (requests at once, seconds between requests)
 SLOW_HOSTS = {"nstcctv.nakhoncity.org": (1, 0.4)}
-BMA_MAX_AGE = 20 * 60
+BMA_MAX_AGE = 20 * 60       # the least a BMA camera may go without a new frame
+BMA_CYCLE_FACTOR = 1.5      # ... or this many times the scanner's last full cycle, if that is longer
 DEAD_MIN_CAMERAS = 20       # a website with at least this many cameras, all down last round, ...
 DEAD_SAMPLE = 3             # ... gets only this many pulled until one of them works again
 USER_AGENT = wc.USER_AGENT
@@ -259,7 +260,7 @@ def check_sites(port):
         scan = server(port, "/api/bma/scan/status")
         s = scan.get("source") or {}
         age = time.time() - float(s.get("last_frame_at") or 0)
-        ok = s.get("state") == "ok" and age < BMA_MAX_AGE
+        ok = s.get("state") == "ok" and age < bma_max_age(scan)
         out["bma"] = {"ok": ok, "note": f"scanner via {s.get('site', '?')}: {s.get('frames_ok', 0)} frames last cycle, "
                                         f"newest {int(age // 60)} min ago" + ("" if ok else f" (state {s.get('state')})")}
     except Exception as e:  # noqa: BLE001 - the scanner state is optional
@@ -267,8 +268,22 @@ def check_sites(port):
     return out
 
 
+def bma_max_age(scan):
+    """The longest a BMA camera may go without a new frame, in seconds. A camera is only seen once per scanner
+    cycle, so the limit follows the last cycle's length. scan: the parsed /api/bma/scan/status answer."""
+    try:
+        cycle = float(scan.get("last_scan_duration") or 0)
+    except (AttributeError, TypeError, ValueError):
+        return BMA_MAX_AGE
+    return max(BMA_MAX_AGE, BMA_CYCLE_FACTOR * cycle)
+
+
 def bma_states(port):
-    """camid -> (ok, reason) from the BMA scanner: a frame from the camera in the last BMA_MAX_AGE."""
+    """camid -> (ok, reason) from the BMA scanner: a frame from the camera within bma_max_age() of the scanner's last cycle."""
+    try:
+        limit = bma_max_age(server(port, "/api/bma/scan/status"))
+    except Exception:  # noqa: BLE001 - the scanner status is optional, the floor still applies
+        limit = BMA_MAX_AGE
     out = {}
     for c in server(port, "/api/bma/cameras").get("items") or []:
         try:
@@ -277,7 +292,7 @@ def bma_states(port):
             age = float("inf")
         if c.get("status") != "online":
             out[f"BMA-{c.get('camid')}"] = (False, f"scanner: {c.get('status') or 'no frame'}")
-        elif age > BMA_MAX_AGE:
+        elif age > limit:
             out[f"BMA-{c.get('camid')}"] = (False, f"no new frame for {int(age // 60)} min")
         else:
             out[f"BMA-{c.get('camid')}"] = (True, "")

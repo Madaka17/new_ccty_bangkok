@@ -1,6 +1,7 @@
 """launch/camera_status.py: a website down on every camera last round gets only a few cameras pulled."""
 import importlib.util
 import os
+import time
 
 _spec = importlib.util.spec_from_file_location(
     "camera_status", os.path.join(os.path.dirname(__file__), "..", "launch", "camera_status.py"))
@@ -49,3 +50,42 @@ def test_website_back_gets_every_camera_pulled(monkeypatch):
 def test_first_round_pulls_everything(monkeypatch):
     _, pulled = _round(monkeypatch, set(), None)
     assert len(pulled) == 31
+
+
+def _bma_server(monkeypatch, scan, ts_age_min):
+    """Fake server: the scanner status is `scan` (a dict, or an exception to raise), one BMA camera seen ts_age_min ago."""
+    items = [{"camid": "403", "status": "online", "ts": time.time() - ts_age_min * 60}]
+
+    def fake(port, path, timeout=60):
+        if path == "/api/bma/scan/status":
+            if isinstance(scan, Exception):
+                raise scan
+            return scan
+        if path == "/api/bma/cameras":
+            return {"items": items}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(cs, "server", fake)
+
+
+def test_bma_slow_cycle_is_not_down(monkeypatch):
+    _bma_server(monkeypatch, {"last_scan_duration": 1472.6}, 22)
+    assert cs.bma_states(8000)["BMA-403"] == (True, "")
+
+
+def test_bma_older_than_cycle_is_down(monkeypatch):
+    _bma_server(monkeypatch, {"last_scan_duration": 1472.6}, 40)
+    ok, reason = cs.bma_states(8000)["BMA-403"]
+    assert ok is False and reason.startswith("no new frame for 40")
+
+
+def test_bma_fast_cycle_keeps_20_min_floor(monkeypatch):
+    _bma_server(monkeypatch, {"last_scan_duration": 60}, 22)
+    assert cs.bma_states(8000)["BMA-403"][0] is False
+
+
+def test_bma_scan_status_missing_uses_floor(monkeypatch):
+    _bma_server(monkeypatch, OSError("scanner not answering"), 22)
+    assert cs.bma_states(8000)["BMA-403"][0] is False
+    _bma_server(monkeypatch, OSError("scanner not answering"), 5)
+    assert cs.bma_states(8000)["BMA-403"][0] is True
