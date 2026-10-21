@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <title>BKK Monitor</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script type="importmap">{"imports": {"three": "./vendor/three.module.min.js", "three/addons/": "./vendor/"}}</script>
 <style>
 :root {
   --bg: #0b0d10; --panel: #111418; --line: #1f242b; --text: #e6e8eb; --muted: #8b929c;
@@ -129,6 +130,26 @@ td.num, th.num { text-align: right; }
 #logpane .ln { color: var(--text); }
 #logpane .ln.c-fail { color: var(--fail); } #logpane .ln.c-warn { color: var(--warn); } #logpane .ln.c-acc { color: var(--accent); }
 #logpane.errs .ln:not(.k) { display: none; }
+/* workflow: the 3D stage; flow3d.js fills #flow3d, the chips below are its CSS2D labels */
+.flowwrap { position: relative; }
+#flow3d { position: relative; height: calc(100vh - 170px); min-height: 420px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); overflow: hidden; }
+#flow3d .empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+#flowinfo { position: absolute; top: 12px; right: 12px; width: 240px; z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+#flowinfo .lbl { font-weight: 600; }
+#flowinfo .det { color: var(--muted); font-size: 12px; word-break: break-word; }
+#flowinfo .since { color: var(--muted); font-size: 11.5px; }
+.legend { display: flex; gap: 6px; flex-wrap: wrap; }
+.f3-lbl { position: relative; display: flex; align-items: center; gap: 6px; max-width: 128px; padding: 1px 7px; background: var(--panel); border: 1px solid var(--line); border-radius: 5px;
+  font-size: 11px; line-height: 16px; color: var(--text); white-space: nowrap; pointer-events: none; }
+.f3-lbl.sel { border-color: var(--accent); }
+.f3-lbl.hover { border-color: #333b45; }
+.f3-name { overflow: hidden; text-overflow: ellipsis; }
+.f3-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--idle); }
+.f3-dot.ok { background: var(--ok); } .f3-dot.warn { background: var(--warn); } .f3-dot.fail { background: var(--fail); } .f3-dot.stopped { background: var(--stopped); }
+.f3-det { display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 3px; width: max-content; max-width: 260px; padding: 3px 8px; white-space: normal;
+  background: var(--panel); border: 1px solid #2a313a; border-radius: 5px; color: var(--muted); box-shadow: 0 6px 18px rgba(0, 0, 0, .5); }
+.f3-lbl.hover .f3-det, .f3-lbl.sel .f3-det { display: block; }
+.f3-stage { color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; pointer-events: none; }
 ::-webkit-scrollbar { width: 10px; height: 10px; } ::-webkit-scrollbar-thumb { background: #222830; border-radius: 5px; } ::-webkit-scrollbar-track { background: transparent; }
 
 /* phone (monitor_web.py through Tailscale): sidebar becomes a top bar, the page scrolls, tables scroll sideways */
@@ -151,6 +172,8 @@ td.num, th.num { text-align: right; }
   .detail { max-width: 220px; }
   .chip input { width: 110px; }
   #logpane { height: 55vh; }
+  #flow3d { height: 60vh; min-height: 320px; }
+  #flowinfo { position: static; width: auto; margin-top: 10px; }
   .modal { width: calc(100vw - 32px); }
   #toasts { left: 16px; right: 16px; }
 }
@@ -164,6 +187,7 @@ td.num, th.num { text-align: right; }
     <button class="nav" data-page="checks">Checks</button>
     <button class="nav" data-page="events">Events</button>
     <button class="nav" data-page="processes">Processes</button>
+    <button class="nav" data-page="workflow">Workflow</button>
     <div class="sec">Targets</div>
     <button class="nav" data-tgt="production">Production</button>
     <button class="nav" data-tgt="test">Test</button>
@@ -210,9 +234,10 @@ const WEB_API = {
   processes: () => post("processes", []),
   log_tail: (n, off) => post("log_tail", [n, off]),
   check_now: () => post("check_now", []),
+  flow: t => post("flow", [t]),
 };
 const api = () => WEB ? WEB_API : window.pywebview.api;
-const S = { page: "overview", target: "", state: "", q: "", hours: 24, limit: 25, offset: 0, status: null, events: null, menu: null, busy: false, sel: "production", procs: null, logOff: null, logBuf: [], follow: true, errs: false, agentT: "production" };
+const S = { page: "overview", target: "", state: "", q: "", hours: 24, limit: 25, offset: 0, status: null, events: null, menu: null, busy: false, sel: "production", procs: null, logOff: null, logBuf: [], follow: true, errs: false, agentT: "production", flowT: "production", flowSel: null, flowData: null, flowErr: false };
 const STATES = ["ok", "warn", "fail", "idle", "stopped"];
 const LABEL = { production: "Production", test: "Test", enviro: "ENVIRO", gateway: "AI gateway", tunnel: "Cloudflare tunnel", camera: "Camera status", cam_bma: "BMA cameras", cam_itic: "ITIC cameras", watchdog: "Watchdog", disk: "Data disk", public: "Public site" };
 const TARGETS = ["production", "test", "enviro", "gateway", "tunnel", "camera", "cam_bma", "cam_itic", "watchdog", "disk", "public"];
@@ -260,7 +285,7 @@ async function call(fn) {
 
 async function loadStatus() {
   const r = await call(() => api().status());
-  if (r) { S.status = r; softRender(); }
+  if (r) { S.status = r; softRender(); if (S.page === "workflow") loadFlow(); }   // the Workflow graph rides the same 5 s poll
 }
 async function loadEvents(poll) {
   const seq = ++evSeq;
@@ -390,18 +415,21 @@ function render() {
   document.querySelectorAll(".nav[data-page]").forEach(b => b.classList.toggle("active", b.dataset.page === S.page));
   document.querySelectorAll(".nav[data-tgt]").forEach(b => b.classList.toggle("active", S.target === b.dataset.tgt && S.page !== "overview"));
   const upd = st && st.collector_at ? new Date(st.collector_at * 1000).toTimeString().slice(0, 8) : "never";
-  const titles = { overview: "Overview", checks: "Checks", events: "Events", processes: "Processes" };
+  const titles = { overview: "Overview", checks: "Checks", events: "Events", processes: "Processes", workflow: "Workflow" };
   $("title").textContent = titles[S.page];
   $("sub").textContent = S.page === "events"
     ? `State changes, kept 30 days · ${S.events ? S.events.total : 0} events`
     : S.page === "processes" ? "Servers running in the background · logs in launch\\logs"
+    : S.page === "workflow" ? "Images → data → YOLO → AI analysis → output · live from the collector"
     : `Live state of every check · updated ${upd}`;
 
   const body = $("body");
   const focus = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.f : null;
   const pos = focus === "q" ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
   const top = body.scrollTop;
+  if (S.page !== "workflow") disposeFlow();
   if (S.page === "processes") renderProcesses(body);
+  else if (S.page === "workflow") renderWorkflow(body);
   else body.innerHTML = S.page === "overview" ? renderOverview() : S.page === "checks" ? renderChecks() : renderEvents();
   body.scrollTop = top;
   if (focus) {
@@ -578,6 +606,58 @@ function openProc(name) {
   setPage("processes");
 }
 
+/* ---------- workflow ---------- */
+let f3 = null, flowMod = null, f3Busy = false, flowBusy = false;
+function flowSkeleton() {
+  return `<div class="bar" id="flowbar">` +
+    [["production", "Production"], ["test", "Test"]].map(([v, l]) => `<button class="chipbtn" data-act2="flowT" data-t="${v}">${l}</button>`).join("") +
+    `<div class="right legend">${STATES.map(pill).join("")}</div></div>` +
+    `<div class="flowwrap"><div id="flow3d"></div><div id="flowinfo"></div></div>`;
+}
+function syncFlow() {
+  document.querySelectorAll("#flowbar .chipbtn").forEach(b => b.classList.toggle("on", b.dataset.t === S.flowT));
+  const d = S.flowData, n = d && S.flowSel && d.nodes.find(x => x.id === S.flowSel), box = $("flowinfo");
+  if (!box) return;
+  box.innerHTML = n
+    ? `<div class="lbl">${esc(n.label)}</div><div>${pill(n.state)}</div><div class="det">${esc(n.detail)}</div>` +
+      `<div class="since">since ${esc(ago(n.since))}</div><div class="since">Stage: ${esc((d.stages || [])[n.stage] || n.stage)}</div>`
+    : `<div class="det">Click a node for details.</div>`;
+}
+// The 3D canvas survives every status poll: while #flow3d exists render() only refreshes the chips and the side panel.
+function renderWorkflow(body) {
+  if (!($("flow3d") && body.contains($("flow3d")))) body.innerHTML = flowSkeleton();
+  syncFlow();
+  if (!f3) mountFlow();
+}
+async function mountFlow() {
+  const el = $("flow3d");
+  if (f3 || f3Busy || S.flowErr || !el) return;
+  f3Busy = true;
+  try {
+    flowMod = flowMod || await import("./flow3d.js");
+    if (!el.isConnected || S.page !== "workflow") return;   // left the page while the module loaded
+    f3 = flowMod.mount(el, { onPick: n => { S.flowSel = n ? n.id : null; syncFlow(); } });
+    if (S.flowData) f3.update(S.flowData);
+    loadFlow();
+  } catch (e) {
+    flowMod = null; S.flowErr = true;
+    el.innerHTML = `<div class="empty">3D view not available: ${esc(e && e.message || e)}</div>`;
+  } finally { f3Busy = false; }
+}
+function disposeFlow() { if (f3) { f3.dispose(); f3 = null; } }
+async function loadFlow() {
+  if (!f3 || flowBusy) return;
+  const t = S.flowT;
+  flowBusy = true;
+  const r = await call(() => api().flow(t));
+  flowBusy = false;
+  if (t !== S.flowT) return loadFlow();   // switched Production/Test while loading
+  if (!r || r.error || !f3) return;
+  S.flowData = r;
+  f3.update(r);
+  syncFlow();
+}
+
 /* ---------- actions ---------- */
 let pending = null;
 function confirmAction(target, verb) {
@@ -612,7 +692,7 @@ async function doExport() {
   if (r) toast(r.ok ? `Saved ${r.path}` : (r.message || "Not saved"), !!r.ok);
 }
 
-function setPage(p) { S.page = p; S.menu = null; if (p === "events") { S.offset = 0; loadEvents(); } render(); if (p === "processes") { loadProcs(); loadTail(); } }
+function setPage(p) { S.page = p; S.menu = null; if (p === "workflow") S.flowErr = false; if (p === "events") { S.offset = 0; loadEvents(); } render(); if (p === "processes") { loadProcs(); loadTail(); } }
 function setFilter(k, v) {
   if (k === "hours" || k === "limit") v = Number(v);
   S[k] = v;
@@ -635,6 +715,7 @@ document.addEventListener("click", async e => {
     case "follow": S.follow = !S.follow; syncProc(); if (S.follow) { const p = $("logpane"); p.scrollTop = p.scrollHeight; } return;
     case "clear": return logClear();
     case "openlog": { const r = await call(() => api().open_log(d.n)); if (r && !r.ok) toast("Could not open the log", false); return; }
+    case "flowT": if (d.t === S.flowT) return; S.flowT = d.t; S.flowSel = null; S.flowData = null; syncFlow(); return loadFlow();
     case "agentT": S.agentT = d.t; return render();
     case "refresh": return loadEvents();
     case "export": return doExport();
