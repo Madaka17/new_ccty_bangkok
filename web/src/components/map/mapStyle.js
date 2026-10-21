@@ -60,9 +60,26 @@ export function mapStyle() {
         layout: { visibility: 'none' },
         paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 2.5, 14, 6], 'circle-color': '#ffffff', 'circle-stroke-color': ['get', 'colour'], 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 14, 3] },
       },
+      // The skyline seen from far away: only buildings 30 m and taller, zoom 13 to 15, so phones stay smooth.
+      // A filter cannot use zoom, so this is its own layer; the full set takes over at zoom 15 (buildings-3d).
+      {
+        id: 'buildings-3d-far',
+        type: 'fill-extrusion',
+        source: 'omt',
+        'source-layer': 'building',
+        minzoom: 13,
+        maxzoom: 15,
+        filter: ['all', ['!', ['coalesce', ['get', 'hide_3d'], false]], ['>=', ['coalesce', ['get', 'render_height'], 0], 30]],
+        paint: {
+          'fill-extrusion-color': ['interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 8], 0, '#cbd5e1', 40, '#94a3b8', 120, '#64748b', 250, '#334155'],
+          'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 13, 0, 13.5, ['coalesce', ['get', 'render_height'], 8]],
+          'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 13, 0, 13.5, ['coalesce', ['get', 'render_min_height'], 0]],
+          'fill-extrusion-opacity': 0.85,
+        },
+      },
       // 3D buildings (OpenFreeMap heights) from zoom 15, drawn over the flat buildings baked into the base
       // raster; the map tilts itself when zoomed in (auto-tilt effect). Overlay layers (risk layers,
-      // heatmaps) are inserted below it.
+      // heatmaps) are inserted below buildings-3d-far, the lower of the two.
       {
         id: 'buildings-3d',
         type: 'fill-extrusion',

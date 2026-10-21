@@ -72,7 +72,7 @@ export function usePlaceLabels(mapRef) {
     };
     const onBuildingClick = (e) => {
       if (!showPlacesRef.current) return;
-      const layers = ['buildings-3d', 'buildings-2d'].filter((id) => map.getLayer(id));
+      const layers = ['buildings-3d', 'buildings-3d-far', 'buildings-2d'].filter((id) => map.getLayer(id));
       const hit = map.queryRenderedFeatures(e.point, { layers })[0];
       if (!hit) return;
       const h = Number(hit.properties.render_height ?? 0);

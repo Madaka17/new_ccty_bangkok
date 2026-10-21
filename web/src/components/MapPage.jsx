@@ -17,6 +17,7 @@ import { NasaPanel, useNasaLayers } from './map/NasaLayers.jsx';
 import { usePlaceLabels } from './map/placeLabels.js';
 import { useRoadFloodLayer, useCamFloodLayer, useUserReportLayer, useTraffyReportLayer, useHdmsLayer, useGaugeLayer } from './map/waterLayers.js';
 import { useRainRadar } from './map/rainRadar.js';
+import { RadarControl } from './map/RadarControl.jsx';
 import { useRoadEvents } from './map/roadEvents.js';
 import { useCalendarLayer } from './map/calendarLayer.js';
 import { readMapLayerRequest, clearMapLayerRequest } from '../lib/events.js';
@@ -108,7 +109,23 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   // Create map once
   useEffect(() => {
     if (!isActive || !mapEl.current || mapRef.current) return;
-    const map = new maplibregl.Map({ container: mapEl.current, style: mapStyle(), center: [100.55, 13.78], zoom: 11, attributionControl: { compact: true } });
+    const map = new maplibregl.Map({ container: mapEl.current, style: mapStyle(), center: [100.55, 13.78], zoom: 11, maxPitch: 75, attributionControl: { compact: true } });
+    // Sky and haze so a steep tilt ends in a horizon, not a cut edge (an engine without setSky just skips it)
+    map.on('load', () => {
+      try {
+        map.setSky({
+          'sky-color': '#cfe2f3',
+          'horizon-color': '#e6edf5',
+          'fog-color': '#e6edf5',
+          'sky-horizon-blend': 0.6,
+          'horizon-fog-blend': 0.6,
+          'fog-ground-blend': 0.3,
+          'atmosphere-blend': 0.5,
+        });
+      } catch {
+        /* no sky support */
+      }
+    });
     map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), 'top-right');
     mapRef.current = map;
     window.__bkkMap = map; // devtools access
@@ -222,7 +239,8 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   const nasa = useNasaLayers(mapRef, isActive);
   const { showFires, showStorms } = nasa;
 
-  const { showRainRadar, setShowRainRadar, radarOpacity, setRadarOpacity, radarTime } = useRainRadar(mapRef, isActive);
+  const radar = useRainRadar(mapRef, isActive);
+  const { showRainRadar, setShowRainRadar, radarOpacity, setRadarOpacity, radarTime } = radar;
 
   // Sync camera markers
   useEffect(() => {
@@ -803,6 +821,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
 
       <section aria-label="แผนที่จราจร" className="order-1 lg:order-2 glass rounded-xl overflow-hidden min-h-[560px] relative">
         <div ref={mapEl} className="w-full h-full min-h-[540px]" />
+        <RadarControl radar={radar} />
         <button
           type="button"
           onClick={() => setPanelOpen(true)}
