@@ -12,6 +12,8 @@ export function mapStyle() {
       traffic: { type: 'vector', tiles: [`${origin}/api/traffic/tile/{z}/{x}/{y}.pbf`], minzoom: 5, maxzoom: 12, attribution: 'Traffic © Longdo' },
       // OpenFreeMap (OpenMapTiles schema) only for the 3D building footprints + heights
       omt: { type: 'vector', url: 'https://tiles.openfreemap.org/planet', attribution: '© OpenFreeMap' },
+      // Tall buildings (30 m and up) for the far skyline, a static snapshot from launch/build_tall_buildings.py
+      tall: { type: 'geojson', data: `${origin}/buildings_tall_bkk.geojson`, attribution: '© OpenStreetMap contributors' },
       // BTS / MRT / ARL / SRT Red lines + stations, a static snapshot of OSM route relations
       rail: { type: 'geojson', data: `${origin}/rail_bkk.geojson`, attribution: 'Rail © OpenStreetMap' },
     },
@@ -60,20 +62,19 @@ export function mapStyle() {
         layout: { visibility: 'none' },
         paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 2.5, 14, 6], 'circle-color': '#ffffff', 'circle-stroke-color': ['get', 'colour'], 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 14, 3] },
       },
-      // The skyline seen from far away: only buildings 30 m and taller, zoom 13 to 15, so phones stay smooth.
-      // A filter cannot use zoom, so this is its own layer; the full set takes over at zoom 15 (buildings-3d).
+      // The skyline seen from far away: only buildings 30 m and taller, from a static snapshot (source tall), so
+      // it shows at every zoom from 10. OpenFreeMap's zoom-13 tiles have almost no heights, hence the snapshot.
+      // From zoom 15 the full set (buildings-3d) takes over.
       {
         id: 'buildings-3d-far',
         type: 'fill-extrusion',
-        source: 'omt',
-        'source-layer': 'building',
-        minzoom: 13,
+        source: 'tall',
+        minzoom: 10,
         maxzoom: 15,
-        filter: ['all', ['!', ['coalesce', ['get', 'hide_3d'], false]], ['>=', ['coalesce', ['get', 'render_height'], 0], 30]],
         paint: {
-          'fill-extrusion-color': ['interpolate', ['linear'], ['coalesce', ['get', 'render_height'], 8], 0, '#cbd5e1', 40, '#94a3b8', 120, '#64748b', 250, '#334155'],
-          'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 13, 0, 13.5, ['coalesce', ['get', 'render_height'], 8]],
-          'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 13, 0, 13.5, ['coalesce', ['get', 'render_min_height'], 0]],
+          'fill-extrusion-color': ['interpolate', ['linear'], ['coalesce', ['get', 'h'], 8], 0, '#cbd5e1', 40, '#94a3b8', 120, '#64748b', 250, '#334155'],
+          'fill-extrusion-height': ['interpolate', ['linear'], ['zoom'], 10, 0, 10.5, ['get', 'h']],
+          'fill-extrusion-base': ['interpolate', ['linear'], ['zoom'], 10, 0, 10.5, ['get', 'b']],
           'fill-extrusion-opacity': 0.85,
         },
       },

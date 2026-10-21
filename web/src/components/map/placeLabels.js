@@ -75,8 +75,9 @@ export function usePlaceLabels(mapRef) {
       const layers = ['buildings-3d', 'buildings-3d-far', 'buildings-2d'].filter((id) => map.getLayer(id));
       const hit = map.queryRenderedFeatures(e.point, { layers })[0];
       if (!hit) return;
-      const h = Number(hit.properties.render_height ?? 0);
-      const base = Number(hit.properties.render_min_height ?? 0);
+      // buildings-3d-far comes from the tall snapshot, whose properties are h and b
+      const h = Number(hit.properties.render_height ?? hit.properties.h ?? 0);
+      const base = Number(hit.properties.render_min_height ?? hit.properties.b ?? 0);
       const floors = h > 0 ? Math.max(1, Math.round(h / 3.2)) : null;
       // the nearest named POI inside ~40 px is very likely this building's name
       const near = map.queryRenderedFeatures([[e.point.x - 40, e.point.y - 40], [e.point.x + 40, e.point.y + 40]], { layers: ['poi-pts'] })

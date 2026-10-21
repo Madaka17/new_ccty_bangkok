@@ -109,7 +109,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
   // Create map once
   useEffect(() => {
     if (!isActive || !mapEl.current || mapRef.current) return;
-    const map = new maplibregl.Map({ container: mapEl.current, style: mapStyle(), center: [100.55, 13.78], zoom: 11, maxPitch: 75, attributionControl: { compact: true } });
+    const map = new maplibregl.Map({ container: mapEl.current, style: mapStyle(), center: [100.55, 13.78], zoom: 11, maxPitch: 80, attributionControl: { compact: true } });
     // Sky and haze so a steep tilt ends in a horizon, not a cut edge (an engine without setSky just skips it)
     map.on('load', () => {
       try {
@@ -118,12 +118,18 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
           'horizon-color': '#e6edf5',
           'fog-color': '#e6edf5',
           'sky-horizon-blend': 0.6,
-          'horizon-fog-blend': 0.6,
-          'fog-ground-blend': 0.3,
+          'horizon-fog-blend': 0.4,
+          'fog-ground-blend': 0.15,
           'atmosphere-blend': 0.5,
         });
       } catch {
         /* no sky support */
+      }
+      // Soft light from above (MapLibre's default direction), so tower faces shade by side (an engine without setLight just skips it)
+      try {
+        map.setLight({ anchor: 'map', position: [1.4, 210, 35], intensity: 0.45, color: '#ffffff' });
+      } catch {
+        /* no light support */
       }
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), 'top-right');
