@@ -103,7 +103,7 @@ h2 { font-size: 13px; font-weight: 600; margin: 0 0 10px; }
 .veil { position: fixed; inset: 0; background: rgba(0, 0, 0, .6); display: none; align-items: center; justify-content: center; z-index: 50; }
 .veil.show { display: flex; }
 .modal { width: 420px; background: var(--panel); border: 1px solid #2a313a; border-radius: 10px; padding: 20px; box-shadow: 0 16px 48px rgba(0, 0, 0, .6); }
-.modal h3 { margin: 0 0 8px; font-size: 15px; }
+.modal h2 { margin: 0 0 8px; font-size: 15px; font-weight: 700; }
 .modal p { margin: 0 0 20px; color: var(--muted); }
 .modal .row { display: flex; justify-content: flex-end; gap: 8px; }
 .spin { display: inline-block; width: 11px; height: 11px; border: 2px solid rgba(255, 255, 255, .35); border-top-color: #fff; border-radius: 50%; animation: sp .7s linear infinite; vertical-align: -2px; margin-right: 6px; }
@@ -205,7 +205,7 @@ td.num, th.num { text-align: right; }
   </section>
 </div>
 <div class="veil" id="veil"><div class="modal" role="dialog" aria-modal="true">
-  <h3 id="mtitle"></h3><p id="mbody"></p>
+  <h2 id="mtitle"></h2><p id="mbody"></p>
   <div class="row"><button class="btn" id="mcancel">Cancel</button><button class="btn" id="mok"></button></div>
 </div></div>
 <div id="toasts"></div>
