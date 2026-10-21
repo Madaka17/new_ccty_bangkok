@@ -11,7 +11,7 @@ export function RadarControl({ radar }) {
         type="button"
         onClick={() => setShowRainRadar(!showRainRadar)}
         aria-pressed={showRainRadar}
-        className={`inline-flex items-center gap-1.5 h-9 min-w-9 px-3 rounded-full border text-sm font-semibold shadow-lg cursor-pointer transition-colors duration-200 ${focus} ${
+        className={`inline-flex items-center gap-1.5 h-11 min-w-11 px-3 rounded-full border text-sm font-semibold shadow-lg cursor-pointer transition-colors duration-200 ${focus} ${
           showRainRadar ? 'bg-blue-600 border-blue-700 text-white' : 'bg-white border-slate-300 text-slate-900'
         }`}
       >
@@ -23,15 +23,15 @@ export function RadarControl({ radar }) {
             type="button"
             onClick={() => setRadarPlaying(!radarPlaying)}
             aria-label={radarPlaying ? 'หยุด' : 'เล่นย้อนหลัง 2 ชม.'}
-            className={`shrink-0 inline-flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-white cursor-pointer ${focus}`}
+            className={`shrink-0 inline-flex h-11 w-11 items-center justify-center rounded-full bg-blue-600 text-white cursor-pointer ${focus}`}
           >
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">
               {radarPlaying ? <path d="M4 3h3v10H4zM9 3h3v10H9z" /> : <path d="M5 3l8 5-8 5z" />}
             </svg>
           </button>
           <div className="flex min-w-0 flex-col leading-tight">
             <span className="text-xs font-semibold tabular-nums text-slate-900">{radarTime}</span>
-            {(radarIsNow || radarIsForecast) && <span className="text-[10px] text-slate-600">{radarIsForecast ? 'คาดการณ์' : 'ตอนนี้'}</span>}
+            <span className="text-[10px] text-slate-600">{radarIsForecast ? 'คาดการณ์' : radarIsNow ? 'ตอนนี้' : 'ย้อนหลัง'}</span>
           </div>
           <input
             type="range"
@@ -44,8 +44,8 @@ export function RadarControl({ radar }) {
               setRadarIndex(Number(e.target.value));
             }}
             aria-label="เลือกเวลาฝน"
-            aria-valuetext={radarTime ? `${radarTime}${radarIsForecast ? ' คาดการณ์' : radarIsNow ? ' ตอนนี้' : ''}` : undefined}
-            className={`h-8 min-w-0 flex-1 cursor-pointer accent-blue-600 ${focus}`}
+            aria-valuetext={radarTime ? `${radarTime}${radarIsForecast ? ' คาดการณ์' : radarIsNow ? ' ตอนนี้' : ' ย้อนหลัง'}` : undefined}
+            className={`h-11 min-w-0 flex-1 cursor-pointer accent-blue-600 ${focus}`}
           />
         </div>
       )}
