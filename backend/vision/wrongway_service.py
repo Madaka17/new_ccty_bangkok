@@ -77,6 +77,11 @@ VEHICLE_GROUP = {1: "moto", 2: "car", 3: "moto", 5: "car", 7: "car"}   # COCO id
 MIN_BOX_H = int(os.getenv("WRONGWAY_MIN_H", "16"))
 PER_CAM = int(os.getenv("WRONGWAY_PER_CAM", "2"))
 COOLDOWN = float(os.getenv("WRONGWAY_COOLDOWN", "120"))
+# seconds between two classifier passes on one camera; the scanner sees each camera every few minutes and the
+# heading field is already learned on most cameras, so classifying every frame only slowed the scan
+CLS_EVERY = float(os.getenv("WRONGWAY_EVERY", "600"))
+# at most this many crops per frame, the biggest boxes first (small far boxes vote least and cost the same)
+CLS_MAX_CROPS = int(os.getenv("WRONGWAY_MAX_CROPS", "24"))
 MAX_PER_HOUR = int(os.getenv("WRONGWAY_MAX_PER_HOUR", "120"))
 AGENT_MIN_CONF = 0.7
 WORKERS = int(os.getenv("WRONGWAY_WORKERS", "3"))
@@ -188,6 +193,7 @@ class WrongWayPatrol:
         self._last_visit = {}
         self._last_frame = {}
         self._last_boxes = {}
+        self._last_classify = {}   # camid -> ts of the last classifier pass (CLS_EVERY throttle)
         self._calls = []
         self._queue = queue.Queue()
         self.last_check = 0
@@ -335,6 +341,11 @@ class WrongWayPatrol:
             crops.append(crop)
         if not crops:
             return []
+        if len(crops) > CLS_MAX_CROPS:
+            areas = [(x2 - x1) * (y2 - y1) for _, x1, y1, x2, y2 in keep]
+            top = sorted(sorted(range(len(crops)), key=lambda i: -areas[i])[:CLS_MAX_CROPS])
+            keep = [keep[i] for i in top]
+            crops = [crops[i] for i in top]
         with self._det_lock:
             cls = self.cls
             if cls is None:
@@ -376,9 +387,12 @@ class WrongWayPatrol:
             return []
         camid = str(cam.get("camid"))
         now = time.time()
+        if not force and now - self._last_classify.get(camid, 0) < CLS_EVERY:
+            return []          # classified recently: skip before fingerprinting, so skipped frames cost nothing
         fp = fingerprint(frame)
         if not force and same_scene(fp, self._last_frame.get(camid)):
             return []          # frozen feed: same picture would vote twice and re-flag the same car
+        self._last_classify[camid] = now
         self._last_frame[camid] = fp
         h, w = frame.shape[:2]
         if self.cls is not None:
