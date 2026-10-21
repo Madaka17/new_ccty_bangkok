@@ -43,6 +43,7 @@ import requests
 # Thai text runs about 2.2 characters per token on the Qwen tokenizer (measured on the chat context)
 CHARS_PER_TOKEN = 2.2
 _THINK = re.compile(r"<think>.*?</think>", re.S)
+_KEY = re.compile(r"sk-[A-Za-z0-9_-]+|\b[0-9a-f]{32,}\b")   # API keys and key hashes in gateway error text
 MAX_PARALLEL = int(os.getenv("LOCAL_LLM_MAX_PARALLEL", "3"))
 RETRY_429 = (2, 5)   # seconds to wait before each retry of a 429
 _slots = {}          # (url, api_key) -> BoundedSemaphore shared by every Client on that endpoint + key
@@ -211,6 +212,11 @@ class Client:
             _record(caller, self.model, 0, 0, time.time() - started, False)
         if resp.status_code == 400 and "context" in resp.text:
             raise ContextTooLong(resp.text[:200])
+        if resp.status_code == 429:
+            # the body says which gateway limit was hit (parallel requests, rpm or tpm); keys in it are masked
+            limits = {k: v for k, v in resp.headers.items() if "ratelimit" in k.lower() or k.lower() == "retry-after"}
+            print(f"[LocalLLM] 429 for {caller} after {len(RETRY_429)} retries: "
+                  f"{_KEY.sub('<key>', resp.text[:400])} {limits or ''}".rstrip())
         resp.raise_for_status()
         data = resp.json()
         used = data.get("usage") or {}
