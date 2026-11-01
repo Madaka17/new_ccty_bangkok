@@ -1,0 +1,13 @@
+[Unit]
+Description=Pi stats JSON for the SmallTV desk display (:9101/stats)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=test
+ExecStart=/usr/bin/python3 /mnt/ssd/device/pistats/pistats.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
