@@ -81,3 +81,10 @@ def test_watchdog_row_on_linux_is_systemd(monkeypatch, tmp_path):
     assert row["state"] == "ok" and "systemd" in row["detail"]
     row = monitor_checks.watchdog_status(platform="nt")
     assert row["state"] == "fail" and row["detail"] == "no heartbeat file"
+
+
+def test_web_reuses_its_port_on_linux_only():
+    # Windows SO_REUSEADDR lets a second copy bind the same port; Linux's only skips TIME_WAIT after a restart.
+    import monitor_web
+    assert monitor_web.reuse_address("posix") is True
+    assert monitor_web.reuse_address("nt") is False

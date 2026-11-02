@@ -13,6 +13,7 @@ Errors go to state\web.log. A second copy finds the port taken and exits.
 """
 import json
 import logging
+import os
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from logging.handlers import RotatingFileHandler
@@ -121,8 +122,14 @@ def make_handler(api):
     return Handler
 
 
+def reuse_address(platform=os.name):
+    """On Windows SO_REUSEADDR lets a second copy bind the same port; on Linux it only lets a restarted
+    copy bind while the old connections sit in TIME_WAIT (otherwise systemd's restart fails for a minute)."""
+    return platform != "nt"
+
+
 class _Server(ThreadingHTTPServer):
-    allow_reuse_address = False     # on Windows SO_REUSEADDR lets a second copy bind the same port
+    allow_reuse_address = reuse_address()
     daemon_threads = True
 
 
