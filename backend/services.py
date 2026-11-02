@@ -13,7 +13,7 @@ from backend.agents.riskbkk_agent import RiskAgent
 from backend.agents.traffy_agent import TraffyAgent
 from backend.agents.traffy_history import TraffyHistory
 from backend.bma.bma_events import bma_feed
-from backend.bma.bma_service import BmaScanner
+from backend.bma.bma_service import BmaScanner, bma_fetch_enabled
 from backend.core.instance import BASE_DIR, DATA_DIR
 from backend.core.news_feed import news_feed
 from backend.core.telemetry_service import telemetry
@@ -261,7 +261,8 @@ def start():
     water_service.warm()
     north_flow.start()
     rsc_service.warm(bma_scanner.cameras)
-    bma_feed.start()
+    if bma_fetch_enabled():
+        bma_feed.start()
     flood_agent.start()
     risk_agent.start()
     traffy_agent.start()

@@ -87,6 +87,12 @@ def _pixels_id(img):
     return hashlib.md5(img.tobytes()).digest()
 
 
+def bma_fetch_enabled(env=os.environ):
+    """False only with BMA_FETCH=0: a second machine on our public IP (the Raspberry Pi test) then starts
+    no scan cycles and no event feed, so BMA does not see double traffic and answer 429."""
+    return env.get("BMA_FETCH") != "0"
+
+
 class BmaScanner:
     """High-performance multi-threaded scanner that processes all BMA cameras with YOLO."""
 
@@ -134,7 +140,10 @@ class BmaScanner:
 
         # Auto background scan every scan_interval
         self.auto_scan_thread = threading.Thread(target=self._auto_scan_loop, daemon=True)
-        self.auto_scan_thread.start()
+        if bma_fetch_enabled():
+            self.auto_scan_thread.start()
+        else:
+            print("[BMA Scanner] BMA_FETCH=0: no fetching from BMA on this machine")
 
     def _detect(self, img):
         """(cls_id, conf, x1, y1, x2, y2) per vehicle. Shares the server's detector (tiled 2x2 on
