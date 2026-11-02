@@ -1,0 +1,20 @@
+# ENVIRO Seismic Command on the Raspberry Pi (:5050; public at bkksmartstreet.com/enviro/ through the tunnel).
+# Enable it only at cutover (step D in docs/MIGRATE_MACHINE.md), after ENVIRO on the PC is stopped.
+[Unit]
+Description=ENVIRO Seismic Command (:5050)
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/mnt/ssd
+
+[Service]
+User=test
+WorkingDirectory=/mnt/ssd/new_ccty_bangkok/ENVIRO
+Environment=PORT=5050
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/mnt/ssd/new_ccty_bangkok/ENVIRO/.venv/bin/python /mnt/ssd/new_ccty_bangkok/launch/enviro/lock_accounts.py
+ExecStart=/mnt/ssd/new_ccty_bangkok/ENVIRO/.venv/bin/python main.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -22,4 +22,4 @@ uv pip install -q -p ENVIRO/.venv -r ENVIRO/requirements.txt
 
 echo "Check:"
 .venv/bin/python -c "import torch, cv2, ultralytics, fastapi; print('torch', torch.__version__, 'cuda', torch.cuda.is_available(), 'opencv', cv2.__version__)"
-echo "nvidia packages: $(uv pip list -p .venv 2>/dev/null | grep -ci nvidia || true)"
+echo "CUDA packages (want 0): $(uv pip list -p .venv 2>/dev/null | grep -ciE "^nvidia-(cu|cublas|cudnn|nccl)" || true)"

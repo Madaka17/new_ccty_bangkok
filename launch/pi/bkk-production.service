@@ -1,0 +1,24 @@
+# BKK StreetSmart PRODUCTION server on the Raspberry Pi (:8000; cloudflared sends bkksmartstreet.com here).
+# Enable it only at cutover (step D in docs/MIGRATE_MACHINE.md), after production on the PC is stopped:
+# both machines fetching from BMA on one public IP gets 429s, and the tunnel must run on one machine only.
+[Unit]
+Description=BKK StreetSmart production server (:8000, YOLO off)
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/mnt/ssd
+
+[Service]
+User=test
+WorkingDirectory=/mnt/ssd/new_ccty_bangkok
+EnvironmentFile=-/mnt/ssd/new_ccty_bangkok/.env
+Environment=PORT=8000
+Environment=INSTANCE_DIR=/mnt/ssd/new_ccty_bangkok/instances/production
+Environment=YOLO_ALLOWED=0
+Environment=OPENCV_FFMPEG_LOGLEVEL=-8
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/mnt/ssd/new_ccty_bangkok/.venv/bin/python server.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

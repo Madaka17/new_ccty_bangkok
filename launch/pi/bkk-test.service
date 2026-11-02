@@ -1,0 +1,27 @@
+# BKK StreetSmart TEST server on the Raspberry Pi: http://192.168.1.109:8001 (LAN only, no tunnel).
+# YOLO stays off (no GPU) and nothing is fetched from BMA (the PC already does, on the same public IP).
+# Install: bash launch/pi/install_units.sh bkk-test.service    Start: sudo systemctl start bkk-test
+[Unit]
+Description=BKK StreetSmart test server (:8001, YOLO off, no BMA fetching)
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/mnt/ssd
+
+[Service]
+User=test
+WorkingDirectory=/mnt/ssd/new_ccty_bangkok
+EnvironmentFile=-/mnt/ssd/new_ccty_bangkok/.env
+Environment=PORT=8001
+Environment=INSTANCE_DIR=/mnt/ssd/new_ccty_bangkok/instances/test
+Environment=BMA_DATA_DIR=/mnt/ssd/new_ccty_bangkok/instances/test/data
+Environment=YOLO_ALLOWED=0
+Environment=BMA_FETCH=0
+Environment=OPENCV_FFMPEG_LOGLEVEL=-8
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/usr/bin/mkdir -p /mnt/ssd/new_ccty_bangkok/instances/test/data
+ExecStart=/mnt/ssd/new_ccty_bangkok/.venv/bin/python server.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
