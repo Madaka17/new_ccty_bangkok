@@ -36,3 +36,17 @@ uint16_t levelColor(float pct) {
 bool isStale(uint32_t nowMs, uint32_t lastOkMs) {
     return (uint32_t)(nowMs - lastOkMs) > STALE_MS;
 }
+
+BootWifi bootWifiAction(bool haveSavedSsid, bool connected, bool wrongPassword, uint32_t elapsedMs) {
+    if (connected) return BOOT_CONNECTED;
+    if (!haveSavedSsid || wrongPassword) return BOOT_PORTAL;
+    if (elapsedMs >= BOOT_GIVE_UP_MS) return BOOT_RESTART;
+    return BOOT_WAIT;
+}
+
+RunWifi runWifiAction(uint32_t nowMs, uint32_t lastWifiOkMs, uint32_t lastKickMs) {
+    if ((uint32_t)(nowMs - lastWifiOkMs) >= RUN_RESTART_MS) return RUN_RESTART;
+    if ((uint32_t)(nowMs - lastWifiOkMs) >= RUN_KICK_MS && (uint32_t)(nowMs - lastKickMs) >= RUN_KICK_MS)
+        return RUN_RECONNECT;
+    return RUN_WAIT;
+}

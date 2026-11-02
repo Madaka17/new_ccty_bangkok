@@ -57,9 +57,19 @@ no CS, backlight PWM GPIO5 (inverted), SPI mode 3, colour inversion on, BGR.
 
 ## WiFi
 
-At boot the firmware uses the WiFi saved in flash. If it cannot connect within 20 s it opens
-an access point `BKK-Display` (no password): join it with a phone, open `192.168.4.1` and pick the WiFi.
+At boot the firmware uses the WiFi saved in flash and keeps trying for 3 minutes, then restarts
+and tries again. A slow router after a power cut never opens the setup access point.
+
+The setup access point `BKK-Display` (no password) opens only when no WiFi is saved, or when the
+router rejects the saved password. Join it with a phone, open `192.168.4.1` and pick the WiFi.
 After 5 minutes without setup it restarts and tries again.
+
+When WiFi drops later, the screen greys out and shows `No WiFi`. The firmware asks for a reconnect
+every 30 s and restarts after 5 minutes without WiFi. `Pi offline` means WiFi is fine but the Pi
+service does not answer (or answers 503 because its sampler stalled).
+
+A Pi that is off or unreachable blocks each poll for at most about 1.5 s (checked 2026-11-02 by
+dropping the Pi's replies to the display for 30 s).
 
 `/update` has no password, like the stock firmware: anyone on the home LAN can flash the display.
 

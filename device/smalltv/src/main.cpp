@@ -23,6 +23,8 @@ Stats stats = {0, 0, 0, 0, 0, 0};
 bool haveStats = false;
 uint32_t lastOkMs = 0;
 uint32_t lastPollMs = 0;
+uint32_t lastWifiOkMs = 0;
+uint32_t lastKickMs = 0;
 String lastResult = "not fetched yet";
 
 static void backlight(int level) {
@@ -70,7 +72,7 @@ static void drawValue(const String& text, int x, int y, int font, int pad, uint1
     tft.setTextPadding(0);
 }
 
-static void drawStats(bool stale) {
+static void drawStats(bool stale, bool wifiDown) {
     uint16_t fg = stale ? GREY : TFT_WHITE;
     drawValue(String((int)(stats.cpu + 0.5f)) + "%", 230, 38, 4, 90, fg);
     drawBar(68, stats.cpu, stale);
@@ -82,7 +84,7 @@ static void drawStats(bool stale) {
     tft.setTextPadding(110);
     if (stale) {
         tft.setTextColor(TFT_RED, TFT_BLACK);
-        tft.drawString("Pi offline", 230, 238, 2);
+        tft.drawString(wifiDown ? "No WiFi" : "Pi offline", 230, 238, 2);
     } else {
         tft.setTextColor(GREY, TFT_BLACK);
         tft.drawString(String(stats.ramUsedMb) + "/" + String(stats.ramTotalMb) + " MB", 230, 238, 1);
@@ -117,6 +119,7 @@ static void poll() {
 static void handleRoot() {
     String text = "SmallTV Pi monitor fw " FW_VERSION "\n";
     text += "stats url: " STATS_URL "\n";
+    text += "wifi: " + WiFi.SSID() + " rssi " + String(WiFi.RSSI()) + " dBm\n";
     text += "last fetch: " + lastResult + "\n";
     text += "seconds since good fetch: " + String((millis() - lastOkMs) / 1000) + "\n";
     text += "firmware update: /update\n";
@@ -130,24 +133,34 @@ void setup() {
     splash("WiFi...", "");
 
     WiFi.mode(WIFI_STA);
-    WiFi.begin();  // credentials saved in flash by the previous firmware or by WiFiManager
+    WiFi.begin();  // credentials saved in flash by WiFiManager
+    String ssid = WiFi.SSID();
+    splash("WiFi...", ssid.c_str());
     uint32_t start = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_WAIT_MS) delay(250);
-
-    if (WiFi.status() != WL_CONNECTED) {
-        splash("Join WiFi " AP_NAME, "open 192.168.4.1");
-        WiFiManager wm;
-        wm.setConfigPortalTimeout(300);
-        if (!wm.autoConnect(AP_NAME)) ESP.restart();
+    for (;;) {
+        wl_status_t st = WiFi.status();
+        BootWifi action = bootWifiAction(ssid.length() > 0, st == WL_CONNECTED, st == WL_WRONG_PASSWORD,
+                                         millis() - start);
+        if (action == BOOT_CONNECTED) break;
+        if (action == BOOT_RESTART) ESP.restart();
+        if (action == BOOT_PORTAL) {
+            splash("Join WiFi " AP_NAME, "open 192.168.4.1");
+            WiFiManager wm;
+            wm.setConfigPortalTimeout(300);
+            if (!wm.autoConnect(AP_NAME)) ESP.restart();
+            break;
+        }
+        delay(250);
     }
     WiFi.setAutoReconnect(true);
+    lastWifiOkMs = lastKickMs = millis();
 
     server.on("/", handleRoot);
     updater.setup(&server, "/update");
     server.begin();
 
     drawFrame();
-    drawStats(true);
+    drawStats(true, false);
 }
 
 void loop() {
@@ -155,7 +168,19 @@ void loop() {
     uint32_t now = millis();
     if (now - lastPollMs < POLL_MS) return;
     lastPollMs = now;
-    if (WiFi.status() == WL_CONNECTED) poll();
-    bool stale = !haveStats || isStale(millis(), lastOkMs);
-    drawStats(stale);
+    bool wifiDown = WiFi.status() != WL_CONNECTED;
+    if (!wifiDown) {
+        lastWifiOkMs = lastKickMs = now;
+        poll();
+    } else {
+        lastResult = "no wifi";
+        RunWifi action = runWifiAction(now, lastWifiOkMs, lastKickMs);
+        if (action == RUN_RESTART) ESP.restart();
+        if (action == RUN_RECONNECT) {
+            WiFi.reconnect();
+            lastKickMs = now;
+        }
+    }
+    bool stale = wifiDown || !haveStats || isStale(millis(), lastOkMs);
+    drawStats(stale, wifiDown);
 }
