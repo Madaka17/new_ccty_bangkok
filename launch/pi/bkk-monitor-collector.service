@@ -1,0 +1,19 @@
+# BKK Monitor collector: checks servers, AI agents and YOLO every 30 s (launch/monitor/collector.py), on the Raspberry Pi.
+# Install: bash launch/pi/install_units.sh bkk-monitor-collector.service   Enable at cutover: sudo systemctl enable --now bkk-monitor-collector
+[Unit]
+Description=BKK Monitor collector: checks servers, AI agents and YOLO every 30 s
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/mnt/ssd
+
+[Service]
+User=test
+WorkingDirectory=/mnt/ssd/new_ccty_bangkok
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/mnt/ssd/new_ccty_bangkok/.venv/bin/python /mnt/ssd/new_ccty_bangkok/launch/monitor/collector.py
+Restart=always
+RestartSec=10
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

@@ -46,7 +46,9 @@ def summarize(events, quiet_targets=(), now=None):
     return title, body
 
 
-def toast(title, body):
+def toast(title, body, platform=os.name):
+    if platform != "nt":
+        return      # the Pi has no desktop to show it; the event is in the monitor's history
     try:
         subprocess.Popen(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", SCRIPT],
                          env={**os.environ, "MON_TITLE": title, "MON_BODY": body, "MON_APP": APP_ID},

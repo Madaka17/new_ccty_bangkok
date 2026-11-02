@@ -1,0 +1,20 @@
+# BKK Monitor web: read-only status page on 127.0.0.1:8090 (launch/monitor/monitor_web.py), on the Raspberry Pi.
+# Install: bash launch/pi/install_units.sh bkk-monitor-web.service   Enable at cutover: sudo systemctl enable --now bkk-monitor-web
+# Look at it from the PC: ssh -L 8090:127.0.0.1:8090 test@192.168.1.109, then open http://127.0.0.1:8090/
+[Unit]
+Description=BKK Monitor web: read-only status page on 127.0.0.1:8090
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/mnt/ssd
+
+[Service]
+User=test
+WorkingDirectory=/mnt/ssd/new_ccty_bangkok
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/mnt/ssd/new_ccty_bangkok/.venv/bin/python /mnt/ssd/new_ccty_bangkok/launch/monitor/monitor_web.py
+Restart=always
+RestartSec=10
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

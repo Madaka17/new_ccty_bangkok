@@ -10,7 +10,7 @@ Only one collector runs: a second one exits at once (lock file state\collector.l
 Errors go to state\collector.log.
 """
 import logging
-import msvcrt
+import os
 import sys
 import time
 from logging.handlers import RotatingFileHandler
@@ -139,6 +139,20 @@ def loop(store):
             time.sleep(ROUND_S)
 
 
+def try_lock(f):
+    """Non-blocking exclusive lock on an open file: False when another collector holds it."""
+    try:
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return False
+    return True
+
+
 def main():
     STATE.mkdir(parents=True, exist_ok=True)
     handler = RotatingFileHandler(STATE / "collector.log", maxBytes=1_000_000, backupCount=2, encoding="utf-8")
@@ -147,9 +161,7 @@ def main():
     log.setLevel(logging.INFO)
     try:
         lock = open(STATE / "collector.lock", "w")
-        try:
-            msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
-        except OSError:
+        if not try_lock(lock):
             return 0        # another collector holds the lock
         store = Store(DB_PATH)
         log.info("collector started")
