@@ -47,3 +47,16 @@ def test_estimate_watts_full():
 
 def test_estimate_watts_clamps():
     assert estimate_watts(250) == 7.4
+
+
+def test_is_fresh_recent_sample():
+    assert pistats.is_fresh(100.0, 104.9) is True
+
+
+def test_is_fresh_old_sample():
+    # Sampler thread stalled: the screen must not show frozen numbers as live.
+    assert pistats.is_fresh(100.0, 105.1) is False
+
+
+def test_is_fresh_never_sampled():
+    assert pistats.is_fresh(None, 1.0) is False

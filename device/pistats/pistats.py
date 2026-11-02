@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 IDLE_W = 2.7
 LOAD_W = 3.7
 SSD_W = 1.0
+MAX_AGE_S = 5.0
 
 
 def parse_proc_stat(text: str) -> tuple[int, int]:
@@ -55,6 +56,11 @@ def estimate_watts(cpu: float) -> float:
     return round(IDLE_W + LOAD_W * cpu / 100.0 + SSD_W, 1)
 
 
+def is_fresh(sample_ts: float | None, now: float) -> bool:
+    """True when a sample exists and is at most MAX_AGE_S old (monotonic seconds)."""
+    return sample_ts is not None and now - sample_ts <= MAX_AGE_S
+
+
 def _read(path: str) -> str:
     with open(path, encoding="ascii") as f:
         return f.read()
@@ -66,6 +72,7 @@ class Sampler:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._latest: dict = {}
+        self._ts: float | None = None
         self._prev = parse_proc_stat(_read("/proc/stat"))
 
     def sample(self) -> None:
@@ -90,10 +97,12 @@ class Sampler:
         }
         with self._lock:
             self._latest = stats
+            self._ts = time.monotonic()
 
-    def latest(self) -> dict:
+    def latest(self) -> tuple[dict, float | None]:
+        """Return (stats, monotonic time of that sample, or None before the first one)."""
         with self._lock:
-            return dict(self._latest)
+            return dict(self._latest), self._ts
 
     def run(self) -> None:
         while True:
@@ -110,7 +119,12 @@ def make_handler(sampler: Sampler):
             if self.path.split("?")[0] != "/stats":
                 self.send_error(404)
                 return
-            body = json.dumps(sampler.latest()).encode()
+            stats, ts = sampler.latest()
+            if not is_fresh(ts, time.monotonic()):
+                # Sampler stalled: say so, so the screen greys out instead of showing frozen values.
+                self.send_error(503, "stats are stale")
+                return
+            body = json.dumps(stats).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
