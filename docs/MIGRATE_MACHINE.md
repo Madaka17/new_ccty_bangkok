@@ -342,11 +342,19 @@ IP คอม `192.168.1.101` ได้จาก router เอง ควรจอ
 
 ### 9.5 เรื่องที่ยังต้องทำก่อนสลับเครื่อง
 
-- **กล้องอุดร** ดึงไม่ได้บน Pi: `CERTIFICATE_VERIFY_FAILED` เพราะเว็บส่ง certificate มาไม่ครบ
-  Windows หาตัวที่ขาดเองได้ แต่ Linux หาไม่ได้
 - **`.env` ของ Pi**: `LOCAL_LLM_URL` ต้องชี้ไปที่ IP ของคอมใน LAN
   (`BMA_DATA_DIR` ตั้งไว้ใน unit แล้วเป็น `/mnt/ssd/data_smartstreet`)
-- **BKK Monitor และสำรอง DB** ยังเป็นของ Windows ต้องทำตัวของ Linux
+- **BKK Monitor** ยังเป็นของ Windows ต้องทำตัวของ Linux
+
+ทำแล้ว 2026-11-02:
+- **กล้องอุดร**: เว็บเทศบาลส่ง certificate มาแค่ใบเดียว ไม่ส่งใบกลาง (Certum DV TLS G2 R39 CA)
+  Windows โหลดใบกลางเองได้ แต่ Linux ไม่ได้ จึงเก็บใบกลางไว้ที่ `config/certs/` บน Pi ได้ 36 กล้องเท่าคอม
+  ถ้าวันหลังกล้องเมืองอื่นขึ้น `CERTIFICATE_VERIFY_FAILED` เฉพาะบน Pi ให้เพิ่มใบกลางของเว็บนั้นเป็นไฟล์ `.pem` ในโฟลเดอร์นี้
+- **สำรอง DB**: `launch/pi/bkk-backup.service` กับ `bkk-backup.timer` รัน `local/pipeline/backup_db.py` ทุกคืน 03:30
+  (ถ้า Pi ปิดอยู่ตอนนั้น จะรันตอนเปิดเครื่องครั้งถัดไป) log อยู่ที่ `local/logs/backup.log`
+  ติดตั้ง: `bash launch/pi/install_units.sh bkk-backup.service bkk-backup.timer`
+  เปิดตอนสลับเครื่องเท่านั้น หลังปิด task `BKK StreetSmart backup` บนคอมแล้ว: `sudo systemctl enable --now bkk-backup.timer`
+  ไฟล์สำรองอยู่ใน SSD ลูกเดียวกับ DB กันไฟล์เสียได้ แต่ถ้า SSD เสียจะหายด้วย ควรคัดลอกไปเก็บที่อื่นเป็นระยะ
 
 ### 9.6 คัดลอกข้อมูล (C) และสลับเครื่อง (D): ยังไม่ทำ
 

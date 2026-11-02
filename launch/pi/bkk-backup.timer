@@ -1,0 +1,13 @@
+# Runs bkk-backup.service every night at 03:30, or at the next boot when the Pi was off at 03:30.
+# Install: bash launch/pi/install_units.sh bkk-backup.service bkk-backup.timer
+# Enable at cutover only: sudo systemctl enable --now bkk-backup.timer
+[Unit]
+Description=Nightly BKK StreetSmart DB backup (03:30)
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

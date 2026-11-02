@@ -1,0 +1,20 @@
+# Nightly prune + backup of the production database on the Raspberry Pi (local/pipeline/backup_db.py),
+# started by bkk-backup.timer. Enable the timer only at cutover (step D in docs/MIGRATE_MACHINE.md),
+# after the PC's "BKK StreetSmart backup" task is disabled.
+[Unit]
+Description=BKK StreetSmart nightly DB prune and backup
+RequiresMountsFor=/mnt/ssd
+
+[Service]
+Type=oneshot
+User=test
+WorkingDirectory=/mnt/ssd/new_ccty_bangkok
+# .env is read by backup_db.py (python-dotenv, never overriding), so these win over the PC paths in it.
+Environment=BMA_DATA_DIR=/mnt/ssd/data_smartstreet
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/usr/bin/mkdir -p /mnt/ssd/new_ccty_bangkok/local/logs
+ExecStart=/mnt/ssd/new_ccty_bangkok/.venv/bin/python /mnt/ssd/new_ccty_bangkok/local/pipeline/backup_db.py
+StandardOutput=append:/mnt/ssd/new_ccty_bangkok/local/logs/backup.log
+StandardError=append:/mnt/ssd/new_ccty_bangkok/local/logs/backup.log
+Nice=10
+IOSchedulingClass=idle
