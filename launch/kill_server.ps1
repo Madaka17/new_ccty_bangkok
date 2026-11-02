@@ -5,7 +5,7 @@
 param([int]$Port = 8000, [string]$Folder = '')
 
 if (-not $Folder) {
-    $Folder = @{ 8000 = 'production'; 8001 = 'test'; 5050 = 'enviro' }[$Port]
+    $Folder = @{ 8000 = 'production'; 8001 = 'test'; 5050 = 'enviro'; 8100 = 'ai_worker' }[$Port]
 }
 
 $caller = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").ParentProcessId

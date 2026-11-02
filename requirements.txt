@@ -1,4 +1,6 @@
 fastapi>=0.115.0
+# form uploads for the AI worker (backend/vision/ai_worker.py)
+python-multipart>=0.0.9
 uvicorn>=0.30.0
 opencv-python>=4.10.0
 ultralytics>=8.3.0
