@@ -20,10 +20,12 @@ MAX_AGE_S = 5.0
 
 
 def parse_proc_stat(text: str) -> tuple[int, int]:
-    """Return (idle, total) jiffies from the aggregate 'cpu ' line; idle includes iowait."""
+    """Return (idle, total) jiffies from the aggregate 'cpu ' line; idle includes iowait.
+
+    Only the first 8 fields count: guest and guest_nice are already inside user and nice."""
     for line in text.splitlines():
         if line.startswith("cpu "):
-            values = [int(v) for v in line.split()[1:]]
+            values = [int(v) for v in line.split()[1:9]]
             idle = values[3] + (values[4] if len(values) > 4 else 0)
             return idle, sum(values)
     raise ValueError("no aggregate cpu line")
@@ -69,22 +71,24 @@ def _read(path: str) -> str:
 class Sampler:
     """Background thread that keeps the latest stats dict."""
 
-    def __init__(self) -> None:
+    def __init__(self, read=None, clock=time.monotonic) -> None:
+        self._read = read or _read
+        self._clock = clock
         self._lock = threading.Lock()
         self._latest: dict = {}
         self._ts: float | None = None
-        self._prev = parse_proc_stat(_read("/proc/stat"))
+        self._prev = parse_proc_stat(self._read("/proc/stat"))
 
     def sample(self) -> None:
-        cur = parse_proc_stat(_read("/proc/stat"))
+        cur = parse_proc_stat(self._read("/proc/stat"))
         cpu = cpu_percent(self._prev, cur)
         self._prev = cur
-        used_mb, total_mb = parse_meminfo(_read("/proc/meminfo"))
+        used_mb, total_mb = parse_meminfo(self._read("/proc/meminfo"))
         try:
-            temp_c = round(int(_read("/sys/class/thermal/thermal_zone0/temp")) / 1000.0, 1)
+            temp_c = round(int(self._read("/sys/class/thermal/thermal_zone0/temp")) / 1000.0, 1)
         except (OSError, ValueError):
-            temp_c = 0.0
-        uptime_s = int(float(_read("/proc/uptime").split()[0]))
+            temp_c = None  # no sensor reading: the screen shows "--", never a fake 0
+        uptime_s = int(float(self._read("/proc/uptime").split()[0]))
         stats = {
             "cpu": cpu,
             "ram": round(100.0 * used_mb / total_mb, 1) if total_mb else 0.0,
@@ -97,7 +101,7 @@ class Sampler:
         }
         with self._lock:
             self._latest = stats
-            self._ts = time.monotonic()
+            self._ts = self._clock()
 
     def latest(self) -> tuple[dict, float | None]:
         """Return (stats, monotonic time of that sample, or None before the first one)."""
@@ -115,6 +119,8 @@ class Sampler:
 
 def make_handler(sampler: Sampler):
     class Handler(BaseHTTPRequestHandler):
+        timeout = 5  # seconds; a client that connects and sends nothing must not hold a thread forever
+
         def do_GET(self) -> None:
             if self.path.split("?")[0] != "/stats":
                 self.send_error(404)

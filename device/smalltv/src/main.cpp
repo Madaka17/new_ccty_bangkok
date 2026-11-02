@@ -7,6 +7,8 @@
 #include <ESP8266HTTPUpdateServer.h>
 #include <WiFiManager.h>
 #include <TFT_eSPI.h>
+#include <EEPROM.h>
+#include <math.h>
 
 #include "config.h"
 #include "stats.h"
@@ -26,6 +28,28 @@ uint32_t lastPollMs = 0;
 uint32_t lastWifiOkMs = 0;
 uint32_t lastKickMs = 0;
 String lastResult = "not fetched yet";
+char statsUrl[STATS_URL_MAX + 1] = STATS_URL;
+Screen shown;
+bool shownValid = false;  // false: the next drawStats must redraw
+
+// EEPROM layout: byte 0 = URL_MAGIC when a URL set through /set is stored, then the URL with its 0.
+static const uint8_t URL_MAGIC = 0xA5;
+
+static void loadStatsUrl() {
+    EEPROM.begin(STATS_URL_MAX + 2);
+    if (EEPROM.read(0) != URL_MAGIC) return;
+    char buf[STATS_URL_MAX + 1];
+    for (int i = 0; i <= STATS_URL_MAX; i++) buf[i] = (char)EEPROM.read(1 + i);
+    buf[STATS_URL_MAX] = 0;
+    if (validStatsUrl(buf)) strcpy(statsUrl, buf);
+}
+
+static void saveStatsUrl(const char* url, bool custom) {
+    EEPROM.write(0, custom ? URL_MAGIC : 0);
+    for (int i = 0; i <= STATS_URL_MAX; i++) EEPROM.write(1 + i, custom && i <= (int)strlen(url) ? url[i] : 0);
+    EEPROM.commit();
+    strcpy(statsUrl, url);
+}
 
 static void backlight(int level) {
     analogWriteRange(1023);
@@ -73,13 +97,17 @@ static void drawValue(const String& text, int x, int y, int font, int pad, uint1
 }
 
 static void drawStats(bool stale, bool wifiDown) {
+    Screen now = screenOf(stats, stale, wifiDown);
+    if (shownValid && sameScreen(now, shown)) return;  // nothing visible changed: no SPI traffic, no flicker
+    shown = now;
+    shownValid = true;
     uint16_t fg = stale ? GREY : TFT_WHITE;
     drawValue(String((int)(stats.cpu + 0.5f)) + "%", 230, 38, 4, 90, fg);
     drawBar(68, stats.cpu, stale);
     drawValue(String((int)(stats.ram + 0.5f)) + "%", 230, 86, 4, 90, fg);
     drawBar(116, stats.ram, stale);
     drawValue("~" + String(stats.watts, 1) + " W", 120, 164, 4, 108, fg);
-    drawValue(String((int)(stats.tempC + 0.5f)) + " C", 230, 164, 4, 96, fg);
+    drawValue(isnan(stats.tempC) ? String("-- C") : String((int)(stats.tempC + 0.5f)) + " C", 230, 164, 4, 96, fg);
     tft.setTextDatum(BR_DATUM);
     tft.setTextPadding(110);
     if (stale) {
@@ -96,7 +124,7 @@ static void poll() {
     WiFiClient client;
     HTTPClient http;
     http.setTimeout(1500);
-    if (!http.begin(client, STATS_URL)) {
+    if (!http.begin(client, statsUrl)) {
         lastResult = "http begin failed";
         return;
     }
@@ -116,18 +144,35 @@ static void poll() {
     http.end();
 }
 
+static void handleSet() {
+    String url = server.arg("url");
+    if (url == "default") {
+        saveStatsUrl(STATS_URL, false);
+    } else if (validStatsUrl(url.c_str())) {
+        saveStatsUrl(url.c_str(), true);
+    } else {
+        server.send(400, "text/plain", "bad url: use http://HOST[:PORT]/PATH, at most 120 characters\n");
+        return;
+    }
+    haveStats = false;  // values from the old URL must not show as live
+    shownValid = false;
+    server.send(200, "text/plain", "stats url: " + String(statsUrl) + "\n");
+}
+
 static void handleRoot() {
     String text = "SmallTV Pi monitor fw " FW_VERSION "\n";
-    text += "stats url: " STATS_URL "\n";
+    text += "stats url: " + String(statsUrl) + "\n";
     text += "wifi: " + WiFi.SSID() + " rssi " + String(WiFi.RSSI()) + " dBm\n";
     text += "last fetch: " + lastResult + "\n";
-    text += "seconds since good fetch: " + String((millis() - lastOkMs) / 1000) + "\n";
+    text += "seconds since good fetch: " + (haveStats ? String((millis() - lastOkMs) / 1000) : String("never")) + "\n";
+    text += "change stats url: /set?url=http://HOST:9101/stats   (url=default goes back to " STATS_URL ")\n";
     text += "firmware update: /update\n";
     server.send(200, "text/plain", text);
 }
 
 void setup() {
     backlight(BL_LEVEL);
+    loadStatsUrl();
     tft.init();
     tft.setRotation(0);
     splash("WiFi...", "");
@@ -156,10 +201,12 @@ void setup() {
     lastWifiOkMs = lastKickMs = millis();
 
     server.on("/", handleRoot);
+    server.on("/set", handleSet);
     updater.setup(&server, "/update");
     server.begin();
 
     drawFrame();
+    shownValid = false;
     drawStats(true, false);
 }
 

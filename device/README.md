@@ -51,7 +51,11 @@ Unit tests for the parsing and drawing maths run on the PC. They need a host `g+
 local\pio\.venv\Scripts\pio test -d device/smalltv -e native
 ```
 
-Settings are in `smalltv/src/config.h` (stats URL, poll interval, backlight level).
+Settings are in `smalltv/src/config.h` (default stats URL, poll interval, backlight level).
+The stats URL can also be changed without a new build, and the change survives restarts:
+`http://192.168.1.111/set?url=http://HOST:9101/stats` (`url=default` goes back to the built-in one).
+
+The screen redraws only when a shown value changes. A temperature the Pi cannot read shows as `-- C`.
 Display pins are in `smalltv/platformio.ini`: SPI CLK GPIO14, MOSI GPIO13, DC GPIO0, RST GPIO2,
 no CS, backlight PWM GPIO5 (inverted), SPI mode 3, colour inversion on, BGR.
 

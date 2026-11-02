@@ -60,3 +60,108 @@ def test_is_fresh_old_sample():
 
 def test_is_fresh_never_sampled():
     assert pistats.is_fresh(None, 1.0) is False
+
+
+def test_parse_proc_stat_ignores_guest_time():
+    # guest and guest_nice are already counted inside user and nice; adding them again inflates total.
+    stat = "cpu  100 0 100 700 100 0 0 0 50 25\n"
+    assert parse_proc_stat(stat) == (800, 1000)
+
+
+class FakeProc:
+    def __init__(self, temp="48200\n"):
+        self.stat = "cpu  100 0 100 700 100 0 0 0 0 0\n"
+        self.temp = temp
+
+    def __call__(self, path):
+        if path == "/proc/stat":
+            return self.stat
+        if path == "/proc/meminfo":
+            return MEM
+        if path == "/proc/uptime":
+            return "123.45 456.78\n"
+        if path.endswith("thermal_zone0/temp"):
+            if self.temp is None:
+                raise OSError("no sensor")
+            return self.temp
+        raise AssertionError(path)
+
+
+def test_sampler_sample_builds_stats():
+    proc = FakeProc()
+    sampler = pistats.Sampler(read=proc, clock=lambda: 50.0)
+    proc.stat = "cpu  150 0 150 750 100 0 0 0 0 0\n"   # +100 busy, +50 idle
+    sampler.sample()
+    stats, ts = sampler.latest()
+    assert ts == 50.0
+    assert stats["cpu"] == 66.7
+    assert stats["ram_used_mb"] == 1953 and stats["ram_total_mb"] == 7812
+    assert stats["temp_c"] == 48.2
+    assert stats["uptime_s"] == 123
+    assert stats["watts"] == estimate_watts(66.7)
+
+
+def test_sampler_temp_unreadable_is_null_not_zero():
+    sampler = pistats.Sampler(read=FakeProc(temp=None), clock=lambda: 1.0)
+    sampler.sample()
+    assert sampler.latest()[0]["temp_c"] is None
+
+
+class StubSampler:
+    def __init__(self, ts):
+        self.ts = ts
+
+    def latest(self):
+        return {"cpu": 1.0}, self.ts
+
+
+def _serve(sampler):
+    import threading
+    from http.server import ThreadingHTTPServer
+    server = ThreadingHTTPServer(("127.0.0.1", 0), pistats.make_handler(sampler))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def _get(server, path):
+    import urllib.error
+    import urllib.request
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{server.server_address[1]}{path}", timeout=5) as r:
+            return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, b""
+
+
+def test_stats_handler_serves_fresh_json():
+    import json
+    import time
+    server = _serve(StubSampler(time.monotonic()))
+    try:
+        code, body = _get(server, "/stats")
+        assert code == 200 and json.loads(body) == {"cpu": 1.0}
+    finally:
+        server.shutdown()
+
+
+def test_stats_handler_503_when_stale():
+    import time
+    server = _serve(StubSampler(time.monotonic() - 60))
+    try:
+        assert _get(server, "/stats")[0] == 503
+    finally:
+        server.shutdown()
+
+
+def test_stats_handler_404_elsewhere():
+    import time
+    server = _serve(StubSampler(time.monotonic()))
+    try:
+        assert _get(server, "/")[0] == 404
+    finally:
+        server.shutdown()
+
+
+def test_handler_has_socket_timeout():
+    # A client that connects and sends nothing must not hold a thread forever.
+    assert pistats.make_handler(StubSampler(None)).timeout == 5

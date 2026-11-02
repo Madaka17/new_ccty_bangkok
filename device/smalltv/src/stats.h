@@ -7,7 +7,8 @@ struct Stats {
     int ramUsedMb, ramTotalMb;
 };
 
-// False on bad JSON or a missing key; out is left unchanged on false.
+// False on bad JSON, a missing key or a non-number; out is left unchanged on false.
+// temp_c may be null (the Pi had no reading): tempC is then NAN.
 bool parseStats(const char* json, Stats& out);
 
 // Clamps pct to 0..100 and returns the bar length 0..maxW.
@@ -33,3 +34,16 @@ BootWifi bootWifiAction(bool haveSavedSsid, bool connected, bool wrongPassword, 
 
 // What to do while WiFi is down after boot (safe across millis() wrap).
 RunWifi runWifiAction(uint32_t nowMs, uint32_t lastWifiOkMs, uint32_t lastKickMs);
+
+// What the screen shows, at display precision. Redraw only when this changes.
+struct Screen {
+    int cpu, ram, watts10, temp, ramUsedMb, ramTotalMb;  // temp: SCREEN_NO_TEMP when NAN
+    bool stale, wifiDown;
+};
+const int SCREEN_NO_TEMP = -10000;
+Screen screenOf(const Stats& s, bool stale, bool wifiDown);
+bool sameScreen(const Screen& a, const Screen& b);
+
+// Stats URL set through /set: http:// only (no TLS here), a host, no spaces, at most STATS_URL_MAX chars.
+const int STATS_URL_MAX = 120;
+bool validStatsUrl(const char* url);
