@@ -256,3 +256,81 @@ tailscale serve --bg 8090
 - [ ] https://bkksmartstreet.com และ `/enviro/` เปิดได้จากเน็ตภายนอก
 - [ ] watchdog, BKK Monitor, backup ติดตั้งบนเครื่องใหม่แล้ว
 - [ ] memory ของ Claude อัปเดตแล้ว
+
+---
+
+## 9. ย้ายไป Raspberry Pi (เว็บอยู่ Pi, YOLO อยู่คอม)
+
+ส่วนนี้ต่างจากข้อ 1-8: ไม่ได้ย้ายทุกอย่าง แต่แบ่งงานกันสองเครื่อง
+
+| เครื่อง | รันอะไร |
+|---|---|
+| Pi 4 (`192.168.1.109`, user `test`, โค้ดที่ `/mnt/ssd/new_ccty_bangkok`) | production :8000, ENVIRO :5050, cloudflared, ดึงภาพ BMA, DB, สำรอง DB |
+| คอม (RTX 3080) | YOLO / หมวกกันน็อก / ย้อนศร (ภายหลังผ่าน AI worker :8100), Bionic :1235, test :8001, build เว็บ |
+
+ถ้าคอมปิด Pi ยังเปิดเว็บได้ แต่ไม่มี AI ตรวจภาพ
+
+### 9.1 ติดตั้งบน Pi (ทำแล้ว 2026-11-02)
+
+```bash
+cd /mnt/ssd/new_ccty_bangkok && bash launch/pi/setup.sh
+```
+
+สคริปต์ติดตั้งแพ็กเกจระบบ, uv, `.venv` (Python 3.14) และ `ENVIRO/.venv`
+torch ใช้แบบ CPU (`--torch-backend cpu`) เพราะ Pi ไม่มี GPU ถ้าใช้แบบปกติจะดึงแพ็กเกจ CUDA มาอีกประมาณ 20 ตัว
+บรรทัดสุดท้ายต้องขึ้น `cuda False` และ `CUDA packages (want 0): 0`
+
+รัน test บน Pi ต้องข้าม test ของ BKK Monitor 4 ไฟล์ (`tests/test_monitor_*.py`) เพราะเป็นโปรแกรมของ Windows
+
+### 9.2 ค่าที่ต้องตั้งบน Pi
+
+- `YOLO_ALLOWED=0`: ปิด YOLO ตลอด ถึงจะมีคนกดเปิดก็ไม่โหลด เพราะถ้าโหลดบน Pi
+  ultralytics จะดาวน์โหลดโมเดลแล้วใช้ CPU เต็ม
+- `BMA_FETCH=0`: ไม่ดึงภาพและข่าวจาก BMA ใช้ตอนทดสอบเท่านั้น เพราะ Pi กับคอมออกเน็ตด้วย IP เดียวกัน
+  ถ้าดึงพร้อมกันสองเครื่อง BMA จะตอบ 429 ตอนสลับเครื่องจริง ห้ามใส่ใน production ของ Pi
+
+ปิดได้ด้วย `0`, `false`, `no` หรือ `off` ทั้งสองค่าอยู่ใน unit แล้ว ส่วน `.env` ให้ `server.py` อ่านเอง ค่าใน unit จะมาก่อนค่าใน `.env`
+`.env` บน Pi ต้องเป็นสิทธิ์ `600` (มีคีย์ API) และห้าม commit
+
+### 9.3 systemd unit (`launch/pi/`)
+
+| unit | ใช้ตอนไหน |
+|---|---|
+| `bkk-test.service` | ทดสอบใน LAN ที่ `http://192.168.1.109:8001` (ไม่ผ่าน tunnel) |
+| `bkk-production.service` | ตอนสลับเครื่องเท่านั้น |
+| `bkk-enviro.service` | ตอนสลับเครื่องเท่านั้น |
+
+```bash
+bash launch/pi/install_units.sh bkk-test.service   # คัดลอกและ reload เท่านั้น ไม่เปิดเอง
+sudo systemctl start bkk-test
+journalctl -u bkk-test -f
+```
+
+ทุก unit รอให้ `/mnt/ssd` mount ก่อน (`RequiresMountsFor`) และเปิดใหม่เองเมื่อหลุด
+unit ของ test และ production จะช้าลงเมื่อใช้ RAM ถึง 2 GB และเปิดใหม่เองเมื่อถึง 3 GB เพื่อไม่ให้ Pi ค้างทั้งเครื่อง
+
+`BMA_FETCH=0` ปิดการดึงจาก BMA ทุกทาง ทั้งการสแกนอัตโนมัติ, ข่าว, ปุ่มสแกน, ภาพสดในหน้ากล้อง และ `check_now`
+
+ผลทดสอบ 2026-11-02 (เปิดทิ้งไว้ 1 ชั่วโมง):
+- เปิดได้ใน 75 วินาที, log ไม่มี `Traceback`, ไม่ restart เลย
+- RAM ประมาณ 1.05 GB และหยุดขึ้นหลัง 10 นาทีแรก (สูงสุด 1.2 GB ตอนงานน้ำท่วมรัน) จาก 8 GB
+- CPU เฉลี่ย 21% ของหนึ่ง core (Pi มี 4 core) อุณหภูมิ 39 °C
+- กดเปิด YOLO แล้วโดนปฏิเสธ และไม่มีการต่อไปที่ BMA
+
+### 9.4 เรื่องที่ยังต้องทำก่อนสลับเครื่อง
+
+- **B2: AI worker บนคอม** (`:8100 /detect`) ให้ Pi ส่งภาพมาตรวจ ยังไม่ได้ทำ
+- **กล้องอุดร** ดึงไม่ได้บน Pi: `CERTIFICATE_VERIFY_FAILED` เพราะเว็บส่ง certificate มาไม่ครบ
+  Windows หาตัวที่ขาดเองได้ แต่ Linux หาไม่ได้
+- **`.env` ของ Pi**: `LOCAL_LLM_URL` ต้องชี้ไปที่ IP ของคอมใน LAN
+  (`BMA_DATA_DIR` ตั้งไว้ใน unit แล้วเป็น `/mnt/ssd/data_smartstreet`)
+- **BKK Monitor และสำรอง DB** ยังเป็นของ Windows ต้องทำตัวของ Linux
+
+### 9.5 คัดลอกข้อมูล (C) และสลับเครื่อง (D): ยังไม่ทำ
+
+- C: คัดลอก `instances/production`, `ENVIRO/data`, `BMA_DATA_DIR` และไฟล์ `.pt` ไป `/mnt/ssd` ด้วย `scp` หรือ `rsync`
+  ตอนเว็บบนคอมยังเปิดอยู่ ส่วน DB ให้ใช้ sqlite backup ห้ามคัดลอกไฟล์ตรงๆ ขณะที่เซิร์ฟเวอร์เขียนอยู่
+- D: ทำตามข้อ 6 แต่ฝั่งเครื่องใหม่ใช้ `systemctl enable --now bkk-production bkk-enviro`
+  แล้วติดตั้ง cloudflared service บน Pi
+  **ห้ามเปิด cloudflared บน Pi ขณะที่ tunnel บนคอมยังรันอยู่** เพราะผู้ใช้จะถูกแบ่งไปสองเครื่อง
+  ทำเมื่อคุณสั่งเท่านั้น

@@ -13,7 +13,7 @@ from backend.agents.riskbkk_agent import RiskAgent
 from backend.agents.traffy_agent import TraffyAgent
 from backend.agents.traffy_history import TraffyHistory
 from backend.bma.bma_events import bma_feed
-from backend.bma.bma_service import BmaScanner
+from backend.bma.bma_service import BmaScanner, bma_fetch_enabled
 from backend.core.instance import BASE_DIR, DATA_DIR
 from backend.core.news_feed import news_feed
 from backend.core.telemetry_service import telemetry
@@ -37,7 +37,7 @@ from backend.vision.violation_service import ViolationMonitor
 from backend.vision.world_cameras import world_cameras
 from backend.vision.wrongway_service import WrongWayPatrol
 from backend.vision.yolo_detector import VehicleDetectorYOLO11x
-from backend.vision.yolo_switch import YoloSwitch
+from backend.vision.yolo_switch import YoloSwitch, yolo_allowed
 from backend.water import north_flow, water_service
 from backend.water.air_forecast import air_forecast
 from backend.water.air_service import air
@@ -84,7 +84,10 @@ if os.path.exists(CAMERAS_FILE):
 # Initialize the YOLO vehicle detector (model from AI_MODEL, target 10 FPS for smoother playback)
 vehicle_log = VehicleLog(os.path.join(DATA_DIR, "vehicle_counts.db"))
 # YOLO on/off (launch\yolo_switch.bat): the saved state decides whether any model loads at startup
-yolo = YoloSwitch(os.path.join(DATA_DIR, "cache", "yolo_switch.json"))
+yolo = YoloSwitch(os.path.join(DATA_DIR, "cache", "yolo_switch.json"),
+                  allowed=yolo_allowed())
+if not yolo.allowed:
+    print("[YOLO] not allowed on this machine (YOLO_ALLOWED=0)")
 if not yolo.enabled:
     print("[YOLO] off (saved state): no models loaded")
 detector = VehicleDetectorYOLO11x(model_path=MODEL_PATH, target_fps=10.0, conf_threshold=0.15, vehicle_log=vehicle_log,
@@ -258,7 +261,8 @@ def start():
     water_service.warm()
     north_flow.start()
     rsc_service.warm(bma_scanner.cameras)
-    bma_feed.start()
+    if bma_fetch_enabled():
+        bma_feed.start()
     flood_agent.start()
     risk_agent.start()
     traffy_agent.start()

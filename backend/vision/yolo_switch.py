@@ -5,6 +5,9 @@ Off drops every YOLO model from the GPU: the vehicle detector (live camera, coun
 the BMA scanner share it), the helmet patrol, the wrong-way patrol and the violation monitor. Callers of
 the detector get YoloOff while it is off and idle instead of writing counts of 0. The state is saved in
 the instance cache, so a restart while off starts with no weights on the GPU.
+
+YOLO_ALLOWED=0 (allowed=False) is for machines without a GPU, such as the Raspberry Pi: YOLO stays off
+whatever the saved state says, and switching it on is refused.
 """
 import gc
 import json
@@ -12,6 +15,14 @@ import os
 import subprocess
 import threading
 import time
+
+
+NOT_ALLOWED = "YOLO is not allowed on this machine (YOLO_ALLOWED=0)"
+
+
+def yolo_allowed(env=os.environ):
+    from backend.core.env_flags import flag_on
+    return flag_on(env, "YOLO_ALLOWED")
 
 
 class YoloOff(RuntimeError):
@@ -59,8 +70,9 @@ def gpu_memory(cuda=_default_cuda, run=subprocess.run, now=time.monotonic):
 
 
 class YoloSwitch:
-    def __init__(self, state_path, cuda=_default_cuda):
+    def __init__(self, state_path, cuda=_default_cuda, allowed=True):
         self.state_path = state_path
+        self.allowed = bool(allowed)
         self._real_cuda = cuda is _default_cuda
         self.cuda = cuda() if callable(cuda) and cuda is _default_cuda else cuda
         self.lock = threading.Lock()     # one flip at a time
@@ -74,6 +86,8 @@ class YoloSwitch:
                 self.changed_at = int(saved.get("changed_at") or 0)
         except (OSError, ValueError, TypeError):
             pass
+        if not self.allowed:
+            self.enabled = False
 
     def register(self, name, holder):
         self.holders[name] = holder
@@ -96,6 +110,12 @@ class YoloSwitch:
     def set(self, enabled):
         enabled = bool(enabled)
         errors = {}
+        if enabled and not self.allowed:
+            with self.lock:
+                out = self._status()
+            out["errors"] = {"switch": NOT_ALLOWED}
+            print(f"[YOLO] switch on refused: {NOT_ALLOWED}")
+            return out
         with self.lock:
             self.enabled, self.changed_at = enabled, int(time.time())
             self._save()
@@ -131,7 +151,8 @@ class YoloSwitch:
                 holders[name] = bool(holder.models_loaded())
             except Exception:  # noqa: BLE001
                 holders[name] = False
-        return {"enabled": self.enabled, "changed_at": self.changed_at, "holders": holders, "vram": self._vram()}
+        return {"enabled": self.enabled, "allowed": self.allowed, "changed_at": self.changed_at,
+                "holders": holders, "vram": self._vram()}
 
     def status(self):
         return self._status()

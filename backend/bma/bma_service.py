@@ -19,6 +19,7 @@ from backend.bma import bma_site
 from backend.bma.bma_archive import CycleArchiver
 from backend.bma.bma_db import BmaDatabase
 from backend.bma.bma_session import BmaSession
+from backend.core.env_flags import flag_on
 
 from backend.vision.yolo_switch import YoloOff
 from backend.core.instance import BASE_DIR  # project root
@@ -87,13 +88,34 @@ def _pixels_id(img):
     return hashlib.md5(img.tobytes()).digest()
 
 
+def bma_fetch_enabled(env=os.environ):
+    """False only with BMA_FETCH=0: a second machine on our public IP (the Raspberry Pi test) then starts
+    no scan cycles and no event feed, so BMA does not see double traffic and answer 429."""
+    return flag_on(env, "BMA_FETCH")
+
+
+class NoFetchSession:
+    """BmaSession stand-in for BMA_FETCH=0: every snapshot fetch returns None without a request. Camera
+    pages, streams and the patrols' check_now all fetch through scanner.session, so this one gate covers them."""
+
+    def __init__(self, real):
+        self._real = real
+
+    def fetch_snapshot(self, camid, timeout=7.0):
+        return None
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
 class BmaScanner:
     """High-performance multi-threaded scanner that processes all BMA cameras with YOLO."""
 
     def __init__(self, detector=None, cameras_file=CAMERAS_FILE):
         self.detector = detector
         self.cameras_file = cameras_file
-        self.session = BmaSession()
+        self.fetch_enabled = bma_fetch_enabled()
+        self.session = BmaSession() if self.fetch_enabled else NoFetchSession(BmaSession())
         self.db = BmaDatabase()
         # Hourly count cycles + every CSV under D:\Data (see bma_archive.py)
         self.archiver = CycleArchiver(self.db)
@@ -134,7 +156,10 @@ class BmaScanner:
 
         # Auto background scan every scan_interval
         self.auto_scan_thread = threading.Thread(target=self._auto_scan_loop, daemon=True)
-        self.auto_scan_thread.start()
+        if self.fetch_enabled:
+            self.auto_scan_thread.start()
+        else:
+            print("[BMA Scanner] BMA_FETCH=0: no fetching from BMA on this machine")
 
     def _detect(self, img):
         """(cls_id, conf, x1, y1, x2, y2) per vehicle. Shares the server's detector (tiled 2x2 on
@@ -161,6 +186,8 @@ class BmaScanner:
                 print(f"[BMA Scanner] Error loading cameras: {e}")
 
     def start_scan(self):
+        if not self.fetch_enabled:
+            return {"status": "disabled", "message": "BMA_FETCH=0: เครื่องนี้ไม่ดึงภาพจาก BMA"}
         with self.lock:
             if self.is_scanning:
                 return {"status": "already_running", "message": "การสแกนกำลังทำงานอยู่"}
