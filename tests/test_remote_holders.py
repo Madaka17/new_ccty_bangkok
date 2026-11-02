@@ -139,3 +139,18 @@ def test_patrol_off_when_worker_lacks_the_weights(pi_env, monkeypatch, tmp_path)
     monkeypatch.setattr(mod, "weights_available", lambda p: False)
     p = mod.ViolationMonitor(str(tmp_path / "v.db"))
     assert p.models_loaded() is False and made == []
+
+
+def test_helmet_check_stays_pending_when_worker_down(pi_env, monkeypatch, tmp_path):
+    # A PC reboot must not turn queued helmet checks into saved "error" rows: they stay pending, like YOLO off.
+    mod = importlib.import_module("backend.vision.helmet_service")
+    monkeypatch.setattr(mod, "load_yolo", lambda p, **kw: FakeRemote(p))
+    monkeypatch.setattr(mod, "weights_available", lambda p: True)
+    for a in ("CACHE_DIR", "EVIDENCE_DIR", "ARCHIVE_DIR"):
+        if hasattr(mod, a):
+            monkeypatch.setattr(mod, a, str(tmp_path / a))
+    p = mod.HelmetPatrol(str(tmp_path / "v.db"))
+    updates = []
+    monkeypatch.setattr(p, "_update", lambda hid, **kw: updates.append(kw))
+    p._analyse(1, "7", {"camid": "7"}, np.zeros((64, 64, 3), dtype=np.uint8), None)
+    assert updates == []

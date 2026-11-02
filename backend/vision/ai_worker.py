@@ -8,6 +8,7 @@ Access: only IPs in AI_WORKER_ALLOW (default the Pi and this PC) and, for /predi
 Run: launch\\ai_worker\\start.bat (python -m backend.vision.ai_worker), port 8100.
 """
 import gc
+import hmac
 import json
 import os
 import threading
@@ -21,6 +22,27 @@ from fastapi.responses import JSONResponse
 DEFAULT_ALLOW = "192.168.1.109,127.0.0.1"
 PORT = 8100
 IDLE_S = 600
+# What a caller may pass on to model(...): nothing that writes files, picks the device or streams.
+SAFE_KWARGS = {"classes", "conf", "imgsz", "iou", "max_det", "agnostic_nms", "half"}
+MAX_IMGSZ = 1920
+MAX_IMAGES = 32
+MAX_BODY = 20 * 2**20       # bytes per request
+MAX_SIDE = 4096             # pixels per image side
+JOB_DEADLINE_S = 10.0       # the Pi stops waiting after its 10 s read timeout: later jobs are dropped
+WEIGHTS_CACHE_S = 60.0
+
+
+def check_kwargs(kwargs):
+    """The kwargs, or ValueError for anything outside SAFE_KWARGS or an image size over MAX_IMGSZ."""
+    bad = set(kwargs) - SAFE_KWARGS
+    if bad:
+        raise ValueError(f"not allowed: {sorted(bad)}")
+    size = kwargs.get("imgsz")
+    if size is not None:
+        sizes = size if isinstance(size, (list, tuple)) else [size]
+        if not all(isinstance(v, int) and 0 < v <= MAX_IMGSZ for v in sizes):
+            raise ValueError(f"imgsz must be 1..{MAX_IMGSZ}")
+    return kwargs
 
 
 def read_settings(env=os.environ):
@@ -53,7 +75,8 @@ class ModelPool:
         self.clock = clock
         self.idle_s = idle_s
         self.lock = threading.Lock()
-        self.models = {}   # rel_path -> {"model", "lock", "used"}
+        self.models = {}   # normcase(full path) -> {"name", "model", "lock", "used"}
+        self._weights = None   # (time, list)
 
     def resolve(self, rel_path):
         """Absolute path of a .pt file inside root, else ValueError."""
@@ -69,23 +92,25 @@ class ModelPool:
         return full
 
     def get(self, rel_path):
-        """(model, its lock). Loads the model when needed."""
+        """(model, its lock). Loads the model when needed. Keyed by the resolved file, so two spellings
+        of one file share one copy in VRAM and one lock."""
         full = self.resolve(rel_path)
+        key = os.path.normcase(full)
         with self.lock:
-            entry = self.models.get(rel_path)
+            entry = self.models.get(key)
             if entry is None:
-                print(f"[AI worker] loading {rel_path}")
-                entry = {"model": self.factory(full), "lock": threading.Lock(), "used": self.clock()}
-                self.models[rel_path] = entry
+                name = os.path.relpath(full, self.root).replace(os.sep, "/")
+                print(f"[AI worker] loading {name}")
+                entry = {"name": name, "model": self.factory(full), "lock": threading.Lock(), "used": self.clock()}
+                self.models[key] = entry
             entry["used"] = self.clock()
             return entry["model"], entry["lock"]
 
     def unload_idle(self):
         now = self.clock()
         with self.lock:
-            dropped = [p for p, e in self.models.items() if now - e["used"] > self.idle_s]
-            for p in dropped:
-                del self.models[p]
+            keys = [k for k, e in self.models.items() if now - e["used"] > self.idle_s]
+            dropped = [self.models.pop(k)["name"] for k in keys]
         if dropped:
             print(f"[AI worker] idle, unloaded {dropped}")
             gc.collect()
@@ -98,7 +123,10 @@ class ModelPool:
         return dropped
 
     def weights(self):
-        """Every .pt file under root (two folders deep), as paths relative to root."""
+        """Every .pt file under root (two folders deep), as paths relative to root. Cached for 60 s."""
+        cached = self._weights
+        if cached is not None and self.clock() - cached[0] < WEIGHTS_CACHE_S:
+            return list(cached[1])
         out = []
         for dirpath, dirnames, filenames in os.walk(self.root):
             rel_dir = os.path.relpath(dirpath, self.root)
@@ -107,11 +135,12 @@ class ModelPool:
             for f in filenames:
                 if f.endswith(".pt"):
                     out.append(f if rel_dir == "." else f"{rel_dir}/{f}".replace(os.sep, "/"))
-        return sorted(out)
+        self._weights = (self.clock(), sorted(out))
+        return list(self._weights[1])
 
     def loaded(self):
         with self.lock:
-            return sorted(self.models)
+            return sorted(e["name"] for e in self.models.values())
 
 
 def _serialise(result):
@@ -140,16 +169,24 @@ def create_app(root, token, allow, factory=_default_factory, clock=time.monotoni
     async def predict(request: Request):
         if request.client is None or request.client.host not in allow:
             return forbidden()
-        if request.headers.get("X-AI-Token") != token:
+        if not hmac.compare_digest(request.headers.get("X-AI-Token", "").encode(), token.encode()):
             return forbidden()
-        form = await request.form()
+        received = clock()
+        try:
+            if int(request.headers.get("Content-Length") or 0) > MAX_BODY:
+                return JSONResponse({"error": "request too large"}, status_code=413)
+        except ValueError:
+            return JSONResponse({"error": "bad Content-Length"}, status_code=400)
+        form = await request.form(max_files=MAX_IMAGES + 1)
         try:
             meta = json.loads(form["meta"])
             rel_path = meta["model"]
-            kwargs = dict(meta.get("kwargs") or {})
+            kwargs = check_kwargs(dict(meta.get("kwargs") or {}))
             pool.resolve(rel_path)
         except (KeyError, ValueError, TypeError) as e:
             return JSONResponse({"error": str(e)}, status_code=400)
+        if f"image{MAX_IMAGES}" in form:
+            return JSONResponse({"error": f"at most {MAX_IMAGES} images"}, status_code=400)
         images = []
         i = 0
         while f"image{i}" in form:
@@ -157,6 +194,8 @@ def create_app(root, token, allow, factory=_default_factory, clock=time.monotoni
             img = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
             if img is None:
                 return JSONResponse({"error": f"image{i} is not a picture"}, status_code=400)
+            if max(img.shape[:2]) > MAX_SIDE:
+                return JSONResponse({"error": f"image{i} is larger than {MAX_SIDE} px"}, status_code=400)
             images.append(img)
             i += 1
         kwargs["verbose"] = False
@@ -167,12 +206,17 @@ def create_app(root, token, allow, factory=_default_factory, clock=time.monotoni
             if not images:
                 return {"names": names, "results": []}
             with lock:
+                if clock() - received > JOB_DEADLINE_S:
+                    return None     # the Pi gave up on this job while it waited for the GPU
                 results = model(images if len(images) > 1 else images[0], **kwargs)
             return {"names": names, "results": [_serialise(r) for r in results]}
 
         import anyio
         try:
-            return await anyio.to_thread.run_sync(run)
+            out = await anyio.to_thread.run_sync(run)
+            if out is None:
+                return JSONResponse({"error": "job expired before the GPU was free"}, status_code=503)
+            return out
         except Exception as e:  # noqa: BLE001 - report, keep serving
             print(f"[AI worker] {rel_path} failed: {e}")
             return JSONResponse({"error": "inference failed"}, status_code=500)

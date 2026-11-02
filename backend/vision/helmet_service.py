@@ -331,7 +331,10 @@ class HelmetPatrol:
     def _analyse(self, hid, camid, cam, crop, marked, agent="auto"):
         """agent: auto (cloud when budget allows) | cloud (force) | local (helmet detector only), the last two from reanalyse."""
         now = time.time()
-        local = self._local_verdict(crop)
+        try:
+            local = self._local_verdict(crop)
+        except YoloOff:
+            return      # the Pi's AI worker is down: the row stays pending, as with YOLO off
         if agent == "local":
             self._settle_local(hid, camid, cam, crop, marked, local)
             self.last_check = int(now)

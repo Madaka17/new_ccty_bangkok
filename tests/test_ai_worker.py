@@ -160,3 +160,75 @@ def test_health_lists_weights_in_subfolders(root):
     (root / "models").mkdir()
     (root / "models" / "x.pt").write_bytes(b"w")
     assert client(root, Factory()).get("/").json()["weights"] == ["models/x.pt", "yolo26x.pt"]
+
+
+def test_same_file_spelled_differently_loads_once(root):
+    # "./x.pt" and "x.pt" are one file: one copy in VRAM and one lock, or two jobs run on the GPU at once.
+    f = Factory()
+    pool = ModelPool(str(root), f)
+    m1, l1 = pool.get("yolo26x.pt")
+    m2, l2 = pool.get("./yolo26x.pt")
+    assert len(f.made) == 1 and m1 is m2 and l1 is l2
+    assert pool.loaded() == ["yolo26x.pt"]
+
+
+@pytest.mark.parametrize("kwargs", [{"save": True}, {"project": "C:/x"}, {"device": "cpu"}, {"source": "x"},
+                                    {"stream": True}, {"imgsz": 100000}, {"imgsz": [640, 100000]}])
+def test_unsafe_kwargs_rejected(root, kwargs):
+    f = Factory()
+    r = predict(client(root, f), kwargs=kwargs)
+    assert r.status_code == 400
+    assert f.made == []
+
+
+def test_safe_kwargs_pass(root):
+    f = Factory()
+    r = predict(client(root, f), kwargs={"classes": [0, 2], "conf": 0.1, "imgsz": 960, "iou": 0.45})
+    assert r.status_code == 200
+
+
+def test_too_many_images_rejected(root):
+    assert predict(client(root, Factory()), n=33).status_code == 400
+
+
+def test_oversized_body_rejected(root):
+    c = client(root, Factory())
+    r = c.post("/predict", content=b"x" * 10, headers={"X-AI-Token": TOKEN, "Content-Length": str(30 * 2**20),
+                                                        "Content-Type": "multipart/form-data; boundary=x"})
+    assert r.status_code == 413
+
+
+def test_huge_image_rejected(root):
+    big = cv2.imencode(".png", np.zeros((5000, 100, 3), dtype=np.uint8))[1].tobytes()
+    c = client(root, Factory())
+    r = c.post("/predict", data={"meta": json.dumps({"model": "yolo26x.pt", "kwargs": {}})},
+               files={"image0": ("0.png", big, "image/png")}, headers={"X-AI-Token": TOKEN})
+    assert r.status_code == 400
+
+
+def test_job_dropped_when_client_already_gave_up(root):
+    # The Pi stops waiting after 10 s; a job still queued behind the model lock then must not run.
+    now = {"t": 0.0}
+    f = Factory()
+    app = create_app(str(root), TOKEN, {"192.168.1.109"}, factory=f, clock=lambda: now["t"], start_janitor=False)
+    pool = app.state.pool
+    model, lock = pool.get("yolo26x.pt")
+    lock.acquire()
+    import threading
+    out = {}
+    t = threading.Thread(target=lambda: out.update(r=predict(TestClient(app, client=PI))))
+    t.start()
+    import time as _t
+    _t.sleep(0.3)
+    now["t"] = 11.0
+    lock.release()
+    t.join(5)
+    assert out["r"].status_code == 503
+    assert model.calls == []
+
+
+def test_weights_list_cached(root):
+    pool = ModelPool(str(root), Factory(), clock=lambda: 0.0)
+    assert pool.weights() == ["yolo26x.pt"]
+    (root / "new.pt").write_bytes(b"w")
+    assert pool.weights() == ["yolo26x.pt"]      # cached for 60 s
