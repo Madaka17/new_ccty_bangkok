@@ -28,6 +28,7 @@ Each camera says how the page shows it (media): "image" (a JPEG, refreshed), "vi
 import json
 import os
 import re
+import ssl
 import threading
 import time
 import urllib.parse
@@ -35,7 +36,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 from backend.core import thai_regions
-from backend.core.instance import DATA_DIR
+from backend.core.instance import BASE_DIR, DATA_DIR
 
 FLOOD_LIST = ("https://floodbangkok.bangkok.go.th/bkk/dds/services/api/floods/v1/items/camera_profile"
               "?limit=-1&fields=id,CameraName,LiveStream,Lat,Long,camera_description")
@@ -83,9 +84,27 @@ SOURCES = {
 }
 
 
+# Intermediate certificates some camera hosts forget to send. Windows fetches a missing one by itself (AIA),
+# OpenSSL on Linux (the Raspberry Pi) does not: udoncity.go.th sends only its leaf, issued by Certum DV TLS G2 R39 CA.
+EXTRA_CA_DIR = os.path.join(BASE_DIR, "config", "certs")
+_ctx = None
+
+
+def _ssl_context():
+    """System trust store plus the bundled intermediates in config/certs (built once)."""
+    global _ctx
+    if _ctx is None:
+        ctx = ssl.create_default_context()
+        for name in sorted(os.listdir(EXTRA_CA_DIR)) if os.path.isdir(EXTRA_CA_DIR) else []:
+            if name.endswith(".pem"):
+                ctx.load_verify_locations(cafile=os.path.join(EXTRA_CA_DIR, name))
+        _ctx = ctx
+    return _ctx
+
+
 def _get(url, data=None, headers=None):
     req = urllib.request.Request(url, data=data, headers={"User-Agent": USER_AGENT, **(headers or {})})
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+    with urllib.request.urlopen(req, timeout=TIMEOUT, context=_ssl_context()) as resp:
         return resp.read()
 
 

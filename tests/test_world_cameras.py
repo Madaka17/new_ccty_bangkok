@@ -128,3 +128,12 @@ def test_image_bytes_ddpm_takes_the_newest_snapshot(tmp_path, monkeypatch):
     assert cams.image_bytes("ddpm-PTN07") == b"\xff\xd8jpeg"
     assert asked[-1] == f"{w.DDPM_API}/snapshots/20261006/1189555824/222548_PTN07_01.jpg"
     assert cams.image_bytes("ddpm-PTN07") == b"\xff\xd8jpeg" and len(asked) == 2   # kept on disk
+
+
+def test_ssl_context_trusts_the_udon_intermediate():
+    # udoncity.go.th sends only its leaf certificate. Windows fetches the missing intermediate itself
+    # (AIA), Linux does not, so the Pi needs the bundled Certum DV TLS G2 R39 CA.
+    from backend.vision import world_cameras
+    ctx = world_cameras._ssl_context()
+    names = [dict(x[0] for x in c["subject"]).get("commonName") for c in ctx.get_ca_certs()]
+    assert "Certum DV TLS G2 R39 CA" in names
