@@ -68,6 +68,7 @@ def test_patrol_loads_remote_when_file_missing_on_pi(pi_env, monkeypatch, tmp_pa
     mod = importlib.import_module(module_name)
     made = []
     monkeypatch.setattr(mod, "load_yolo", lambda p, **kw: made.append(FakeRemote(p)) or made[-1])
+    monkeypatch.setattr(mod, "weights_available", lambda p: True)   # the worker has it
     monkeypatch.setattr(mod, attr, str(tmp_path / "not_on_the_pi.pt"))
     for a in ("CACHE_DIR", "EVIDENCE_DIR", "ARCHIVE_DIR"):
         if hasattr(mod, a):
@@ -81,6 +82,7 @@ def test_patrol_loads_remote_when_file_missing_on_pi(pi_env, monkeypatch, tmp_pa
 def test_patrol_stays_unloaded_when_worker_down_at_load(pi_env, monkeypatch, tmp_path):
     mod = importlib.import_module("backend.vision.violation_service")
     monkeypatch.setattr(mod, "load_yolo", lambda p, **kw: FakeRemote(p, fail=True))
+    monkeypatch.setattr(mod, "weights_available", lambda p: True)
     p = mod.ViolationMonitor(str(tmp_path / "v.db"))
     assert p.models_loaded() is False
 
@@ -128,3 +130,12 @@ def test_retry_missing_survives_holder_error(tmp_path):
     sw.register("good", good)
     assert sw.retry_missing() == ["good"]
     assert good.loaded and not bad.loaded
+
+
+def test_patrol_off_when_worker_lacks_the_weights(pi_env, monkeypatch, tmp_path):
+    mod = importlib.import_module("backend.vision.violation_service")
+    made = []
+    monkeypatch.setattr(mod, "load_yolo", lambda p, **kw: made.append(FakeRemote(p)) or made[-1])
+    monkeypatch.setattr(mod, "weights_available", lambda p: False)
+    p = mod.ViolationMonitor(str(tmp_path / "v.db"))
+    assert p.models_loaded() is False and made == []

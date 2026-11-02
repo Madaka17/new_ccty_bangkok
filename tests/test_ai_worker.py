@@ -100,7 +100,7 @@ def test_ip_not_allowed_403(root):
 
 
 def test_health_needs_ip_not_token(root):
-    assert client(root, Factory()).get("/").json() == {"ok": True, "loaded": []}
+    assert client(root, Factory()).get("/").json() == {"ok": True, "loaded": [], "weights": ["yolo26x.pt"]}
     assert client(root, Factory(), host=("192.168.1.50", 1)).get("/").status_code == 403
 
 
@@ -154,3 +154,9 @@ def test_settings_default_allow_list():
     assert token == "abc"
     assert allow == {"192.168.1.109", "127.0.0.1"}
     assert port == 8100
+
+
+def test_health_lists_weights_in_subfolders(root):
+    (root / "models").mkdir()
+    (root / "models" / "x.pt").write_bytes(b"w")
+    assert client(root, Factory()).get("/").json()["weights"] == ["models/x.pt", "yolo26x.pt"]

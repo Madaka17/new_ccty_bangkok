@@ -116,9 +116,29 @@ def load_yolo(path, local_factory=None):
     return local_factory(path)
 
 
-def weights_available(path):
-    """With the AI worker the weights live on the PC, so the Pi only needs the name."""
-    return worker_url() is not None or os.path.exists(path)
+WEIGHTS_CACHE_S = 60.0
+_weights_cache = {}   # url -> (monotonic time, set of weights on the worker)
+
+
+def weights_available(path, get=requests.get, clock=time.monotonic):
+    """Local: the file exists. With the AI worker: the worker has the file (asked once a minute), so a model
+    the PC does not have stays off instead of failing every minute. An unreachable worker counts as yes:
+    the switch's retry loads it once the PC is back."""
+    url = worker_url()
+    if url is None:
+        return os.path.exists(path)
+    rel = os.path.relpath(os.path.abspath(path), BASE_DIR).replace(os.sep, "/")
+    cached = _weights_cache.get(url)
+    if cached is None or clock() - cached[0] > WEIGHTS_CACHE_S:
+        try:
+            reply = get(f"{url}/", timeout=TIMEOUT)
+            weights = set(reply.json()["weights"]) if reply.status_code == 200 else None
+        except Exception:  # noqa: BLE001 - worker down or old: decide later
+            weights = None
+        if weights is None:
+            return True
+        cached = _weights_cache[url] = (clock(), weights)
+    return rel in cached[1]
 
 
 def is_remote(model):

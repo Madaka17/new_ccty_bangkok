@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from backend.core.instance import BASE_DIR
+from backend.vision import remote_yolo
 from backend.vision.remote_yolo import RemoteYolo, load_yolo, weights_available, worker_url
 from backend.vision.yolo_switch import YoloOff
 
@@ -159,7 +160,8 @@ def test_weights_available_remote_true_for_missing_file(monkeypatch):
     monkeypatch.delenv("AI_WORKER_URL", raising=False)
     assert weights_available(missing) is False
     monkeypatch.setenv("AI_WORKER_URL", "http://pc:8100")
-    assert weights_available(missing) is True
+    remote_yolo._weights_cache.clear()
+    assert weights_available(missing, get=FakeGet(error=ConnectionError())) is True
 
 
 
@@ -173,3 +175,30 @@ def test_images_sent_lossless():
     _, data, _ = post.calls[0]["files"]["image0"]
     back = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
     assert np.array_equal(back, frame)
+
+
+class FakeGet:
+    def __init__(self, reply=None, error=None):
+        self.calls, self.reply, self.error = 0, reply, error
+
+    def __call__(self, url, timeout=None):
+        self.calls += 1
+        if self.error:
+            raise self.error
+        return self.reply
+
+
+def test_weights_available_asks_the_worker(monkeypatch):
+    # The PC has no helmet_cls.pt: the Pi must not retry loading it every minute.
+    monkeypatch.setenv("AI_WORKER_URL", "http://pc:8100")
+    remote_yolo._weights_cache.clear()
+    get = FakeGet(Reply(200, {"ok": True, "loaded": [], "weights": ["yolo26x.pt"]}))
+    assert weights_available(os.path.join(BASE_DIR, "yolo26x.pt"), get=get) is True
+    assert weights_available(os.path.join(BASE_DIR, "helmet_cls.pt"), get=get) is False
+    assert get.calls == 1          # cached
+
+
+def test_weights_available_true_when_worker_unreachable(monkeypatch):
+    monkeypatch.setenv("AI_WORKER_URL", "http://pc:8100")
+    remote_yolo._weights_cache.clear()
+    assert weights_available(os.path.join(BASE_DIR, "helmet_cls.pt"), get=FakeGet(error=ConnectionError())) is True

@@ -97,6 +97,18 @@ class ModelPool:
                 pass
         return dropped
 
+    def weights(self):
+        """Every .pt file under root (two folders deep), as paths relative to root."""
+        out = []
+        for dirpath, dirnames, filenames in os.walk(self.root):
+            rel_dir = os.path.relpath(dirpath, self.root)
+            depth = 0 if rel_dir == "." else rel_dir.count(os.sep) + 1
+            dirnames[:] = [d for d in dirnames if depth < 2 and not d.startswith(".") and d not in ("node_modules", "instances")]
+            for f in filenames:
+                if f.endswith(".pt"):
+                    out.append(f if rel_dir == "." else f"{rel_dir}/{f}".replace(os.sep, "/"))
+        return sorted(out)
+
     def loaded(self):
         with self.lock:
             return sorted(self.models)
@@ -122,7 +134,7 @@ def create_app(root, token, allow, factory=_default_factory, clock=time.monotoni
     def health(request: Request):
         if request.client is None or request.client.host not in allow:
             return forbidden()
-        return {"ok": True, "loaded": pool.loaded()}
+        return {"ok": True, "loaded": pool.loaded(), "weights": pool.weights()}
 
     @app.post("/predict")
     async def predict(request: Request):
