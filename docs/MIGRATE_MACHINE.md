@@ -384,9 +384,32 @@ tar -cf - --exclude='./backup' -C "/e/data smartstreet" . |
 รอบสุดท้าย (ตอน D หลังหยุด server บนคอม) ให้ทำซ้ำคำสั่งเดิม แล้วทำสำเนา DB ทั้ง 3 ตัวใหม่
 ไฟล์ cache ที่เปลี่ยนระหว่างรอบแรกจะถูกทับเป็นของใหม่
 
-D ยังไม่ทำ:
-- ทำตามข้อ 6 แต่ฝั่ง Pi ใช้ `sudo systemctl enable --now bkk-production bkk-enviro bkk-backup.timer`
-  แล้วติดตั้ง cloudflared service บน Pi
-- คัดลอก credentials ของ tunnel (`C:\Users\user\.cloudflared\<tunnel-id>.json`) ไป Pi ตอนนี้
-- **ห้ามเปิด cloudflared บน Pi ขณะที่ tunnel บนคอมยังรันอยู่** เพราะผู้ใช้จะถูกแบ่งไปสองเครื่อง
-- ทำเมื่อคุณสั่งเท่านั้น
+D ทำแล้ว 2026-11-03 ตอนนี้เว็บจริงอยู่บน Pi
+
+| เวลา | ทำอะไร |
+|---|---|
+| 23:57 | หยุด production และ ENVIRO บนคอม (`kill_server.ps1` วาง marker `stopped_8000`/`stopped_5050` ไว้ watchdog จึงไม่เปิดกลับ) |
+| 23:57-00:07 | คัดลอกรอบสุดท้าย และทำสำเนา DB ทั้ง 3 ตัวหลังหยุด server (`integrity_check` ok) |
+| 05:23 | หยุด cloudflared service บนคอม และตั้งเป็น Disabled (ต้องใช้ admin: กด Yes ที่หน้าต่าง UAC) |
+| 05:23 | บน Pi: `sudo systemctl enable --now bkk-production bkk-enviro` เปิดได้ใน 65 วินาที |
+| 05:24 | บน Pi: `sudo systemctl enable --now cloudflared bkk-camera-status bkk-backup.timer` และ https://bkksmartstreet.com กับ `/enviro/` ได้ 200 |
+| 05:25 | ปิด task `BKK StreetSmart backup` บนคอม |
+
+เว็บปิดนาน 5.5 ชั่วโมง เพราะหน้าต่าง UAC ครั้งแรกถูกยกเลิก แล้วต้องรอคนกลับมากด ถ้าทำครั้งหน้าให้หยุด tunnel บนคอม
+(ขั้นที่ต้องใช้ admin) ก่อนหยุด server จะได้ไม่มีช่วงรอแบบนี้
+
+หลังสลับเครื่อง บนคอมยังต้องเปิดไว้: AI worker :8100 (watchdog เช็คให้แล้ว เพราะมี `launch\watchdog\state\enabled_8100`),
+test :8001, Bionic และการ build เว็บ ถ้าคอมปิด เว็บบน Pi ยังเปิดได้ แต่ AI ตรวจภาพจะปิดไปด้วย
+
+ส่ง web build ใหม่ไป Pi: build บนคอมเป็น `instances\production\dist_next` ตามเดิม แล้วคัดลอกไป Pi ด้วย tar ผ่าน ssh
+ไปที่ `instances/production/dist_next` จากนั้นสลับชื่อโฟลเดอร์บน Pi
+
+### 9.7 ย้อนกลับไปใช้คอม
+
+1. บน Pi: `sudo systemctl disable --now cloudflared bkk-camera-status bkk-production bkk-enviro bkk-backup.timer`
+2. บนคอม (PowerShell แบบ administrator): `Set-Service cloudflared -StartupType Automatic; Start-Service cloudflared`
+3. บนคอม: `launch\production\start.bat` และ `launch\enviro\start.bat` (ลบ marker ให้เอง watchdog จะดูแลต่อ)
+4. บนคอม: `Enable-ScheduledTask -TaskName 'BKK StreetSmart backup'`
+
+ข้อมูลที่ Pi เขียนหลังสลับเครื่อง (DB, สถิติ, รูปหลักฐาน) จะไม่อยู่บนคอม ถ้าต้องการให้คัดลอกกลับก่อนข้อ 3
+โดยใช้คำสั่งเดียวกับ 9.6 แต่สลับต้นทางกับปลายทาง และใช้ sqlite backup กับไฟล์ DB
