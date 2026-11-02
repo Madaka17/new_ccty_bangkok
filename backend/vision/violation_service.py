@@ -39,6 +39,7 @@ from backend.core.instance import DEFAULT_BMA_DATA_DIR
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 from backend.vision.frame_utils import safe_id
+from backend.vision.remote_yolo import is_remote, load_yolo, weights_available
 FLOW_DIR = os.path.join(DATA_DIR, "cache", "flow")
 EVIDENCE_DIR = os.path.join(DATA_DIR, "cache", "violations")
 # Long-term copy of every evidence image on the data drive (same drive as the BMA CSV archive):
@@ -180,11 +181,11 @@ class ViolationMonitor:
             if self.helmet_cls is not None:
                 return
         cls = None
-        if os.path.exists(HELMET_CLS_PATH):
+        if weights_available(HELMET_CLS_PATH):
             try:
-                from ultralytics import YOLO
-                cls = YOLO(HELMET_CLS_PATH)
-                cls(np.zeros((160, 160, 3), dtype=np.uint8), verbose=False)  # warm up
+                cls = load_yolo(HELMET_CLS_PATH)
+                if not is_remote(cls):
+                    cls(np.zeros((160, 160, 3), dtype=np.uint8), verbose=False)  # warm up
                 print(f"[Violation] helmet classifier loaded: {HELMET_CLS_PATH} {cls.names}")
             except Exception as e:  # noqa: BLE001
                 print(f"[Violation] helmet classifier failed to load: {e}")

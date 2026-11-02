@@ -6,6 +6,7 @@ background jobs. Moved out of server.py (Oct 2026) without changing what is buil
 import json
 import os
 import re
+import threading
 import time
 
 from backend.agents.flood_agent import FloodAgent
@@ -37,6 +38,7 @@ from backend.vision.violation_service import ViolationMonitor
 from backend.vision.world_cameras import world_cameras
 from backend.vision.wrongway_service import WrongWayPatrol
 from backend.vision.yolo_detector import VehicleDetectorYOLO11x
+from backend.vision.remote_yolo import worker_url
 from backend.vision.yolo_switch import YoloSwitch, yolo_allowed
 from backend.water import north_flow, water_service
 from backend.water.air_forecast import air_forecast
@@ -85,7 +87,9 @@ if os.path.exists(CAMERAS_FILE):
 vehicle_log = VehicleLog(os.path.join(DATA_DIR, "vehicle_counts.db"))
 # YOLO on/off (launch\yolo_switch.bat): the saved state decides whether any model loads at startup
 yolo = YoloSwitch(os.path.join(DATA_DIR, "cache", "yolo_switch.json"),
-                  allowed=yolo_allowed())
+                  allowed=yolo_allowed() or worker_url() is not None)
+if worker_url():
+    print(f"[YOLO] models run on the AI worker at {worker_url()}")
 if not yolo.allowed:
     print("[YOLO] not allowed on this machine (YOLO_ALLOWED=0)")
 if not yolo.enabled:
@@ -230,8 +234,20 @@ traffy_agent = TraffyAgent(DATA_DIR, traffy_reports.status)
 # Every Traffy flood report kept in vehicle_counts.db, for day-to-day / week-to-week comparison
 traffy_history = TraffyHistory(os.path.join(DATA_DIR, "vehicle_counts.db"), traffy_reports.status)
 
+def _retry_yolo_loop():
+    """The Pi: load holders that missed the AI worker (PC off at start, or a model failed) once a minute."""
+    while True:
+        time.sleep(60)
+        try:
+            yolo.retry_missing()
+        except Exception as e:  # noqa: BLE001 - keep retrying
+            print(f"[YOLO] retry loop: {e}")
+
+
 def start():
     """Start every background job, in the order server.py always used."""
+    if worker_url():
+        threading.Thread(target=_retry_yolo_loop, daemon=True, name="yolo-retry").start()
     traffic.start()
     area_traffic.start()
     area_roads.warm()

@@ -42,6 +42,7 @@ from backend.core import local_llm
 from backend.core.instance import DEFAULT_BMA_DATA_DIR
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
+from backend.vision.remote_yolo import is_remote, load_yolo, weights_available
 from backend.vision.yolo_switch import YoloOff
 from backend.vision.frame_utils import fingerprint, iou, safe_id, safe_name, same_scene, write_jpeg
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "wrongway")
@@ -277,20 +278,20 @@ class WrongWayPatrol:
                 return
         cls = det = None
         det_names = {}
-        if os.path.exists(CLS_PATH):
+        if weights_available(CLS_PATH):
             try:
-                from ultralytics import YOLO
-                cls = YOLO(CLS_PATH)
-                cls(np.zeros((CLS_IMGSZ, CLS_IMGSZ, 3), dtype=np.uint8), imgsz=CLS_IMGSZ, verbose=False)
+                cls = load_yolo(CLS_PATH)
+                if not is_remote(cls):
+                    cls(np.zeros((CLS_IMGSZ, CLS_IMGSZ, 3), dtype=np.uint8), imgsz=CLS_IMGSZ, verbose=False)
                 print(f"[WrongWay] heading classifier loaded: {CLS_PATH} {list(cls.names.values())}")
             except Exception as e:  # noqa: BLE001
                 print(f"[WrongWay] heading classifier failed to load: {e}")
                 cls = None
-        if cls is None and os.path.exists(DET_PATH):
+        if cls is None and weights_available(DET_PATH):
             try:
-                from ultralytics import YOLO
-                det = YOLO(DET_PATH)
-                det(np.zeros((288, 352, 3), dtype=np.uint8), imgsz=DET_IMGSZ, verbose=False)
+                det = load_yolo(DET_PATH)
+                if not is_remote(det):
+                    det(np.zeros((288, 352, 3), dtype=np.uint8), imgsz=DET_IMGSZ, verbose=False)
                 det_names = {int(k): v for k, v in det.names.items()}
                 print(f"[WrongWay] heading detector loaded: {DET_PATH} {list(det_names.values())}")
             except Exception as e:  # noqa: BLE001

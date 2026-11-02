@@ -101,16 +101,18 @@ class RemoteYolo:
                        probs=None if probs is None else torch.tensor(probs, dtype=torch.float32))
 
 
-def load_yolo(path):
-    """The model for a weights file: remote when AI_WORKER_URL is set, else a local ultralytics YOLO."""
+def load_yolo(path, local_factory=None):
+    """The model for a weights file: remote when AI_WORKER_URL is set, else a local ultralytics YOLO
+    (local_factory, when given, builds the local one)."""
     url = worker_url()
     if url:
         rel = os.path.relpath(os.path.abspath(path), BASE_DIR).replace(os.sep, "/")
         return RemoteYolo(rel, url, os.getenv("AI_WORKER_TOKEN", ""))
     if not yolo_allowed():
         raise YoloOff(NOT_ALLOWED)
-    from ultralytics import YOLO
-    return YOLO(path)
+    if local_factory is None:
+        from ultralytics import YOLO as local_factory
+    return local_factory(path)
 
 
 def weights_available(path):

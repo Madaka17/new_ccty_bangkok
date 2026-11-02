@@ -17,6 +17,7 @@ from ultralytics import YOLO
 from ultralytics.engine.results import Results
 
 from backend.core.instance import thai_font
+from backend.vision.remote_yolo import is_remote, load_yolo
 from backend.vision.yolo_switch import YoloOff
 from backend.vision.vehicle_tracker import (CLASS_CONFIG, DEFAULT_CLASS, LEVEL_TEXT, PERSON_CLASS, VehicleTracker,
                                             frame_video_time, skip_elapsed_frames)
@@ -102,7 +103,13 @@ class VehicleDetectorYOLO11x:
         """Load the weights onto the GPU. Does nothing when a model is already loaded."""
         if self.model is not None:
             return
-        model = YOLO(self.model_path)
+        model = load_yolo(self.model_path, local_factory=YOLO)
+        if is_remote(model):   # runs on the PC's AI worker: no CUDA here, no warm-up over the network
+            print(f"[AI] detector runs on the AI worker: {model}")
+            with self.model_lock:
+                if self.model is None:
+                    self.model = model
+            return
         if torch.cuda.is_available():
             try:
                 model.to('cuda').half()
