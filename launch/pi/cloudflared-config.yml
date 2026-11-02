@@ -1,0 +1,16 @@
+# Cloudflare Tunnel "bkk-streetsmart" on the Raspberry Pi: same rules as launch/cloudflare/config.yml (the PC),
+# with Linux paths. Installed as /etc/cloudflared/config.yml; the credentials file (the tunnel's secret, not in
+# git) is copied from the PC's C:\Users\user\.cloudflared\ to /etc/cloudflared/ with mode 600.
+# Never run this while the PC's cloudflared service runs: the tunnel would split visitors between machines.
+tunnel: a9928534-a0be-43c1-95f2-9800bd6442f5
+credentials-file: /etc/cloudflared/a9928534-a0be-43c1-95f2-9800bd6442f5.json
+
+ingress:
+  # ENVIRO at /enviro/; ENVIRO strips the prefix itself. Must come before the BKK rule below.
+  - hostname: bkksmartstreet.com
+    path: ^/enviro(/|$)
+    service: http://127.0.0.1:5050
+  # BKK StreetSmart on 127.0.0.2: backend/core/access_guard.py reads CF-Connecting-IP only on that address
+  - hostname: bkksmartstreet.com
+    service: http://127.0.0.2:8000
+  - service: http_status:404
