@@ -161,3 +161,15 @@ def test_weights_available_remote_true_for_missing_file(monkeypatch):
     monkeypatch.setenv("AI_WORKER_URL", "http://pc:8100")
     assert weights_available(missing) is True
 
+
+
+def test_images_sent_lossless():
+    # Small BMA frames change YOLO results even after a q100 JPEG round trip: the worker must get the exact pixels.
+    import cv2
+    rng = np.random.default_rng(1)
+    frame = rng.integers(0, 256, size=(288, 352, 3), dtype=np.uint8)
+    post = FakePost(boxes_reply())
+    make(post)(frame)
+    _, data, _ = post.calls[0]["files"]["image0"]
+    back = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
+    assert np.array_equal(back, frame)

@@ -1,7 +1,7 @@
 """
 AI worker: runs YOLO on this PC's GPU for the Raspberry Pi (B2 of the Pi move, docs/MIGRATE_MACHINE.md section 9).
 
-The Pi's YOLO holders get a RemoteYolo (remote_yolo.py) that POSTs JPEG images to /predict here. Each weights
+The Pi's YOLO holders get a RemoteYolo (remote_yolo.py) that POSTs PNG images to /predict here. Each weights
 file is loaded on first use and dropped after IDLE_S without calls, so VRAM is free when the Pi does not need it.
 
 Access: only IPs in AI_WORKER_ALLOW (default the Pi and this PC) and, for /predict, the AI_WORKER_TOKEN header.

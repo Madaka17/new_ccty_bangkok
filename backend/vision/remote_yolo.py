@@ -3,7 +3,8 @@ RemoteYolo: a stand-in for an ultralytics YOLO model that runs on the PC's AI wo
 
 The Raspberry Pi has no GPU. With AI_WORKER_URL set (and AI_WORKER_TOKEN) every YOLO holder loads its weights
 through load_yolo(), gets a RemoteYolo, and calls it exactly like a local model: model(image_or_list, **kwargs)
-returns a list of ultralytics Results with boxes / probs / names. The images go to the worker as JPEG; the
+returns a list of ultralytics Results with boxes / probs / names. The images go to the worker as PNG (lossless: a JPEG round trip, even at quality 100, changes
+YOLO results on the small 352x288 BMA frames); the
 Results are rebuilt here on the CPU, so the detector, the trackers and the patrols work unchanged.
 
 When the worker cannot be reached every call raises YoloOff, which callers already treat as "YOLO is off".
@@ -22,7 +23,7 @@ from backend.vision.yolo_switch import NOT_ALLOWED, YoloOff, yolo_allowed
 
 TIMEOUT = (1, 10)        # connect, read seconds
 BREAKER_S = 30.0
-JPEG_QUALITY = 95
+PNG_LEVEL = 1          # fastest lossless compression
 OFFLINE = "AI worker offline"
 
 
@@ -69,10 +70,10 @@ class RemoteYolo:
                 raise YoloOff(OFFLINE)
         files = {}
         for i, img in enumerate(images):
-            ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+            ok, buf = cv2.imencode(".png", img, [cv2.IMWRITE_PNG_COMPRESSION, PNG_LEVEL])
             if not ok:
                 raise ValueError("cannot encode image")
-            files[f"image{i}"] = (f"{i}.jpg", buf.tobytes(), "image/jpeg")
+            files[f"image{i}"] = (f"{i}.png", buf.tobytes(), "image/png")
         meta = json.dumps({"model": self.rel_path, "kwargs": kwargs})
         try:
             reply = self._post(f"{self.url}/predict", data={"meta": meta}, files=files,
