@@ -1,0 +1,19 @@
+# Camera status next to production on the Raspberry Pi (launch/camera_status.py --watch 300): writes the list of
+# dead cameras the live camera page hides. On the PC the watchdog starts it beside production.
+# Enable at cutover with bkk-production: sudo systemctl enable --now bkk-camera-status
+[Unit]
+Description=BKK StreetSmart camera status (every 5 min, next to production)
+After=bkk-production.service
+Requires=bkk-production.service
+RequiresMountsFor=/mnt/ssd
+
+[Service]
+User=test
+WorkingDirectory=/mnt/ssd/new_ccty_bangkok
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/mnt/ssd/new_ccty_bangkok/.venv/bin/python /mnt/ssd/new_ccty_bangkok/launch/camera_status.py --watch 300
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
