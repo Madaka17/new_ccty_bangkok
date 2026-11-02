@@ -37,7 +37,7 @@ from backend.vision.violation_service import ViolationMonitor
 from backend.vision.world_cameras import world_cameras
 from backend.vision.wrongway_service import WrongWayPatrol
 from backend.vision.yolo_detector import VehicleDetectorYOLO11x
-from backend.vision.yolo_switch import YoloSwitch
+from backend.vision.yolo_switch import YoloSwitch, yolo_allowed
 from backend.water import north_flow, water_service
 from backend.water.air_forecast import air_forecast
 from backend.water.air_service import air
@@ -85,7 +85,7 @@ if os.path.exists(CAMERAS_FILE):
 vehicle_log = VehicleLog(os.path.join(DATA_DIR, "vehicle_counts.db"))
 # YOLO on/off (launch\yolo_switch.bat): the saved state decides whether any model loads at startup
 yolo = YoloSwitch(os.path.join(DATA_DIR, "cache", "yolo_switch.json"),
-                  allowed=os.getenv("YOLO_ALLOWED", "1") != "0")
+                  allowed=yolo_allowed())
 if not yolo.allowed:
     print("[YOLO] not allowed on this machine (YOLO_ALLOWED=0)")
 if not yolo.enabled:

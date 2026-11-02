@@ -20,6 +20,11 @@ import time
 NOT_ALLOWED = "YOLO is not allowed on this machine (YOLO_ALLOWED=0)"
 
 
+def yolo_allowed(env=os.environ):
+    from backend.core.env_flags import flag_on
+    return flag_on(env, "YOLO_ALLOWED")
+
+
 class YoloOff(RuntimeError):
     """YOLO is switched off: no model to run."""
 

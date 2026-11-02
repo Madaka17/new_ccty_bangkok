@@ -11,15 +11,21 @@ RequiresMountsFor=/mnt/ssd
 User=test
 WorkingDirectory=/mnt/ssd/new_ccty_bangkok
 # .env is read by server.py (python-dotenv, never overriding), so the values below win over it.
-# At cutover set BMA_DATA_DIR and LOCAL_LLM_URL in the Pi .env to Pi paths / the PC address.
+# At cutover set LOCAL_LLM_URL in the Pi .env to the PC's LAN address.
 Environment=PORT=8000
 Environment=INSTANCE_DIR=/mnt/ssd/new_ccty_bangkok/instances/production
+# Statistics and evidence pictures (E:\data smartstreet on the PC); copied here in step C
+Environment=BMA_DATA_DIR=/mnt/ssd/data_smartstreet
 Environment=YOLO_ALLOWED=0
 Environment=OPENCV_FFMPEG_LOGLEVEL=-8
 Environment=PYTHONUNBUFFERED=1
 ExecStart=/mnt/ssd/new_ccty_bangkok/.venv/bin/python server.py
 Restart=always
 RestartSec=5
+# A leak slows the server down at 2 GB and restarts it at 3 GB instead of freezing the Pi (8 GB, no swap use).
+MemoryHigh=2G
+MemoryMax=3G
+MemorySwapMax=0
 
 [Install]
 WantedBy=multi-user.target

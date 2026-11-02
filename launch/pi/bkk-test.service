@@ -22,6 +22,10 @@ ExecStartPre=/usr/bin/mkdir -p /mnt/ssd/new_ccty_bangkok/instances/test/data
 ExecStart=/mnt/ssd/new_ccty_bangkok/.venv/bin/python server.py
 Restart=always
 RestartSec=5
+# A leak slows the server down at 2 GB and restarts it at 3 GB instead of freezing the Pi (8 GB, no swap use).
+MemoryHigh=2G
+MemoryMax=3G
+MemorySwapMax=0
 
 [Install]
 WantedBy=multi-user.target

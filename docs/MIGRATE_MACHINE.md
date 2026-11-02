@@ -289,7 +289,7 @@ torch ใช้แบบ CPU (`--torch-backend cpu`) เพราะ Pi ไม�
 - `BMA_FETCH=0`: ไม่ดึงภาพและข่าวจาก BMA ใช้ตอนทดสอบเท่านั้น เพราะ Pi กับคอมออกเน็ตด้วย IP เดียวกัน
   ถ้าดึงพร้อมกันสองเครื่อง BMA จะตอบ 429 ตอนสลับเครื่องจริง ห้ามใส่ใน production ของ Pi
 
-ทั้งสองค่าอยู่ใน unit แล้ว ส่วน `.env` ให้ `server.py` อ่านเอง ค่าใน unit จะมาก่อนค่าใน `.env`
+ปิดได้ด้วย `0`, `false`, `no` หรือ `off` ทั้งสองค่าอยู่ใน unit แล้ว ส่วน `.env` ให้ `server.py` อ่านเอง ค่าใน unit จะมาก่อนค่าใน `.env`
 `.env` บน Pi ต้องเป็นสิทธิ์ `600` (มีคีย์ API) และห้าม commit
 
 ### 9.3 systemd unit (`launch/pi/`)
@@ -307,6 +307,9 @@ journalctl -u bkk-test -f
 ```
 
 ทุก unit รอให้ `/mnt/ssd` mount ก่อน (`RequiresMountsFor`) และเปิดใหม่เองเมื่อหลุด
+unit ของ test และ production จะช้าลงเมื่อใช้ RAM ถึง 2 GB และเปิดใหม่เองเมื่อถึง 3 GB เพื่อไม่ให้ Pi ค้างทั้งเครื่อง
+
+`BMA_FETCH=0` ปิดการดึงจาก BMA ทุกทาง ทั้งการสแกนอัตโนมัติ, ข่าว, ปุ่มสแกน, ภาพสดในหน้ากล้อง และ `check_now`
 
 ผลทดสอบ 2026-11-02:
 - เปิดได้ใน 75 วินาที และ log ไม่มี `Traceback`
@@ -318,9 +321,8 @@ journalctl -u bkk-test -f
 - **B2: AI worker บนคอม** (`:8100 /detect`) ให้ Pi ส่งภาพมาตรวจ ยังไม่ได้ทำ
 - **กล้องอุดร** ดึงไม่ได้บน Pi: `CERTIFICATE_VERIFY_FAILED` เพราะเว็บส่ง certificate มาไม่ครบ
   Windows หาตัวที่ขาดเองได้ แต่ Linux หาไม่ได้
-- **`.env` ของ Pi** ต้องแก้ 2 ค่า:
-  - `BMA_DATA_DIR` ยังเป็น path ของ Windows ให้เปลี่ยนเป็น path บน `/mnt/ssd`
-  - `LOCAL_LLM_URL` ต้องชี้ไปที่ IP ของคอมใน LAN
+- **`.env` ของ Pi**: `LOCAL_LLM_URL` ต้องชี้ไปที่ IP ของคอมใน LAN
+  (`BMA_DATA_DIR` ตั้งไว้ใน unit แล้วเป็น `/mnt/ssd/data_smartstreet`)
 - **BKK Monitor และสำรอง DB** ยังเป็นของ Windows ต้องทำตัวของ Linux
 
 ### 9.5 คัดลอกข้อมูล (C) และสลับเครื่อง (D): ยังไม่ทำ
