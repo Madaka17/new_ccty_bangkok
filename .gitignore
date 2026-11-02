@@ -79,3 +79,7 @@ launch/monitor/state/
 
 # launch\run_hidden.py output (server logs and PIDs)
 launch/logs/
+
+# SmallTV firmware tooling and build output
+local/pio/
+device/smalltv/.pio/
