@@ -10,7 +10,8 @@ RequiresMountsFor=/mnt/ssd
 [Service]
 User=test
 WorkingDirectory=/mnt/ssd/new_ccty_bangkok
-EnvironmentFile=-/mnt/ssd/new_ccty_bangkok/.env
+# .env is read by server.py (python-dotenv, never overriding), so the values below win over it.
+# At cutover set BMA_DATA_DIR and LOCAL_LLM_URL in the Pi .env to Pi paths / the PC address.
 Environment=PORT=8000
 Environment=INSTANCE_DIR=/mnt/ssd/new_ccty_bangkok/instances/production
 Environment=YOLO_ALLOWED=0

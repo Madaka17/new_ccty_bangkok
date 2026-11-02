@@ -10,7 +10,7 @@ RequiresMountsFor=/mnt/ssd
 [Service]
 User=test
 WorkingDirectory=/mnt/ssd/new_ccty_bangkok
-EnvironmentFile=-/mnt/ssd/new_ccty_bangkok/.env
+# .env is read by server.py (python-dotenv, never overriding), so the values below win over it.
 Environment=PORT=8001
 Environment=INSTANCE_DIR=/mnt/ssd/new_ccty_bangkok/instances/test
 Environment=BMA_DATA_DIR=/mnt/ssd/new_ccty_bangkok/instances/test/data
