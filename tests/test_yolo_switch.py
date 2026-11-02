@@ -198,3 +198,29 @@ def test_set_reports_fresh_vram_after_a_flip(tmp_path, monkeypatch):
     smi["out"] = "1900, 10240\n"                                         # VRAM changes, cache still warm
     out = sw.set(False)
     assert out["vram"] == {"used_mb": 1900, "total_mb": 10240}
+
+
+def test_not_allowed_ignores_saved_on_state(tmp_path):
+    p = tmp_path / "yolo_switch.json"
+    p.write_text('{"enabled": true, "changed_at": 5}')
+    sw = YoloSwitch(str(p), cuda=None, allowed=False)
+    assert sw.enabled is False
+    assert sw.status()["allowed"] is False
+
+
+def test_not_allowed_refuses_to_switch_on(tmp_path):
+    # A Pi (YOLO_ALLOWED=0) must never load weights: ultralytics would download them and run on the CPU.
+    holder = Holder()
+    p = tmp_path / "yolo_switch.json"
+    sw = YoloSwitch(str(p), cuda=None, allowed=False)
+    sw.register("detector", holder)
+    out = sw.set(True)
+    assert out["enabled"] is False
+    assert "YOLO_ALLOWED=0" in out["errors"]["switch"]
+    assert "load" not in holder.calls
+    assert not p.exists()
+
+
+def test_allowed_by_default(tmp_path):
+    sw = YoloSwitch(str(tmp_path / "s.json"), cuda=None)
+    assert sw.status()["allowed"] is True

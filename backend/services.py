@@ -84,7 +84,10 @@ if os.path.exists(CAMERAS_FILE):
 # Initialize the YOLO vehicle detector (model from AI_MODEL, target 10 FPS for smoother playback)
 vehicle_log = VehicleLog(os.path.join(DATA_DIR, "vehicle_counts.db"))
 # YOLO on/off (launch\yolo_switch.bat): the saved state decides whether any model loads at startup
-yolo = YoloSwitch(os.path.join(DATA_DIR, "cache", "yolo_switch.json"))
+yolo = YoloSwitch(os.path.join(DATA_DIR, "cache", "yolo_switch.json"),
+                  allowed=os.getenv("YOLO_ALLOWED", "1") != "0")
+if not yolo.allowed:
+    print("[YOLO] not allowed on this machine (YOLO_ALLOWED=0)")
 if not yolo.enabled:
     print("[YOLO] off (saved state): no models loaded")
 detector = VehicleDetectorYOLO11x(model_path=MODEL_PATH, target_fps=10.0, conf_threshold=0.15, vehicle_log=vehicle_log,
