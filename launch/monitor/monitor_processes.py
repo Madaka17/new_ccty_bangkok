@@ -3,11 +3,12 @@ BKK Monitor: whether each hidden server runs, from launch\logs\<name>.json (writ
 and the tail of its log launch\logs\<name>.log. The collector never reads these; only the monitor window does.
 
 Liveness uses OpenProcess + GetExitCodeProcess, never os.kill (on Windows os.kill(pid, 0) terminates the process).
+On Linux (the Raspberry Pi) os.kill(pid, 0) only checks the process, so it is used there.
 """
 import ctypes
 import json
+import os
 import time
-from ctypes import wintypes
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -17,17 +18,27 @@ LOG_DIR = ROOT / "launch" / "logs"
 STATE_DIR = ROOT / "launch" / "watchdog" / "state"
 PORTS = {"production": 8000, "test": 8001, "enviro": 5050, "camera": 8000}   # camera runs next to production
 
-_k32 = ctypes.WinDLL("kernel32", use_last_error=True)
-_k32.OpenProcess.restype = wintypes.HANDLE
-_k32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
-_k32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
-_k32.CloseHandle.argtypes = (wintypes.HANDLE,)
 STILL_ACTIVE = 259
+if os.name == "nt":
+    from ctypes import wintypes
+    _k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _k32.OpenProcess.restype = wintypes.HANDLE
+    _k32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    _k32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+    _k32.CloseHandle.argtypes = (wintypes.HANDLE,)
 
 
 def alive(pid):
     if not pid or not isinstance(pid, int) or pid < 0 or pid > 0xFFFFFFFF:
         return False
+    if os.name != "nt":
+        try:
+            os.kill(pid, 0)
+        except PermissionError:
+            return True       # exists, owned by another user
+        except OSError:
+            return False
+        return True
     h = _k32.OpenProcess(0x1000, False, pid)     # PROCESS_QUERY_LIMITED_INFORMATION
     if not h:
         return False

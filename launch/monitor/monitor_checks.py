@@ -13,6 +13,7 @@ One round of the monitor's checks (launch\\monitor\\collector.py runs it every 3
 A server that does not answer while launch\\watchdog\\state\\stopped_<port> exists was stopped on purpose: "stopped".
 """
 import json
+import os
 import subprocess
 import sys
 import time
@@ -35,8 +36,24 @@ LABELS = {"production": "Production", "test": "Test", "enviro": "ENVIRO", "gatew
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
-def stopped(port):
-    return (STATE_DIR / f"stopped_{port}").exists()
+# Linux (the Raspberry Pi): servers are systemd units (launch/pi/*.service) instead of hidden consoles
+UNITS = {8000: "bkk-production", 8001: "bkk-test", 5050: "bkk-enviro"}
+
+
+def _systemctl(verb, unit, run=subprocess.run):
+    try:
+        return run(["systemctl", verb, unit], capture_output=True, text=True, timeout=10).stdout.strip()
+    except Exception:  # noqa: BLE001 - no systemd answer: unknown
+        return ""
+
+
+def stopped(port, platform=os.name, run=subprocess.run):
+    """Stopped on purpose: stop.bat's marker file, or on Linux a unit that is not enabled."""
+    if (STATE_DIR / f"stopped_{port}").exists():
+        return True
+    if platform != "nt" and port in UNITS:
+        return _systemctl("is-enabled", UNITS[port], run) != "enabled"
+    return False
 
 
 def watchdog_age():
@@ -102,7 +119,9 @@ def http_up(port):
         return False
 
 
-def tunnel_running():
+def tunnel_running(platform=os.name, run=subprocess.run):
+    if platform != "nt":
+        return _systemctl("is-active", "cloudflared", run) == "active"
     try:
         out = subprocess.run(["sc", "query", "cloudflared"], capture_output=True, text=True, timeout=10,
                              creationflags=NO_WINDOW).stdout
@@ -163,6 +182,20 @@ def _public_text(code):
 
 def _uptime(s):
     return f"{s // 60} min" if s < 7200 else f"{s // 3600} h"
+
+
+def watchdog_status(platform=os.name):
+    """The watchdog row. On Linux (the Pi) systemd restarts the servers (Restart=always): no heartbeat needed."""
+    if platform != "nt":
+        return _status("service:watchdog", "service", "watchdog", LABELS["watchdog"], "ok",
+                       "systemd restarts the servers (Restart=always)")
+    age = watchdog_age()
+    if age is None:
+        return _status("service:watchdog", "service", "watchdog", LABELS["watchdog"], "fail", "no heartbeat file")
+    if age < 360:
+        return _status("service:watchdog", "service", "watchdog", LABELS["watchdog"], "ok", f"last run {int(age)} s ago")
+    return _status("service:watchdog", "service", "watchdog", LABELS["watchdog"], "fail",
+                   f"no run for {int(age // 60)} min (scheduled task 'BKK StreetSmart watchdog')")
 
 
 def _server(target, port):
@@ -244,14 +277,7 @@ def run_round(gateway_due):
         # no fresh counts: the BMA / ITIC cards follow the camera status card instead of keeping their last state
         for t in ("cam_bma", "cam_itic"):
             out.append(_status(f"service:{t}", "service", t, LABELS[t], camera["state"], camera["detail"]))
-    age = watchdog_age()
-    if age is None:
-        out.append(_status("service:watchdog", "service", "watchdog", LABELS["watchdog"], "fail", "no heartbeat file"))
-    elif age < 360:
-        out.append(_status("service:watchdog", "service", "watchdog", LABELS["watchdog"], "ok", f"last run {int(age)} s ago"))
-    else:
-        out.append(_status("service:watchdog", "service", "watchdog", LABELS["watchdog"], "fail",
-                           f"no run for {int(age // 60)} min (scheduled task 'BKK StreetSmart watchdog')"))
+    out.append(watchdog_status())
     disk = (prod_h or {}).get("data_disk")
     if prod_h is not None and disk:   # production did not answer: no row, the store keeps the last one
         free, total, path = disk["free_gb"], disk["total_gb"], disk["path"]
