@@ -23,7 +23,7 @@ cat > "$APP_DIR/bkk-monitor.desktop" <<DESK
 Type=Application
 Name=BKK Monitor
 Comment=Servers, AI and YOLO status on this Pi (view only)
-Exec=chromium-browser --app=http://127.0.0.1:8090/ --class=BKKMonitor --user-data-dir=$HOME/.config/bkk-monitor-chromium
+Exec=chromium-browser --ozone-platform-hint=auto --password-store=basic --app=http://127.0.0.1:8090/ --class=BKKMonitor --user-data-dir=$HOME/.config/bkk-monitor-chromium
 Icon=$ICON_DIR/bkk-monitor.png
 Terminal=false
 Categories=Utility;Monitor;
