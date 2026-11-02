@@ -1,0 +1,18 @@
+# Cloudflare Tunnel on the Raspberry Pi (config /etc/cloudflared/config.yml from launch/pi/cloudflared-config.yml).
+# Written by hand instead of "cloudflared service install", which starts the tunnel at once.
+# Enable only at cutover, after the PC's cloudflared service is stopped and disabled:
+#   sudo systemctl enable --now cloudflared
+[Unit]
+Description=Cloudflare Tunnel bkk-streetsmart (bkksmartstreet.com)
+After=network-online.target bkk-production.service bkk-enviro.service
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/cloudflared --no-autoupdate --config /etc/cloudflared/config.yml tunnel run
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
