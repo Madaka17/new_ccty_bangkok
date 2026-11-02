@@ -39,6 +39,7 @@ from backend.core import local_llm
 from backend.core.instance import DEFAULT_BMA_DATA_DIR
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
+from backend.vision.remote_yolo import is_remote, load_yolo, weights_available
 from backend.vision.yolo_switch import YoloOff
 from backend.vision.frame_utils import fingerprint, iou, safe_id, safe_name, same_scene, write_jpeg
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "helmet")
@@ -120,11 +121,11 @@ class HelmetPatrol:
             if self.local_det is not None:
                 return
         det = None
-        if os.path.exists(LOCAL_DET_PATH):
+        if weights_available(LOCAL_DET_PATH):
             try:
-                from ultralytics import YOLO
-                det = YOLO(LOCAL_DET_PATH)
-                det(np.zeros((320, 320, 3), dtype=np.uint8), verbose=False)
+                det = load_yolo(LOCAL_DET_PATH)
+                if not is_remote(det):
+                    det(np.zeros((320, 320, 3), dtype=np.uint8), verbose=False)
                 print(f"[Helmet] local detector loaded: {LOCAL_DET_PATH} {det.names}")
             except Exception as e:  # noqa: BLE001
                 print(f"[Helmet] local detector failed to load: {e}")
@@ -330,7 +331,10 @@ class HelmetPatrol:
     def _analyse(self, hid, camid, cam, crop, marked, agent="auto"):
         """agent: auto (cloud when budget allows) | cloud (force) | local (helmet detector only), the last two from reanalyse."""
         now = time.time()
-        local = self._local_verdict(crop)
+        try:
+            local = self._local_verdict(crop)
+        except YoloOff:
+            return      # the Pi's AI worker is down: the row stays pending, as with YOLO off
         if agent == "local":
             self._settle_local(hid, camid, cam, crop, marked, local)
             self.last_check = int(now)

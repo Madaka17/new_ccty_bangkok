@@ -29,7 +29,11 @@ function Test-Up($port) {
     }
 }
 
-foreach ($server in @(@{ Port = 8000; Folder = 'production' }, @{ Port = 5050; Folder = 'enviro' })) {
+# The AI worker (:8100, YOLO for the Raspberry Pi) is watched only once state\enabled_8100 exists:
+# it is created at the Pi cutover (docs\MIGRATE_MACHINE.md section 9).
+$servers = @(@{ Port = 8000; Folder = 'production' }, @{ Port = 5050; Folder = 'enviro' })
+if (Test-Path (Join-Path $state 'enabled_8100')) { $servers += @{ Port = 8100; Folder = 'ai_worker' } }
+foreach ($server in $servers) {
     $port = $server.Port
     if (Test-Path (Join-Path $state "stopped_$port")) { continue }
     $failFile = Join-Path $state "fails_$port"

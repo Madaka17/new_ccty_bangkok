@@ -133,6 +133,26 @@ class YoloSwitch:
         print(f"[YOLO] switched {'on' if enabled else 'off'}: {out['holders']}")
         return out
 
+    def retry_missing(self):
+        """While on, load every holder that has no model yet (the Pi: the PC's AI worker was down when it
+        tried). Returns the names that loaded. Errors stay per holder, like set()."""
+        done = []
+        with self.lock:
+            if not self.enabled:
+                return done
+            for name, holder in self.holders.items():
+                try:
+                    if holder.models_loaded():
+                        continue
+                    holder.load_models()
+                    if holder.models_loaded():
+                        done.append(name)
+                except Exception as e:  # noqa: BLE001 - one holder must not stop the others
+                    print(f"[YOLO] {name}: retry failed: {e}")
+        if done:
+            print(f"[YOLO] loaded after retry: {done}")
+        return done
+
     def _vram(self):
         if self._real_cuda:
             return gpu_memory()

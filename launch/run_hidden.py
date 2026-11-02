@@ -29,7 +29,7 @@ MAX_BYTES = 10 * 2**20
 BACKUPS = 5
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 TARGETS = {name: ["cmd.exe", "/c", str(ROOT / "launch" / name / "start.bat"), "--child"]
-           for name in ("production", "test", "enviro")}
+           for name in ("production", "test", "enviro", "ai_worker")}
 TARGETS["camera"] = ["cmd.exe", "/c", str(ROOT / "launch" / "camera_status.bat"), "--watch", "300"]
 
 
