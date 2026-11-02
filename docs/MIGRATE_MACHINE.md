@@ -356,11 +356,37 @@ IP คอม `192.168.1.101` ได้จาก router เอง ควรจอ
   เปิดตอนสลับเครื่องเท่านั้น หลังปิด task `BKK StreetSmart backup` บนคอมแล้ว: `sudo systemctl enable --now bkk-backup.timer`
   ไฟล์สำรองอยู่ใน SSD ลูกเดียวกับ DB กันไฟล์เสียได้ แต่ถ้า SSD เสียจะหายด้วย ควรคัดลอกไปเก็บที่อื่นเป็นระยะ
 
-### 9.6 คัดลอกข้อมูล (C) และสลับเครื่อง (D): ยังไม่ทำ
+### 9.6 คัดลอกข้อมูล (C) และสลับเครื่อง (D)
 
-- C: คัดลอก `instances/production`, `ENVIRO/data`, `BMA_DATA_DIR` และไฟล์ `.pt` ไป `/mnt/ssd` ด้วย `scp` หรือ `rsync`
-  ตอนเว็บบนคอมยังเปิดอยู่ ส่วน DB ให้ใช้ sqlite backup ห้ามคัดลอกไฟล์ตรงๆ ขณะที่เซิร์ฟเวอร์เขียนอยู่
-- D: ทำตามข้อ 6 แต่ฝั่งเครื่องใหม่ใช้ `systemctl enable --now bkk-production bkk-enviro`
+C รอบแรกทำแล้ว 2026-11-02 ตอนเว็บบนคอมยังเปิดอยู่ ใช้ `tar` ส่งผ่าน `ssh` (Windows ไม่มี rsync):
+
+| อะไร | ไปที่ | ขนาด | เวลา |
+|---|---|---|---|
+| `instances\production` (ไม่รวม `dist_old`, `dist_prev*`, `dist_river_*`, `dist_next`, `*.db`) | `/mnt/ssd/new_ccty_bangkok/instances/production` | 5.2 GB, ~177k ไฟล์ (ส่วนใหญ่เป็น cache รูปแผนที่) | 11 นาที |
+| `vehicle_counts.db`, `cache/telemetry.db`, `ENVIRO\data\enviro.db` (ทำสำเนาด้วย sqlite backup ก่อน) | ที่เดียวกัน | 970 MB | `integrity_check` ok ทั้ง 3 ตัว |
+| `ENVIRO\data\accounts.txt` | `ENVIRO/data/` (สิทธิ์ 600) | | |
+| `E:\data smartstreet` ไม่รวม `backup\` | `/mnt/ssd/data_smartstreet` | 1.7 GB, 41,714 ไฟล์ ตรงกันทั้งสองฝั่ง | 38 วินาที |
+
+ไม่ได้คัดลอก: โฟลเดอร์ `backup\` (11 GB, ไฟล์สำรองเก่าของคอม Pi จะทำของตัวเอง) และไฟล์ `.pt` (YOLO รันบนคอม)
+`session_secret` และ `vapid_private.pem` บน Pi ตั้งสิทธิ์เป็น 600 แล้ว
+
+ตัวอย่างคำสั่ง (รันจาก Git Bash บนคอม):
+
+```bash
+K="-i $USERPROFILE/.ssh/bkkpi_ed25519"
+tar -cf - --exclude='./dist_old' --exclude='./dist_prev*' --exclude='./dist_river_*' --exclude='./dist_next' \
+    --exclude='*.db' --exclude='*.db-wal' --exclude='*.db-shm' -C instances/production . |
+  ssh $K test@192.168.1.109 "tar -xf - -C /mnt/ssd/new_ccty_bangkok/instances/production"
+tar -cf - --exclude='./backup' -C "/e/data smartstreet" . |
+  ssh $K test@192.168.1.109 "tar -xf - -C /mnt/ssd/data_smartstreet"
+```
+
+รอบสุดท้าย (ตอน D หลังหยุด server บนคอม) ให้ทำซ้ำคำสั่งเดิม แล้วทำสำเนา DB ทั้ง 3 ตัวใหม่
+ไฟล์ cache ที่เปลี่ยนระหว่างรอบแรกจะถูกทับเป็นของใหม่
+
+D ยังไม่ทำ:
+- ทำตามข้อ 6 แต่ฝั่ง Pi ใช้ `sudo systemctl enable --now bkk-production bkk-enviro bkk-backup.timer`
   แล้วติดตั้ง cloudflared service บน Pi
-  **ห้ามเปิด cloudflared บน Pi ขณะที่ tunnel บนคอมยังรันอยู่** เพราะผู้ใช้จะถูกแบ่งไปสองเครื่อง
-  ทำเมื่อคุณสั่งเท่านั้น
+- คัดลอก credentials ของ tunnel (`C:\Users\user\.cloudflared\<tunnel-id>.json`) ไป Pi ตอนนี้
+- **ห้ามเปิด cloudflared บน Pi ขณะที่ tunnel บนคอมยังรันอยู่** เพราะผู้ใช้จะถูกแบ่งไปสองเครื่อง
+- ทำเมื่อคุณสั่งเท่านั้น
