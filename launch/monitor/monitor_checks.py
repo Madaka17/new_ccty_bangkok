@@ -184,6 +184,20 @@ def _uptime(s):
     return f"{s // 60} min" if s < 7200 else f"{s // 3600} h"
 
 
+def watchdog_status(platform=os.name):
+    """The watchdog row. On Linux (the Pi) systemd restarts the servers (Restart=always): no heartbeat needed."""
+    if platform != "nt":
+        return _status("service:watchdog", "service", "watchdog", LABELS["watchdog"], "ok",
+                       "systemd restarts the servers (Restart=always)")
+    age = watchdog_age()
+    if age is None:
+        return _status("service:watchdog", "service", "watchdog", LABELS["watchdog"], "fail", "no heartbeat file")
+    if age < 360:
+        return _status("service:watchdog", "service", "watchdog", LABELS["watchdog"], "ok", f"last run {int(age)} s ago")
+    return _status("service:watchdog", "service", "watchdog", LABELS["watchdog"], "fail",
+                   f"no run for {int(age // 60)} min (scheduled task 'BKK StreetSmart watchdog')")
+
+
 def _server(target, port):
     """(status, health or None)."""
     key, name = f"server:{target}", LABELS[target]
@@ -263,14 +277,7 @@ def run_round(gateway_due):
         # no fresh counts: the BMA / ITIC cards follow the camera status card instead of keeping their last state
         for t in ("cam_bma", "cam_itic"):
             out.append(_status(f"service:{t}", "service", t, LABELS[t], camera["state"], camera["detail"]))
-    age = watchdog_age()
-    if age is None:
-        out.append(_status("service:watchdog", "service", "watchdog", LABELS["watchdog"], "fail", "no heartbeat file"))
-    elif age < 360:
-        out.append(_status("service:watchdog", "service", "watchdog", LABELS["watchdog"], "ok", f"last run {int(age)} s ago"))
-    else:
-        out.append(_status("service:watchdog", "service", "watchdog", LABELS["watchdog"], "fail",
-                           f"no run for {int(age // 60)} min (scheduled task 'BKK StreetSmart watchdog')"))
+    out.append(watchdog_status())
     disk = (prod_h or {}).get("data_disk")
     if prod_h is not None and disk:   # production did not answer: no row, the store keeps the last one
         free, total, path = disk["free_gb"], disk["total_gb"], disk["path"]

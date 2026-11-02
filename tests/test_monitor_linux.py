@@ -72,3 +72,12 @@ def test_collector_lock_is_exclusive(tmp_path):
     finally:
         a.close()
         b.close()
+
+
+def test_watchdog_row_on_linux_is_systemd(monkeypatch, tmp_path):
+    # The Pi has no Windows watchdog task: systemd restarts the servers (Restart=always), so no heartbeat is fine.
+    monkeypatch.setattr(monitor_checks, "STATE_DIR", tmp_path)
+    row = monitor_checks.watchdog_status(platform="posix")
+    assert row["state"] == "ok" and "systemd" in row["detail"]
+    row = monitor_checks.watchdog_status(platform="nt")
+    assert row["state"] == "fail" and row["detail"] == "no heartbeat file"
