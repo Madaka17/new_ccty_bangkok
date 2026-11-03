@@ -1,5 +1,5 @@
 """
-The Workflow page's graph (launch\\monitor\\ui\\flow3d.js draws it): the pipeline from images and data through YOLO and
+The Workflow page's graph (launch\\monitor\\ui\\flow2d.js draws it): the pipeline from images and data through YOLO and
 the AI agents to the output, built from the collector's status rows (Store.current()). Called by Api.flow in
 monitor_app.py, which the desktop window and the phone page (monitor_web.py) use. Pure: no I/O. A missing row is an
 idle node, so a server that is down still gives a full graph.

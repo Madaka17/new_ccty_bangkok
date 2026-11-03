@@ -170,18 +170,19 @@ def test_flow_is_read_only_method(srv):
 
 def test_static_whitelist_only(srv, monkeypatch, tmp_path):
     _, base = srv
-    fake = tmp_path / "flow3d.js"
+    fake = tmp_path / "flow2d.js"
     fake.write_text("export function mount() {}", encoding="utf-8")
-    monkeypatch.setitem(monitor_web.STATIC, "flow3d.js", fake)
-    code, body, headers = req(base + "/flow3d.js")
+    monkeypatch.setitem(monitor_web.STATIC, "flow2d.js", fake)
+    code, body, headers = req(base + "/flow2d.js")
     assert code == 200 and body == fake.read_bytes()
     assert headers["Content-Type"].startswith("text/javascript")
-    assert req(base + "/vendor/three.module.min.js")[0] == 200
+    assert req(base + "/vendor/three.module.min.js")[0] == 404   # the 3D view and its Three.js files are gone
+    assert "flow2d.js" in monitor_web.STATIC and monitor_web.STATIC["flow2d.js"].is_file()
     for path in ["/vendor/../state/monitor.db", "/vendor/x.py", "/monitor_web.py", "/api/../monitor_web.py"]:
         assert req(base + path)[0] == 404
 
 
 def test_static_missing_file_is_404(srv, monkeypatch, tmp_path):
     _, base = srv
-    monkeypatch.setitem(monitor_web.STATIC, "flow3d.js", tmp_path / "not_there.js")
-    assert req(base + "/flow3d.js")[0] == 404
+    monkeypatch.setitem(monitor_web.STATIC, "flow2d.js", tmp_path / "not_there.js")
+    assert req(base + "/flow2d.js")[0] == 404

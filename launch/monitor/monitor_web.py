@@ -5,7 +5,7 @@ BKK Monitor on the phone: the desktop window's page, served read-only on 127.0.0
                                                                 (launch\monitor\install.ps1); no window
 Tailscale publishes it to the tailnet only (never public):
     tailscale serve --bg 8090        ->  https://vexila.<tailnet>.ts.net/
-The Workflow page script and its Three.js files (STATIC, a fixed list) are served read-only too.
+The Workflow page script (STATIC, a fixed list) is served read-only too.
 The page (ui\index.html) gets <meta name="bkk-web"> here, so it calls POST /api/<method> instead of pywebview
 and hides the buttons that change something. Only the methods in READ_ONLY answer; start/restart/stop, YOLO,
 the collector button and the file dialogs stay on the desktop.
@@ -26,12 +26,9 @@ from monitor_store import DEFAULT_DB, Store  # noqa: E402
 
 PORT = 8090
 READ_ONLY = {"status", "events", "processes", "log_tail", "check_now", "flow"}
-# the only files served besides the page: the Workflow 3D script and the Three.js files it imports
+# the only file served besides the page: the Workflow graph script
 STATIC = {
-    "flow3d.js": HERE / "ui" / "flow3d.js",
-    "vendor/three.module.min.js": HERE / "ui" / "vendor" / "three.module.min.js",
-    "vendor/OrbitControls.js": HERE / "ui" / "vendor" / "OrbitControls.js",
-    "vendor/CSS2DRenderer.js": HERE / "ui" / "vendor" / "CSS2DRenderer.js",
+    "flow2d.js": HERE / "ui" / "flow2d.js",
 }
 INDEX = HERE / "ui" / "index.html"
 LOG_PATH = HERE / "state" / "web.log"
