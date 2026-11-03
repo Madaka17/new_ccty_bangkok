@@ -36,8 +36,10 @@ class BmaSession:
         s = getattr(self._local, 'session', None)
         if s is None:
             s = requests.Session()
+            # From 2026-10-26 ~17:00 the site resets the connection for Chrome/124.0.0.0 and python-requests'
+            # default User-Agent; Chrome/130 and later answer (tested 2026-10-28)
             s.headers.update({
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
                 'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
                 'Accept-Language': 'th,en-US;q=0.9,en;q=0.8',
             })
