@@ -14,6 +14,26 @@ The power value is an **estimate** (the screen shows `~`). The Pi 4 has no power
 When the screen gets no good answer for 10 s, the values turn grey and `Pi offline` shows in red.
 They come back by themselves when the service answers again.
 
+## Stored design (firmware 1.3.0)
+
+Screen Studio can upload a design. Without one, the screen shows the built-in look above.
+
+| Endpoint | Body | Limits | Stored as |
+|---|---|---|---|
+| `POST /design/base` | multipart file | exactly 115200 bytes (240x240 RGB565, big-endian) | `/base.rgb` |
+| `POST /design/layout` | multipart file | at most 2048 bytes, must pass the layout check | `/layout.json` |
+| `POST /design/anim` | multipart file | sprite v2: 48-byte header plus at most 4096 cells; an empty file removes it | `/anim.bin` |
+| `POST /design/reset` | none | removes all three files and goes back to the built-in look | |
+| `GET /info` | none | JSON: `model`, `fw`, `design`, `ip`, `uptime_s`, `free_heap`, `fs_free`, `reset_reason` | |
+
+None of these need the `/update` password, like `/update` itself. Each upload goes to `<name>.tmp`
+first, is checked, and only then replaces the file. A rejected upload gets `400` with a short reason,
+and the old file stays. A power cut during an upload keeps the old file.
+
+The design is drawn only when `/base.rgb` has 115200 bytes and `/layout.json` passes the check.
+Otherwise, or when LittleFS fails to mount, the built-in look is drawn. A missing or invalid
+`/anim.bin` only means no sprite. `/update`, `/`, `/set` and the WiFi policy work the same in every state.
+
 ## Pi service
 
 ```bash

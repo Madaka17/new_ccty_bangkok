@@ -60,6 +60,14 @@ void test_default_layout_matches_draw_positions() {
     TEST_ASSERT_EQUAL_INT16(108, l.w[W_POWER].w);
     TEST_ASSERT_EQUAL_INT16(134, l.w[W_TEMP].x);         // right edge 230, pad 96
     TEST_ASSERT_EQUAL_INT16(96, l.w[W_TEMP].w);
+    TEST_ASSERT_EQUAL_INT16(120, l.w[W_FOOTER].x);       // right edge 230, font 1 bottom at 238
+    TEST_ASSERT_EQUAL_INT16(230, l.w[W_FOOTER].y);
+    TEST_ASSERT_EQUAL_INT16(8, l.w[W_FOOTER].h);
+    TEST_ASSERT_EQUAL_UINT8(1, l.w[W_FOOTER].font);
+    TEST_ASSERT_EQUAL_INT16(120, l.w[W_STATUS].x);       // right edge 230, font 2 bottom at 238
+    TEST_ASSERT_EQUAL_INT16(222, l.w[W_STATUS].y);
+    TEST_ASSERT_EQUAL_INT16(16, l.w[W_STATUS].h);
+    TEST_ASSERT_EQUAL_UINT8(2, l.w[W_STATUS].font);
     TEST_ASSERT_EQUAL_UINT16(0xFFFF, l.text);
     TEST_ASSERT_EQUAL_UINT16(0x8410, l.muted);
     TEST_ASSERT_EQUAL_UINT16(0x07E0, l.ok);

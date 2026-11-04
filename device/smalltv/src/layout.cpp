@@ -12,8 +12,8 @@ void defaultLayout(Layout& out) {
     out.w[W_RAM_BAR] = {10, 116, 220, 10, 0, true};
     out.w[W_POWER] = {12, 164, 108, 26, 4, true};
     out.w[W_TEMP] = {134, 164, 96, 26, 4, true};
-    out.w[W_FOOTER] = {120, 228, 110, 12, 1, true};
-    out.w[W_STATUS] = {120, 226, 110, 14, 2, true};
+    out.w[W_FOOTER] = {120, 230, 110, 8, 1, true};   // drawn bottom-aligned at y 238: font 1 is 8 px tall
+    out.w[W_STATUS] = {120, 222, 110, 16, 2, true};  // font 2 is 16 px tall
     out.text = 0xFFFF;
     out.muted = 0x8410;
     out.ok = 0x07E0;
