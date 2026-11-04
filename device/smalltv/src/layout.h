@@ -25,6 +25,10 @@ void defaultLayout(Layout& out);
 // False on any error; out is left unchanged on false.
 bool parseLayout(const char* json, Layout& out);
 
+// False when the last reset was a crash or watchdog (ESP8266 reason 1 hardware WDT, 2 exception,
+// 3 software WDT): that boot then skips the stored design, so a design that crashes cannot loop the display.
+bool designSafeAfterReset(uint32_t reason);
+
 // Bar colour for a percentage: under 60 ok, under 85 warn, else critical.
 uint16_t levelColorOf(const Layout& l, float pct);
 

@@ -163,8 +163,8 @@ static void drawDesignWidget(int id, const Rect& r, const Screen& now) {
         case W_TEMP:
             drawDesignText(r, now.temp == SCREEN_NO_TEMP ? String("-- C") : String(now.temp) + " C", value);
             break;
-        case W_FOOTER:  // hidden while stale, as the built-in look does
-            if (!now.stale) drawDesignText(r, String(now.ramUsedMb) + "/" + String(now.ramTotalMb) + " MB", layout.muted);
+        case W_FOOTER:  // muted while stale; the base restore clears the old text
+            drawDesignText(r, String(now.ramUsedMb) + "/" + String(now.ramTotalMb) + " MB", layout.muted);
             break;
         case W_STATUS:
             if (now.stale) drawDesignText(r, now.wifiDown ? "No WiFi" : "Pi offline", layout.critical);
@@ -473,6 +473,7 @@ static void handleDesignReset() {
         LittleFS.remove(BASE_PATH);
         LittleFS.remove(LAYOUT_PATH);
         LittleFS.remove(ANIM_PATH);
+        for (int s = SLOT_BASE; s <= SLOT_ANIM; s++) LittleFS.remove(tmpPath((DesignSlot)s));  // leftover uploads
     }
     loadDesign();
     refreshScreen();
@@ -560,7 +561,10 @@ void setup() {
     updater.setup(&server, "/update");
     server.begin();
 
-    loadDesign();
+    // Boot-loop guard. The ESP8266 reset reasons (user_interface.h): REASON_WDT_RST = 1 (hardware watchdog),
+    // REASON_EXCEPTION_RST = 2, REASON_SOFT_WDT_RST = 3. After any of them the stored design is skipped,
+    // so /update and the built-in look still work. A normal restart or a new upload loads the design again.
+    if (designSafeAfterReset(ESP.getResetInfoPtr()->reason)) loadDesign();
     refreshScreen();
 }
 

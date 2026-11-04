@@ -23,7 +23,7 @@ Screen Studio can upload a design. Without one, the screen shows the built-in lo
 | `POST /design/base` | multipart file | exactly 115200 bytes (240x240 RGB565, big-endian) | `/base.rgb` |
 | `POST /design/layout` | multipart file | at most 2048 bytes, must pass the layout check | `/layout.json` |
 | `POST /design/anim` | multipart file | sprite v2: 48-byte header plus at most 4096 cells; an empty file removes it | `/anim.bin` |
-| `POST /design/reset` | none | removes all three files and goes back to the built-in look | |
+| `POST /design/reset` | none | removes all three files and any leftover `.tmp` upload, then goes back to the built-in look | |
 | `GET /info` | none | JSON: `model`, `fw`, `design`, `ip`, `uptime_s`, `free_heap`, `fs_free`, `reset_reason` | |
 
 None of these need the `/update` password, like `/update` itself. Each upload goes to `<name>.tmp`
@@ -33,6 +33,10 @@ and the old file stays. A power cut during an upload keeps the old file.
 The design is drawn only when `/base.rgb` has 115200 bytes and `/layout.json` passes the check.
 Otherwise, or when LittleFS fails to mount, the built-in look is drawn. A missing or invalid
 `/anim.bin` only means no sprite. `/update`, `/`, `/set` and the WiFi policy work the same in every state.
+
+After a boot caused by a crash or watchdog (reset reasons 1, 2 or 3) the stored design is skipped for
+that boot, so a design that crashes the display cannot put it in a boot loop. The next normal restart,
+or a new upload, loads the design again. The footer is muted while the stale values show.
 
 ## Pi service
 

@@ -87,6 +87,11 @@ bool parseLayout(const char* json, Layout& out) {
     return true;
 }
 
+bool designSafeAfterReset(uint32_t reason) {
+    const uint32_t HARDWARE_WDT = 1, EXCEPTION = 2, SOFTWARE_WDT = 3;  // ESP8266 REASON_*_RST values
+    return reason != HARDWARE_WDT && reason != EXCEPTION && reason != SOFTWARE_WDT;
+}
+
 uint16_t levelColorOf(const Layout& l, float pct) {
     if (pct < 60.0f) return l.ok;
     if (pct < 85.0f) return l.warn;

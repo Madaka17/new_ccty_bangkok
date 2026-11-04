@@ -317,6 +317,18 @@ void test_valid_anim_accepts_v2_and_rejects_limits() {
     TEST_ASSERT_FALSE(validAnim(anim, len));
 }
 
+void test_design_skipped_after_crash_reset() {
+    // ESP8266 reset reasons: 1 hardware watchdog, 2 exception, 3 software watchdog.
+    TEST_ASSERT_FALSE(designSafeAfterReset(1));
+    TEST_ASSERT_FALSE(designSafeAfterReset(2));
+    TEST_ASSERT_FALSE(designSafeAfterReset(3));
+    // Power on (0), software restart (4), deep sleep wake (5) and external reset (6) load the design.
+    TEST_ASSERT_TRUE(designSafeAfterReset(0));
+    TEST_ASSERT_TRUE(designSafeAfterReset(4));
+    TEST_ASSERT_TRUE(designSafeAfterReset(5));
+    TEST_ASSERT_TRUE(designSafeAfterReset(6));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_default_layout_matches_draw_positions);
@@ -331,5 +343,6 @@ int main() {
     RUN_TEST(test_level_color_uses_layout);
     RUN_TEST(test_changed_widgets_only_flags_changes);
     RUN_TEST(test_valid_anim_accepts_v2_and_rejects_limits);
+    RUN_TEST(test_design_skipped_after_crash_reset);
     return UNITY_END();
 }
