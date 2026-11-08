@@ -1,7 +1,7 @@
 """Access guard for public exposure (Cloudflare Tunnel at bkksmartstreet.com / LAN).
 
 - Control endpoints (POST/PUT/DELETE that change AI or scanner state) are only
-  allowed from trusted networks (localhost, LAN, tailnet) or with a valid
+  allowed from trusted networks (localhost, LAN) or with a valid
   ``X-Admin-Token`` header matching ``ADMIN_TOKEN`` in .env.
 - ``/api/chat`` (uses paid Gemini/Claude keys) is rate limited per client IP and
   the request body is size-capped, so a stranger with the link cannot drain the
@@ -26,11 +26,11 @@
 - Every response carries security headers (CSP, no framing, nosniff, referrer / permissions policy,
   HSTS, noindex).
 
-Tailscale serve/funnel forwards the real client address in ``X-Forwarded-For``,
-so the limiter keys on that header when the direct peer is a local proxy.
+A local proxy on 127.0.0.1 forwards the real client address in ``X-Forwarded-For``,
+so the limiter keys on that header when the direct peer is loopback.
 Cloudflare Tunnel (cloudflared) connects to ``CLOUDFLARE_TUNNEL_ADDR`` (127.0.0.2) instead of 127.0.0.1,
-and only those requests are keyed on ``CF-Connecting-IP``: both proxies come from 127.0.0.1, and a
-Funnel visitor could send that header themselves.
+and only those requests are keyed on ``CF-Connecting-IP``: a request through any other local proxy
+could carry that header from the visitor.
 """
 import hashlib
 import hmac
@@ -100,8 +100,6 @@ SECURITY_HEADERS = {
 TRUSTED_NETS = [ipaddress.ip_network(n) for n in (
     "127.0.0.0/8", "::1/128",
     "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",   # LAN
-    "100.64.0.0/10",                                    # Tailscale CGNAT range
-    "fd7a:115c:a1e0::/48",                              # Tailscale IPv6
 )]
 
 # Mutating endpoints that are public by design (anonymous usage telemetry)
@@ -209,7 +207,7 @@ def client_ip(request: Request) -> str:
         # request without it still comes from outside: never fall back to the loopback peer, which is trusted.
         return request.headers.get("cf-connecting-ip", "").strip() or "cloudflare"
     peer = request.client.host if request.client else ""
-    # Only trust X-Forwarded-For when the direct peer is our own proxy (tailscale serve)
+    # Only trust X-Forwarded-For when the direct peer is a local proxy
     if peer in ("127.0.0.1", "::1"):
         fwd = request.headers.get("x-forwarded-for", "")
         if fwd:
@@ -221,9 +219,6 @@ def client_ip(request: Request) -> str:
 def is_trusted(request: Request) -> bool:
     if ADMIN_TOKEN and hmac.compare_digest(request.headers.get("x-admin-token", ""), ADMIN_TOKEN):
         return True
-    # Tailnet users come through tailscale serve from 127.0.0.1 with their 100.x address in
-    # X-Forwarded-For, so the address check covers them. Identity headers (Tailscale-User-Login)
-    # are not trusted: a client could send one itself.
     return _is_trusted_ip(client_ip(request))
 
 

@@ -26,7 +26,7 @@ function icon(name, cls=''){return `<svg viewBox="0 0 24 24" fill="none" stroke=
 
 /* ============================= AUTH + API ============================= */
 // Path this page is served under: '' at http://localhost:5050/, '/enviro' on the public site, where
-// Tailscale Funnel mounts ENVIRO at /enviro next to BKK StreetSmart. Every API and WebSocket URL starts with it.
+// the Cloudflare Tunnel serves ENVIRO at /enviro next to BKK StreetSmart. Every API and WebSocket URL starts with it.
 const BASE = location.pathname.replace(/\/(index\.html)?$/, '');
 let AUTH = JSON.parse(localStorage.getItem('enviro_auth') || 'null');
 // Without a login the dashboard opens read-only as this guest (the server treats a request with no

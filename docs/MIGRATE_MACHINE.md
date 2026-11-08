@@ -30,7 +30,6 @@ PyTorch 2.14.0+cu130, โปรเจกต์อยู่ที่ `E:\new_ccty
 3. ติดตั้ง Git, Python 3.14, Node.js 24
 4. ติดตั้ง cloudflared ที่ `C:\Program Files (x86)\cloudflared\cloudflared.exe`
    (`launch\cloudflare\install_service.ps1` ใช้ path นี้ ถ้าติดตั้งที่อื่นต้องแก้ตัวแปร `$exe` ในไฟล์นั้น)
-5. ติดตั้ง Tailscale ถ้าจะดูหน้า BKK Monitor จากมือถือ
 
 ---
 
@@ -219,14 +218,11 @@ powershell -ExecutionPolicy Bypass -File launch\cloudflare\install_service.ps1
 # watchdog: เปิดเซิร์ฟเวอร์ใหม่เมื่อ :8000 หรือ :5050 ไม่ตอบ (ทุก 2 นาที)
 powershell -ExecutionPolicy Bypass -File launch\watchdog\install.ps1
 
-# BKK Monitor: collector ทุก 30 วินาที + หน้าเว็บสำหรับมือถือที่ 127.0.0.1:8090 + ไอคอนบน Desktop
+# BKK Monitor: collector ทุก 30 วินาที + หน้าเว็บดูอย่างเดียวที่ 127.0.0.1:8090 + ไอคอนบน Desktop
 powershell -ExecutionPolicy Bypass -File launch\monitor\install.ps1
 
 # สำรอง DB ทุกคืน 03:30
 schtasks /create /tn "BKK StreetSmart backup" /tr "\"E:\new_ccty_bangkok\local\pipeline\backup_db.bat\"" /sc daily /st 03:30
-
-# ให้มือถือดู BKK Monitor ผ่าน Tailscale
-tailscale serve --bg 8090
 ```
 
 ไอคอน `BKK YOLO On-Off` บน Desktop: สร้าง shortcut ไปที่ `launch\yolo_switch.bat` เอง ถ้าต้องการ

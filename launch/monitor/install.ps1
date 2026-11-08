@@ -1,7 +1,6 @@
 # Registers (or with -Remove, deletes) two scheduled tasks for the signed-in user, both started at logon with pythonw (no window):
 #   "BKK Monitor collector": launch\monitor\collector.py, checks servers, AI agents and YOLO every 30 s.
-#   "BKK Monitor web": launch\monitor\monitor_web.py, read-only page for the phone on 127.0.0.1:8090
-#   (publish it on the tailnet with: tailscale serve --bg 8090).
+#   "BKK Monitor web": launch\monitor\monitor_web.py, read-only page on 127.0.0.1:8090.
 # Also puts the "BKK Monitor" icon on the Desktop and starts both tasks now. No administrator rights needed.
 param([switch]$Remove)
 $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
@@ -17,7 +16,7 @@ $tasks = @(
     @{
         Name = 'BKK Monitor web'
         Script = 'monitor_web.py'
-        Description = 'BKK Monitor web: read-only page for the phone on 127.0.0.1:8090 (tailscale serve --bg 8090). launch\monitor'
+        Description = 'BKK Monitor web: read-only page on 127.0.0.1:8090. launch\monitor'
         Started = "[OK] Task 'BKK Monitor web' started: http://127.0.0.1:8090/ (view only)."
     }
 )
@@ -47,4 +46,3 @@ $s.WorkingDirectory = $root
 $s.IconLocation = "$PSScriptRoot\icons\monitor.ico"
 $s.Save()
 foreach ($t in $tasks) { Write-Host $t.Started }
-Write-Host "     For the phone, once: tailscale serve --bg 8090   then open https://<this PC>.<tailnet>.ts.net/ in the Tailscale-connected phone."

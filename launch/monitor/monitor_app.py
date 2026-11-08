@@ -3,7 +3,7 @@ BKK Monitor: the desktop window (Desktop icon "BKK Monitor", made by launch\moni
 
     .venv\Scripts\pythonw.exe launch\monitor\monitor_app.py
 
-The phone reads the same state through launch\monitor\monitor_web.py (read-only page on 127.0.0.1:8090).
+A browser reads the same state through launch\monitor\monitor_web.py (read-only page on 127.0.0.1:8090).
 
 Shows what the collector (launch\monitor\collector.py) stored in state\monitor.db: status cards, every check,
 and the history of changes. The buttons run the same files as the Desktop shortcuts (launch\<folder>\start.bat,

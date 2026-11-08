@@ -14,9 +14,9 @@ def _req(peer, server="127.0.0.1", **headers):
 
 
 def test_trusted_networks():
-    for ip in ("127.0.0.1", "192.168.1.20", "10.1.2.3", "100.101.102.103"):
+    for ip in ("127.0.0.1", "192.168.1.20", "10.1.2.3"):
         assert _is_trusted_ip(ip)
-    for ip in ("8.8.8.8", "203.0.113.5", "not-an-ip", ""):
+    for ip in ("8.8.8.8", "203.0.113.5", "100.101.102.103", "not-an-ip", ""):
         assert not _is_trusted_ip(ip)
 
 
@@ -44,8 +44,8 @@ def test_cloudflare_tunnel_without_header_is_not_trusted():
     assert not _is_trusted_ip(ip)
 
 
-def test_funnel_ignores_spoofed_cf_connecting_ip():
-    # Tailscale Funnel connects to 127.0.0.1 and passes on any CF-Connecting-IP the visitor sent
+def test_local_proxy_ignores_spoofed_cf_connecting_ip():
+    # Another local proxy connects to 127.0.0.1 and passes on any CF-Connecting-IP the visitor sent
     r = _req("127.0.0.1", cf_connecting_ip="127.0.0.1", x_forwarded_for="203.0.113.5")
     assert client_ip(r) == "203.0.113.5"
 

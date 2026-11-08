@@ -1,10 +1,10 @@
 r"""
-BKK Monitor on the phone: the desktop window's page, served read-only on 127.0.0.1:8090.
+BKK Monitor web: the desktop window's page, served read-only on 127.0.0.1:8090.
 
     .venv\Scripts\pythonw.exe launch\monitor\monitor_web.py     started at logon by the "BKK Monitor web" task
                                                                 (launch\monitor\install.ps1); no window
-Tailscale publishes it to the tailnet only (never public):
-    tailscale serve --bg 8090        ->  https://vexila.<tailnet>.ts.net/
+On the Raspberry Pi it runs as bkk-monitor-web.service; look at it from the PC through
+    ssh -L 8090:127.0.0.1:8090 test@192.168.1.109        ->  http://127.0.0.1:8090/
 The Workflow page script (STATIC, a fixed list) is served read-only too.
 The page (ui\index.html) gets <meta name="bkk-web"> here, so it calls POST /api/<method> instead of pywebview
 and hides the buttons that change something. Only the methods in READ_ONLY answer; start/restart/stop, YOLO,
@@ -38,9 +38,9 @@ log = logging.getLogger("bkk-monitor-web")
 
 
 def host_ok(host):
-    """Local names, or this machine's Tailscale name: a page on another site (DNS rebinding) gets 403."""
+    """Local names only: a page on another site (DNS rebinding) gets 403."""
     name = (host or "").strip().lower().rsplit(":", 1)[0] if host and not host.startswith("[") else ""
-    return name in ("127.0.0.1", "localhost") or (name.endswith(".ts.net") and len(name) > len(".ts.net"))
+    return name in ("127.0.0.1", "localhost")
 
 
 def page_bytes():

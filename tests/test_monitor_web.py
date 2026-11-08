@@ -110,9 +110,8 @@ def test_foreign_host_is_refused(srv):
 
 def test_host_ok():
     assert monitor_web.host_ok("127.0.0.1:8090") and monitor_web.host_ok("localhost:8090")
-    assert monitor_web.host_ok("vexila.tail1234.ts.net") and monitor_web.host_ok("VEXILA.tail1234.ts.net:443")
     assert not monitor_web.host_ok("evil.com") and not monitor_web.host_ok(None) and not monitor_web.host_ok("")
-    assert not monitor_web.host_ok("ts.net.evil.com") and not monitor_web.host_ok("evilts.net")
+    assert not monitor_web.host_ok("vexila.tail1234.ts.net") and not monitor_web.host_ok("localhost.evil.com")
 
 
 def test_form_post_is_refused(srv):

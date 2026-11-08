@@ -106,7 +106,7 @@ BMA_DATA_DIR=E:\data smartstreet
 | BKK StreetSmart | https://bkksmartstreet.com |
 | ENVIRO | https://bkksmartstreet.com/enviro/ (หน้า "แผ่นดินไหว" ใน BKK ก็ฝังหน้านี้ไว้) |
 
-- เปิดให้คนนอกเข้าผ่าน **Cloudflare Tunnel** อย่างเดียว ไม่ใช้ Tailscale Funnel แล้ว (Tailscale ยังเปิดอยู่สำหรับเข้าเครื่องจาก tailnet)
+- เปิดให้คนนอกเข้าผ่าน **Cloudflare Tunnel** อย่างเดียว ไม่ใช้ Tailscale แล้ว (ถอนออกจาก PC เมื่อ 2026-11-09)
 - Tunnel รันเป็น Windows service ชื่อ `cloudflared` เปิดเองตอนบูต ไม่ขึ้นกับสคริปต์ start/stop ตั้งค่าอยู่ที่ `launch\cloudflare\config.yml` (tunnel `bkk-streetsmart`) ไฟล์ลับของ tunnel อยู่ที่ `C:\Users\user\.cloudflared\` ไม่เก็บใน Git
   - หลังแก้ `config.yml`: `Restart-Service cloudflared` (ต้องเปิด PowerShell แบบ admin)
   - ติดตั้งใหม่หรือซ่อม service: `launch\cloudflare\install_service.ps1` (แบบ admin)

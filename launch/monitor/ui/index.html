@@ -140,7 +140,7 @@ td.num, th.num { text-align: right; }
 .legend { display: flex; gap: 6px; flex-wrap: wrap; }
 ::-webkit-scrollbar { width: 10px; height: 10px; } ::-webkit-scrollbar-thumb { background: #222830; border-radius: 5px; } ::-webkit-scrollbar-track { background: transparent; }
 
-/* phone (monitor_web.py through Tailscale): sidebar becomes a top bar, the page scrolls, tables scroll sideways */
+/* narrow window (monitor_web.py in a small browser window): sidebar becomes a top bar, the page scrolls, tables scroll sideways */
 @media (max-width: 760px) {
   body { min-width: 0; overflow: auto; }
   .app { flex-direction: column; height: auto; min-height: 100vh; }
@@ -199,7 +199,7 @@ td.num, th.num { text-align: right; }
 <div id="toasts"></div>
 
 <script>
-// Served by monitor_web.py (the phone, through Tailscale): read-only, fetch instead of pywebview
+// Served by monitor_web.py (a browser): read-only, fetch instead of pywebview
 const WEB = !!document.querySelector('meta[name="bkk-web"]');
 async function post(name, args) {
   const ctl = new AbortController();
