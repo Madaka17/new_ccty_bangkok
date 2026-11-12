@@ -62,7 +62,7 @@ if not exist "instances\test\cache" (
     mkdir "instances\test\cache" >nul 2>&1
     for %%f in (longdo_cameras.json bma_events.json traffic_history.json twa_key.json) do if exist "instances\production\cache\%%f" copy /Y "instances\production\cache\%%f" "instances\test\cache\%%f" >nul
     if exist "instances\production\cache\rsc" robocopy "instances\production\cache\rsc" "instances\test\cache\rsc" /E /NFL /NDL /NJH /NJS >nul
-    if exist "instances\production\vehicle_counts.db" copy /Y "instances\production\vehicle_counts.db" "instances\test\vehicle_counts.db" >nul
+    if exist "instances\production\vehicle_counts.db" "%~dp0..\..\.venv\Scripts\python.exe" launch\copy_db.py "instances\production\vehicle_counts.db" "instances\test\vehicle_counts.db"
     if exist "instances\production\count_cameras.json" copy /Y "instances\production\count_cameras.json" "instances\test\count_cameras.json" >nul
 )
 if not exist "instances\test\data" mkdir "instances\test\data"

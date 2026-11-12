@@ -23,7 +23,7 @@ if [ ! -d instances/test/cache ]; then
         [ -f "instances/production/cache/$f" ] && cp "instances/production/cache/$f" "instances/test/cache/$f"
     done
     [ -d instances/production/cache/rsc ] && cp -R instances/production/cache/rsc instances/test/cache/rsc
-    [ -f instances/production/vehicle_counts.db ] && cp instances/production/vehicle_counts.db instances/test/vehicle_counts.db
+    [ -f instances/production/vehicle_counts.db ] && .venv/bin/python launch/copy_db.py instances/production/vehicle_counts.db instances/test/vehicle_counts.db
     [ -f instances/production/count_cameras.json ] && cp instances/production/count_cameras.json instances/test/count_cameras.json
 fi
 mkdir -p instances/test/data
