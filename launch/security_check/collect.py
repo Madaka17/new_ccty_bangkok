@@ -190,6 +190,111 @@ def pi_host_raw():
     return None if out is None else parse_host_output(out)
 
 
+_SSH_JOURNAL_SCRIPT = r'''
+days="$1"
+o=$(journalctl -u ssh -u sshd --since "$days days ago" --no-pager -o short-iso 2>/dev/null)
+if [ -z "$o" ]; then o=$(sudo -n journalctl -u ssh -u sshd --since "$days days ago" --no-pager -o short-iso 2>/dev/null); fi
+echo "$o" | grep -E 'sshd(-session)?\[[0-9]+\]: (Failed |Invalid user|Accepted |Connection closed by|Disconnected from)'
+true
+'''
+
+# short-iso line = "TS host sshd[pid]: message". Every pattern is anchored on the message start and the
+# user part is greedy so the LAST " from IP port N" wins: a hostile user name cannot fake the IP.
+_RE_LINE = re.compile(r"^\S+ \S+ sshd(?:-session)?\[(\d+)\]: (.*)$")
+_RE_ACCEPT = re.compile(r"^Accepted (publickey|password|keyboard-interactive/pam) for (.*) from (\S+) port \d+")
+_RE_FAILED = re.compile(r"^Failed (?:password|publickey|keyboard-interactive/pam) for (invalid user )?(.*) from (\S+) port \d+")
+_RE_INVALID = re.compile(r"^Invalid user (.*) from (\S+)(?: port \d+)?")
+_RE_AUTHFAIL = re.compile(r"^(?:Connection closed by|Disconnected from) authenticating user (.*) (\S+) port \d+")
+_RE_CLOSED_INVALID = re.compile(r"^Connection closed by invalid user (.*) (\S+) port \d+")
+
+
+def _top(counter, key, limit=10):
+    return [{key: k, "n": n} for k, n in sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]]
+
+
+def parse_ssh_journal(text):
+    """Pure parser for `journalctl -u ssh -o short-iso` text. One attempt per (pid, user, ip)."""
+    accepted, attempts = {}, {}
+    for line in (text or "").splitlines():
+        lm = _RE_LINE.match(line)
+        if not lm:
+            continue
+        pid, msg = lm.group(1), lm.group(2)
+        m = _RE_ACCEPT.match(msg)
+        if m:
+            meth = "publickey" if m.group(1) == "publickey" else "password"
+            k = (m.group(3), m.group(2), meth)
+            accepted[k] = accepted.get(k, 0) + 1
+            continue
+        inv = False
+        m = _RE_FAILED.match(msg)
+        if m:
+            inv, user, ip = bool(m.group(1)), m.group(2), m.group(3)
+        elif (m := _RE_INVALID.match(msg)):
+            inv, user, ip = True, m.group(1), m.group(2)
+        elif (m := _RE_CLOSED_INVALID.match(msg)):
+            inv, user, ip = True, m.group(1), m.group(2)
+        elif (m := _RE_AUTHFAIL.match(msg)):
+            user, ip = m.group(1), m.group(2)
+        else:
+            continue
+        key = (pid, user, ip)
+        attempts[key] = attempts.get(key, False) or inv
+    failed = invalid = 0
+    ips, users = {}, {}
+    for (_pid, user, ip), inv in attempts.items():
+        if inv:
+            invalid += 1
+        else:
+            failed += 1
+        users[user] = users.get(user, 0) + 1
+        ips[ip] = ips.get(ip, 0) + 1
+    acc = [{"ip": ip, "user": u, "method": meth, "n": n} for (ip, u, meth), n in sorted(accepted.items())]
+    return {"failed": failed, "invalid_user": invalid, "accepted": acc,
+            "failed_ips": _top(ips, "ip"), "users_tried": _top(users, "user")}
+
+
+def pi_ssh_log(days=30):
+    """Read-only: the Pi's SSH journal, parsed. None when ssh to the Pi fails."""
+    out = ssh(f"echo {_b64(_SSH_JOURNAL_SCRIPT)} | base64 -d | sh -s {int(days)}", timeout=60)
+    return None if out is None else parse_ssh_journal(out)
+
+
+def public_ip():
+    """The owner's home public IP, from our own domain's Cloudflare trace. None on failure."""
+    try:
+        _code, _h, body = _get("https://bkksmartstreet.com/cdn-cgi/trace", timeout=10)
+    except Exception:
+        return None
+    m = re.search(r"^ip=(\S+)$", body.decode("utf-8", "replace"), re.M)
+    return m.group(1) if m else None
+
+
+def public_ip_v4():
+    """Owner's home public IPv4 (public_ip() returns whichever family this PC used). None on any failure."""
+    host = "bkksmartstreet.com"
+    try:
+        af, st, pr, _cn, sa = socket.getaddrinfo(host, 443, socket.AF_INET, socket.SOCK_STREAM)[0]
+        with socket.create_connection(sa[:2], timeout=10) as raw:
+            raw.settimeout(10)
+            with ssl.create_default_context().wrap_socket(raw, server_hostname=host) as s:
+                s.sendall((f"GET /cdn-cgi/trace HTTP/1.1\r\nHost: {host}\r\nUser-Agent: {UA}\r\n"
+                           "Accept: */*\r\nConnection: close\r\n\r\n").encode("ascii"))
+                buf = b""
+                while len(buf) < 4096:
+                    chunk = s.recv(1024)
+                    if not chunk:
+                        break
+                    buf += chunk
+        m = re.search(r"^ip=(\S+)$", buf.decode("utf-8", "replace"), re.M)
+        if not m:
+            return None
+        import ipaddress
+        return m.group(1) if ipaddress.ip_address(m.group(1)).version == 4 else None
+    except Exception:
+        return None
+
+
 def _get(url, timeout=15, extra_headers=None):
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*", **(extra_headers or {})})
     try:

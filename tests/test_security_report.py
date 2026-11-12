@@ -4,6 +4,14 @@ from launch.security_check import collect, main as main_mod
 from launch.security_check.collect import parse_host_output, local_config_flags
 from launch.security_check.report import render
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _no_network_public_ip(monkeypatch):
+    monkeypatch.setattr(collect, "public_ip", lambda: None)
+    monkeypatch.setattr(collect, "public_ip_v4", lambda: None)
+
 HOST_TEXT = """@@listen
 LISTEN 0 128 0.0.0.0:22 0.0.0.0:*
 LISTEN 0 4096 127.0.0.1:8000 0.0.0.0:*
@@ -157,3 +165,93 @@ def test_host_script_finds_ufw_outside_path():
     import base64, inspect
     src = inspect.getsource(collect)
     assert "/usr/sbin/ufw" in src
+
+
+def _extra(**kw):
+    e = {"ssh": {"failed": 40, "invalid_user": 5, "accepted": [], "failed_ips": [{"ip": "9.9.9.9", "n": 30}],
+                 "users_tried": [{"user": "<b>root</b>", "n": 20}]},
+         "owner_ips": ["7.7.7.7"],
+         "geo": [{"ip": "9.9.9.9", "cc": "CN", "country": "China", "n": 30, "owner": False},
+                 {"ip": "7.7.7.7", "cc": "TH", "country": "Thailand", "n": 3, "owner": True}]}
+    e.update(kw)
+    return e
+
+
+def _summ():
+    return {"days": 30, "total": 50, "by_kind": {"probe": 50}, "by_day": [{"day": "2026-11-12", "n": 50}],
+            "top_ips": [{"ip": "<i>1.1.1.1</i>", "n": 40}, {"ip": "7.7.7.7", "n": 3}],
+            "top_paths": [{"path": "/<script>x", "n": 9}], "recent": []}
+
+
+def test_v2_escapes_everything():
+    html = render("production", {"web": [_f("fail", "<script>alert(1)</script>")]}, _summ(), "now", _extra())
+    for bad in ("<script>alert", "<i>1.1.1.1", "/<script>x", "<b>root</b>"):
+        assert bad not in html
+    assert "&lt;script&gt;alert(1)" in html
+
+
+def test_v2_reduced_motion_and_no_network():
+    import re
+    html = render("production", {"web": [_f("warn")]}, _summ(), "now", _extra())
+    assert "prefers-reduced-motion" in html
+    assert not re.findall(r'(?:src|href)\s*=\s*["\']?https?:', html)
+    assert "url(http" not in html and "@import" not in html
+
+
+def test_v2_map_fallback_when_geo_empty():
+    html = render("production", {"web": [_f("ok")]}, _summ(), "now",
+                  {"ssh": None, "owner_ips": [], "geo": []})
+    assert "ยังไม่มีฐานข้อมูล IP" in html
+
+
+def test_v2_owner_chip_and_excluded_from_map():
+    html = render("production", {"web": [_f("ok")]}, _summ(), "now", _extra())
+    assert "7.7.7.7" in html and "เจ้าของ" in html
+    assert 'data-cc="CN"' in html or "ไม่มีฐานข้อมูล" in html
+    assert 'data-cc="TH"' not in html
+
+
+def test_v2_copy_button_and_stats():
+    html = render("production", {"host": [{"area": "host", "level": "fail", "title": "t", "detail": "d",
+                                           "fix": "ทำตามนี้", "cmd": "sudo ufw deny from 1.2.3.4"}]}, _summ(), "now", _extra())
+    assert "data-copy" in html and "<pre>sudo ufw deny from 1.2.3.4</pre>" in html
+    assert 'aria-label="คัดลอกคำสั่ง: t"' in html and "ทำตามนี้" in html
+    assert "ต้องแก้" in html and "45" in html
+
+
+def test_v2_extra_none_ok():
+    assert "<svg" in render("test", {"web": [_f("ok")]}, None, "now")
+
+
+def test_fix_without_cmd_has_no_copy_box():
+    html = render("production", {"host": [{"area": "host", "level": "warn", "title": "t", "detail": "d",
+                                           "fix": "แก้ด้วยมือ"}]}, _summ(), "now", _extra())
+    assert "แก้ด้วยมือ" in html and "<button" not in html and "<pre>" not in html
+
+
+def test_owner_traffic_not_counted_in_cards():
+    summ = {"days": 30, "total": 11, "by_kind": {"probe": 11}, "by_day": [{"day": "2026-11-12", "n": 11}],
+            "top_ips": [{"ip": "7.7.7.7", "n": 11}], "top_paths": [], "recent": []}
+    ssh = {"failed": 5, "invalid_user": 0, "accepted": [], "failed_ips": [{"ip": "7.7.7.7", "n": 5}], "users_tried": []}
+    html = render("production", {"web": [_f("ok")]}, summ, "now", _extra(ssh=ssh))
+    assert 'data-n="0">0</span>' in html
+    assert html.count("(+11 ครั้งจากเจ้าของเครื่อง ไม่นับ)") == 1
+    assert "(+5 ครั้งจากเจ้าของเครื่อง ไม่นับ)" in html
+    assert "รวม 11 ครั้งจากเจ้าของเครื่อง" in html
+
+
+def test_chip_wraps_and_csp_and_glow_scope():
+    import re
+    html = render("production", {"web": [_f("ok")]}, _summ(), "now", _extra())
+    rule = re.search(r"\.chip\{[^}]*\}", html).group(0)
+    assert "overflow-wrap:anywhere" in rule and "max-width:100%" in rule and "nowrap" not in rule
+    assert 'http-equiv="Content-Security-Policy"' in html and "default-src 'none'" in html
+    assert re.search(r"\.card\{[^}]*animation", html) is None
+    assert 'class="bars" role="img" aria-label="ยอดบล็อกรายวัน' in html
+
+
+def test_map_message_when_db_present(monkeypatch):
+    from launch.security_check import geo
+    monkeypatch.setattr(geo, "available", lambda: True)
+    html = render("production", {"web": [_f("ok")]}, _summ(), "now", {"ssh": None, "owner_ips": [], "geo": []})
+    assert "ยังไม่มีผู้โจมตีนอกบ้านให้แสดง" in html and "update_geo" not in html

@@ -84,3 +84,6 @@ launch/logs/
 local/pio/
 device/smalltv/.pio/
 local/reports/
+
+# Offline IP/geo data for the security report
+local/geo/
