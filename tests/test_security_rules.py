@@ -123,6 +123,17 @@ def test_host_password_ssh_fails():
     assert any(x["level"] == "fail" for x in evaluate_host(h))
 
 
+def test_host_root_keys_only_alias_is_ok():
+    # Debian's sshd -T prints the old name "without-password" for "prohibit-password" (root by key only)
+    h = dict(GOOD_HOST, sshd={"passwordauthentication": "no", "permitrootlogin": "without-password"})
+    assert set(_levels(evaluate_host(h))) <= {"ok", "info"}
+
+
+def test_host_root_with_password_fails():
+    h = dict(GOOD_HOST, sshd={"passwordauthentication": "no", "permitrootlogin": "yes"})
+    assert any(x["level"] == "fail" and "root" in x["title"] for x in evaluate_host(h))
+
+
 def test_host_unknown_port_warns():
     f = evaluate_host(dict(GOOD_HOST, listen=["0.0.0.0:3306"]))
     assert any(x["level"] == "warn" and "3306" in x["title"] + x["detail"] for x in f)

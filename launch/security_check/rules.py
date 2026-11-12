@@ -175,8 +175,9 @@ def evaluate_host(raw):
             out.append(_f(a, "fail", "SSH ยังเข้าด้วยรหัสผ่านได้", "คนเดารหัสผ่านได้",
                           "แก้ /etc/ssh/sshd_config เป็น PasswordAuthentication no (กุญแจใช้ได้อยู่แล้ว) แล้ว sudo systemctl restart ssh"))
         root = sshd.get("permitrootlogin")
-        if root is not None and root not in ("no", "prohibit-password"):
-            out.append(_f(a, "fail", "SSH ให้ root เข้าด้วยรหัสผ่านได้", f"PermitRootLogin = {root}",
+        # "without-password" is the old name of "prohibit-password" (root by key only); Debian's sshd -T prints it
+        if root is not None and root not in ("no", "prohibit-password", "without-password"):
+            out.append(_f(a, "fail", "SSH เปิดให้ root เข้าได้", f"PermitRootLogin = {root}",
                           "แก้ /etc/ssh/sshd_config เป็น PermitRootLogin no แล้ว sudo systemctl restart ssh"))
     fw = raw.get("firewall")
     if fw == "denied":
