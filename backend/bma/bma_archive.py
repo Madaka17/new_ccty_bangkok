@@ -29,6 +29,9 @@ import time
 from datetime import datetime, timedelta
 
 from backend.core.instance import DEFAULT_BMA_DATA_DIR
+from backend.core.log import get_logger
+
+log = get_logger("BMA Cycle")
 
 DATA_DIR = os.getenv("BMA_DATA_DIR", DEFAULT_BMA_DATA_DIR)
 CYCLE_MINUTES = max(5, int(os.getenv("BMA_CYCLE_MINUTES", "60")))
@@ -163,7 +166,7 @@ class CycleArchiver:
                     self.archive_and_reset(auto=True)
             except Exception as e:
                 self.last_error = str(e)
-                print(f"[BMA Cycle] archive failed: {e}")
+                log.warning(f"archive failed: {e}")
             wait = max(5.0, self.next_reset() - time.time() + 1)
             time.sleep(min(wait, 60))
 
@@ -219,7 +222,7 @@ class CycleArchiver:
         self.write_period_files(end_dt)
         self.last_archive = {"ts": now, "cycle_start": start, "cameras": len(rows), **tot, "files": files}
         self.last_error = None
-        print(f"[BMA Cycle] archived {len(rows)} cameras, {tot['total']} vehicles -> {self.data_dir}")
+        log.info(f"archived {len(rows)} cameras, {tot['total']} vehicles -> {self.data_dir}")
         return {"status": "ok", **self.last_archive}
 
     # ------------------------------------------------------------ csv writers

@@ -10,6 +10,9 @@ import threading
 import time
 from datetime import date, timedelta
 from pathlib import Path
+from backend.core.log import get_logger
+
+log = get_logger("BestTime")
 
 WINDOW_DAYS = 56
 RETRY_SECONDS = 60      # wait this long after a failed load
@@ -73,10 +76,10 @@ def load_holidays(path=HOLIDAYS_FILE):
             except (TypeError, ValueError):
                 bad += 1
         if bad:
-            print(f"[BestTime] {bad} invalid holiday date(s) ignored in {path}")
+            log.info(f"{bad} invalid holiday date(s) ignored in {path}")
         return out
     except Exception as e:
-        print(f"[BestTime] holidays not loaded from {path}: {e}")
+        log.info(f"holidays not loaded from {path}: {e}")
         return set()
 
 
@@ -133,7 +136,7 @@ class BestTime:
                 except Exception as e:
                     # keep any old cells; try again in a minute, not on every request
                     self._retry_at = now + RETRY_SECONDS
-                    print(f"[BestTime] load failed, keeping {'old' if self._cells is not None else 'no'} data: {e}")
+                    log.warning(f"load failed, keeping {'old' if self._cells is not None else 'no'} data: {e}")
             return self._cells
 
     def _day_type(self, iso):
