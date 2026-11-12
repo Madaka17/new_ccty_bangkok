@@ -16,6 +16,9 @@ from backend.core import stale_stamp
 from backend.core.response_cache import cached_json
 from backend.core.instance import DATA_DIR
 from backend.services import bma_scanner, SAFE_ID
+from backend.core.log import get_logger
+
+log = get_logger("Live Snapshot Error")
 
 router = APIRouter()
 
@@ -68,7 +71,7 @@ async def get_bma_snapshot(camid: str, live: bool = False, annotate: bool = True
                     headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
                 )
         except Exception as e:
-            print(f"[Live Snapshot Error] {e}")
+            log.warning(f"{e}")
 
     if not SAFE_ID.fullmatch(camid):
         raise HTTPException(400, "bad camera id")
@@ -164,7 +167,7 @@ async def get_bma_live_analysis(camid: str):
                 "live": True
             }
     except Exception as e:
-        print(f"[Live Analysis Error] {e}")
+        get_logger("Live Analysis Error").warning(f"{e}")
     
     c = bma_scanner.db.get_camera_latest(camid)
     if c:

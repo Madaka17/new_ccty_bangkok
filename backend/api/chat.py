@@ -16,6 +16,9 @@ from backend.water.air_forecast import air_forecast
 from backend.water.air_service import air
 from backend.water.flood_feeds import tmd_warnings
 from backend.water.flood_service import flood_roads
+from backend.core.log import get_logger
+
+log = get_logger("Chat")
 
 router = APIRouter()
 
@@ -56,7 +59,7 @@ def chat_endpoint(payload: dict = Body(...)):
         try:
             extra[key] = fn()
         except Exception as e:
-            print(f"[Chat] {key} unavailable: {e}")
+            log.info(f"{key} unavailable: {e}")
     extra["weather_at"] = weather_now.outlook   # forecast of a province the question names
     return chat_service.chat(traffic, messages, detector.get_stats(), water, extra, router=flood_router,
                              location=_user_location(payload.get("location")))
