@@ -232,3 +232,25 @@ def test_weights_list_cached(root):
     assert pool.weights() == ["yolo26x.pt"]
     (root / "new.pt").write_bytes(b"w")
     assert pool.weights() == ["yolo26x.pt"]      # cached for 60 s
+
+
+def test_gpu_jobs_stay_on_a_fixed_set_of_threads(root):
+    """Torch/CUDA keeps about 1 MB of private commit per thread that ran inference and never frees it when
+    the thread exits. anyio's to_thread pool retires idle threads after 10 s, so the worker leaked about
+    24 GB a day. Every model call must run on a few long-lived threads instead."""
+    import threading
+
+    from backend.vision.ai_worker import GPU_THREADS
+
+    seen = []
+
+    class ThreadRecordingModel(FakeModel):
+        def __call__(self, source, **kwargs):
+            seen.append(threading.current_thread())
+            return super().__call__(source, **kwargs)
+
+    c = client(root, lambda path: ThreadRecordingModel(path))
+    for _ in range(3 * GPU_THREADS + 3):
+        assert predict(c).status_code == 200
+    assert len(seen) == 3 * GPU_THREADS + 3
+    assert len({id(t) for t in seen}) <= GPU_THREADS

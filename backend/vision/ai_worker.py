@@ -5,14 +5,17 @@ The Pi's YOLO holders get a RemoteYolo (remote_yolo.py) that POSTs PNG images to
 file is loaded on first use and dropped after IDLE_S without calls, so VRAM is free when the Pi does not need it.
 
 Access: only IPs in AI_WORKER_ALLOW (default the Pi and this PC) and, for /predict, the AI_WORKER_TOKEN header.
+Model calls run on GPU_THREADS long-lived threads because CUDA leaks memory per exited thread.
 Run: launch\\ai_worker\\start.bat (python -m backend.vision.ai_worker), port 8100.
 """
+import asyncio
 import gc
 import hmac
 import json
 import os
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import cv2
 import numpy as np
@@ -33,6 +36,7 @@ MAX_BODY = 20 * 2**20       # bytes per request
 MAX_SIDE = 4096             # pixels per image side
 JOB_DEADLINE_S = 10.0       # the Pi stops waiting after its 10 s read timeout: later jobs are dropped
 WEIGHTS_CACHE_S = 60.0
+GPU_THREADS = 4   # long-lived threads for model calls: torch/CUDA leaks ~1 MB per thread that exits after inference
 
 
 def check_kwargs(kwargs):
@@ -156,8 +160,10 @@ def _serialise(result):
 def create_app(root, token, allow, factory=_default_factory, clock=time.monotonic, idle_s=IDLE_S,
                start_janitor=True):
     pool = ModelPool(root, factory, clock, idle_s)
+    gpu_pool = ThreadPoolExecutor(max_workers=GPU_THREADS, thread_name_prefix="ai-worker-gpu")
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.pool = pool
+    app.state.gpu_pool = gpu_pool
 
     def forbidden():
         return JSONResponse({"error": "forbidden"}, status_code=403)
@@ -214,9 +220,8 @@ def create_app(root, token, allow, factory=_default_factory, clock=time.monotoni
                 results = model(images if len(images) > 1 else images[0], **kwargs)
             return {"names": names, "results": [_serialise(r) for r in results]}
 
-        import anyio
         try:
-            out = await anyio.to_thread.run_sync(run)
+            out = await asyncio.get_running_loop().run_in_executor(gpu_pool, run)
             if out is None:
                 return JSONResponse({"error": "job expired before the GPU was free"}, status_code=503)
             return out
