@@ -1,3 +1,4 @@
+import functools
 import sys
 import urllib.error
 from pathlib import Path
@@ -23,6 +24,9 @@ def patch(monkeypatch, up=(), stopped=(), ok_health=True, tunnel=True, watchdog_
     monkeypatch.setattr(mc, "tunnel_running", lambda: tunnel)
     monkeypatch.setattr(mc, "camera_age", lambda: 60.0)
     monkeypatch.setattr(mc, "watchdog_age", watchdog_age)
+    # run_round calls watchdog_status() with its default platform, os.name, read at import time.
+    # Pin the Windows rules so the heartbeat row is the same on the Pi (Linux) as on the PC.
+    monkeypatch.setattr(mc, "watchdog_status", functools.partial(mc.watchdog_status, platform="nt"))
     monkeypatch.setattr(mc, "public_status", public_status)
     monkeypatch.setattr(mc, "gateway", lambda: (True, True, "200, qwen listed", "200 answered", 1.2))
     monkeypatch.setattr(mc, "agents", lambda port: {"summary": "s", "window": 60, "rows": [
