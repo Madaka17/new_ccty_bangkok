@@ -81,7 +81,7 @@ def _is_html(ctype):
     return "text/html" in (ctype or "").lower()
 
 
-def evaluate_web(checks):
+def evaluate_web(checks, trusted_origin=False):
     a = "web"
     out = []
     headers = checks.get("headers")
@@ -92,7 +92,7 @@ def evaluate_web(checks):
         server = headers.get("server", "")
         if re.search(r"\d+\.\d+", server):
             out.append(_f(a, "info", "header server บอกเลขเวอร์ชัน", server))
-    status = checks.get("status") or {}
+    status = {} if trusted_origin else (checks.get("status") or {})
     for path in ("/docs", "/openapi.json"):
         if path in status:
             code, ctype, _body = status[path]
@@ -168,7 +168,9 @@ def evaluate_host(raw):
         return [_f(a, "info", "ต่อ Pi ไม่ได้")]
     out = []
     sshd = raw.get("sshd")
-    if sshd:
+    if sshd and sshd.get("_denied"):
+        out.append(_f(a, "info", "อ่านค่า SSH ไม่ได้ (ต้องใช้ sudo)", "ตรวจรหัสผ่าน SSH ไม่ได้ในรอบนี้"))
+    elif sshd:
         if sshd.get("passwordauthentication") == "yes":
             out.append(_f(a, "fail", "SSH ยังเข้าด้วยรหัสผ่านได้", "คนเดารหัสผ่านได้",
                           "แก้ /etc/ssh/sshd_config เป็น PasswordAuthentication no (กุญแจใช้ได้อยู่แล้ว) แล้ว sudo systemctl restart ssh"))
@@ -177,7 +179,9 @@ def evaluate_host(raw):
             out.append(_f(a, "fail", "SSH ให้ root เข้าด้วยรหัสผ่านได้", f"PermitRootLogin = {root}",
                           "แก้ /etc/ssh/sshd_config เป็น PermitRootLogin no แล้ว sudo systemctl restart ssh"))
     fw = raw.get("firewall")
-    if fw is not None and fw != "active":
+    if fw == "denied":
+        out.append(_f(a, "info", "อ่านสถานะไฟร์วอลล์ไม่ได้ (ต้องใช้ sudo)", "ตรวจไฟร์วอลล์ไม่ได้ในรอบนี้"))
+    elif fw is not None and fw != "active":
         out.append(_f(a, "warn", "ไฟร์วอลล์ยังไม่เปิด", f"สถานะ: {fw}",
                       "รัน sudo ufw allow from 192.168.1.0/24 แล้ว sudo ufw enable"))
     seen = set()

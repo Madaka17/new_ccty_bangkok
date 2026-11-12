@@ -177,3 +177,18 @@ def test_host_iface_suffix_and_dedup():
 
 def test_host_vnc_on_lan_address_warns():
     assert any("VNC" in x["title"] for x in _port_warns(["192.168.1.109:5900"]))
+
+
+def test_trusted_origin_skips_path_checks():
+    checks = {"headers": {"content-security-policy": "x", "strict-transport-security": "x", "x-frame-options": "x",
+                          "x-content-type-options": "x", "referrer-policy": "x"},
+              "status": {"/openapi.json": (200, "application/json", "{}"),
+                         "/api/traffic/summary": (200, "application/json", "{}")}}
+    assert evaluate_web(checks) != []
+    assert evaluate_web(checks, trusted_origin=True) == []
+
+
+def test_host_sudo_denied_is_info_not_pass_or_warn():
+    f = evaluate_host({"sshd": {"_denied": True}, "firewall": "denied", "listen": []})
+    assert [x["level"] for x in f] == ["info", "info"]
+    assert any("SSH" in x["title"] for x in f) and any("ไฟร์วอลล์" in x["title"] for x in f)

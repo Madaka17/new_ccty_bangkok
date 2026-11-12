@@ -36,8 +36,8 @@ print(json.dumps({
 
 _HOST_SCRIPT = r'''
 echo @@listen; ss -Htln | awk '{print $4}'
-echo @@sshd; sudo -n sshd -T 2>/dev/null | grep -Ei '^(passwordauthentication|permitrootlogin|kbdinteractiveauthentication) '
-echo @@ufw; if command -v ufw >/dev/null 2>&1; then sudo -n ufw status 2>/dev/null | head -1; else echo none; fi
+echo @@sshd; o=$(sudo -n sshd -T 2>/dev/null); if [ -n "$o" ]; then echo "$o" | grep -Ei '^(passwordauthentication|permitrootlogin|kbdinteractiveauthentication) '; else echo DENIED; fi
+echo @@ufw; if command -v ufw >/dev/null 2>&1; then o=$(sudo -n ufw status 2>/dev/null | head -1); if [ -n "$o" ]; then echo "$o"; else echo denied; fi; else echo none; fi
 echo @@upgradable; apt list --upgradable 2>/dev/null | grep -c upgradable
 echo @@unattended; dpkg -s unattended-upgrades >/dev/null 2>&1 && echo yes
 echo @@reboot; test -f /var/run/reboot-required && echo yes
@@ -96,8 +96,7 @@ def local_attack_summary(instance_dir, days=30):
 
 def pi_config_flags():
     repo = PI["repo"]
-    cmd = (f"cd {repo} && echo {_b64(_FLAGS_SCRIPT)} | base64 -d > /tmp/.bkk_flags.py && "
-           f".venv/bin/python /tmp/.bkk_flags.py {repo}/.env; rm -f /tmp/.bkk_flags.py")
+    cmd = f"cd {repo} && echo {_b64(_FLAGS_SCRIPT)} | base64 -d | .venv/bin/python - {repo}/.env"
     return _parse_json(ssh(cmd))
 
 
@@ -129,12 +128,16 @@ def parse_host_output(text):
         elif cur and line:
             sections[cur].append(line)
     sshd = {}
+    if "DENIED" in sections.get("sshd", []):
+        sshd = {"_denied": True}
     for line in sections.get("sshd", []):
         k, _, v = line.partition(" ")
         if v:
             sshd[k.lower()] = v.strip().lower()
     ufw = " ".join(sections.get("ufw", [])).lower()
-    if "inactive" in ufw:
+    if "denied" in ufw:
+        fw = "denied"
+    elif "inactive" in ufw:
         fw = "inactive"
     elif "active" in ufw:
         fw = "active"

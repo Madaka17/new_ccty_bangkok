@@ -90,3 +90,29 @@ def test_local_config_flags_never_returns_values(tmp_path):
     assert r["admin_token_len"] == len("supersecretvalue123")
     assert r["api_session"] is False and r["api_browser_only"] is True
     assert r["general_rate_per_min"] == 600 and r["chat_rate_per_day"] == 60
+
+
+def test_parse_host_output_denied():
+    r = parse_host_output("@@sshd\nDENIED\n@@ufw\ndenied\n")
+    assert r["sshd"] == {"_denied": True} and r["firewall"] == "denied"
+
+
+def test_main_test_target_trusted_origin(monkeypatch, tmp_path):
+    seen = {}
+    def fake_web(url):
+        return {"headers": {}, "status": {"/openapi.json": (200, "application/json", "{}")}}
+    monkeypatch.setattr(collect, "web_checks", fake_web)
+    monkeypatch.setattr(collect, "local_attack_summary", lambda d, days=30: None)
+    monkeypatch.setattr(collect, "local_config_flags", lambda p: {})
+    monkeypatch.setattr(main_mod, "REPORTS_DIR", str(tmp_path))
+    assert main_mod.main(["--target", "test", "--no-open"]) == 0
+    html = next(tmp_path.glob("security-test-*.html")).read_text(encoding="utf-8")
+    assert "openapi.json" not in html
+    assert "เลยตรวจรั้วกันคนนอกไม่ได้" in html
+
+
+def test_pi_config_flags_uses_stdin_no_tempfile(monkeypatch):
+    cmds = []
+    monkeypatch.setattr(collect, "ssh", lambda cmd, timeout=20: cmds.append(cmd) or None)
+    collect.pi_config_flags()
+    assert "/tmp" not in cmds[0] and "rm " not in cmds[0] and "python -" in cmds[0]

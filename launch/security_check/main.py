@@ -24,12 +24,15 @@ def _attack_findings(summary):
     return rules.evaluate_attacks(summary)
 
 
-def _web_findings(checks):
-    fs = rules.evaluate_web(checks)
+def _web_findings(checks, trusted_origin=False):
+    fs = rules.evaluate_web(checks, trusted_origin=trusted_origin)
     if not checks or (checks.get("headers") is None and not checks.get("status")):
         fs.append(_f("web", "info", "ต่อหน้าเว็บไม่ได้", "ตรวจหน้าเว็บไม่ได้ในรอบนี้"))
     elif not fs:
         fs.append(_f("web", "ok", "หน้าเว็บผ่านทุกข้อที่ตรวจ"))
+    if trusted_origin:
+        fs.append(_f("web", "info", "ตรวจจากเครื่องนี้ (ในบ้าน) เลยตรวจรั้วกันคนนอกไม่ได้",
+                     "ดูผลจริงได้ที่ --target production"))
     return fs
 
 
@@ -57,7 +60,7 @@ def main(argv=None):
 
     sections = {
         "attack": _attack_findings(summary),
-        "web": _web_findings(web),
+        "web": _web_findings(web, trusted_origin=(a.target == "test")),
         "config": rules.evaluate_config(config),
         "host": host,
     }
