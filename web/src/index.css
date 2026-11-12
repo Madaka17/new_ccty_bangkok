@@ -59,14 +59,14 @@
   --color-gold-700: #b45309;
 
   --shadow-soft: 0 0 0 1px var(--c-border);
-  --shadow-lift: 0 0 0 1px var(--c-border), 0 8px 20px -12px rgba(1, 4, 9, 0.35);
+  --shadow-lift: 0 0 0 1px var(--c-border), 0 8px 20px -12px rgba(0, 0, 0, 0.35);
 }
 
 /* ---------------------------------------------------------------- console look (light and dark)
    Dark first: a near-black zinc ground, panels split by 1px seams and one step of elevation, no glass.
    Colour carries state only: --c-primary = action and "running" (orange), ok / watch / act = fine / keep an eye on it /
    take care, none = no data yet, --c-yours = what belongs to the viewer (my district, my route).
-   --c-here marks the page you are on. Light keeps the same grammar on a cool white. */
+   --c-here marks the page you are on. Light keeps the same grammar on a white / zinc ground. */
 :root {
   --c-ground: #f7f7f8;
   --c-surface: #ffffff;
@@ -86,16 +86,16 @@
   --c-on-primary: #0f0f10;
   --c-sel-bg: #18181b;
   --c-sel-text: #ffffff;
-  --c-wave: #c4ccd4;
+  --c-wave: #d4d4d8;
   --c-yours: #8250df;
   --c-yours-tint: #fbefff;
   --c-glow: 0 6px 16px -8px rgba(234, 88, 12, 0.45);
-  --c-shadow: 0 1px 0 rgba(13, 17, 23, 0.04);
+  --c-shadow: 0 1px 0 rgba(24, 24, 27, 0.04);
 
   --ok-ring: #1a7f37;   --ok-fill: var(--c-surface);   --ok-text: #1a7f37;   --ok-tint: #dafbe1;
   --watch-ring: #ca8a04; --watch-fill: #fef9c3;        --watch-text: #854d0e; --watch-tint: #fef9c3;
   --act-ring: #cf222e;  --act-fill: #cf222e;           --act-text: #b3141f;  --act-tint: #ffebe9;
-  --none-ring: #8c959f; --none-fill: var(--c-surface); --none-text: #57606a; --none-tint: #eaeef2;
+  --none-ring: #a1a1aa; --none-fill: var(--c-surface); --none-text: #52525b; --none-tint: #f4f4f5;
 }
 .dark {
   --c-ground: #0f0f10;
@@ -120,7 +120,7 @@
   --c-yours: #c678dd;
   --c-yours-tint: rgba(198, 120, 221, 0.14);
   --c-glow: 0 8px 22px -8px rgba(249, 115, 22, 0.55);
-  --c-shadow: 0 1px 0 rgba(1, 4, 9, 0.4);
+  --c-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
 
   --ok-ring: #56d364;   --ok-text: #56d364;   --ok-tint: rgba(86, 211, 100, 0.12);
   --watch-ring: #facc15; --watch-fill: rgba(250, 204, 21, 0.25); --watch-text: #facc15; --watch-tint: rgba(250, 204, 21, 0.12);
@@ -131,7 +131,7 @@
 .tone-green { --t-ring: var(--ok-ring); --t-fill: var(--ok-fill); --t-text: var(--ok-text); --t-tint: var(--ok-tint); --t-band: #1a7f37; --t-on: #ffffff; }
 .tone-yellow { --t-ring: var(--watch-ring); --t-fill: var(--watch-fill); --t-text: var(--watch-text); --t-tint: var(--watch-tint); --t-band: #facc15; --t-on: #18181b; }
 .tone-red { --t-ring: var(--act-ring); --t-fill: var(--act-fill); --t-text: var(--act-text); --t-tint: var(--act-tint); --t-band: #cf222e; --t-on: #ffffff; }
-.tone-neutral { --t-ring: var(--none-ring); --t-fill: var(--none-fill); --t-text: var(--none-text); --t-tint: var(--none-tint); --t-band: #57606a; --t-on: #ffffff; }
+.tone-neutral { --t-ring: var(--none-ring); --t-fill: var(--none-fill); --t-text: var(--none-text); --t-tint: var(--none-tint); --t-band: #52525b; --t-on: #ffffff; }
 
 /* Light: Tailwind's slate is moved onto the console zinc neutrals, so every page follows the look without
    editing its classes. Dark remaps the same names further down. */
@@ -227,7 +227,7 @@ input, textarea { caret-color: var(--c-primary); }
 
 /* MapLibre */
 .maplibregl-map { font-family: var(--font-sans); }
-.maplibregl-popup-content { border-radius: 8px; border: 1px solid var(--c-border); box-shadow: 0 6px 16px -8px rgba(1, 4, 9, 0.3); padding: 12px 14px; font-family: var(--font-sans); }
+.maplibregl-popup-content { border-radius: 8px; border: 1px solid var(--c-border); box-shadow: 0 6px 16px -8px rgba(0, 0, 0, 0.3); padding: 12px 14px; font-family: var(--font-sans); }
 .maplibregl-popup-close-button { font-size: 18px; color: var(--color-ink-600); right: 6px; top: 4px; }
 .maplibregl-ctrl-group { border-radius: 6px !important; overflow: hidden; box-shadow: 0 0 0 1px var(--c-border) !important; }
 .maplibregl-ctrl-group button { width: 36px; height: 36px; }
@@ -303,10 +303,10 @@ input, textarea { caret-color: var(--c-primary); }
 .seg-tray { background: var(--c-ground); border: 1px solid var(--c-border); }
 .seg-off { color: var(--c-muted); }
 .seg-off:hover { background: var(--c-raised); color: var(--c-ink); }
-.seg-on { background: var(--c-surface); color: var(--c-primary); box-shadow: 0 0 0 1px var(--c-border); }
+.seg-on { background: var(--c-primary-fill); color: var(--c-on-primary); box-shadow: 0 0 0 1px var(--c-border); }
 .seg-icon { background: var(--c-raised); color: var(--c-muted); }
 .seg-hint { color: var(--c-muted); font-weight: 400; }
-.dark .seg-on { background: var(--c-raised); color: var(--c-primary); box-shadow: 0 0 0 1px var(--c-border-strong); }
+.dark .seg-on { background: var(--c-primary-fill); color: var(--c-on-primary); box-shadow: 0 0 0 1px var(--c-border-strong); }
 
 /* Floating AI button robot (BotFace.jsx): blink every few seconds, antenna bulb glows */
 .bot-eyes { transform-box: fill-box; transform-origin: center; animation: bot-blink 4.5s infinite; }
@@ -319,9 +319,9 @@ input, textarea { caret-color: var(--c-primary); }
    framer-motion's layoutId); ViewSwitch keeps its segmented tray */
 [role="tab"].tab-slide[aria-selected="true"] { color: var(--c-ink); }
 .tab-pill { position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--c-primary); }
-.seg-pill { position: absolute; inset: 0; border-radius: 6px; background: var(--c-surface); box-shadow: 0 0 0 1px var(--c-border-strong); }
-.dark .seg-pill { background: var(--c-raised); }
-[role="tab"].seg-slide[aria-selected="true"] { background: transparent; color: var(--c-primary); }
+.seg-pill { position: absolute; inset: 0; border-radius: 6px; background: var(--c-primary-fill); box-shadow: none; }
+.dark .seg-pill { background: var(--c-primary-fill); box-shadow: none; }
+[role="tab"].seg-slide[aria-selected="true"] { background: transparent; color: var(--c-on-primary); }
 
 /* ---------------------------------------------------------------- weather (WeatherFx.jsx)
    The viewer's own switch: rain, cloud and sun behind the content, and rain over the cards. Only transform and

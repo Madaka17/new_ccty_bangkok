@@ -56,7 +56,7 @@ export const PAGE_TITLES = {
 function LogoMark() {
   // Small skyline mark, matches the icon stroke style used in the menu.
   return (
-    <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-[var(--c-ink)]" aria-hidden="true">
+    <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-[var(--c-primary)]" aria-hidden="true">
       <path d="M3 27h26" />
       <path d="M6 27V13l4-3 4 3v14" />
       <path d="M14 27V8l5-4 5 4v19" />
@@ -111,14 +111,16 @@ export default function Sidebar({ page, onNavigate, aiActive, liveCount = 0, onC
                         onClose?.();
                       }}
                       aria-current={on ? 'page' : undefined}
-                      className={`group cursor-pointer w-full min-h-11 px-3 rounded-md flex items-center gap-3 text-left text-[15px] transition-colors duration-150 ${
-                        on ? 'bg-[var(--c-raised)] text-[var(--c-ink)] font-semibold' : 'text-[var(--c-muted)] font-medium hover:bg-[var(--c-raised)] hover:text-[var(--c-ink)]'
+                      className={`group cursor-pointer w-full min-h-11 px-3 rounded-lg flex items-center gap-3 text-left text-[15px] transition-colors duration-150 ${
+                        on
+                          ? 'bg-[var(--c-primary-fill)] text-[var(--c-on-primary)] font-semibold shadow-[var(--c-glow)]'
+                          : 'text-[var(--c-muted)] font-medium hover:bg-[var(--c-raised)] hover:text-[var(--c-ink)]'
                       }`}
                     >
-                      <NavIcon name={item.id} className={`w-5 h-5 shrink-0 ${on ? 'text-[var(--c-primary)]' : ''}`} />
+                      <NavIcon name={item.id} className="w-5 h-5 shrink-0" />
                       <span className="truncate flex-1">{item.label}</span>
                       {badge && (
-                        <span className="num shrink-0 text-[11px] px-1.5 rounded-full border border-[var(--c-border)] text-[var(--c-ink)]">{badge}</span>
+                        <span className={`num shrink-0 text-[11px] px-1.5 rounded-full border ${on ? 'border-current text-[var(--c-on-primary)]' : 'border-[var(--c-border)] text-[var(--c-ink)]'}`}>{badge}</span>
                       )}
                     </button>
                   </li>

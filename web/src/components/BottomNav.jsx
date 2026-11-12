@@ -20,11 +20,11 @@ function NavButton({ it, page, onNavigate }) {
         onClick={() => onNavigate(it.id)}
         aria-current={on ? 'page' : undefined}
         className={`relative cursor-pointer w-full h-15 flex flex-col items-center justify-center gap-0.5 text-xs whitespace-nowrap transition-colors duration-150 ${FOCUS} ${
-          on ? 'text-[var(--c-ink)] font-semibold' : 'text-[var(--c-muted)] font-medium hover:text-[var(--c-ink)]'
+          on ? 'text-[var(--c-primary)] font-semibold' : 'text-[var(--c-muted)] font-medium hover:text-[var(--c-ink)]'
         }`}
       >
         {on && <Station />}
-        <NavIcon name={it.id} className={`w-6 h-6 ${on ? 'text-[var(--c-primary)]' : ''}`} />
+        <NavIcon name={it.id} className="w-6 h-6" />
         {it.label}
       </button>
     </li>
@@ -65,11 +65,11 @@ export default function BottomNav({ page, onNavigate, onMenu, onReport }) {
             onClick={onMenu}
             aria-haspopup="dialog"
             className={`relative cursor-pointer w-full h-15 flex flex-col items-center justify-center gap-0.5 text-xs whitespace-nowrap transition-colors duration-150 ${FOCUS} ${
-              !inBar ? 'text-[var(--c-ink)] font-semibold' : 'text-[var(--c-muted)] font-medium hover:text-[var(--c-ink)]'
+              !inBar ? 'text-[var(--c-primary)] font-semibold' : 'text-[var(--c-muted)] font-medium hover:text-[var(--c-ink)]'
             }`}
           >
             {!inBar && <Station />}
-            <NavIcon name="menu" className={`w-6 h-6 ${!inBar ? 'text-[var(--c-primary)]' : ''}`} />
+            <NavIcon name="menu" className="w-6 h-6" />
             เพิ่มเติม
           </button>
         </li>
