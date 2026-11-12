@@ -198,7 +198,12 @@ def test_v2_reduced_motion_and_no_network():
     assert "url(http" not in html and "@import" not in html
 
 
-def test_v2_map_fallback_when_geo_empty():
+def test_v2_map_fallback_when_geo_empty(monkeypatch, tmp_path):
+    # Point the geo lookup at an empty folder so a real local/geo download doesn't change the result
+    from launch.security_check import geo
+    monkeypatch.setenv("BKK_GEO_DIR", str(tmp_path))
+    monkeypatch.setattr(geo, "_db", None)
+    monkeypatch.setattr(geo, "_countries", None)
     html = render("production", {"web": [_f("ok")]}, _summ(), "now",
                   {"ssh": None, "owner_ips": [], "geo": []})
     assert "ยังไม่มีฐานข้อมูล IP" in html
