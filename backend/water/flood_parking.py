@@ -33,6 +33,9 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from backend.core.instance import BASE_DIR
+from backend.core.log import get_logger
+
+log = get_logger("FloodParking")
 
 CONFIG_FILE = os.path.join(BASE_DIR, "config", "flood_parking.json")
 REPORT_MINUTES = int(os.getenv("PARKING_FULL_MINUTES", "90"))
@@ -91,11 +94,11 @@ class FloodParking:
                     with open(self.path, encoding="utf-8") as f:
                         raw = json.load(f).get("spots") or []
                 except (OSError, ValueError, AttributeError) as e:
-                    print(f"[FloodParking] cannot read {self.path}: {e}")
+                    log.info(f"cannot read {self.path}: {e}")
                     raw = []
                 spots = [s for s in map(_clean, raw) if s]
                 if len(spots) < len(raw):
-                    print(f"[FloodParking] skipped {len(raw) - len(spots)} spot(s) without id, place, source or https link")
+                    log.info(f"skipped {len(raw) - len(spots)} spot(s) without id, place, source or https link")
                 self._spots, self._mtime = spots, mtime
             now = time.time()
             return [s for s in self._spots if not s["until"] or s["until"] > now]

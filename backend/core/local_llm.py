@@ -39,6 +39,9 @@ import time
 from collections import deque
 
 import requests
+from backend.core.log import get_logger
+
+log = get_logger("LocalLLM")
 
 # Thai text runs about 2.2 characters per token on the Qwen tokenizer (measured on the chat context)
 CHARS_PER_TOKEN = 2.2
@@ -69,10 +72,10 @@ def _record(caller, model, prompt, reply, seconds, ok):
             _usage.popleft()
 
 
-def note_cloud(model, resp):
+def note_cloud(model, resp, caller=None):
     """Count a Gemini or Claude reply made outside Client.chat under the calling module, so /api/ai/usage
     shows the cloud tokens too (Gemini: usage_metadata, thinking counted as reply; Claude: usage)."""
-    caller = sys._getframe(1).f_globals.get("__name__", "?")
+    caller = caller or sys._getframe(1).f_globals.get("__name__", "?")   # caller= for helpers that call on behalf of a module
     gem = getattr(resp, "usage_metadata", None)
     if gem is not None:
         prompt = gem.prompt_token_count or 0
@@ -198,7 +201,7 @@ class Client:
             for wait in (*RETRY_429, None):
                 resp = requests.post(f"{self.url}/chat/completions", json=body, headers=headers, timeout=timeout)
                 if resp.status_code == 400 and "response_format" in body and "response_format" in resp.text:
-                    print(f"[LocalLLM] {self.url} refuses response_format: the JSON schema goes into the prompt")
+                    log.info(f"{self.url} refuses response_format: the JSON schema goes into the prompt")
                     self.response_format = False
                     del body["response_format"]
                     body["messages"] = _schema_in_prompt(messages, json_schema)
@@ -215,7 +218,7 @@ class Client:
         if resp.status_code == 429:
             # the body says which gateway limit was hit (parallel requests, rpm or tpm); keys in it are masked
             limits = {k: v for k, v in resp.headers.items() if "ratelimit" in k.lower() or k.lower() == "retry-after"}
-            print(f"[LocalLLM] 429 for {caller} after {len(RETRY_429)} retries: "
+            log.info(f"429 for {caller} after {len(RETRY_429)} retries: "
                   f"{_KEY.sub('<key>', resp.text[:400])} {limits or ''}".rstrip())
         resp.raise_for_status()
         data = resp.json()

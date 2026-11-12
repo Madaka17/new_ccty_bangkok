@@ -16,6 +16,7 @@ Load on Longdo: at most MAX_RPS tiles a second. A tile already fetched in the la
 server or by the other instance, which shares the tile cache) is read from disk instead.
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import threading
 import time
@@ -28,6 +29,9 @@ from backend.core import thai_regions
 from backend.core.instance import BASE_DIR, DATA_DIR
 from backend.traffic.traffic_service import (ANALYSIS_ZOOM, bbox_tiles, classify_color, decode_tile, feature_lonlat,
                                              get_traffic_tile, lonlat_to_tile, seg_length_km, tile_to_lonlat)
+from backend.core.log import get_logger
+
+log = get_logger("AreaTraffic")
 
 DISTRICTS_FILE = os.path.join(BASE_DIR, "config", "thailand_districts.geojson")
 STATE_FILE = os.path.join(DATA_DIR, "cache", "area_traffic.json")
@@ -88,7 +92,7 @@ class AreaTraffic:
                 if len(tree.query(box(lon0, lat0, lon1, lat1), predicate="intersects")):
                     self.tiles.append((x, y))
         self.tree = tree
-        print(f"[AreaTraffic] {len(geoms)} districts, {len(self.tiles)} tiles at zoom {ZOOM}")
+        log.info(f"{len(geoms)} districts, {len(self.tiles)} tiles at zoom {ZOOM}")
 
     def _load_state(self):
         try:
@@ -100,8 +104,7 @@ class AreaTraffic:
 
     def _save_state(self):
         try:
-            with open(STATE_FILE, "w", encoding="utf-8") as f:
-                json.dump({"state": self.state, "history": self.history}, f, ensure_ascii=False)
+            write_json_atomic(STATE_FILE, {"state": self.state, "history": self.history}, ensure_ascii=False)
         except OSError:
             pass
 
@@ -159,7 +162,7 @@ class AreaTraffic:
                 for c in colors:
                     acc[("green", "yellow", "red").index(c)] += length
         self._publish(km, stale)
-        print(f"[AreaTraffic] {len(lines)} lines in {len(km)} districts, {stale} stale tiles, {time.time() - started:.0f}s")
+        log.info(f"{len(lines)} lines in {len(km)} districts, {stale} stale tiles, {time.time() - started:.0f}s")
 
     def _publish(self, km, stale):
         prev = self._hour_ago()
@@ -224,14 +227,14 @@ class AreaTraffic:
         try:
             self._load_districts()
         except Exception as e:
-            print(f"[AreaTraffic] district boundaries failed: {e}")
+            log.warning(f"district boundaries failed: {e}")
             return
         while True:
             started = time.time()
             try:
                 self.refresh()
             except Exception as e:
-                print(f"[AreaTraffic] refresh error: {e}")
+                log.warning(f"refresh error: {e}")
             time.sleep(max(30.0, REFRESH_SECONDS - (time.time() - started)))
 
     def start(self):

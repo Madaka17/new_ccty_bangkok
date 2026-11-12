@@ -25,6 +25,10 @@ from backend.vision.yolo_switch import YoloOff
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import thai_font
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
+from backend.core.log import get_logger
+
+log = get_logger("BMA Scanner")
+log_bma = get_logger("BMA")
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "bma_snapshots")
 os.makedirs(CACHE_DIR, exist_ok=True)
 # The same frames without the YOLO boxes, for pages that show the plain camera (the live camera wall)
@@ -147,6 +151,7 @@ class BmaScanner:
         # seconds from one cycle's start to the next: the helmet patrol checks each camera this often
         self.scan_interval = int(os.getenv("BMA_SCAN_INTERVAL", "180"))
         self.infer_lock = threading.Lock()
+        self._last_tick_error = None   # last start_scan error printed, so a repeating one prints once
         # HelmetPatrol (helmet_service.py) / WrongWayPatrol (wrongway_service.py) set by the server:
         # both get every snapshot (+ its boxes)
         self.helmet = None
@@ -159,7 +164,7 @@ class BmaScanner:
         if self.fetch_enabled:
             self.auto_scan_thread.start()
         else:
-            print("[BMA Scanner] BMA_FETCH=0: no fetching from BMA on this machine")
+            log.info("BMA_FETCH=0: no fetching from BMA on this machine")
 
     def _detect(self, img):
         """(cls_id, conf, x1, y1, x2, y2) per vehicle. Shares the server's detector (tiled 2x2 on
@@ -181,9 +186,9 @@ class BmaScanner:
                     data = json.load(f)
                     self.cameras = data.get("items", [])
                     self.total_cameras = len(self.cameras)
-                    print(f"[BMA Scanner] Loaded {len(self.cameras)} BMA cameras")
+                    log.info(f"Loaded {len(self.cameras)} BMA cameras")
             except Exception as e:
-                print(f"[BMA Scanner] Error loading cameras: {e}")
+                log.warning(f"Error loading cameras: {e}")
 
     def start_scan(self):
         if not self.fetch_enabled:
@@ -227,17 +232,25 @@ class BmaScanner:
         time.sleep(3.0) # wait for server start
         last_start = 0.0
         while True:
-            try:
-                if not self.is_scanning and time.time() - last_start >= self.scan_interval:
-                    last_start = time.time()
-                    self.start_scan()
-            except Exception:
-                pass
+            last_start = self._scan_tick(last_start)
             time.sleep(5)
+
+    def _scan_tick(self, last_start):
+        """One pass of the scheduler: start a cycle if one is due. Returns the new last_start."""
+        try:
+            if not self.is_scanning and time.time() - last_start >= self.scan_interval:
+                last_start = time.time()
+                self.start_scan()
+        except Exception as e:
+            # Print only a new error: the same one would repeat every 5 s
+            if str(e) != self._last_tick_error:
+                self._last_tick_error = str(e)
+                log_bma.warning(f"start_scan failed: {e}")
+        return last_start
 
     def _run_scan_cycle(self):
         t0 = time.time()
-        print(f"[BMA Scanner] Starting scan cycle #{self.cycle_count + 1} on {len(self.cameras)} cameras...")
+        log.info(f"Starting scan cycle #{self.cycle_count + 1} on {len(self.cameras)} cameras...")
         
         # We fetch and process cameras using worker thread pool
         cams = list(self.cameras)
@@ -261,7 +274,6 @@ class BmaScanner:
                 return
             camid = cam['camid']
             try:
-                t_cam = time.time()
                 raw_bytes = self.session.fetch_snapshot(camid)
                 
                 if not raw_bytes:
@@ -287,7 +299,7 @@ class BmaScanner:
                     try:
                         self.flood.observe(cam, img)
                     except Exception as e:  # noqa: BLE001 - flood watch is best effort
-                        print(f"[BMA Scanner] flood watch failed on {camid}: {e}")
+                        log.warning(f"flood watch failed on {camid}: {e}")
 
                 # YOLO Inference (serialize via detector.model_lock if present)
                 t_infer = time.time()
@@ -308,12 +320,12 @@ class BmaScanner:
                         try:
                             self.helmet.observe(cam, img, boxes)
                         except Exception as e:  # noqa: BLE001 - patrol is best effort
-                            print(f"[BMA Scanner] helmet patrol failed on {camid}: {e}")
+                            log.warning(f"helmet patrol failed on {camid}: {e}")
                     if self.wrongway is not None:
                         try:
                             self.wrongway.observe(cam, img, boxes)
                         except Exception as e:  # noqa: BLE001
-                            print(f"[BMA Scanner] wrong-way patrol failed on {camid}: {e}")
+                            log.warning(f"wrong-way patrol failed on {camid}: {e}")
                     for cls_id, conf, x1, y1, x2, y2 in boxes:
                         category = VEHICLE_CLASSES.get(cls_id)
                         if not category:
@@ -353,7 +365,7 @@ class BmaScanner:
                         cam, cars, motos, trucks, total, level, 'online', infer_latency, dets
                     )
                 except Exception as e:
-                    print(f"[BMA Scanner] Error inferring camera {camid}: {e}")
+                    log.warning(f"Error inferring camera {camid}: {e}")
             finally:
                 with self.lock:
                     self.current_index += 1
@@ -367,11 +379,16 @@ class BmaScanner:
                     break
                 futures.append(executor.submit(process_camera, cam))
 
+            failed, first_error = 0, None
             for f in futures:
                 try:
                     f.result()
-                except Exception:
-                    pass
+                except Exception as e:
+                    failed += 1
+                    if failed == 1:
+                        first_error = str(e)
+            if failed:
+                log_bma.warning(f"{failed} cameras failed this cycle, first: {first_error}")
 
         self.last_scan_duration = time.time() - t0
         self.last_scan_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -381,18 +398,18 @@ class BmaScanner:
             need = SOURCE_MIN_SHARE * max(1, len(cams))
             state = "down" if tally["ok"] < need else "frozen" if tally["new"] < need else "ok"
             if state != "ok":
-                print(f"[BMA Scanner] BMA site {state}: {tally['ok']} pictures, {tally['new']} new, from {len(cams)} cameras")
+                log.info(f"BMA site {state}: {tally['ok']} pictures, {tally['new']} new, from {len(cams)} cameras")
             if state == "down" and bma_site.failover():
                 self.session.reset()
-                print(f"[BMA Scanner] BMA site moved: now reading {bma_site.base()}")
+                log.info(f"BMA site moved: now reading {bma_site.base()}")
             self.source = {"state": state, "site": bma_site.host(), "frames_ok": tally["ok"], "frames_new": tally["new"],
                            "last_frame_at": int(self._last_fresh) if self._last_fresh else None}
-        print(f"[BMA Scanner] Finished scan cycle #{self.cycle_count} in {self.last_scan_duration:.1f}s")
+        log.info(f"Finished scan cycle #{self.cycle_count} in {self.last_scan_duration:.1f}s")
         # Live snapshot CSVs (what every camera sees right now); cycle files are written by the archiver
         try:
             self.archiver.write_live_snapshot(self.db.get_all_latest())
         except Exception as e:
-            print(f"[BMA Scanner] live snapshot export failed: {e}")
+            log.warning(f"live snapshot export failed: {e}")
 
     def archive_and_reset(self, target_dir=None):
         return self.archiver.archive_and_reset(auto=False)
@@ -642,7 +659,7 @@ class BmaScanner:
         except YoloOff:
             return raw_bytes, None      # YOLO off: live views show the plain frame, nothing to log per frame
         except Exception as e:
-            print(f"[BMA Detect Error] {e}")
+            get_logger("BMA Detect Error").warning(f"{e}")
             return None, None
 
     def get_live_snapshot(self, camid: str, annotate: bool = True):

@@ -22,11 +22,15 @@ Thai rule-based report stands in.
 import collections
 import hashlib
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import threading
 import time
 
 from backend.core import local_llm
+from backend.core.log import get_logger
+
+log = get_logger("RiskAgent")
 
 # Re-run the analysis this often. The layers are yearly statistics that change only when the files do (the run at
 # start catches that), and the page has a few viewers a day, so once a day; it was every 6 minutes until Oct 2026.
@@ -268,7 +272,7 @@ class RiskAgent:
                     report, source = self._run_local(stats), "local"
                 except Exception as e:  # noqa: BLE001 - server off, bad JSON, context too small
                     err = f"{local_llm.default.model}: {str(e)[:160]}"
-                    print(f"[RiskAgent] model failed: {e}")
+                    log.warning(f"model failed: {e}")
             if report is None:
                 report = self._rules(stats)
             result = {"report": report, "stats": stats, "source": source,
@@ -277,10 +281,9 @@ class RiskAgent:
             with self.lock:
                 self.result, self.sig, self.error = result, sig, err
                 try:
-                    with open(self.path, "w", encoding="utf-8") as f:
-                        json.dump({"result": result, "sig": sig}, f, ensure_ascii=False)
+                    write_json_atomic(self.path, {"result": result, "sig": sig}, ensure_ascii=False)
                 except OSError as e:
-                    print(f"[RiskAgent] save failed: {e}")
+                    log.warning(f"save failed: {e}")
             return self.status()
         finally:
             with self.lock:
@@ -301,7 +304,7 @@ class RiskAgent:
             try:
                 self.run(force=True)
             except Exception as e:  # noqa: BLE001 - keep the timer alive
-                print(f"[RiskAgent] run failed: {e}")
+                log.warning(f"run failed: {e}")
 
     def start(self):
         threading.Thread(target=self._loop, daemon=True, name="RiskAgent").start()

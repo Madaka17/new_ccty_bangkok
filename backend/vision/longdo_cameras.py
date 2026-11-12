@@ -7,6 +7,7 @@ none). After a failed fetch the next live try waits RETRY_SECONDS; with Longdo d
 otherwise wait out the 5 s timeout and call Longdo again.
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import re
 import threading
@@ -14,6 +15,9 @@ import time
 import urllib.request
 
 from backend.core.instance import DATA_DIR
+from backend.core.log import get_logger
+
+log = get_logger("Warning")
 
 URL = "https://traffic.longdo.com/camera.json"
 FRESH_SECONDS = 300    # a live copy is reused this long
@@ -55,8 +59,7 @@ def _fetch():
 def _save(data):
     try:
         os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
-        with open(CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False)
+        write_json_atomic(CACHE_FILE, data, ensure_ascii=False)
     except Exception:
         pass
 
@@ -84,7 +87,7 @@ def longdo_cameras(fallback=()):
                 _save(_cache["data"])
                 return _cache["data"]
             except Exception as e:
-                print(f"[Warning] Failed to fetch live Longdo cameras: {e}")
+                log.warning(f"Failed to fetch live Longdo cameras: {e}")
                 _cache["next_try"] = now + RETRY_SECONDS
                 if _cache["data"] is None:
                     _cache["data"] = _load()

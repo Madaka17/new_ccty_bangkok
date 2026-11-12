@@ -26,6 +26,7 @@ and the rest of the metropolitan area have no equivalent public sensor feed, so 
 nothing for them - not "no flooding".
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import re
 import threading
@@ -35,15 +36,16 @@ from collections import deque
 from datetime import datetime, timedelta, timezone
 
 try:
-    from google import genai
     from google.genai import types as genai_types
 except Exception:  # pragma: no cover - the analyst falls back to a Thai template
-    genai = None
     genai_types = None
 
 from backend.core import local_llm
-from backend.core.instance import BASE_DIR  # project root
+from backend.core.gemini import gemini_client
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
+from backend.core.log import get_logger
+
+log = get_logger("Flood")
 CACHE_FILE = os.path.join(DATA_DIR, "cache", "flood_roads.json")
 SOURCE_URL = "https://weather.bangkok.go.th/Flood/PageMap/GetData?id=0"
 SOURCE_PAGE = "https://weather.bangkok.go.th/flood"
@@ -168,11 +170,10 @@ class FloodRoads:
     def _save_cache(self):
         try:
             os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
-            with open(CACHE_FILE, "w", encoding="utf-8") as f:
-                json.dump({"items": self.items, "updated_at": self.updated_at, "feed_time": self.feed_time},
-                          f, ensure_ascii=False)
+            write_json_atomic(CACHE_FILE, {"items": self.items, "updated_at": self.updated_at, "feed_time": self.feed_time},
+                              ensure_ascii=False)
         except OSError as e:
-            print(f"[Flood] cache save failed: {e}")
+            log.warning(f"cache save failed: {e}")
 
     # ------------------------------------------------------------ fetch
     def _fetch(self):
@@ -302,7 +303,7 @@ class FloodRoads:
             except Exception as e:  # noqa: BLE001 - one bad poll must not kill the thread
                 with self.lock:
                     self.error = str(e)[:200]
-                print(f"[Flood] refresh failed: {e}")
+                log.warning(f"refresh failed: {e}")
             time.sleep(POLL_SECONDS)
 
     def _ai_loop(self):
@@ -313,7 +314,7 @@ class FloodRoads:
                 try:
                     self._analyse(force=True)
                 except Exception as e:  # noqa: BLE001 - the report must never kill the thread
-                    print(f"[Flood] analysis failed: {e}")
+                    log.warning(f"analysis failed: {e}")
             time.sleep(max(5.0, AI_INTERVAL - (time.time() - t0)) if self.items else 10.0)
 
     def start(self):
@@ -324,14 +325,10 @@ class FloodRoads:
     def _client(self):
         if self._ai_client is not None:
             return self._ai_client
-        key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-        if genai is None or not key:
-            return None
-        try:
-            self._ai_client = genai.Client(api_key=key)
-        except Exception:  # noqa: BLE001
-            return None
-        return self._ai_client
+        client = gemini_client()
+        if client is not None:  # never cache None: a key set later must still work
+            self._ai_client = client
+        return client
 
     def _facts(self):
         """The numbers the report is written from - no prose, no guessing."""
@@ -460,10 +457,10 @@ class FloodRoads:
                          *(h["where"] + " " + h["note"] for h in out["hotspots"])]
                 bad = unsupported_numbers(texts, prompt)   # the prompt holds the facts and every threshold it names
                 if bad:
-                    print(f"[Flood] AI analysis has numbers not in the data {bad[:5]}, using template")
+                    log.info(f"AI analysis has numbers not in the data {bad[:5]}, using template")
                     out = dict(base)
         except Exception as e:  # noqa: BLE001
-            print(f"[Flood] AI analysis failed, using template: {str(e)[:140]}")
+            log.warning(f"AI analysis failed, using template: {str(e)[:140]}")
         with self.lock:
             self.analysis = {**out, "facts": f, "updated_at": int(now)}
         self._ai_sig, self._ai_at = sig, now

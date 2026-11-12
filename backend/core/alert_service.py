@@ -30,6 +30,7 @@ Subscriptions come from the Alerts page (browser Push API). Subscribing is a POS
 limits it to the team (LAN / tailnet / X-Admin-Token). The VAPID key pair is generated on first run.
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import threading
 import time
@@ -37,6 +38,9 @@ from datetime import date, datetime, timedelta, timezone
 from collections import deque
 
 from backend.core import thai_regions
+from backend.core.log import get_logger
+
+log = get_logger("Alerts")
 
 try:
     from pywebpush import WebPushException, webpush
@@ -125,10 +129,9 @@ class AlertService:
             return default
 
     def _save(self):
-        with open(self.subs_path, "w", encoding="utf-8") as f:
-            json.dump(self.subs, f, ensure_ascii=False)
-        with open(self.state_path, "w", encoding="utf-8") as f:
-            json.dump({"sent": self.sent, "history": list(self.history), "seeded": sorted(self.seeded)}, f, ensure_ascii=False)
+        write_json_atomic(self.subs_path, self.subs, ensure_ascii=False)
+        write_json_atomic(self.state_path, {"sent": self.sent, "history": list(self.history), "seeded": sorted(self.seeded)},
+                          ensure_ascii=False)
 
     def _vapid(self):
         if os.path.exists(self.key_path):
@@ -137,7 +140,7 @@ class AlertService:
             v = Vapid01()
             v.generate_keys()
             v.save_key(self.key_path)
-            print(f"[Alerts] generated VAPID key {self.key_path}")
+            log.info(f"generated VAPID key {self.key_path}")
         raw = v.public_key.public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
         return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
 
@@ -149,12 +152,22 @@ class AlertService:
         try:
             return fn(*args)
         except Exception as e:  # noqa: BLE001 - one broken source must not stop the others
-            print(f"[Alerts] source {name} failed: {str(e)[:120]}")
+            log.warning(f"source {name} failed: {str(e)[:120]}")
             return None
 
     def candidates(self, now=None):
         """Every alert condition true right now: [{topic, key, level, title, body}]."""
         now = now or time.time()
+        out = []
+        out += self._flood_candidates(now)
+        out += self._zone_candidates(now)
+        out += self._incident_candidates()
+        out += self._air_candidates(now)
+        out += self._system_candidates()
+        return out
+
+    def _flood_candidates(self, now):
+        """Road water over the warning level, and Traffy flood reports piling up in one district."""
         out = []
         flood = self._call("flood") or {}
         for s in flood.get("wet") or []:
@@ -176,7 +189,11 @@ class AlertService:
                 out.append({"topic": "flood", "key": f"traffy:{district}", "level": 2 if len(reps) >= TRAFFY_SEVERE else 1,
                             "title": f"คนแจ้งน้ำท่วม {len(reps)} เรื่อง: เขต{district}",
                             "body": f"Traffy Fondue ในชั่วโมงที่ผ่านมา{depth} · {reps[0].get('text', '')[:100]}", "province": BKK})
+        return out
 
+    def _zone_candidates(self, now):
+        """Red weather watches, TMD warnings, flooded provinces, rivers over the bank, the AI flood report."""
+        out = []
         water = self._call("water") or {}
         for z in water.get("weather") or []:
             if z.get("watch") == "red":
@@ -204,13 +221,23 @@ class AlertService:
                             "title": f"ล้นตลิ่ง: {r.get('name')}",
                             "body": f"{r.get('district') or '-'} {r.get('province') or ''}{pct}".strip(),
                             "province": thai_regions.normalize(r.get("province")) or ""})
+        out += self._agent_candidates(now)
+        return out
+
+    def _agent_candidates(self, now):
+        """The AI flood analysis when it says warning or critical and is fresh enough."""
+        out = []
         rep = self._call("agent") or {}
         if rep.get("overall_level") in ("warning", "critical") and now - (rep.get("generated_at") or 0) <= AGENT_MAX_AGE:
             names = ", ".join(d.get("name", "") for d in (rep.get("districts") or [])[:4])
             out.append({"topic": "zone", "key": "agent:overall", "level": 2 if rep["overall_level"] == "critical" else 1,
                         "title": f"AI วิเคราะห์น้ำท่วม: {rep.get('level_th') or rep['overall_level']}",
                         "body": f"{rep.get('headline', '')}{' · เขต ' + names if names else ''}"[:180], "province": BKK})
+        return out
 
+    def _incident_candidates(self):
+        """Accidents, broken-down cars and closed roads from cameras, traffic news and the BMA centre."""
+        out = []
         inc = self._call("incidents") or {}
         for i in inc.get("camera") or []:
             if i.get("kind") in ("accident", "breakdown"):
@@ -242,7 +269,11 @@ class AlertService:
             if e.get("kind") in BMA_EVENT_KINDS or (e.get("kind") == "roadwork" and "ปิด" in title):
                 out.append({"topic": "incident", "key": _event_key(title), "level": 1,
                             "title": f"ศูนย์จราจร กทม.: {e.get('title')}", "body": (e.get("desc") or "")[:140], "province": BKK})
+        return out
 
+    def _air_candidates(self, now):
+        """Very unhealthy PM2.5 now, and a dusty tomorrow in the evening."""
+        out = []
         air = self._call("air") or {}
         for a in air.get("items") or []:
             if a.get("level") == "very_unhealthy":
@@ -260,7 +291,11 @@ class AlertService:
                             "title": f"พรุ่งนี้ฝุ่น PM2.5 {tomorrow.get('label_th')}",
                             "body": f"ค่าเฉลี่ยประมาณ {round(tomorrow.get('mean') or 0)} สูงสุดประมาณ {round(tomorrow.get('max') or 0)} · ควรเตรียมหน้ากาก N95",
                             "province": BKK})
+        return out
 
+    def _system_candidates(self):
+        """Our own pipeline broken: camera scan, BMA site, AI image check, data disk."""
+        out = []
         h = self._call("health") or {}
         scan = h.get("scan") or {}
         if h and not scan.get("ok", True):
@@ -365,12 +400,12 @@ class AlertService:
                 self.error = None
             except Exception as e:  # noqa: BLE001
                 self.error = str(e)[:200]
-                print(f"[Alerts] check failed: {e}")
+                log.warning(f"check failed: {e}")
             time.sleep(CHECK_SECONDS)
 
     def start(self):
         if webpush is None:
-            print("[Alerts] pywebpush not installed - alerts disabled")
+            log.info("pywebpush not installed - alerts disabled")
             return
         threading.Thread(target=self._loop, daemon=True, name="alerts").start()
 
@@ -396,9 +431,9 @@ class AlertService:
                 if code in (404, 410):          # the browser dropped the subscription
                     gone.append(s["endpoint"])
                 else:
-                    print(f"[Alerts] push failed ({code}): {str(e)[:120]}")
+                    log.warning(f"push failed ({code}): {str(e)[:120]}")
             except Exception as e:  # noqa: BLE001
-                print(f"[Alerts] push failed: {str(e)[:120]}")
+                log.warning(f"push failed: {str(e)[:120]}")
         if gone:
             with self.lock:
                 self.subs = [s for s in self.subs if s["endpoint"] not in gone]

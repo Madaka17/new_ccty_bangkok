@@ -26,6 +26,7 @@ failed read keeps the last good list):
 Each camera says how the page shows it (media): "image" (a JPEG, refreshed), "video", "iframe" or "link".
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import re
 import ssl
@@ -37,6 +38,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 from backend.core import thai_regions
 from backend.core.instance import BASE_DIR, DATA_DIR
+from backend.core.log import get_logger
+
+log = get_logger("World cameras")
 
 FLOOD_LIST = ("https://floodbangkok.bangkok.go.th/bkk/dds/services/api/floods/v1/items/camera_profile"
               "?limit=-1&fields=id,CameraName,LiveStream,Lat,Long,camera_description")
@@ -326,7 +330,7 @@ class WorldCameras:
         try:
             cams = [c for c in READERS[name]() if c]
         except Exception as e:
-            print(f"[World cameras] {name} failed: {e}")
+            log.warning(f"{name} failed: {e}")
             return
         if not cams:
             return
@@ -335,10 +339,8 @@ class WorldCameras:
             self._by_id = {c["camid"]: c for cs in self._lists.values() for c in cs}
             data = {"updated": self._updated, "lists": self._lists}
         os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
-        with open(CACHE_FILE + ".tmp", "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False)
-        os.replace(CACHE_FILE + ".tmp", CACHE_FILE)
-        print(f"[World cameras] {name}: {len(cams)} cameras")
+        write_json_atomic(CACHE_FILE, data, ensure_ascii=False)
+        log.info(f"{name}: {len(cams)} cameras")
 
     def image_bytes(self, camid):
         """Newest picture of a DWR, DDPM or Nonthaburi camera on our list, kept on disk for IMAGE_TTL; None when

@@ -171,8 +171,6 @@ class VehicleTracker:
         counts = {'cars': 0, 'motorcycles': 0, 'trucks': 0}
         new_vehicles = {'cars': 0, 'motorcycles': 0, 'trucks': 0}
         dets = []
-        moving = 0
-        measured = 0
         now = frame_t
 
         persons = []
@@ -188,9 +186,43 @@ class VehicleTracker:
             else:
                 veh_rows.append(row)
 
+        moving, measured, used_person_indices, riders = self._count_tracked_vehicles(
+            veh_rows, person_rows, now, counts, new_vehicles, dets, tracked_boxes)
+        lone_moving, lone_measured = self._count_lone_riders(
+            person_rows, used_person_indices, now, counts, new_vehicles, dets, tracked_boxes, persons)
+        moving += lone_moving
+        measured += lone_measured
+
+        self._add_untracked_detections(result, counts, dets, tracked_boxes)
+
+        total = sum(counts.values())
+
+        self._detect_collisions(now)
+
+        # Drop tracks that left the frame
+        for tid in [t for t, v in self._tracks.items() if now - v['t'] > self.TRACK_TTL]:
+            del self._tracks[tid]
+
+        moving_pct, n = self._smooth_flow(now, moving, measured, total)
+        moving_pct, level = self._traffic_level(now, moving_pct, n)
+
+        stats = dict(counts, total=total, moving_pct=moving_pct, level=level, traffic_level=LEVEL_TEXT[level][0])
+        self.persons = persons
+        self.riders = riders
+        self.last_stats = stats
+        self._now = now
+        return dets, stats, new_vehicles
+
+    def _count_tracked_vehicles(self, veh_rows, person_rows, now, counts, new_vehicles, dets, tracked_boxes):
+        """Count ByteTrack vehicle rows, merging overlapping people into motorcycles as riders.
+
+        Fills counts, new_vehicles, dets and tracked_boxes in place.
+        Returns (moving, measured, used_person_indices, riders).
+        """
+        moving = 0
+        measured = 0
         used_person_indices = set()
         riders = set()
-
         for row in veh_rows:
             x1, y1, x2, y2 = [int(v) for v in row[:4]]
             track_id = int(row[4])
@@ -222,8 +254,16 @@ class VehicleTracker:
             if is_moving is not None:
                 measured += 1
                 moving += is_moving
+        return moving, measured, used_person_indices, riders
 
-        # Handle remaining tracked persons: lone rider detected as person in traffic
+    def _count_lone_riders(self, person_rows, used_person_indices, now, counts, new_vehicles, dets, tracked_boxes, persons):
+        """Handle remaining tracked persons: a lone rider detected as person in traffic counts as a motorcycle.
+
+        Fills persons (every person seen), counts, new_vehicles, dets and tracked_boxes in place.
+        Returns (moving, measured) from the lone riders.
+        """
+        moving = 0
+        measured = 0
         for p_i, p_row in enumerate(person_rows):
             px1, py1, px2, py2 = [int(v) for v in p_row[:4]]
             p_track_id = int(p_row[4])
@@ -246,41 +286,15 @@ class VehicleTracker:
                 if is_moving is not None:
                     measured += 1
                     moving += is_moving
+        return moving, measured
 
-        # Also capture and show raw detections that ByteTrack hasn't locked onto yet
-        # so NO vehicle is missed on screen
+    def _add_untracked_detections(self, result, counts, dets, tracked_boxes):
+        """Add raw detections that ByteTrack has not locked onto yet, so no vehicle is missed on screen.
+
+        Fills counts and dets in place; boxes overlapping a tracked box are duplicates and skipped.
+        """
         if len(result.boxes):
-            raw_motos = []
-            raw_others = []
-            raw_persons = []
-            for b in result.boxes:
-                bx1, by1, bx2, by2 = [int(v) for v in b.xyxy[0]]
-                bconf = float(b.conf[0])
-                bcls = int(b.cls[0])
-                if bcls == PERSON_CLASS:
-                    raw_persons.append((bx1, by1, bx2, by2, bconf))
-                elif bcls in (1, 3):
-                    raw_motos.append([bx1, by1, bx2, by2, bconf, bcls])
-                else:
-                    raw_others.append((bx1, by1, bx2, by2, bconf, bcls))
-
-            used_raw_p = set()
-            for m in raw_motos:
-                for p_i, (px1, py1, px2, py2, pconf) in enumerate(raw_persons):
-                    if p_i in used_raw_p:
-                        continue
-                    if not (px2 < m[0] or px1 > m[2] or py2 < m[1] - 40 or py1 > m[3] + 40):
-                        m[0], m[1] = min(m[0], px1), min(m[1], py1)
-                        m[2], m[3] = max(m[2], px2), max(m[3], py2)
-                        m[4] = max(m[4], pconf)
-                        used_raw_p.add(p_i)
-
-            # Standalone raw persons on road -> motorcycle
-            for p_i, (px1, py1, px2, py2, pconf) in enumerate(raw_persons):
-                if p_i not in used_raw_p and (py2 - py1) <= 200:
-                    raw_motos.append([px1, py1, px2, py2, pconf, 3])
-
-            all_raw = [(m[0], m[1], m[2], m[3], m[4], m[5]) for m in raw_motos] + raw_others
+            all_raw = self._raw_boxes_with_riders(result)
             for bx1, by1, bx2, by2, bconf, bcls in all_raw:
                 is_dup = False
                 for tx1, ty1, tx2, ty2 in tracked_boxes:
@@ -300,14 +314,41 @@ class VehicleTracker:
                     counts[CAT_KEY[cat]] += 1
                     dets.append((bcls, bconf, bx1, by1, bx2, by2, -1))
 
-        total = sum(counts.values())
+    def _raw_boxes_with_riders(self, result):
+        """Raw detections as (x1, y1, x2, y2, conf, cls); overlapping people merged into motorcycles."""
+        raw_motos = []
+        raw_others = []
+        raw_persons = []
+        for b in result.boxes:
+            bx1, by1, bx2, by2 = [int(v) for v in b.xyxy[0]]
+            bconf = float(b.conf[0])
+            bcls = int(b.cls[0])
+            if bcls == PERSON_CLASS:
+                raw_persons.append((bx1, by1, bx2, by2, bconf))
+            elif bcls in (1, 3):
+                raw_motos.append([bx1, by1, bx2, by2, bconf, bcls])
+            else:
+                raw_others.append((bx1, by1, bx2, by2, bconf, bcls))
 
-        self._detect_collisions(now)
+        used_raw_p = set()
+        for m in raw_motos:
+            for p_i, (px1, py1, px2, py2, pconf) in enumerate(raw_persons):
+                if p_i in used_raw_p:
+                    continue
+                if not (px2 < m[0] or px1 > m[2] or py2 < m[1] - 40 or py1 > m[3] + 40):
+                    m[0], m[1] = min(m[0], px1), min(m[1], py1)
+                    m[2], m[3] = max(m[2], px2), max(m[3], py2)
+                    m[4] = max(m[4], pconf)
+                    used_raw_p.add(p_i)
 
-        # Drop tracks that left the frame
-        for tid in [t for t, v in self._tracks.items() if now - v['t'] > self.TRACK_TTL]:
-            del self._tracks[tid]
+        # Standalone raw persons on road -> motorcycle
+        for p_i, (px1, py1, px2, py2, pconf) in enumerate(raw_persons):
+            if p_i not in used_raw_p and (py2 - py1) <= 200:
+                raw_motos.append([px1, py1, px2, py2, pconf, 3])
+        return [(m[0], m[1], m[2], m[3], m[4], m[5]) for m in raw_motos] + raw_others
 
+    def _smooth_flow(self, now, moving, measured, total):
+        """Update the smoothed flow and return (moving_pct, n) for the traffic level."""
         # Traffic level: how many vehicles are visible AND whether they are moving.
         # Many moving vehicles = busy but flowing, not a jam. Both signals are smoothed over
         # ~LEVEL_WINDOW seconds of video so one red-light queue does not read as a jam.
@@ -330,7 +371,10 @@ class VehicleTracker:
 
         moving_pct = round(self._flow['moving']) if self._flow else 100
         n = self._flow['total'] if self._flow else total
+        return moving_pct, n
 
+    def _traffic_level(self, now, moving_pct, n):
+        """Apply the turnover signal to the moving share, then pick the level. Returns (moving_pct, level)."""
         # Turnover: fast vehicles leave before their speed can be measured, which biases the
         # moving share low on highways. If the visible vehicles are replaced about twice a
         # minute or more, traffic is flowing regardless of what the speed estimate says.
@@ -351,13 +395,7 @@ class VehicleTracker:
             level = 'heavy'
         else:
             level = 'moderate'
-
-        stats = dict(counts, total=total, moving_pct=moving_pct, level=level, traffic_level=LEVEL_TEXT[level][0])
-        self.persons = persons
-        self.riders = riders
-        self.last_stats = stats
-        self._now = now
-        return dets, stats, new_vehicles
+        return moving_pct, level
 
     def _detect_collisions(self, now):
         """Mark tracks that stopped abruptly while touching another stopped vehicle as a collision pair."""

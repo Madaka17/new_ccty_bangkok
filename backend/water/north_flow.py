@@ -39,6 +39,9 @@ from datetime import datetime, timedelta
 import numpy as np
 
 from backend.water import water_forecast, water_service as ws
+from backend.core.log import get_logger
+
+log = get_logger("NorthFlow")
 
 FLOW_TTL = 600           # the outlook, with the 10-minute estimates
 RID_TTL = 1800           # ThaiWater relays the RID gauges hourly
@@ -226,7 +229,7 @@ def _ratings(loaded):
             try:
                 levels = dict(_level_series(h["id"], FIT_DAYS + 1))
             except Exception as e:  # noqa: BLE001 - try the next neighbour
-                print(f"[NorthFlow] level {h['id']}: {e}")
+                log.info(f"level {h['id']}: {e}")
                 continue
             r = fit_rating([(levels[t], q) for t, q in sorted(s["flow"].items()) if t in levels])
             if r and r["mape"] <= MATCH_MAPE and (best is None or r["mape"] < best["mape"]):
@@ -379,7 +382,7 @@ def _official(sid):
     try:
         f = water_forecast.get_forecast(sid)
     except Exception as e:  # noqa: BLE001 - the routed outlook stands without it
-        print(f"[NorthFlow] HII forecast {sid}: {e}")
+        log.info(f"HII forecast {sid}: {e}")
         return None
     peak, bank = f.get("peak"), (f.get("levels") or {}).get("bank")
     if f.get("source") != "hii" or not peak:
@@ -416,7 +419,7 @@ def _build():
     try:
         ratings = ws._cache.get("north_rating", RATING_TTL, lambda: _ratings(loaded))[0]
     except Exception as e:  # noqa: BLE001 - the hourly RID figures stand without it
-        print(f"[NorthFlow] ratings: {e}")
+        log.info(f"ratings: {e}")
         ratings = {}
     tens = {}
 
@@ -426,7 +429,7 @@ def _build():
                                    lambda: _level_series(rating["station_id"], 2))[0]
             tens[code] = [p for p in ten_minute(rating, levels) if p["t"] > time.time() - TEN_MIN_H * HOUR]
         except Exception as e:  # noqa: BLE001 - that gauge keeps its hourly figure only
-            print(f"[NorthFlow] 10-min {code}: {e}")
+            log.info(f"10-min {code}: {e}")
 
     threads = [threading.Thread(target=run10, args=kv, daemon=True) for kv in ratings.items()]
     for t in threads:
@@ -492,7 +495,7 @@ def _build():
     try:
         ntw_dams = ws._cache.get("ntw", ws.NTW_TTL, ws._load_ntw)[0].get("dams") or []
     except Exception as e:  # noqa: BLE001 - dams are context only
-        print(f"[NorthFlow] dams: {e}")
+        log.info(f"dams: {e}")
         ntw_dams = []
     dams = [{**d, "river": DAMS[d["name"]],
              "released_m3s": round(d["released"] * 1e6 / 86400) if d.get("released") is not None else None,
@@ -650,6 +653,6 @@ def start():
             try:
                 get_outlook()
             except Exception as e:  # noqa: BLE001 - keep the timer alive
-                print(f"[NorthFlow] refresh failed: {e}")
+                log.warning(f"refresh failed: {e}")
             time.sleep(FLOW_TTL)
     threading.Thread(target=loop, daemon=True, name="NorthFlow").start()

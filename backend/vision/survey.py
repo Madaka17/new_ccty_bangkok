@@ -4,6 +4,9 @@ import time
 
 from backend.vision.yolo_switch import YoloOff
 from backend.vision.vehicle_tracker import VehicleTracker, frame_video_time
+from backend.core.log import get_logger
+
+log = get_logger("Survey")
 
 
 class SurveyManager:
@@ -72,7 +75,7 @@ class SurveyManager:
                 # Switch is off: _sample dropped its stream without saving a sample; wait, do not spin
                 self.stop.wait(10.0)
             except Exception as e:
-                print(f"[Survey] {cam.get('camid')}: {e}")
+                log.info(f"{cam.get('camid')}: {e}")
                 self.stop.wait(2.0)
 
     def _fail(self, camid, title, error):
@@ -132,7 +135,7 @@ class SurveyManager:
         # Too short a sample (stream dropped) says nothing useful
         if stats is None or frame_t - t0_video < self.sample_seconds * 0.4:
             self._fail(camid, title, 'อ่านภาพไม่ได้')
-            print(f"[Survey] {title}: stream dropped after {round((frame_t or 0) - (t0_video or 0), 1)}s")
+            log.info(f"{title}: stream dropped after {round((frame_t or 0) - (t0_video or 0), 1)}s")
             return
         seconds = frame_t - t0_video
         sample = {
@@ -145,4 +148,4 @@ class SurveyManager:
         }
         self.latest[camid] = sample
         self.vehicle_log.add_sample(sample)
-        print(f"[Survey] {title}: {sample['passed']} passed in {sample['seconds']}s ({round(time.time() - t_wall0)}s wall) level={sample['level']}")
+        log.info(f"{title}: {sample['passed']} passed in {sample['seconds']}s ({round(time.time() - t_wall0)}s wall) level={sample['level']}")

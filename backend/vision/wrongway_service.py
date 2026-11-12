@@ -25,9 +25,8 @@ Budget: WRONGWAY_MAX_PER_HOUR agent calls, WRONGWAY_PER_CAM candidates per camer
 visit per camera every WRONGWAY_COOLDOWN seconds. Assistive log, not an enforcement record: a
 person checks the evidence (a parked car facing the wrong way looks the same to a still image).
 """
-import base64
-import csv
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import queue
 import sqlite3
@@ -39,12 +38,17 @@ import cv2
 import numpy as np
 
 from backend.core import local_llm
+from backend.core.hourly_budget import HourlyBudget
 from backend.core.instance import DEFAULT_BMA_DATA_DIR
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 from backend.vision.remote_yolo import is_remote, load_yolo, weights_available
 from backend.vision.yolo_switch import YoloOff
+from backend.vision.patrol_common import PatrolStore, archive_evidence, ask_cloud_vision, clean_cache_dir
 from backend.vision.frame_utils import fingerprint, iou, safe_id, safe_name, same_scene, write_jpeg
+from backend.core.log import get_logger
+
+log = get_logger("WrongWay")
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "wrongway")
 FIELD_DIR = os.path.join(DATA_DIR, "cache", "heading")
 ARCHIVE_DIR = os.getenv("WRONGWAY_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", DEFAULT_BMA_DATA_DIR), "wrongway"))
@@ -139,9 +143,8 @@ class HeadingField:
         if not self.dirty or (not force and time.time() - self.last_save < FIELD_SAVE_EVERY):
             return
         os.makedirs(FIELD_DIR, exist_ok=True)
-        with open(self.path, "w", encoding="utf-8") as f:
-            json.dump({"camid": self.camid, "cols": GRID_COLS, "rows": GRID_ROWS, "votes": self.votes.tolist(),
-                       "saved": int(time.time())}, f)
+        write_json_atomic(self.path, {"camid": self.camid, "cols": GRID_COLS, "rows": GRID_ROWS, "votes": self.votes.tolist(),
+                                      "saved": int(time.time())})
         self.dirty = False
         self.last_save = time.time()
 
@@ -190,12 +193,13 @@ class WrongWayPatrol:
         self.vision = vision
         self.scanner = scanner
         self.lock = threading.Lock()
+        self._open_store()
         self.fields = {}
         self._last_visit = {}
         self._last_frame = {}
         self._last_boxes = {}
         self._last_classify = {}   # camid -> ts of the last classifier pass (CLS_EVERY throttle)
-        self._calls = []
+        self._budget = HourlyBudget(MAX_PER_HOUR)   # agent calls in the last hour
         self._queue = queue.Queue()
         self.last_check = 0
         self.agent_error = None
@@ -214,49 +218,37 @@ class WrongWayPatrol:
         threading.Thread(target=self._resume_pending, daemon=True).start()
 
     # ------------------------------------------------------------ storage
+    def _open_store(self):
+        self._store = PatrolStore(self.db_path, "wrongway_checks", """
+        CREATE TABLE IF NOT EXISTS wrongway_checks (
+            id          TEXT PRIMARY KEY,
+            ts          INTEGER NOT NULL,
+            camid       TEXT NOT NULL,
+            title       TEXT,
+            district    TEXT,
+            box         TEXT,               -- [x1,y1,x2,y2] on the frame
+            heading     TEXT,               -- what the detector saw
+            expected    TEXT,               -- what the lane normally does
+            det_conf    REAL,
+            verdict     TEXT NOT NULL,      -- pending | wrong_way | ok | unclear | error
+            source      TEXT,               -- local | gemini | claude
+            confidence  REAL,
+            note        TEXT,
+            archive     TEXT
+        )""",
+                                  "CREATE INDEX IF NOT EXISTS wrongway_checks_ts ON wrongway_checks(ts)", self.lock)
+
     def _init_db(self):
-        conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS wrongway_checks (
-                id          TEXT PRIMARY KEY,
-                ts          INTEGER NOT NULL,
-                camid       TEXT NOT NULL,
-                title       TEXT,
-                district    TEXT,
-                box         TEXT,               -- [x1,y1,x2,y2] on the frame
-                heading     TEXT,               -- what the detector saw
-                expected    TEXT,               -- what the lane normally does
-                det_conf    REAL,
-                verdict     TEXT NOT NULL,      -- pending | wrong_way | ok | unclear | error
-                source      TEXT,               -- local | gemini | claude
-                confidence  REAL,
-                note        TEXT,
-                archive     TEXT
-            )""")
-        conn.execute("CREATE INDEX IF NOT EXISTS wrongway_checks_ts ON wrongway_checks(ts)")
-        conn.commit()
-        conn.close()
+        self._store.init()
 
     def _db(self):
-        conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=10)
-        conn.row_factory = sqlite3.Row
-        return conn
+        return self._store.connect()
 
     def _insert(self, row):
-        with self.lock:
-            conn = self._db()
-            conn.execute("INSERT OR REPLACE INTO wrongway_checks VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", row)
-            conn.commit()
-            conn.close()
+        self._store.insert(row)
 
     def _update(self, wid, **fields):
-        keys = list(fields)
-        with self.lock:
-            conn = self._db()
-            conn.execute(f"UPDATE wrongway_checks SET {', '.join(k + ' = ?' for k in keys)} WHERE id = ?",
-                         [fields[k] for k in keys] + [wid])
-            conn.commit()
-            conn.close()
+        self._store.update(wid, **fields)
 
     @staticmethod
     def crop_path(wid):
@@ -283,9 +275,9 @@ class WrongWayPatrol:
                 cls = load_yolo(CLS_PATH)
                 if not is_remote(cls):
                     cls(np.zeros((CLS_IMGSZ, CLS_IMGSZ, 3), dtype=np.uint8), imgsz=CLS_IMGSZ, verbose=False)
-                print(f"[WrongWay] heading classifier loaded: {CLS_PATH} {list(cls.names.values())}")
+                log.info(f"heading classifier loaded: {CLS_PATH} {list(cls.names.values())}")
             except Exception as e:  # noqa: BLE001
-                print(f"[WrongWay] heading classifier failed to load: {e}")
+                log.warning(f"heading classifier failed to load: {e}")
                 cls = None
         if cls is None and weights_available(DET_PATH):
             try:
@@ -293,12 +285,12 @@ class WrongWayPatrol:
                 if not is_remote(det):
                     det(np.zeros((288, 352, 3), dtype=np.uint8), imgsz=DET_IMGSZ, verbose=False)
                 det_names = {int(k): v for k, v in det.names.items()}
-                print(f"[WrongWay] heading detector loaded: {DET_PATH} {list(det_names.values())}")
+                log.info(f"heading detector loaded: {DET_PATH} {list(det_names.values())}")
             except Exception as e:  # noqa: BLE001
-                print(f"[WrongWay] heading detector failed to load: {e}")
+                log.warning(f"heading detector failed to load: {e}")
                 det = None
         elif cls is None:
-            print(f"[WrongWay] no heading classifier or detector at {CLS_PATH}: patrol off (train it with local/pipeline/wrongway_pipeline.bat)")
+            log.info(f"no heading classifier or detector at {CLS_PATH}: patrol off (train it with local/pipeline/wrongway_pipeline.bat)")
         with self._det_lock:
             if self.cls is None and self.det is None:
                 self.cls, self.det, self.det_names = cls, det, det_names
@@ -502,10 +494,9 @@ class WrongWayPatrol:
 
     # ------------------------------------------------------------ analysis
     def _budget_ok(self, now):
-        self._calls = [t for t in self._calls if now - t < 3600]
         if self.agent_error and now - self.agent_error["ts"] < self.agent_error.get("for", AGENT_BACKOFF_S):
             return False
-        return len(self._calls) < MAX_PER_HOUR
+        return self._budget.allows(now)
 
     def _agent_reason(self, now):
         if self.agent_error and now - self.agent_error["ts"] < self.agent_error.get("for", AGENT_BACKOFF_S):
@@ -518,7 +509,7 @@ class WrongWayPatrol:
             try:
                 self._analyse(wid, camid, cam, crop, marked, boxed=boxed)
             except Exception as e:  # noqa: BLE001
-                print(f"[WrongWay] check failed {wid}: {e}")
+                log.warning(f"check failed {wid}: {e}")
                 self._update(wid, verdict="error", note=str(e)[:200])
             finally:
                 self._queue.task_done()
@@ -558,7 +549,7 @@ class WrongWayPatrol:
             return
         jpeg = cv2.imencode(".jpg", marked if boxed is None else boxed, [cv2.IMWRITE_JPEG_QUALITY, 90])[1].tobytes()
         context = f"Camera: {cam.get('title') or camid}, Bangkok."
-        self._calls.append(now)
+        self._budget.spend(now)
         try:
             text = self._ask(jpeg, context)
         except Exception as e:  # noqa: BLE001
@@ -568,7 +559,7 @@ class WrongWayPatrol:
             elif any(k in msg for k in ("402", "401", "400", "RESOURCE_EXHAUSTED", "credits", "API key")):
                 short = "โควตา AI หมด" if ("402" in msg or "credits" in msg or "RESOURCE_EXHAUSTED" in msg) else "ตั้งค่า AI ไม่ถูกต้อง"
                 self.agent_error = {"ts": now, "message": short, "for": AGENT_BACKOFF_S}
-            print(f"[WrongWay] cloud agent error: {msg[:160]}")
+            log.warning(f"cloud agent error: {msg[:160]}")
             self._update(wid, verdict="pending", note=f"{local_note} · รอ AI ตรวจซ้ำ (AI ไม่ตอบ)")
             return
         self.agent_error = None
@@ -578,7 +569,7 @@ class WrongWayPatrol:
         wrong = bool(v.get("wrong_way"))
         conf = float(v.get("confidence", 0) or 0)
         note = (v.get("note_th") or "").strip()[:300]
-        print(f"[WrongWay] {provider} · {cam.get('title') or camid}: wrong_way {wrong}, conf {conf:.2f}")
+        log.info(f"{provider} · {cam.get('title') or camid}: wrong_way {wrong}, conf {conf:.2f}")
         if wrong and conf >= AGENT_MIN_CONF:
             self._finish_wrong_way(wid, camid, cam, crop, marked, conf, note, provider)
         elif not wrong and conf >= 0.5:
@@ -597,73 +588,21 @@ class WrongWayPatrol:
     def _finish_wrong_way(self, wid, camid, cam, crop, marked, conf, note, source):
         archived = self._archive(wid, camid, cam, crop, marked, conf, note)
         self._update(wid, verdict="wrong_way", source=source, confidence=round(conf, 2), note=note, archive=archived)
-        print(f"[WrongWay] WRONG WAY at {cam.get('title') or camid} ({conf:.0%}, {source})" + (f" -> {archived}" if archived else ""))
+        log.info(f"WRONG WAY at {cam.get('title') or camid} ({conf:.0%}, {source})" + (f" -> {archived}" if archived else ""))
 
     def _archive(self, wid, camid, cam, crop, marked, conf, note):
-        try:
-            try:
-                ts = int(wid.rsplit("-", 2)[1])
-            except (IndexError, ValueError):
-                ts = time.time()
-            dt = datetime.fromtimestamp(ts)
-            day_dir = os.path.join(ARCHIVE_DIR, dt.strftime("%Y-%m-%d"))
-            os.makedirs(day_dir, exist_ok=True)
-            stem = os.path.join(day_dir, f"{safe_name(camid)}_{dt.strftime('%H%M%S')}_{wid[-1]}")
-            frame_out, crop_out = stem + ".jpg", stem + "_crop.jpg"
-            banner = marked.copy()
-            label = f"WRONG WAY {conf:.0%}  {dt.strftime('%Y-%m-%d %H:%M:%S')}"
-            cv2.rectangle(banner, (0, 0), (banner.shape[1], 22), (0, 0, 0), -1)
-            cv2.putText(banner, label, (4, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-            write_jpeg(frame_out, banner, 92)
-            write_jpeg(crop_out, crop, 92)
-            index = os.path.join(ARCHIVE_DIR, "wrongway.csv")
-            new_file = not os.path.exists(index)
-            with open(index, "a", newline="", encoding="utf-8-sig") as f:
-                w = csv.writer(f)
-                if new_file:
-                    w.writerow(["id", "datetime", "camid", "camera", "district", "confidence", "note", "frame", "crop"])
-                w.writerow([wid, dt.strftime("%Y-%m-%d %H:%M:%S"), camid, cam.get("title") or "", cam.get("district") or "",
-                            round(float(conf), 2), note, frame_out, crop_out])
-            return frame_out
-        except OSError as e:
-            print(f"[WrongWay] archive to {ARCHIVE_DIR} failed: {e}")
-            return None
+        return archive_evidence(
+            ARCHIVE_DIR, "wrongway.csv", wid, camid, cam, crop, marked,
+            f"WRONG WAY {conf:.0%}  {{datetime}}", 22, 16, 0.5,
+            ["id", "datetime", "camid", "camera", "district", "confidence", "note", "frame", "crop"],
+            [round(float(conf), 2), note], "WrongWay")
 
     def _ask(self, jpeg, context):
         vis = self.vision
         if vis.provider == "qwen":
             return vis.client.look(AGENT_PROMPT, jpeg, context, timeout=AGENT_TIMEOUT_MS / 1000)
-        if vis.provider == "gemini":
-            from google.genai import types as genai_types
-            for model in dict.fromkeys([AGENT_MODEL, FALLBACK_MODEL]):
-                try:
-                    resp = vis.client.models.generate_content(
-                        model=model,
-                        contents=[genai_types.Part.from_bytes(data=jpeg, mime_type="image/jpeg"), genai_types.Part(text=context)],
-                        config=genai_types.GenerateContentConfig(system_instruction=AGENT_PROMPT, temperature=0.1,
-                                                                 max_output_tokens=300, response_mime_type="application/json",
-                                                                 http_options=genai_types.HttpOptions(timeout=AGENT_TIMEOUT_MS)),
-                    )
-                    local_llm.note_cloud(model, resp)
-                    return (resp.text or "").strip()
-                except Exception as e:  # noqa: BLE001
-                    if any(k in str(e) for k in ("503", "UNAVAILABLE", "504", "DEADLINE")):
-                        continue
-                    raise
-            raise RuntimeError("503 Gemini overloaded on every model")
-        response = vis.client.messages.create(
-            model=os.environ.get("CLAUDE_VISION_MODEL", "claude-opus-5-5"),
-            output_config={"effort": "low"},
-            max_tokens=200,
-            system=AGENT_PROMPT,
-            messages=[{"role": "user", "content": [
-                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
-                                             "data": base64.standard_b64encode(jpeg).decode("ascii")}},
-                {"type": "text", "text": context},
-            ]}],
-        )
-        local_llm.note_cloud(response.model, response)
-        return "".join(b.text for b in response.content if b.type == "text").strip()
+        return ask_cloud_vision(vis, AGENT_PROMPT, jpeg, context, [AGENT_MODEL, FALLBACK_MODEL],
+                                AGENT_TIMEOUT_MS, caller=__name__)
 
     # ------------------------------------------------------------ reanalysis
     def reanalyse(self, wid, agent="cloud"):
@@ -740,7 +679,6 @@ class WrongWayPatrol:
                 "SELECT verdict, COUNT(*) n FROM wrongway_checks WHERE ts >= ? GROUP BY verdict", (day0,))}
             total = conn.execute("SELECT COUNT(*) FROM wrongway_checks WHERE verdict = 'wrong_way'").fetchone()[0]
             conn.close()
-        self._calls = [t for t in self._calls if now - t < 3600]
         learned = sum(1 for f in self.fields.values() if f.summary()["known"] > 0)
         return {
             "updated": int(now), "enabled": self.enabled(), "detector": self.model_name(),
@@ -749,7 +687,7 @@ class WrongWayPatrol:
             else AGENT_MODEL if self.provider() == "gemini"
             else (os.environ.get("CLAUDE_VISION_MODEL", "claude-opus-5-5") if self.provider() else None),
             "archive_dir": ARCHIVE_DIR, "archive_ok": os.path.isdir(os.path.dirname(ARCHIVE_DIR.rstrip("/\\"))),
-            "calls_last_hour": len(self._calls), "calls_per_hour_max": MAX_PER_HOUR, "queue": self._queue.qsize(),
+            "calls_last_hour": self._budget.used(now), "calls_per_hour_max": MAX_PER_HOUR, "queue": self._queue.qsize(),
             "agent_error": (self.agent_error["message"] if self.agent_error and now - self.agent_error["ts"] < self.agent_error.get("for", AGENT_BACKOFF_S) else None),
             "last_check": self.last_check, "cooldown_s": COOLDOWN, "per_camera": PER_CAM, "min_votes": HEADING_MIN_VOTES,
             "frames_seen": self.frames_seen, "cameras_seen": len(self.fields), "cameras_learned": learned,
@@ -815,16 +753,9 @@ class WrongWayPatrol:
             time.sleep(1800)
             cutoff = time.time() - CACHE_KEEP_H * 3600
             try:
-                for name in os.listdir(CACHE_DIR):
-                    p = os.path.join(CACHE_DIR, name)
-                    if os.path.getmtime(p) < cutoff:
-                        os.remove(p)
-                with self.lock:
-                    conn = self._db()
-                    conn.execute("DELETE FROM wrongway_checks WHERE ts < ? AND verdict != 'wrong_way'", (int(cutoff),))
-                    conn.commit()
-                    conn.close()
+                clean_cache_dir(CACHE_DIR, cutoff)
+                self._store.delete_older(cutoff, "wrong_way")
                 for fl in list(self.fields.values()):
                     fl.save(force=True)
-            except OSError:
-                pass
+            except (OSError, sqlite3.Error) as e:
+                log.warning(f"cleanup failed: {e}")   # keep the thread alive for the next round

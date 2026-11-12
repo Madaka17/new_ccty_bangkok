@@ -30,6 +30,9 @@ from PIL import Image, ImageOps
 from backend.core import local_llm, thai_regions
 from backend.core.instance import BASE_DIR, DATA_DIR
 from backend.water.flood_feeds import hide_contacts
+from backend.core.log import get_logger
+
+log = get_logger("UserReports")
 
 DB_PATH = os.path.join(DATA_DIR, "vehicle_counts.db")
 PHOTO_DIR = os.path.join(DATA_DIR, "cache", "user_reports")
@@ -216,7 +219,7 @@ class UserReports:
             start, end = text.find("{"), text.rfind("}")
             v = json.loads(text[start:end + 1])
         except Exception as e:  # noqa: BLE001 - endpoint busy or down: the worker tries again
-            print(f"[UserReports] check of {rid} failed: {type(e).__name__}: {str(e)[:120]}")
+            log.warning(f"check of {rid} failed: {type(e).__name__}: {str(e)[:120]}")
             return "pending"
         level = str(v.get("level") or "none").lower()
         ok = v.get("fit") is True and (v.get("flood") is True or not row["has_photo"])
@@ -243,7 +246,7 @@ class UserReports:
                     if self._check(rid) == "pending":
                         break   # the model is still not answering: wait for the next round
             except Exception as e:  # noqa: BLE001
-                print(f"[UserReports] retry failed: {e}")
+                log.warning(f"retry failed: {e}")
 
     # ------------------------------------------------------------ out
     def recent(self, hours=None):

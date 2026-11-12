@@ -12,7 +12,6 @@ Sources (all public, read-only):
   Chao Phraya, so trend + tide explains most of the short-term movement).
 """
 import json
-import math
 import re
 import threading
 import time
@@ -22,6 +21,10 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 from backend.water.thaiwater_api import USER_AGENT, _get, key_status
+from backend.core.geo import haversine_km
+from backend.core.log import get_logger
+
+log = get_logger("Water")
 
 # National Thai Water portal (nationalthaiwater.onwr.go.th) backend: no key needed, one big
 # snapshot of every station in the country refreshed by HII every hour
@@ -112,7 +115,7 @@ class _Cache:
             try:
                 value = loader()
             except Exception as e:
-                print(f"[Water] {key} refresh failed: {e}")
+                log.warning(f"{key} refresh failed: {e}")
                 with self.lock:
                     self.failed[key] = (time.time(), e)
                 if hit:
@@ -319,7 +322,7 @@ def _load_canals():
             parts[key] = fn()
         except Exception as e:  # noqa: BLE001 - either source alone is enough
             errors[key] = e
-            print(f"[Water] canals {key}: {e}")
+            log.info(f"canals {key}: {e}")
 
     threads = [threading.Thread(target=run, args=a, daemon=True) for a in (
         ("bma", lambda: _cache.get("bma_canals", BMA_WATER_TTL, _load_bma_canals)[0]), ("twa", _load_twa_canals))]
@@ -436,7 +439,7 @@ def _load_rain_warnings():
                     "ts": _ts(p.get("measureAt")),
                 })
     except Exception as e:
-        print(f"[Water] rain forecast: {e}")
+        log.info(f"rain forecast: {e}")
     try:
         d = _get("/v2/summary/warning-rainfall-24h")
         for p in ((d.get("data") or {}).get("area") or []):
@@ -450,7 +453,7 @@ def _load_rain_warnings():
                     "ts": _ts(p.get("latestRainfallDatetime")),
                 })
     except Exception as e:
-        print(f"[Water] rain warning: {e}")
+        log.warning(f"rain warning: {e}")
     return out
 
 
@@ -664,9 +667,7 @@ def _load_weather():
 def _km(lat1, lng1, lat2, lng2):
     if None in (lat1, lng1, lat2, lng2):
         return 999.0
-    p = math.pi / 180
-    a = 0.5 - math.cos((lat2 - lat1) * p) / 2 + math.cos(lat1 * p) * math.cos(lat2 * p) * (1 - math.cos((lng2 - lng1) * p)) / 2
-    return 12742 * math.asin(math.sqrt(a))
+    return haversine_km(lat1, lng1, lat2, lng2, radius_km=6371.0)
 
 
 def _zone_watch(zones, river, canals, roads, rain_warnings, radius_km=9.0):
@@ -733,7 +734,7 @@ def _build_summary():
             parts[key] = fn()
         except Exception as e:
             errors[key] = str(e)
-            print(f"[Water] {key}: {e}")
+            log.info(f"{key}: {e}")
 
     threads = [threading.Thread(target=run, args=a, daemon=True) for a in (
         ("river", _load_river), ("canals", _load_canals), ("flood_roads", _load_flood_roads),

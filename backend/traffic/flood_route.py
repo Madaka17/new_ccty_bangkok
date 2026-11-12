@@ -17,6 +17,7 @@ Driving route from A to B that keeps out of flooded roads, for the chat bot's "h
 Valhalla's times are free-flow, so the minutes given are a range: its time plus the jam delay, to 30% more.
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import math
 import os
 import re
@@ -27,6 +28,9 @@ import urllib.parse
 import requests
 
 from backend.core.instance import CACHE_DIR
+from backend.core.log import get_logger
+
+log = get_logger("Route")
 
 NOMINATIM = "https://nominatim.openstreetmap.org/search"
 VALHALLA = os.getenv("ROUTE_VALHALLA_URL", "https://valhalla1.openstreetmap.de/route")
@@ -175,7 +179,7 @@ def gather(sources):
         try:
             spots += list(read())
         except Exception as e:  # noqa: BLE001 - one feed down must not drop the rest
-            print(f"[Route] {name} unavailable: {str(e)[:160]}")
+            log.info(f"{name} unavailable: {str(e)[:160]}")
             missing.append(name)
     return (None if len(missing) == len(sources) else spots), missing
 
@@ -198,12 +202,9 @@ class FloodRouter:
 
     def _save(self):
         try:
-            tmp = GEOCODE_FILE + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(self._geo, f, ensure_ascii=False)
-            os.replace(tmp, GEOCODE_FILE)
+            write_json_atomic(GEOCODE_FILE, self._geo, ensure_ascii=False)
         except OSError as e:
-            print(f"[Route] geocode cache not saved: {e}")
+            log.info(f"geocode cache not saved: {e}")
 
     @staticmethod
     def clean(text):
@@ -331,12 +332,12 @@ class FloodRouter:
                 raise RuntimeError(f"no flood source could be read ({', '.join(missing)})")
             hazards = [h for h in spots if h.get("lat") is not None and h.get("lng") is not None]
         except Exception as e:  # noqa: BLE001 - route anyway, the answer says the water was not checked
-            print(f"[Route] hazards unavailable: {e}")
+            log.info(f"hazards unavailable: {e}")
             hazards, missing = None, []
         try:
             jam_spots = list(self.jams())
         except Exception as e:  # noqa: BLE001
-            print(f"[Route] jams unavailable: {e}")
+            log.info(f"jams unavailable: {e}")
             jam_spots = []
         trips = self._valhalla(origin, destination, [])
         scored = [self._score(t, hazards or [], jam_spots, origin, destination) for t in trips]
@@ -356,7 +357,7 @@ class FloodRouter:
             try:
                 trips = self._valhalla(origin, destination, avoid)
             except Exception as e:  # noqa: BLE001 - no way round: keep the routes we have
-                print(f"[Route] no route around {len(avoid)} flood spots: {e}")
+                log.info(f"no route around {len(avoid)} flood spots: {e}")
                 break
             scored = [self._score(t, hazards or [], jam_spots, origin, destination) for t in trips]
         if best is None:

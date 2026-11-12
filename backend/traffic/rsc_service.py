@@ -17,7 +17,8 @@ What we build from them:
 Points are cached on disk per (district, year). Victim names are dropped before caching.
 """
 import json
-import math
+from backend.core.atomic_file import write_json_atomic
+from backend.core.geo import haversine_km
 import os
 import ssl
 import sqlite3
@@ -29,8 +30,10 @@ from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
-from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
+from backend.core.log import get_logger
+
+log = get_logger("RSC")
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "rsc")
 SUMMARY_CACHE_FILE = os.path.join(CACHE_DIR, "summary.json")
 DB_PATH = os.path.join(DATA_DIR, "vehicle_counts.db")
@@ -238,10 +241,9 @@ def get_summary():
         # Save to disk cache
         try:
             os.makedirs(CACHE_DIR, exist_ok=True)
-            with open(SUMMARY_CACHE_FILE, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False)
+            write_json_atomic(SUMMARY_CACHE_FILE, data, ensure_ascii=False)
         except Exception as e:
-            print(f"[RSC] Failed to cache summary: {e}")
+            log.warning(f"Failed to cache summary: {e}")
 
         with _summary_lock:
             _summary_cache.update(ts=time.time(), data=data)
@@ -255,7 +257,7 @@ def get_summary():
                 cached["risk"] = risk_status()
                 with _summary_lock:
                     _summary_cache.update(ts=time.time(), data=cached)
-                print(f"[RSC] Fresh fetch failed ({e}), using disk cache")
+                log.warning(f"Fresh fetch failed ({e}), using disk cache")
                 return cached
             except Exception:
                 pass
@@ -304,10 +306,9 @@ def fetch_district_points(year, district, force=False):
             raise RuntimeError(res.get("status", {}).get("text") or "empty response")
         pts = [_strip(c) for c in res["data"]["accidents"]]
         pts = [p for p in pts if p["lat"] and p["lon"]]
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump({"year": year, "district": district, "fetched": int(time.time()), "points": pts}, f, ensure_ascii=False)
+        write_json_atomic(path, {"year": year, "district": district, "fetched": int(time.time()), "points": pts}, ensure_ascii=False)
         return {"year": year, "district": district, "fetched": int(time.time()), "points": pts}
-    except Exception as e:
+    except Exception:
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
@@ -341,15 +342,6 @@ _risk = {
 }
 
 
-def _haversine_m(lat1, lon1, lat2, lon2):
-    R = 6371000.0
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dphi = p2 - p1
-    dl = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    return 2 * R * math.asin(math.sqrt(a))
-
-
 def _camera_rows(cameras, points, years, radius_m):
     """Count points within radius of each camera. Grid-bucket the points so 574 x 60k stays cheap."""
     cell = 0.005  # ~550 m
@@ -367,7 +359,6 @@ def _camera_rows(cameras, points, years, radius_m):
         conn.close()
     except sqlite3.Error:
         pass
-    year_span = max(1, len(years))
     this_year = _now().year
     # fraction of the current year elapsed, so cases/yr is not deflated mid-year
     elapsed = (_now() - datetime(this_year, 1, 1, tzinfo=BKK_TZ)).days / 365.0
@@ -383,7 +374,7 @@ def _camera_rows(cameras, points, years, radius_m):
         for di in (-1, 0, 1):
             for dj in (-1, 0, 1):
                 for p in grid.get((gi + di, gj + dj), ()):
-                    if _haversine_m(lat, lon, p["lat"], p["lon"]) <= radius_m:
+                    if haversine_km(lat, lon, p["lat"], p["lon"], radius_km=6371.0) * 1000 <= radius_m:
                         near.append(p)
         cases = len(near)
         injured = sum(p["injured"] for p in near)
@@ -515,7 +506,7 @@ def get_points(camid=None, cameras=None, radius_m=None, lat=None, lon=None, limi
     if lat is None or lon is None:
         out = pts
     else:
-        out = [p for p in pts if not p.get("coarse") and _haversine_m(lat, lon, p["lat"], p["lon"]) <= radius_m]
+        out = [p for p in pts if not p.get("coarse") and haversine_km(lat, lon, p["lat"], p["lon"], radius_km=6371.0) * 1000 <= radius_m]
     out = sorted(out, key=lambda p: p.get("date") or "", reverse=True)[:limit]
     return {"total": len(out), "radius_m": radius_m, "items": out}
 
@@ -547,7 +538,7 @@ def warm(cameras):
         try:
             get_summary()
         except Exception as e:
-            print(f"[RSC] Summary warm note: {e}")
+            log.info(f"Summary warm note: {e}")
 
     threading.Thread(target=_warm_summary, daemon=True, name="rsc-summary-warm").start()
     build_camera_risk(cameras, background=True)

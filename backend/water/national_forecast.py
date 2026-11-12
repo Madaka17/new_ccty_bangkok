@@ -27,6 +27,7 @@ summary), run again only when the picture changed or the report is older than AI
 the page shows the computed levels and the built sentences only.
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import threading
 import time
@@ -36,6 +37,9 @@ from datetime import date, datetime, timedelta
 
 from backend.core import local_llm, thai_regions
 from backend.water.water_service import OPEN_METEO, _ntw_get, _num
+from backend.core.log import get_logger
+
+log = get_logger("NationalForecast")
 
 REFRESH_SECONDS = int(os.getenv("NATIONAL_FORECAST_SECONDS", "10800"))
 AI_MAX_AGE = int(os.getenv("NATIONAL_FORECAST_AI_MAX_AGE", "21600"))
@@ -346,7 +350,7 @@ def _overpass(points):
                     ways = json.loads(resp.read().decode("utf-8")).get("elements") or []
                 break
             except Exception as e:  # noqa: BLE001 - next server, else this chunk is skipped
-                print(f"[NationalForecast] overpass {url.split('/')[2]}: {e}")
+                log.info(f"overpass {url.split('/')[2]}: {e}")
         if ways is None:
             continue
         for w in ways:
@@ -421,14 +425,13 @@ class NationalForecast:
                 try:
                     out[d["id"]][t] = _series(_ntw_get(f"/analyst/dam_yearly_graph?dam_id={d['id']}&data_type={t}&year={date.today().year}"))
                 except Exception as e:  # noqa: BLE001 - that dam falls back to today's inflow - release
-                    print(f"[NationalForecast] history {d['name']} {t}: {e}")
+                    log.info(f"history {d['name']} {t}: {e}")
                     out[d["id"]][t] = []
         try:
             os.makedirs(os.path.dirname(self.history_path), exist_ok=True)
-            with open(self.history_path, "w", encoding="utf-8") as f:
-                json.dump({"date": today, "dams": out}, f, ensure_ascii=False)
+            write_json_atomic(self.history_path, {"date": today, "dams": out}, ensure_ascii=False)
         except OSError as e:
-            print(f"[NationalForecast] history save failed: {e}")
+            log.warning(f"history save failed: {e}")
         return out
 
     def _roads(self, today, dams, levels):
@@ -441,7 +444,7 @@ class NationalForecast:
                 if found or not pts:   # every chunk failed: keep the last roads and ask again next refresh
                     cache = self.roads_cache = {"at": int(time.time()), "keys": keys, "roads": found}
             except Exception as e:  # noqa: BLE001 - keep the last roads
-                print(f"[NationalForecast] overpass: {e}")
+                log.info(f"overpass: {e}")
         risk, seen = [], set()
         for p in pts:
             for r in (cache.get("roads") or {}).get(p["key"], [])[:3]:
@@ -472,7 +475,7 @@ class NationalForecast:
             rain = rain_forecast([(f"d:{d['id']}", d["lat"], d["lng"]) for d in dams if d["lat"] is not None]
                                  + [(f"p:{p}", lat, lng) for p, (lat, lng) in middles.items()])
         except Exception as e:  # noqa: BLE001 - the dams and provinces still make a picture without rain
-            print(f"[NationalForecast] rain forecast: {e}")
+            log.info(f"rain forecast: {e}")
             rain = {}
         for d in dams:
             d["rain7"] = rain.get(f"d:{d['id']}") or [0.0] * DAYS
@@ -497,7 +500,7 @@ class NationalForecast:
         with self.lock:
             self.data, self.error = data, None
         self._save()
-        print(f"[NationalForecast] {len(dams)} large dams, {len(medium)} medium, "
+        log.info(f"{len(dams)} large dams, {len(medium)} medium, "
               f"{sum(p['level'] != 'normal' for p in provinces)} provinces at risk, {len(roads['risk'])} risk roads")
 
     def _ask(self, system, facts, schema, max_tokens):
@@ -566,7 +569,7 @@ class NationalForecast:
         except Exception as e:  # noqa: BLE001 - model down or bad JSON: keep the last report
             with self.lock:
                 self.ai_error, self.ai_running = f"{local_llm.default.model}: {str(e)[:160]}", False
-            print(f"[NationalForecast] model failed: {e}")
+            log.warning(f"model failed: {e}")
             return
         known = {p["province"] for p in risky}
         ai = {
@@ -589,11 +592,9 @@ class NationalForecast:
         with self.lock:
             data = {"data": self.data, "ai": self.ai, "ai_sig": self.ai_sig, "roads_cache": self.roads_cache}
         try:
-            with open(self.path + ".tmp", "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False)
-            os.replace(self.path + ".tmp", self.path)
+            write_json_atomic(self.path, data, ensure_ascii=False)
         except OSError as e:
-            print(f"[NationalForecast] save failed: {e}")
+            log.warning(f"save failed: {e}")
 
     def status(self):
         with self.lock:
@@ -608,11 +609,11 @@ class NationalForecast:
             except Exception as e:  # noqa: BLE001 - keep the last good answer
                 with self.lock:
                     self.error = str(e)[:200]
-                print(f"[NationalForecast] refresh failed: {e}")
+                log.warning(f"refresh failed: {e}")
             try:
                 self.analyse()
             except Exception as e:  # noqa: BLE001 - keep the timer alive
-                print(f"[NationalForecast] analysis failed: {e}")
+                log.warning(f"analysis failed: {e}")
             time.sleep(REFRESH_SECONDS)
 
     def start(self):

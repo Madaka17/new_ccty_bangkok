@@ -6,6 +6,9 @@ import json
 import re
 
 from backend.core import local_llm
+from backend.core.log import get_logger
+
+log = get_logger("Chat")
 
 llm = local_llm.chat_client
 
@@ -45,7 +48,7 @@ def extract_trip(history):
         got = json.loads(raw[raw.find("{"):raw.rfind("}") + 1])
         return (got.get("origin") or "").strip(), (got.get("destination") or "").strip()
     except Exception as e:  # noqa: BLE001 - keep what the pattern read
-        print(f"[Chat] trip extraction failed: {str(e)[:160]}")
+        log.warning(f"trip extraction failed: {str(e)[:160]}")
         return origin, dest
 
 
@@ -70,5 +73,5 @@ def plan_route(router, history, location=None):
                 return {"ask": f"หา \"{origin_text}\" บนแผนที่ไม่เจอ ลองพิมพ์ชื่อให้ชัดขึ้น เช่น ชื่อห้าง ชื่อสถานี ชื่อถนน หรือชื่อเขต"}
         return {"route": router.plan(origin, dest)}
     except Exception as e:  # noqa: BLE001 - Nominatim / Valhalla down: answer from the live data instead
-        print(f"[Chat] route failed: {str(e)[:200]}")
+        log.warning(f"route failed: {str(e)[:200]}")
         return {"error": "คำนวณเส้นทางไม่ได้ตอนนี้ (ระบบแผนที่ไม่ตอบ) ให้แนะนำจากสภาพจราจรและน้ำท่วมที่มีแทน และบอกว่าเป็นการประเมินคร่าว ๆ"}

@@ -9,6 +9,7 @@ minute, fetches details for unseen events once and keeps them on disk.
 import html
 import http.cookiejar
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import re
 import threading
@@ -17,8 +18,10 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 from backend.bma import bma_site
-from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
+from backend.core.log import get_logger
+
+log = get_logger("BMA")
 CACHE_FILE = os.path.join(DATA_DIR, "cache", "bma_events.json")
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) BKK-Traffic-CCTV/2.0"
 BKK_TZ = timezone(timedelta(hours=7))
@@ -97,10 +100,9 @@ class BMAEventFeed:
     def _save_cache(self):
         try:
             os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
-            with open(CACHE_FILE, "w", encoding="utf-8") as f:
-                json.dump({"events": self._sorted()[:MAX_KEEP], "bulletins": self.bulletins}, f, ensure_ascii=False)
+            write_json_atomic(CACHE_FILE, {"events": self._sorted()[:MAX_KEEP], "bulletins": self.bulletins}, ensure_ascii=False)
         except Exception as e:
-            print(f"[BMA] cache save failed: {e}")
+            log.warning(f"cache save failed: {e}")
 
     # ------------------------------------------------------------ http
     def _fetch(self, path, timeout=30):
@@ -152,7 +154,7 @@ class BMAEventFeed:
         try:
             body = self._fetch_page(f"event-detail.aspx?id={event['id']}")
         except Exception as e:
-            print(f"[BMA] detail {event['id']}: {e}")
+            log.info(f"detail {event['id']}: {e}")
             return event
         lat, lng = _LAT_RE.search(body), _LNG_RE.search(body)
         item, ref = _ITEM_RE.search(body), _REF_RE.search(body)
@@ -200,11 +202,11 @@ class BMAEventFeed:
             try:
                 n = self.refresh()
                 if n:
-                    print(f"[BMA] {n} new event(s)")
+                    log.info(f"{n} new event(s)")
             except Exception as e:
                 with self.lock:
                     self.error = str(e)
-                print(f"[BMA] refresh failed: {e}")
+                log.warning(f"refresh failed: {e}")
             time.sleep(POLL_SECONDS)
 
     def start(self):

@@ -14,18 +14,20 @@ Gemini. They fall back to a deterministic Thai template when neither answers, so
 populated.
 """
 import json
-import math
 import os
 import threading
 import time
 
 from backend.core import local_llm
+from backend.core.gemini import gemini_client
+from backend.core.geo import flat_km
+from backend.core.log import get_logger
+
+log = get_logger("Guidance")
 
 try:
-    from google import genai
     from google.genai import types as genai_types
 except Exception:  # pragma: no cover
-    genai = None
     genai_types = None
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
@@ -82,12 +84,6 @@ FREE_FLOW = 75      # alternative counts as "recommended" from this flow score
 LEVEL_TH = {"free": "คล่องตัว", "moderate": "ชะลอตัว", "congested": "ติดขัด", "incident": "มีเหตุบนถนน"}
 
 
-def _km(lat1, lon1, lat2, lon2):
-    x = (lon2 - lon1) * 111.32 * math.cos(math.radians((lat1 + lat2) / 2))
-    y = (lat2 - lat1) * 110.57
-    return math.hypot(x, y)
-
-
 def merge_spots(spots):
     """Hotspots with the same label as one row (km added up), longest first: a road without a camera near its
     red pieces otherwise showed its own name two or three times."""
@@ -128,19 +124,13 @@ class GuidanceService:
 
     # ------------------------------------------------------------------ data
     def _gemini(self):
-        key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-        if genai is None or not key:
-            return None
-        try:
-            return genai.Client(api_key=key)
-        except Exception:
-            return None
+        return gemini_client()
 
     def _camera_near(self, lat, lon, bma_cams, itic_cams, max_km=0.6):
         best, best_d = None, max_km
         for c in bma_cams:
             try:
-                d = _km(lat, lon, float(c["latitude"]), float(c["longitude"]))
+                d = flat_km(lat, lon, float(c["latitude"]), float(c["longitude"]))
             except (KeyError, TypeError, ValueError):
                 continue
             if d < best_d:
@@ -151,7 +141,7 @@ class GuidanceService:
             return best
         for c in itic_cams:
             try:
-                d = _km(lat, lon, float(c["latitude"]), float(c["longitude"]))
+                d = flat_km(lat, lon, float(c["latitude"]), float(c["longitude"]))
             except (KeyError, TypeError, ValueError):
                 continue
             if d < best_d:
@@ -302,9 +292,9 @@ class GuidanceService:
             if out:
                 self._ai_text = out
                 self.ai_mode = mode
-                print(f"[Guidance] {mode} rewrote {len(out)} corridors")
+                log.info(f"{mode} rewrote {len(out)} corridors")
         except Exception as e:
-            print(f"[Guidance] AI failed, using template: {e}")
+            log.warning(f"AI failed, using template: {e}")
         self._ai_sig, self._ai_at = sig, now
 
     # ------------------------------------------------------------------ loop
@@ -329,7 +319,7 @@ class GuidanceService:
             try:
                 self.refresh()
             except Exception as e:
-                print(f"[Guidance] refresh error: {e}")
+                log.warning(f"refresh error: {e}")
             time.sleep(BUILD_INTERVAL)
 
     def status(self):

@@ -21,6 +21,7 @@ the computed figures and reasons.
 Served by /api/flood/bkk-districts.
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import threading
 import time
@@ -32,6 +33,9 @@ from backend.agents.flood_agent import ZONE_DISTRICTS
 from backend.core import local_llm
 from backend.core.instance import BASE_DIR
 from backend.water.water_service import OPEN_METEO, _num
+from backend.core.log import get_logger
+
+log = get_logger("BkkDistricts")
 
 REFRESH_SECONDS = int(os.getenv("BKK_DISTRICTS_SECONDS", "1800"))
 RAIN_TTL = 3 * 3600          # Open-Meteo for 50 places: about 400 location-calls a day at this rate
@@ -211,7 +215,7 @@ class BkkDistricts:
         try:
             return self.sources[name]() or default
         except Exception as e:  # noqa: BLE001 - one source down leaves the others
-            print(f"[BkkDistricts] {name}: {e}")
+            log.info(f"{name}: {e}")
             return default
 
     def refresh(self):
@@ -219,7 +223,7 @@ class BkkDistricts:
             try:
                 self.forecast, self.forecast_at = rain_forecast(middles()), time.time()
             except Exception as e:  # noqa: BLE001 - the observed rain still counts
-                print(f"[BkkDistricts] rain forecast: {e}")
+                log.info(f"rain forecast: {e}")
         water = (self._get("water", {}) or {}).get("water") or []
         roads = (self._get("roads", {}) or {}).get("wet") or []
         rows = build(water, roads, self._get("rain", []), self._get("reports", []), self.forecast, self._get("river", []))
@@ -233,7 +237,7 @@ class BkkDistricts:
         with self.lock:
             self.data, self.error = data, None
         self._save()
-        print(f"[BkkDistricts] {sum(d['level'] != 'normal' for d in rows)} of 50 districts above normal")
+        log.info(f"{sum(d['level'] != 'normal' for d in rows)} of 50 districts above normal")
 
     def analyse(self):
         with self.lock:
@@ -268,7 +272,7 @@ class BkkDistricts:
         except Exception as e:  # noqa: BLE001 - model down or bad JSON: keep the last report
             with self.lock:
                 self.ai_error, self.ai_running = f"{local_llm.default.model}: {str(e)[:160]}", False
-            print(f"[BkkDistricts] model failed: {e}")
+            log.warning(f"model failed: {e}")
             return
         ai = {"overview": r.get("overview") or "",
               "districts": {x["district"]: {"summary": x.get("summary") or "", "advice": x.get("advice") or ""}
@@ -282,11 +286,9 @@ class BkkDistricts:
         with self.lock:
             data = {"data": self.data, "ai": self.ai, "ai_sig": self.ai_sig, "forecast": self.forecast, "forecast_at": self.forecast_at}
         try:
-            with open(self.path + ".tmp", "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False)
-            os.replace(self.path + ".tmp", self.path)
+            write_json_atomic(self.path, data, ensure_ascii=False)
         except OSError as e:
-            print(f"[BkkDistricts] save failed: {e}")
+            log.warning(f"save failed: {e}")
 
     def status(self):
         with self.lock:
@@ -301,11 +303,11 @@ class BkkDistricts:
             except Exception as e:  # noqa: BLE001 - keep the last good answer
                 with self.lock:
                     self.error = str(e)[:200]
-                print(f"[BkkDistricts] refresh failed: {e}")
+                log.warning(f"refresh failed: {e}")
             try:
                 self.analyse()
             except Exception as e:  # noqa: BLE001 - keep the timer alive
-                print(f"[BkkDistricts] analysis failed: {e}")
+                log.warning(f"analysis failed: {e}")
             time.sleep(REFRESH_SECONDS)
 
     def start(self):

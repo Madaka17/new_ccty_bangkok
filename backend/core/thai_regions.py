@@ -9,6 +9,7 @@ A camera with no province in its name or geocode is looked up by its position on
 (one request per place, at most one a second as its usage policy asks), and the answer is kept on disk.
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import re
 import threading
@@ -139,8 +140,7 @@ def province_at(lat, lon):
         cache[key] = name
         try:
             os.makedirs(os.path.dirname(_CACHE_FILE), exist_ok=True)
-            with open(_CACHE_FILE, "w", encoding="utf-8") as f:
-                json.dump(cache, f, ensure_ascii=False)
+            write_json_atomic(_CACHE_FILE, cache, ensure_ascii=False)
         except OSError:
             pass
         return name

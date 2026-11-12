@@ -10,6 +10,7 @@ Traffic data service for the Bangkok metropolitan area.
 """
 import gzip
 import json
+from backend.core.atomic_file import write_json_atomic
 import math
 import os
 import threading
@@ -18,9 +19,11 @@ import urllib.request
 
 import mapbox_vector_tile
 
-from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 from backend.core.instance import PRODUCTION_DIR
+from backend.core.log import get_logger
+
+log = get_logger("Traffic")
 CACHE_DIR = os.path.join(DATA_DIR, "cache")
 # Map tiles are shared by every instance (test server included), kept in the production cache: they
 # are big (the offline OSM set is thousands of files), keyed by z/x/y so two writers never clash, and identical for both.
@@ -272,8 +275,7 @@ class TrafficService:
 
     def _save_history(self):
         try:
-            with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-                json.dump(self.history[-MAX_HISTORY:], f)
+            write_json_atomic(HISTORY_FILE, self.history[-MAX_HISTORY:])
         except Exception:
             pass
 
@@ -285,7 +287,7 @@ class TrafficService:
             try:
                 tile = decode_tile(get_base_tile(z, x, y), z, x, y)
             except Exception as e:
-                print(f"[Traffic] base tile {z}/{x}/{y} failed: {e}")
+                log.warning(f"base tile {z}/{x}/{y} failed: {e}")
                 continue
             layer = tile.get("road")
             if not layer:
@@ -297,7 +299,7 @@ class TrafficService:
                     continue
                 for line in feature_lonlat(feat["geometry"], z, x, y, layer.get("extent", 4096)):
                     idx.add(name, line)
-        print(f"[Traffic] Road index ready: {idx.count} segments")
+        log.info(f"Road index ready: {idx.count} segments")
         return idx
 
     # ---- traffic aggregation
@@ -391,18 +393,18 @@ class TrafficService:
                 "roads": road_list,
                 "road_count": len(road_list),
             }
-        print(f"[Traffic] refreshed: {len(road_list)} roads, flow index {flow_index}, stale tiles {stale_tiles}")
+        log.info(f"refreshed: {len(road_list)} roads, flow index {flow_index}, stale tiles {stale_tiles}")
 
     def _loop(self):
         try:
             self.road_index = self._build_road_index()
         except Exception as e:
-            print(f"[Traffic] road index failed: {e}")
+            log.warning(f"road index failed: {e}")
         while True:
             try:
                 self.refresh()
             except Exception as e:
-                print(f"[Traffic] refresh error: {e}")
+                log.warning(f"refresh error: {e}")
             time.sleep(REFRESH_SECONDS)
 
     # ---- queries

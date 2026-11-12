@@ -12,6 +12,7 @@ model the Thai rule-based report stands in. Served by /api/traffy/analysis.
 import collections
 import hashlib
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import re
 import threading
@@ -19,6 +20,9 @@ import time
 
 from backend.core import local_llm
 from backend.agents.flood_agent import DISTRICT_ZONE
+from backend.core.log import get_logger
+
+log = get_logger("TraffyAgent")
 
 AGENT_SECONDS = int(os.getenv("TRAFFY_AGENT_SECONDS", "600"))
 MAX_AGE = int(os.getenv("TRAFFY_AGENT_MAX_AGE", "1800"))
@@ -121,7 +125,7 @@ class TraffyAgent:
         try:
             st = self.source() or {}
         except Exception as e:  # noqa: BLE001 - feed down: nothing to analyse
-            print(f"[TraffyAgent] source failed: {e}")
+            log.warning(f"source failed: {e}")
             return [], False
         return st.get("items") or [], bool(st.get("updated_at"))
 
@@ -241,7 +245,7 @@ class TraffyAgent:
                     report, source = self._run_local(stats, self._texts(items, now)), "local"
                 except Exception as e:  # noqa: BLE001 - server off, bad JSON, context too small
                     err = f"{local_llm.default.model}: {str(e)[:160]}"
-                    print(f"[TraffyAgent] model failed: {e}")
+                    log.warning(f"model failed: {e}")
             if report is None:
                 report = self._rules(stats, items)
             result = {"report": self._tidy(report, stats, items), "stats": stats, "source": source,
@@ -250,10 +254,9 @@ class TraffyAgent:
             with self.lock:
                 self.result, self.sig, self.error = result, sig, err
                 try:
-                    with open(self.path, "w", encoding="utf-8") as f:
-                        json.dump({"result": result, "sig": sig}, f, ensure_ascii=False)
+                    write_json_atomic(self.path, {"result": result, "sig": sig}, ensure_ascii=False)
                 except OSError as e:
-                    print(f"[TraffyAgent] save failed: {e}")
+                    log.warning(f"save failed: {e}")
             return self.status()
         finally:
             with self.lock:
@@ -270,7 +273,7 @@ class TraffyAgent:
             try:
                 self.run()
             except Exception as e:  # noqa: BLE001 - keep the timer alive
-                print(f"[TraffyAgent] run failed: {e}")
+                log.warning(f"run failed: {e}")
             time.sleep(AGENT_SECONDS if self.fed else 30)   # feed not loaded yet: try again soon
 
     def start(self):

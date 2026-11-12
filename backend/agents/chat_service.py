@@ -29,6 +29,9 @@ from backend.agents.chat_offline import rule_based_reply
 from backend.agents.chat_route import plan_route
 from backend.agents.chat_topics import ALL_TOPICS, OVERVIEW_WORDS, answer_style, question_topics, wants_route
 from backend.core import local_llm, thai_regions
+from backend.core.log import get_logger
+
+log = get_logger("Chat")
 
 llm = local_llm.chat_client
 
@@ -238,6 +241,6 @@ def chat(traffic, messages, camera_stats=None, water=None, extra=None, router=No
         except local_llm.ContextTooLong:
             continue
         except Exception as e:  # noqa: BLE001 - local server off / model unloaded: answer from the data
-            print(f"[Chat] local model error: {str(e)[:200]}")
+            log.warning(f"local model error: {str(e)[:200]}")
             break
     return offline()

@@ -17,7 +17,7 @@ Served by /api/nasa/fires and /api/nasa/events.
 import csv
 import io
 import json
-import math
+from backend.core.atomic_file import write_json_atomic
 import os
 import threading
 import time
@@ -25,8 +25,12 @@ import urllib.request
 from datetime import datetime, timezone
 
 from backend.core import thai_regions
+from backend.core.geo import haversine_km
 from backend.core.instance import DATA_DIR
 from backend.traffic.area_traffic import area_traffic
+from backend.core.log import get_logger
+
+log = get_logger("NASA")
 
 FIRMS = "https://firms.modaps.eosdis.nasa.gov/data/active_fire/{}/csv/{}_SouthEast_Asia_48h.csv"
 FIRMS_FILES = (("suomi-npp-viirs-c2", "SUOMI_VIIRS_C2"), ("noaa-20-viirs-c2", "J1_VIIRS_C2"), ("noaa-21-viirs-c2", "J2_VIIRS_C2"))
@@ -49,12 +53,6 @@ def _get(url):
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
         return resp.read()
-
-
-def _km(lat1, lng1, lat2, lng2):
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lng2 - lng1) / 2) ** 2
-    return 6371 * 2 * math.asin(math.sqrt(a))
 
 
 # ---------------------------------------------------------------- FIRMS
@@ -106,7 +104,7 @@ def analyse_fires(points, now, locate=area_traffic.locate):
         "th_24h": len(th),
         "th_prev_24h": prev_th,
         "border_24h": len(fires) - len(th),
-        "near_bkk_24h": sum(1 for p in th if _km(p["lat"], p["lng"], *BANGKOK) <= NEAR_BKK_KM),
+        "near_bkk_24h": sum(1 for p in th if haversine_km(p["lat"], p["lng"], *BANGKOK) <= NEAR_BKK_KM),
         "near_bkk_km": NEAR_BKK_KM,
         "strong_24h": sum(1 for p in th if p["frp"] >= 20),
         "regions": sorted(({"region": r, "count": n} for r, n in regions.items()), key=lambda r: -r["count"]),
@@ -125,7 +123,7 @@ def read_fires():
             points += parse_firms(_get(FIRMS.format(folder, name)).decode("utf-8", "replace"), now)
             ok += 1
         except Exception as e:
-            print(f"[NASA] FIRMS {name} failed: {e}")
+            log.warning(f"FIRMS {name} failed: {e}")
     if not ok:
         return None
     return {**analyse_fires(points, now), "satellites": ok}
@@ -142,7 +140,7 @@ def km_to_thailand(lat, lng):
         return 0
     district = area_traffic.tree.geometries[int(area_traffic.tree.nearest(here))]
     edge = nearest_points(district, here)[0]
-    return round(_km(lat, lng, edge.y, edge.x))
+    return round(haversine_km(lat, lng, edge.y, edge.x))
 
 
 def _point_of(geom):
@@ -211,16 +209,14 @@ class NasaFeeds:
             try:
                 value = read()
             except Exception as e:
-                print(f"[NASA] {key} failed: {e}")
+                log.warning(f"{key} failed: {e}")
                 continue
             if value is not None:
                 self._data[key] = value
         os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
-        with open(CACHE_FILE + ".tmp", "w", encoding="utf-8") as f:
-            json.dump(self._data, f, ensure_ascii=False)
-        os.replace(CACHE_FILE + ".tmp", CACHE_FILE)
+        write_json_atomic(CACHE_FILE, self._data, ensure_ascii=False)
         fires, events = self._data["fires"] or {}, self._data["events"] or {}
-        print(f"[NASA] fires in Thailand 24 h: {fires.get('th_24h')} · events: {len(events.get('items') or [])}")
+        log.info(f"fires in Thailand 24 h: {fires.get('th_24h')} · events: {len(events.get('items') or [])}")
 
     def _loop(self):
         while True:

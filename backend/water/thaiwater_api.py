@@ -3,6 +3,7 @@ The ThaiWater (HII) keyed API at twa-api-public.thaiwater.net: the anonymous key
 when it rotates, and _get(), which every ThaiWater call goes through. Moved out of water_service.py (Oct 2026).
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import re
 import threading
@@ -12,6 +13,9 @@ import urllib.parse
 import urllib.request
 
 from backend.core.instance import DATA_DIR
+from backend.core.log import get_logger
+
+log = get_logger("Water")
 
 TWA_API = "https://twa-api-public.thaiwater.net"
 # Anonymous key that twa.thaiwater.net ships to every browser; override with TWA_API_KEY if it rotates
@@ -51,10 +55,9 @@ class _KeyStore:
     def _save(self, key):
         try:
             os.makedirs(os.path.dirname(KEY_FILE), exist_ok=True)
-            with open(KEY_FILE, "w", encoding="utf-8") as f:
-                json.dump({"key": key, "found_at": int(time.time())}, f)
+            write_json_atomic(KEY_FILE, {"key": key, "found_at": int(time.time())})
         except Exception as e:
-            print(f"[Water] key save failed: {e}")
+            log.warning(f"key save failed: {e}")
 
     @staticmethod
     def _fetch(url):
@@ -98,7 +101,7 @@ class _KeyStore:
             self.scanning = True
             self.last_scan = time.time()
         try:
-            print(f"[Water] api key rejected{f' ({reason})' if reason else ''}; scanning twa.thaiwater.net for a new one")
+            log.info(f"api key rejected{f' ({reason})' if reason else ''}; scanning twa.thaiwater.net for a new one")
             candidates = [k for k in self.scan() if k != self.key]
             for k in candidates:
                 if self._works(k):
@@ -106,12 +109,12 @@ class _KeyStore:
                         self.key = k
                         self.broken = False
                     self._save(k)
-                    print(f"[Water] new api key found ({k[:6]}...)")
+                    log.info(f"new api key found ({k[:6]}...)")
                     return True
-            print(f"[Water] no working key among {len(candidates)} candidate(s); retry in {KEY_RETRY_SECONDS // 60} min")
+            log.info(f"no working key among {len(candidates)} candidate(s); retry in {KEY_RETRY_SECONDS // 60} min")
             return False
         except Exception as e:
-            print(f"[Water] key scan failed: {e}")
+            log.warning(f"key scan failed: {e}")
             return False
         finally:
             with self.lock:

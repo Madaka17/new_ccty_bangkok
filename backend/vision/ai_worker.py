@@ -18,6 +18,9 @@ import cv2
 import numpy as np
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from backend.core.log import get_logger
+
+log = get_logger("AI worker")
 
 DEFAULT_ALLOW = "192.168.1.109,127.0.0.1"
 PORT = 8100
@@ -62,7 +65,7 @@ def _default_factory(path):
         if torch.cuda.is_available():
             model.to("cuda").half()
     except Exception as e:  # noqa: BLE001 - FP16 is a speed-up, not a requirement
-        print(f"[AI worker] FP16 skipped for {path}: {e}")
+        log.info(f"FP16 skipped for {path}: {e}")
     return model
 
 
@@ -100,7 +103,7 @@ class ModelPool:
             entry = self.models.get(key)
             if entry is None:
                 name = os.path.relpath(full, self.root).replace(os.sep, "/")
-                print(f"[AI worker] loading {name}")
+                log.info(f"loading {name}")
                 entry = {"name": name, "model": self.factory(full), "lock": threading.Lock(), "used": self.clock()}
                 self.models[key] = entry
             entry["used"] = self.clock()
@@ -112,7 +115,7 @@ class ModelPool:
             keys = [k for k, e in self.models.items() if now - e["used"] > self.idle_s]
             dropped = [self.models.pop(k)["name"] for k in keys]
         if dropped:
-            print(f"[AI worker] idle, unloaded {dropped}")
+            log.info(f"idle, unloaded {dropped}")
             gc.collect()
             try:
                 import torch
@@ -218,7 +221,7 @@ def create_app(root, token, allow, factory=_default_factory, clock=time.monotoni
                 return JSONResponse({"error": "job expired before the GPU was free"}, status_code=503)
             return out
         except Exception as e:  # noqa: BLE001 - report, keep serving
-            print(f"[AI worker] {rel_path} failed: {e}")
+            log.warning(f"{rel_path} failed: {e}")
             return JSONResponse({"error": "inference failed"}, status_code=500)
 
     if start_janitor:
@@ -228,7 +231,7 @@ def create_app(root, token, allow, factory=_default_factory, clock=time.monotoni
                 try:
                     pool.unload_idle()
                 except Exception as e:  # noqa: BLE001
-                    print(f"[AI worker] unload failed: {e}")
+                    log.warning(f"unload failed: {e}")
         threading.Thread(target=janitor, daemon=True, name="ai-worker-janitor").start()
     return app
 
@@ -239,7 +242,7 @@ def main():
     load_dotenv(os.path.join(BASE_DIR, ".env"))
     token, allow, port = read_settings()
     import uvicorn
-    print(f"[AI worker] serving YOLO on :{port} to {sorted(allow)}; models load on first use, unload after {IDLE_S}s idle")
+    log.info(f"serving YOLO on :{port} to {sorted(allow)}; models load on first use, unload after {IDLE_S}s idle")
     uvicorn.run(create_app(BASE_DIR, token, allow), host="0.0.0.0", port=port, log_level="warning",
                 server_header=False)
 

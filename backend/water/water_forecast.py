@@ -11,6 +11,9 @@ import numpy as np
 
 from backend.water.thaiwater_api import _get
 from backend.water.water_service import BKK_TZ, OFFICIAL_FORECAST_STATIONS, _cache, _num, _ts
+from backend.core.log import get_logger
+
+log = get_logger("Water")
 
 FORECAST_TTL = 600
 OBS_DAYS = 3        # history used for the local model
@@ -148,7 +151,7 @@ def _build_forecast(station_id):
         try:
             official, levels = _load_official_forecast(station_id)
         except Exception as e:
-            print(f"[Water] official forecast {station_id}: {e}")
+            log.info(f"official forecast {station_id}: {e}")
     estimate, rmse, model = _harmonic_outlook(observed)
     if levels.get("bank") is None:
         # Bank height comes with the telemetry list; reuse the cached summary instead of a second call

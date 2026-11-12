@@ -11,6 +11,9 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 from backend.water.air_service import LEVELS, _pm25_band, air
+from backend.core.log import get_logger
+
+log = get_logger("AirForecast")
 
 FORECAST_URL = ("https://air-quality-api.open-meteo.com/v1/air-quality?latitude=13.75&longitude=100.52"
                 "&hourly=pm2_5&timezone=Asia%2FBangkok&forecast_days=3")
@@ -104,12 +107,12 @@ class AirForecast:
         try:
             station_avg = bkk_average(air.status()["items"])
         except Exception as e:
-            print(f"[AirForecast] station average unavailable, using model only: {e}")
+            log.info(f"station average unavailable, using model only: {e}")
             station_avg = None
         result = build(model, station_avg, datetime.now(BKK_TZ))
         with self.lock:
             self.result = result
-        print(f"[AirForecast] {len(result['days'])} days, ratio {result['ratio']}")
+        log.info(f"{len(result['days'])} days, ratio {result['ratio']}")
 
     def _delay(self, ok):
         return REFRESH_SECONDS if ok else RETRY_SECONDS
@@ -121,7 +124,7 @@ class AirForecast:
                 ok = True
             except Exception as e:
                 ok = False
-                print(f"[AirForecast] refresh error: {e}")
+                log.warning(f"refresh error: {e}")
             time.sleep(self._delay(ok))
 
     def status(self, now=time.time):
