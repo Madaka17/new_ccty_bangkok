@@ -149,8 +149,13 @@ def evaluate_config(flags):
     return out
 
 
+def _is_loopback(host):
+    return host.startswith("127.") or host in ("[::1]", "::1")
+
+
 def _split_addr(addr):
     host, _, port = addr.rpartition(":")
+    host = host.split("%", 1)[0]
     try:
         return host, int(port)
     except ValueError:
@@ -178,7 +183,7 @@ def evaluate_host(raw):
     seen = set()
     for addr in raw.get("listen") or []:
         host, port = _split_addr(addr)
-        if port is None or host not in ("0.0.0.0", "*", "[::]", "::") or port in seen:
+        if port is None or _is_loopback(host) or port in seen:
             continue
         seen.add(port)
         if port == 5900:

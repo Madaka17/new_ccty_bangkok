@@ -151,3 +151,29 @@ def test_overall():
     assert overall([]) == "ok"
     assert overall([{"level": "ok"}, {"level": "warn"}]) == "warn"
     assert overall([{"level": "warn"}, {"level": "fail"}]) == "fail"
+
+
+def _port_warns(listen):
+    return [x for x in evaluate_host(dict(GOOD_HOST, listen=listen)) if x["level"] == "warn"]
+
+
+def test_host_lan_address_unknown_port_warns():
+    f = _port_warns(["192.168.1.109:3306"])
+    assert len(f) == 1 and "3306" in f[0]["title"]
+
+
+def test_host_lan_address_known_port_ok():
+    assert _port_warns(["192.168.1.109:22", "192.168.1.109:8000"]) == []
+
+
+def test_host_loopback_variants_ignored():
+    assert _port_warns(["127.0.0.2:8000", "127.0.0.1:8001", "[::1]:631", "::1:631"]) == []
+
+
+def test_host_iface_suffix_and_dedup():
+    f = _port_warns(["0.0.0.0%eth0:53", "[::]:53", "192.168.1.109:53"])
+    assert len(f) == 1 and "53" in f[0]["title"]
+
+
+def test_host_vnc_on_lan_address_warns():
+    assert any("VNC" in x["title"] for x in _port_warns(["192.168.1.109:5900"]))
