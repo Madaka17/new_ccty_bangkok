@@ -38,7 +38,7 @@ print(json.dumps({
 _HOST_SCRIPT = r'''
 echo @@listen; ss -Htln | awk '{print $4}'
 echo @@sshd; o=$(sudo -n sshd -T 2>/dev/null); if [ -n "$o" ]; then echo "$o" | grep -Ei '^(passwordauthentication|permitrootlogin|kbdinteractiveauthentication) '; else echo DENIED; fi
-echo @@ufw; if command -v ufw >/dev/null 2>&1; then o=$(sudo -n ufw status 2>/dev/null | head -1); if [ -n "$o" ]; then echo "$o"; else echo denied; fi; else echo none; fi
+echo @@ufw; if command -v ufw >/dev/null 2>&1 || [ -x /usr/sbin/ufw ]; then o=$(sudo -n ufw status 2>/dev/null | head -1); if [ -n "$o" ]; then echo "$o"; else echo denied; fi; else echo none; fi
 echo @@upgradable; apt list --upgradable 2>/dev/null | grep -c upgradable
 echo @@unattended; dpkg -s unattended-upgrades >/dev/null 2>&1 && echo yes
 echo @@reboot; test -f /var/run/reboot-required && echo yes

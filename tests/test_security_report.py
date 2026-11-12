@@ -149,3 +149,11 @@ def test_report_shows_self_check_line():
     s = {"days": 30, "total": 1, "self_checks": 4, "by_kind": {"probe": 1},
          "by_day": [{"day": "2026-11-01", "n": 1}], "top_ips": [], "top_paths": [], "recent": []}
     assert "ไม่นับการตรวจของโปรแกรมนี้เอง 4 ครั้ง" in render("production", {"attack": []}, s, "now")
+
+
+def test_host_script_finds_ufw_outside_path():
+    # ssh without a login shell has no /usr/sbin in PATH; ufw lives there on Debian
+    from launch.security_check import collect
+    import base64, inspect
+    src = inspect.getsource(collect)
+    assert "/usr/sbin/ufw" in src

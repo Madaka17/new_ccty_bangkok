@@ -196,7 +196,7 @@ def evaluate_host(raw):
                           "ปิด VNC (sudo raspi-config → Interface Options → VNC) หรือจำกัดด้วย ufw"))
         elif port not in KNOWN_PORTS:
             out.append(_f(a, "warn", f"พอร์ต {port} เปิดให้ทั้งวง LAN", f"ฟังที่ {addr}",
-                          f"ถ้าไม่ได้ใช้ ให้ปิดโปรแกรมนั้น หรือ sudo ufw deny {port}"))
+                          f"ถ้าไม่ได้ใช้ ให้ปิดโปรแกรมนั้น หรือ sudo ufw insert 1 deny {port}"))
     up = raw.get("upgradable")
     if up is not None and up >= 20:
         out.append(_f(a, "warn", f"มีอัปเดตค้าง {up} รายการ", "",
