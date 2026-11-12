@@ -40,13 +40,12 @@ import threading
 import time
 
 try:
-    from google import genai
     from google.genai import types as genai_types
 except Exception:  # pragma: no cover - the template covers the no-key case
-    genai = None
     genai_types = None
 
 from backend.core import local_llm
+from backend.core.gemini import gemini_client
 from backend.core.geo import flat_km
 
 AI_MODEL = os.getenv("ROAD_AI_MODEL", os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"))
@@ -303,14 +302,10 @@ class RoadRisk:
     def _client(self):
         if self._ai_client is not None:
             return self._ai_client
-        key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-        if genai is None or not key:
-            return None
-        try:
-            self._ai_client = genai.Client(api_key=key)
-        except Exception:  # noqa: BLE001
-            return None
-        return self._ai_client
+        client = gemini_client()
+        if client is not None:  # never cache None: a key set later must still work
+            self._ai_client = client
+        return client
 
     @staticmethod
     def _template(top, counts):

@@ -36,13 +36,12 @@ from collections import deque
 from datetime import datetime, timedelta, timezone
 
 try:
-    from google import genai
     from google.genai import types as genai_types
 except Exception:  # pragma: no cover - the analyst falls back to a Thai template
-    genai = None
     genai_types = None
 
 from backend.core import local_llm
+from backend.core.gemini import gemini_client
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 CACHE_FILE = os.path.join(DATA_DIR, "cache", "flood_roads.json")
 SOURCE_URL = "https://weather.bangkok.go.th/Flood/PageMap/GetData?id=0"
@@ -323,14 +322,10 @@ class FloodRoads:
     def _client(self):
         if self._ai_client is not None:
             return self._ai_client
-        key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-        if genai is None or not key:
-            return None
-        try:
-            self._ai_client = genai.Client(api_key=key)
-        except Exception:  # noqa: BLE001
-            return None
-        return self._ai_client
+        client = gemini_client()
+        if client is not None:  # never cache None: a key set later must still work
+            self._ai_client = client
+        return client
 
     def _facts(self):
         """The numbers the report is written from - no prose, no guessing."""

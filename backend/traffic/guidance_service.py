@@ -19,13 +19,12 @@ import threading
 import time
 
 from backend.core import local_llm
+from backend.core.gemini import gemini_client
 from backend.core.geo import flat_km
 
 try:
-    from google import genai
     from google.genai import types as genai_types
 except Exception:  # pragma: no cover
-    genai = None
     genai_types = None
 
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
@@ -122,13 +121,7 @@ class GuidanceService:
 
     # ------------------------------------------------------------------ data
     def _gemini(self):
-        key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-        if genai is None or not key:
-            return None
-        try:
-            return genai.Client(api_key=key)
-        except Exception:
-            return None
+        return gemini_client()
 
     def _camera_near(self, lat, lon, bma_cams, itic_cams, max_km=0.6):
         best, best_d = None, max_km

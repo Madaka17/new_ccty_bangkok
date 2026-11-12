@@ -22,6 +22,7 @@ import urllib.request
 import cv2
 
 from backend.core import local_llm
+from backend.core.gemini import gemini_client
 from backend.core.hourly_budget import HourlyBudget
 from backend.vision.frame_utils import safe_id
 
@@ -108,10 +109,9 @@ class IncidentManager:
             return 'qwen', local_llm.vision
         key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
         if genai is not None and key:
-            try:
-                return 'gemini', genai.Client(api_key=key)
-            except Exception:
-                pass
+            client = gemini_client()
+            if client is not None:
+                return 'gemini', client
         if anthropic is not None and (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")
                                       or os.path.exists(os.path.join(os.path.expanduser("~"), ".config", "anthropic"))):
             try:
