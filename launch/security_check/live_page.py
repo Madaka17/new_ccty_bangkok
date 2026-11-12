@@ -18,8 +18,14 @@ border:1px solid var(--line);background:rgba(196,77,255,.1);white-space:nowrap}
 .pill.warn{color:var(--warn);border-color:rgba(255,181,71,.6)}
 .pill.fail{color:var(--fail);border-color:rgba(255,79,123,.7)}
 .pill.off{color:var(--mut)}
-.wall{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:14px;align-items:start}
-.wall .card{margin:0}
+.wrap{max-width:1600px;min-height:100vh;display:flex;flex-direction:column}
+.wall{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:14px;align-items:stretch;flex:1;
+height:calc(100vh - 270px);min-height:420px}
+.wall .card{margin:0;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.mapbox{flex:1;position:relative;min-height:0}
+.mapbox svg.map{position:absolute;inset:0;width:100%;height:100%}
+.edgelbl{position:absolute;left:10px;bottom:8px;font-family:var(--mono);font-size:13px;color:var(--mut);
+background:rgba(11,6,24,.75);padding:1px 8px;border-radius:6px;pointer-events:none}
 .stats{margin:10px 0 14px}
 .stat .big{font-size:2.2rem}
 .stat{animation:none}
@@ -30,11 +36,10 @@ border:1px solid var(--line);background:rgba(196,77,255,.1);white-space:nowrap}
 .burst.end{stroke:var(--ok)}
 @keyframes burst{from{transform:scale(.6);opacity:.95}to{transform:scale(4.5);opacity:0}}
 .dot{transition:r .6s ease,fill-opacity 2s linear}
-.edge{fill:var(--mut);font-size:13px;font-family:var(--mono)}
 .feedhd{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
 .feedhd label{display:inline-flex;gap:8px;align-items:center;min-height:32px;cursor:pointer;font-size:.9rem;color:var(--mut)}
 .feedhd input{width:18px;height:18px;accent-color:#c44dff}
-#feed{list-style:none;margin:0;padding:0;max-height:560px;overflow-y:auto}
+#feed{list-style:none;margin:0;padding:0;flex:1;min-height:0;overflow-y:auto}
 #feed li{display:grid;grid-template-columns:auto 1fr;gap:0 10px;padding:7px 4px;border-bottom:1px solid rgba(170,90,255,.18);overflow-wrap:anywhere;
 animation:slidein .45s ease-out}
 @keyframes slidein{from{transform:translateX(-14px);opacity:0}to{transform:none;opacity:1}}
@@ -55,7 +60,7 @@ border:1px solid var(--warn);background:rgba(255,181,71,.1);color:var(--fg);over
 .banner button{flex:none;font:inherit;color:var(--fg);background:rgba(196,77,255,.2);border:1px solid var(--glow);border-radius:8px;
 min-height:32px;padding:0 12px;cursor:pointer}
 .banner button:focus-visible{outline:2px solid var(--glow2);outline-offset:2px}
-@media (max-width:900px){.wall{grid-template-columns:minmax(0,1fr)}#feed{max-height:420px}}
+@media (max-width:900px){.wall{grid-template-columns:minmax(0,1fr);height:auto;min-height:0}.mapbox{flex:none;aspect-ratio:2/1}#feed{flex:none;max-height:60vh}}
 @media (max-width:720px){.stat .big{font-size:1.8rem}}
 @media (prefers-reduced-motion:reduce){#feed li{animation:none}.arc,.burst{display:none}.dot{transition:none}}
 """
@@ -204,10 +209,10 @@ def build_page(target="production"):
 </div>
 <div class="wall">
 <section class="card mapcard"><h2>ที่มาของการโจมตี</h2>
-<svg class="map" viewBox="0 0 {MAP_W} {MAP_H}" role="img" aria-label="แผนที่โลกแสดงการโจมตีสดไปยังกรุงเทพ">
+<div class="mapbox"><svg class="map" preserveAspectRatio="xMidYMid meet" viewBox="0 0 {MAP_W} {MAP_H}" role="img" aria-label="แผนที่โลกแสดงการโจมตีสดไปยังกรุงเทพ">
 <path class="land" d="{land}"/><g id="dots"></g><g id="layer"></g>
 <circle class="pulse" cx="{bx:.1f}" cy="{by:.1f}" r="5"/><circle class="tgt" cx="{bx:.1f}" cy="{by:.1f}" r="5"><title>กรุงเทพ</title></circle>
-<text class="edge" x="12" y="{MAP_H - 8}">ไม่ทราบประเทศ</text></svg>{nomap}</section>
+</svg><span class="edgelbl">ไม่ทราบประเทศ</span></div>{nomap}</section>
 <section class="card"><div class="feedhd"><h2 style="margin:0">เหตุการณ์สด</h2>
 <label><input type="checkbox" id="hide-owner" checked> ซ่อนของเจ้าของ</label></div>
 <ul id="feed" aria-label="รายการเหตุการณ์ล่าสุด"></ul></section>

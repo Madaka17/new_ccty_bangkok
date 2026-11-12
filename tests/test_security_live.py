@@ -240,3 +240,9 @@ def test_page_served_and_host_guard():
     finally:
         app.server.shutdown()
         app.server.server_close()
+
+
+def test_page_fills_screen():
+    html = live_page.build_page()
+    assert "max-width:1600px" in html and "preserveAspectRatio=\"xMidYMid meet\"" in html
+    assert "edgelbl" in html and "max-height:60vh" in html
