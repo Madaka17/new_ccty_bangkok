@@ -16,6 +16,8 @@ if lsof -ti tcp:8001 -sTCP:LISTEN >/dev/null 2>&1; then
     echo "[!] Test server is already running on port 8001. Use restart.sh to restart it."
     exit 0
 fi
+PY=.venv/bin/python
+[ -x "$PY" ] || PY="$(command -v python3 || command -v python)"
 if [ ! -d instances/test/cache ]; then
     echo "[*] First run: seeding instances/test with the small caches and a copy of the production DB ..."
     mkdir -p instances/test/cache
@@ -23,13 +25,11 @@ if [ ! -d instances/test/cache ]; then
         [ -f "instances/production/cache/$f" ] && cp "instances/production/cache/$f" "instances/test/cache/$f"
     done
     [ -d instances/production/cache/rsc ] && cp -R instances/production/cache/rsc instances/test/cache/rsc
-    [ -f instances/production/vehicle_counts.db ] && .venv/bin/python launch/copy_db.py instances/production/vehicle_counts.db instances/test/vehicle_counts.db
+    [ -f instances/production/vehicle_counts.db ] && "$PY" launch/copy_db.py instances/production/vehicle_counts.db instances/test/vehicle_counts.db
     [ -f instances/production/count_cameras.json ] && cp instances/production/count_cameras.json instances/test/count_cameras.json
 fi
 mkdir -p instances/test/data
 
 bash launch/build_web.sh
 echo "[*] Starting TEST server at http://localhost:8001 ...   (Ctrl+C stops it)"
-PY=.venv/bin/python
-[ -x "$PY" ] || PY="$(command -v python3 || command -v python)"
 "$PY" server.py
