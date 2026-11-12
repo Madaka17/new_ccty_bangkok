@@ -93,7 +93,7 @@ function GaugeRow({ s, selected, onSelect, text }) {
       type="button"
       onClick={() => s.history?.length && onSelect(s.code)}
       aria-pressed={selected}
-      className={`w-full text-left rounded-lg border px-3 py-2 transition-colors ${FOCUS} ${selected ? 'border-blue-300 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'} ${s.history?.length ? 'cursor-pointer' : 'cursor-default'}`}
+      className={`w-full text-left rounded-lg border px-3 py-2 transition-colors ${FOCUS} ${selected ? 'border-[var(--c-primary)] bg-[var(--c-primary-tint)]' : 'border-slate-200 hover:bg-slate-50'} ${s.history?.length ? 'cursor-pointer' : 'cursor-default'}`}
     >
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium text-slate-900 truncate">{s.province}</span>
@@ -147,7 +147,7 @@ function MainNode({ s, title, selected, onSelect, text }) {
       type="button"
       onClick={() => s?.history?.length && onSelect(s.code)}
       aria-pressed={selected}
-      className={`w-full text-left rounded-xl border p-3 transition-colors ${FOCUS} ${selected ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white hover:bg-slate-50'} cursor-pointer`}
+      className={`w-full text-left rounded-xl border p-3 transition-colors ${FOCUS} ${selected ? 'border-[var(--c-primary)] bg-[var(--c-primary-tint)]' : 'border-slate-200 bg-white hover:bg-slate-50'} cursor-pointer`}
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold text-slate-900">{title}</span>

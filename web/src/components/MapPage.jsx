@@ -338,7 +338,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
           </Button>
         }
       />
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 lg:h-[calc(100vh-13rem)] min-h-[520px]">
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4 lg:h-[calc(100vh-17rem)] min-h-[520px]">
       {panelOpen && (
         <button type="button" aria-label="ปิดตัวเลือกแผนที่" onClick={() => setPanelOpen(false)} className="lg:hidden fixed inset-0 z-40 bg-slate-900/50 cursor-pointer" />
       )}
@@ -836,7 +836,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
           className="lg:hidden absolute left-3 bottom-8 z-10 inline-flex items-center gap-2 h-11 px-4 rounded-full bg-white border border-slate-300 text-sm font-semibold text-slate-900 shadow-lg cursor-pointer"
         >
           <Icon name="legend" /> ตัวเลือกแผนที่
-          {optionsOn > 0 && <span className="rounded-full bg-blue-600 text-white text-[11px] px-2 py-0.5 tabular-nums">เปิด {optionsOn}</span>}
+          {optionsOn > 0 && <span className="rounded-full bg-[var(--c-sel-bg)] text-[var(--c-sel-text)] text-[11px] px-2 py-0.5 tabular-nums">เปิด {optionsOn}</span>}
         </button>
       </section>
     </div>

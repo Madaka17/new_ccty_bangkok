@@ -109,7 +109,7 @@ export default function RoadRiskPanel({ isActive, onOpenRoad }) {
                   <button
                     type="button"
                     onClick={() => { setProvince(on ? '' : p.province); setLimit(PAGE); }}
-                    className={`cursor-pointer inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 transition-colors ${FOCUS} ${on ? 'border-blue-500 ring-2 ring-blue-500/30' : 'border-slate-200 hover:border-slate-400'}`}
+                    className={`cursor-pointer inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 transition-colors ${FOCUS} ${on ? 'border-[var(--c-primary)] ring-2 ring-[var(--c-primary)]/30' : 'border-slate-200 hover:border-slate-400'}`}
                   >
                     <span className="text-sm font-medium text-ink-900">{p.province}</span>
                     <span className="text-xs text-slate-500">{fmtNum(p.roads)} สาย</span>

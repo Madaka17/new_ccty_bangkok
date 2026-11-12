@@ -24,7 +24,7 @@ export default function ViewSwitch({ tabs, value, onChange, label }) {
             className={`seg-slide relative cursor-pointer flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors duration-200 ${FOCUS} ${on ? '' : 'seg-off'}`}
           >
             {on && <motion.span layoutId={pill} className="seg-pill" transition={{ type: 'spring', stiffness: 380, damping: 34 }} />}
-            <span className={`relative shrink-0 grid place-items-center w-9 h-9 rounded-lg transition-colors duration-200 ${on ? 'bg-blue-600 text-white' : 'seg-icon'}`}>
+            <span className={`relative shrink-0 grid place-items-center w-9 h-9 rounded-lg transition-colors duration-200 ${on ? 'bg-[var(--c-on-primary)]/15 text-[var(--c-on-primary)]' : 'seg-icon'}`}>
               <NavIcon name={t.icon} className="w-5 h-5" />
             </span>
             <span className="relative min-w-0">

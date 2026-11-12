@@ -155,6 +155,7 @@ A zinc neutral system (near-black and cool white) with a single action orange an
 
 ### Primary
 - **Action Orange** (dark text/ring `action-dark`, button fill `action-fill-dark`; light `action-light`, hover `action-hover-light`): buttons, focus rings, the selected menu row, the current page's icon, the 2px tab rule, the "running" state. Also marks "you are here" (`--c-here`). Text on an orange fill is dark (`on-action`, #0f0f10), never white.
+- **Text links** (`text-blue-700 hover:underline`) intentionally stay blue for now (follow-up).
 - **Water and info blue** (`--color-blue-*`): water levels, flood and other information data. It is not an action colour.
 
 ### Secondary
@@ -213,7 +214,7 @@ Small, quiet corners: panels 12px, controls and cards 6px, avatars/badges and sc
 
 ### Buttons
 - **Shape:** 6px corners, 44px tall on touch surfaces (the Button helper offers 40px md and 32px sm).
-- **Primary:** action-fill background, dark text (`on-action`, #0f0f10), semibold, 20px side padding; hover steps to the darker action (`--c-primary-hover`). Dark theme fill is `#f97316`.
+- **Primary:** action-fill background, dark text (`on-action`, #0f0f10), semibold, 20px side padding; hover steps to the darker action (`--c-primary-hover`). Dark theme fill is `#f97316`; in dark the hover also steps to `#ea580c`.
 - **Secondary / Ghost:** seam border on surface, or transparent; hover raises to the raised step.
 - **Emergency (inline):** transparent with a 1px dashed act-coloured border and act text, phone icon, 44px tall, sits beside the verdict; hover fills with the act tint. A destructive control is dashed so it is findable but never louder than the verdict.
 - **Focus:** a 2px action outline with 2px offset on every focusable element.
@@ -225,7 +226,7 @@ Small, quiet corners: panels 12px, controls and cards 6px, avatars/badges and sc
 
 ### Inputs / Fields
 - **Style:** 44px tall, ground background, strong seam border, 6px corners, muted placeholder.
-- **Focus:** border turns action orange and a 2px action-tint ring appears.
+- **Focus:** 2px outline in the action colour (`--c-primary`) with 2px offset.
 
 ### Navigation
 - **Sidebar:** surface rail, 64px brand header, panel-label group headings, 44px rows with a 20px icon; the selected row is filled orange with dark text (`on-action`) and the one glow (`--c-glow`) (`aria-current`).

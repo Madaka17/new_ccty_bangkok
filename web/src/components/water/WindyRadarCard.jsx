@@ -45,7 +45,7 @@ export default function WindyRadarCard({
               type="button"
               onClick={() => setOverlay(k)}
               className={`cursor-pointer px-2.5 py-1 text-xs rounded-lg font-medium transition-colors ${
-                overlay === k ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                overlay === k ? 'bg-[var(--c-sel-bg)] text-[var(--c-sel-text)] shadow-sm' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
               }`}
             >
               {OVERLAYS[k]?.label || k}

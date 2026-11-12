@@ -2,7 +2,7 @@ import { forwardRef } from 'react';
 // Small neutral building blocks shared across the dashboard.
 // One accent (blue-600) for interactive elements; slate for everything else.
 
-export const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2';
+export const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--c-primary)] focus-visible:ring-offset-2';
 
 export const Card = forwardRef(function Card({ as: Tag = 'section', className = '', children, ...rest }, ref) {
   return (
@@ -46,7 +46,7 @@ export function Badge({ tone = 'neutral', dot = false, className = '', children 
 }
 
 const BTN_VARIANT = {
-  primary: 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700 hover:border-blue-700',
+  primary: 'bg-[var(--c-primary-fill)] text-[var(--c-on-primary)] border-[var(--c-primary-fill)] hover:bg-[var(--c-primary-hover)] hover:border-[var(--c-primary-hover)]',
   secondary: 'bg-white text-slate-800 border-slate-300 hover:bg-slate-50',
   ghost: 'bg-transparent text-slate-700 border-transparent hover:bg-slate-100',
   danger: 'bg-red-600 text-white border-red-600 hover:bg-red-700',

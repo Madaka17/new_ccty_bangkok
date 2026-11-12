@@ -150,7 +150,7 @@ export default function FloodPinPage({ isActive }) {
         {lineCard}
 
         <Card className="p-0 overflow-hidden lg:col-start-1 lg:row-start-1 lg:row-span-2">
-          <div className="relative h-[52vh] min-h-[340px] lg:h-[calc(100vh-13rem)]">
+          <div className="relative h-[52vh] min-h-[340px] lg:h-[calc(100vh-17rem)]">
             {/* inline position: maplibre-gl.css sets .maplibregl-map { position: relative } over a class */}
             <div ref={mapEl} style={{ position: 'absolute', inset: 0 }} aria-label="แผนที่เรื่องน้ำท่วมที่แจ้งผ่าน Traffy Fondue" />
             <span className="absolute top-2.5 left-1/2 -translate-x-1/2 rounded-full bg-white border border-slate-200 px-3 py-1 text-[11px] text-slate-700 shadow-sm pointer-events-none whitespace-nowrap">

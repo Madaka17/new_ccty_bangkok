@@ -4,7 +4,7 @@ import { Icon } from '../dashboard/icons.jsx';
 // Looks like the map's other floating button (white pill) so it reads the same in light and dark.
 export function RadarControl({ radar }) {
   const { showRainRadar, setShowRainRadar, radarTime, radarFrames, radarIndex, setRadarIndex, radarPlaying, setRadarPlaying, radarIsForecast, radarIsNow } = radar;
-  const focus = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600';
+  const focus = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--c-primary)]';
   return (
     <div className="absolute left-3 top-3 z-10 flex max-w-[calc(100%-4.5rem)] flex-col items-start gap-2">
       <button
@@ -12,7 +12,7 @@ export function RadarControl({ radar }) {
         onClick={() => setShowRainRadar(!showRainRadar)}
         aria-pressed={showRainRadar}
         className={`inline-flex items-center gap-1.5 h-11 min-w-11 px-3 rounded-full border text-sm font-semibold shadow-lg cursor-pointer transition-colors duration-200 ${focus} ${
-          showRainRadar ? 'bg-blue-600 border-blue-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+          showRainRadar ? 'bg-[var(--c-sel-bg)] border-[var(--c-sel-bg)] text-[var(--c-sel-text)]' : 'bg-white border-slate-300 text-slate-900'
         }`}
       >
         <Icon name="rain" /> ฝน
@@ -23,7 +23,7 @@ export function RadarControl({ radar }) {
             type="button"
             onClick={() => setRadarPlaying(!radarPlaying)}
             aria-label={radarPlaying ? 'หยุด' : 'เล่นย้อนหลัง 2 ชม.'}
-            className={`shrink-0 inline-flex h-11 w-11 items-center justify-center rounded-full bg-blue-600 text-white cursor-pointer ${focus}`}
+            className={`shrink-0 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--c-sel-bg)] text-[var(--c-sel-text)] cursor-pointer ${focus}`}
           >
             <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">
               {radarPlaying ? <path d="M4 3h3v10H4zM9 3h3v10H9z" /> : <path d="M5 3l8 5-8 5z" />}

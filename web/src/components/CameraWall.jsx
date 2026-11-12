@@ -23,7 +23,7 @@ function readView() {
 }
 
 const CHIP_OFF = 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50';
-const CHIP_ON = 'bg-blue-600 text-white border-blue-600';
+const CHIP_ON = 'bg-[var(--c-sel-bg)] text-[var(--c-sel-text)] border-[var(--c-sel-bg)]';
 const CHIPS = [
   { id: 'all', label: 'ทั้งหมด' },
   { id: 'bkk', label: 'กรุงเทพฯ' },
@@ -137,7 +137,7 @@ export default function CameraWall({
           value={query}
           onChange={(e) => onQuery(e.target.value)}
           placeholder="ค้นหาถนนหรือแยก..."
-          className="w-full rounded-lg bg-white border border-slate-300 px-4 py-2.5 text-base text-ink-900 placeholder:text-ink-400 outline-none focus:border-blue-500"
+          className="w-full rounded-lg bg-white border border-slate-300 px-4 py-2.5 text-base text-ink-900 placeholder:text-ink-400 outline-none focus:border-[var(--c-primary)]"
         />
         <div className="flex flex-wrap items-center gap-2">
           {CHIPS.map((chip) => (

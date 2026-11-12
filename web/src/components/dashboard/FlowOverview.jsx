@@ -218,7 +218,7 @@ export default function FlowOverview({ summary, areas, error, onRetry, retrying,
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button type="button" onClick={locate} disabled={nearBusy} aria-pressed={!!near}
-            className={`cursor-pointer rounded-lg border px-3 h-8 text-xs font-medium disabled:opacity-60 ${FOCUS} ${near ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}>
+            className={`cursor-pointer rounded-lg border px-3 h-8 text-xs font-medium disabled:opacity-60 ${FOCUS} ${near ? 'bg-[var(--c-sel-bg)] text-[var(--c-sel-text)] border-[var(--c-sel-bg)]' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}>
             {nearBusy ? 'กำลังหาตำแหน่ง…' : near ? 'ใกล้ฉัน ✕' : 'ใกล้ฉัน'}
           </button>
           {provinces.length > 0 && (

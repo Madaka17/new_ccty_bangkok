@@ -131,7 +131,7 @@ export default function AiPage({ active, pendingQuestion, onQuestionConsumed }) 
         }
       />
 
-      <section className="glass rounded-xl flex flex-col overflow-hidden lg:h-[calc(100vh-13rem)] min-h-[480px]" aria-label="แชทกับ AI">
+      <section className="glass rounded-xl flex flex-col overflow-hidden lg:h-[calc(100vh-17rem)] min-h-[480px]" aria-label="แชทกับ AI">
         <div ref={listRef} className="flex-1 overflow-y-auto scroll-soft px-5 pt-5 pb-2 space-y-3 min-h-[280px]">
           {messages.map((m, i) => (
             <Bubble key={i} role={m.role} text={m.content} mode={m.mode} model={m.model} route={m.route} />
@@ -167,7 +167,7 @@ export default function AiPage({ active, pendingQuestion, onQuestionConsumed }) 
             disabled={locState === 'asking' || busy}
             aria-pressed={locState === 'on'}
             className={`cursor-pointer inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13px] transition-colors duration-150 disabled:opacity-60 ${
-              locState === 'on' ? 'border-sage-300 bg-sage-50 text-sage-700' : needLoc ? 'border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-200' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+              locState === 'on' ? 'border-sage-300 bg-sage-50 text-sage-700' : needLoc ? 'bg-[var(--c-primary-tint)] border-[var(--c-primary)] text-[var(--c-primary)] ring-2 ring-[var(--c-primary)]/30' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
             }`}
           >
             <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

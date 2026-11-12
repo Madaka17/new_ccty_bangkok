@@ -1,15 +1,16 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ThemeToggle from './ThemeToggle.jsx';
 import { WeatherBadge } from './fx/WeatherFx.jsx';
-import { PAGE_TITLES } from '../lib/navPages.js';
 import { ALL_PAGES, searchPages } from '../lib/pageSearch.js';
 
-// Desktop top bar: page title, page search, live cameras link, weather and theme
-export default function TopBar({ page, onNavigate, liveCount = 0, weatherScene }) {
+// Desktop top bar: page search, live cameras link, weather and theme
+export default function TopBar({ onNavigate, liveCount = 0, weatherScene }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const inputRef = useRef(null);
+  const blurTimer = useRef(null);
+  useEffect(() => () => clearTimeout(blurTimer.current), []);
   const results = useMemo(() => searchPages(query, ALL_PAGES), [query]);
   const showList = open && query.trim() !== '';
   const activeId = showList && results[active] ? `page-search-opt-${results[active].id}` : undefined;
@@ -43,8 +44,7 @@ export default function TopBar({ page, onNavigate, liveCount = 0, weatherScene }
 
   return (
     <div className="hidden lg:flex sticky top-0 z-30 h-16 items-center gap-4 px-6 bg-[var(--c-ground)]/90 backdrop-blur border-b border-[var(--c-border)]">
-      <h1 className="text-xl font-bold text-[var(--c-ink)] shrink-0">{PAGE_TITLES[page]}</h1>
-      <div className="relative max-w-md flex-1 mx-auto">
+      <div className="relative max-w-md flex-1">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--c-muted)] pointer-events-none" aria-hidden="true">
           <circle cx="11" cy="11" r="7" />
           <path d="M20 20l-3.5-3.5" />
@@ -54,7 +54,7 @@ export default function TopBar({ page, onNavigate, liveCount = 0, weatherScene }
           type="search"
           role="combobox"
           aria-expanded={showList}
-          aria-controls="page-search-list"
+          aria-controls={showList ? 'page-search-list' : undefined}
           aria-activedescendant={activeId}
           aria-autocomplete="list"
           aria-label="ค้นหาหน้า"
@@ -62,7 +62,7 @@ export default function TopBar({ page, onNavigate, liveCount = 0, weatherScene }
           value={query}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); setActive(0); }}
           onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 120)}
+          onBlur={() => { clearTimeout(blurTimer.current); blurTimer.current = setTimeout(() => setOpen(false), 120); }}
           onKeyDown={onKeyDown}
           className="w-full min-h-11 pl-10 pr-3 rounded-lg bg-[var(--c-surface)] border border-[var(--c-border)] text-[var(--c-ink)] placeholder:text-[var(--c-muted)] text-sm"
         />
@@ -88,7 +88,7 @@ export default function TopBar({ page, onNavigate, liveCount = 0, weatherScene }
           </ul>
         )}
       </div>
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex items-center gap-2 shrink-0 ml-auto">
         {liveCount > 0 && (
           <button type="button" onClick={() => onNavigate('cameras')} className="cursor-pointer min-h-11 px-2 text-sm text-[var(--c-muted)] hover:text-[var(--c-ink)]">
             ดูสด {liveCount} กล้อง

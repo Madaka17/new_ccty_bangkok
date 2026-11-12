@@ -5,7 +5,7 @@ import { useMemo } from 'react';
 // The six regions, north to south; each camera's region comes from the server (thai_regions.py)
 const REGIONS = ['ภาคเหนือ', 'ภาคอีสาน', 'ภาคกลาง', 'ภาคตะวันออก', 'ภาคตะวันตก', 'ภาคใต้'];
 const CHIP_OFF = 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50';
-const CHIP_ON = 'bg-blue-600 text-white border-blue-600';
+const CHIP_ON = 'bg-[var(--c-sel-bg)] text-[var(--c-sel-text)] border-[var(--c-sel-bg)]';
 
 export function inPlace(c, region, province) {
   return (!region || c.region === region) && (!province || c.province === province);
@@ -46,7 +46,7 @@ export default function RegionPicker({ cameras, region, province, onRegion, onPr
           value={province}
           onChange={(e) => onProvince(e.target.value)}
           disabled={!region}
-          className="h-9 w-full sm:w-auto sm:min-w-[260px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+          className="h-9 w-full sm:w-auto sm:min-w-[260px] rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-[var(--c-primary)] disabled:cursor-not-allowed disabled:opacity-60"
         >
           <option value="">{region ? `ทุกจังหวัดใน${region} (${provinces.length} จังหวัด)` : 'เลือกภาคก่อน แล้วเลือกจังหวัดได้'}</option>
           {provinces.map(([p, n]) => (

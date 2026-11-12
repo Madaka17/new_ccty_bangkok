@@ -152,7 +152,7 @@ export default function ReportFloodPage({ isActive, onNavigate }) {
       />
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4 items-start">
         <Card className="p-0 overflow-hidden">
-          <div className="relative h-[46vh] min-h-[320px] lg:h-[calc(100vh-13rem)]">
+          <div className="relative h-[46vh] min-h-[320px] lg:h-[calc(100vh-17rem)]">
             {/* inline position: maplibre-gl.css sets .maplibregl-map { position: relative } over a class */}
             <div ref={mapEl} style={{ position: 'absolute', inset: 0 }} aria-label="แผนที่สำหรับปักหมุดจุดน้ำท่วม" />
             <span className="absolute top-2.5 left-1/2 -translate-x-1/2 rounded-full bg-white border border-slate-200 px-3 py-1 text-[11px] text-slate-700 shadow-sm pointer-events-none whitespace-nowrap">

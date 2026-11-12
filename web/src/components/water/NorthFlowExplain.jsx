@@ -91,7 +91,7 @@ export function TenMinuteTable({ stations, texts, code, onSelect }) {
                   key={s.code}
                   onClick={() => s.history?.length && onSelect(s.code)}
                   title={texts?.[s.code] || ''}
-                  className={`${s.history?.length ? 'cursor-pointer hover:bg-slate-50' : ''} ${code === s.code ? 'bg-blue-50' : ''}`}
+                  className={`${s.history?.length ? 'cursor-pointer hover:bg-slate-50' : ''} ${code === s.code ? 'bg-[var(--c-primary-tint)]' : ''}`}
                 >
                   <td className="py-2 pr-3">
                     <span className="block text-sm text-slate-900">{s.province}</span>

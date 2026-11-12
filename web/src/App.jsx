@@ -326,7 +326,7 @@ export default function App() {
 
       {/* Earthquake scrolls inside its frame, so on desktop the page itself must fit the screen */}
       <div className={`min-h-full flex flex-col lg:pt-0 pt-4 pb-24 min-w-0 ${page === 'enviro' ? 'lg:pb-4' : ''}`}>
-        <TopBar page={page} onNavigate={navigate} liveCount={activeCams.length} weatherScene={weather.scene} />
+        <TopBar onNavigate={navigate} liveCount={activeCams.length} weatherScene={weather.scene} />
         <main className="flex-1 px-4 sm:px-6 min-w-0 lg:pt-4">
           {/* One width and one spacing rule for every page */}
           <motion.div
@@ -419,7 +419,7 @@ export default function App() {
                 <iframe
                   src="/enviro/"
                   title="ENVIRO Seismic Command"
-                  className="w-full h-[calc(100dvh-17rem)] lg:h-[calc(100vh-7rem)] border-0 bg-transparent"
+                  className="w-full h-[calc(100dvh-17rem)] lg:h-[calc(100vh-11rem)] border-0 bg-transparent"
                 />
               </>
             )}
@@ -432,7 +432,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => askAI('')}
-            className={`fixed bottom-20 lg:bottom-8 right-5 lg:right-8 z-30 h-12 w-12 lg:h-14 lg:w-14 rounded-full bg-[var(--c-primary-fill)] text-white border border-[var(--c-border-strong)] shadow-[0_6px_16px_-6px_rgba(1,4,9,0.5)] hover:bg-[var(--c-primary-hover)] active:scale-95 transition-[translate,scale,opacity,background-color] duration-200 flex items-center justify-center cursor-pointer group ${!scrollVisible || alertCount > 0 ? "motion-safe:max-lg:translate-y-24 motion-safe:max-lg:opacity-0 motion-safe:max-lg:pointer-events-none motion-safe:focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:pointer-events-auto" : ""}`}
+            className={`fixed bottom-20 lg:bottom-8 right-5 lg:right-8 z-30 h-12 w-12 lg:h-14 lg:w-14 rounded-full bg-[var(--c-primary-fill)] text-[var(--c-on-primary)] border border-[var(--c-border-strong)] shadow-[0_6px_16px_-6px_rgba(1,4,9,0.5)] hover:bg-[var(--c-primary-hover)] active:scale-95 transition-[translate,scale,opacity,background-color] duration-200 flex items-center justify-center cursor-pointer group ${!scrollVisible || alertCount > 0 ? "motion-safe:max-lg:translate-y-24 motion-safe:max-lg:opacity-0 motion-safe:max-lg:pointer-events-none motion-safe:focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:pointer-events-auto" : ""}`}
             title="ถาม AI"
             aria-label="ถาม AI"
           >

@@ -206,7 +206,7 @@ export default function NorthRouteMap({ data, isActive }) {
         <div role="group" aria-label="เลือกวัน" className="flex gap-1.5 overflow-x-auto pb-1">
           {dates.map((iso, i) => (
             <button key={iso} type="button" aria-pressed={day === i} onClick={() => setDay(i)}
-              className={`shrink-0 cursor-pointer rounded-lg border px-2.5 py-1 text-xs font-medium ${FOCUS} ${day === i ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}>
+              className={`shrink-0 cursor-pointer rounded-lg border px-2.5 py-1 text-xs font-medium ${FOCUS} ${day === i ? 'bg-[var(--c-sel-bg)] text-[var(--c-sel-text)] border-[var(--c-sel-bg)]' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}>
               {i === 0 ? 'วันนี้' : `+${i} วัน`}<span className="block text-[10px] font-normal opacity-80">{dayLabel(iso)}</span>
             </button>
           ))}

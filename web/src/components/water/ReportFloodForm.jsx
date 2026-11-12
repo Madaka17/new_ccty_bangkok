@@ -132,7 +132,7 @@ export default function ReportFloodForm({ pin, locating, onUseMyLocation, onPinC
           <legend className="font-medium text-slate-700">ระดับน้ำท่วม</legend>
           <div className="mt-2 grid grid-cols-3 gap-2">
             {DEPTHS.map(([key, label]) => (
-              <label key={key} className={`cursor-pointer rounded-lg border px-2 py-3 text-center ${depth === key ? 'border-blue-600 bg-blue-50 text-blue-800' : 'border-slate-300 text-slate-700'}`}>
+              <label key={key} className={`cursor-pointer rounded-lg border px-2 py-3 text-center ${depth === key ? 'bg-[var(--c-primary-tint)] border-[var(--c-primary)] text-[var(--c-primary)]' : 'border-slate-300 text-slate-700'}`}>
                 <input type="radio" name="flood-depth" value={key} checked={depth === key} onChange={() => setDepth(key)} required className="mr-1 accent-blue-600" />{label}
               </label>
             ))}

@@ -256,7 +256,7 @@ export default function NorthFlowMap({ data, code, onSelect, isActive, texts, ro
         const el = document.createElement('button');
         el.type = 'button';
         const on = n.id === code || n.id === picked;
-        el.className = `flex items-center gap-1 rounded-full border bg-white pl-1 pr-2 py-0.5 text-[11px] leading-4 whitespace-nowrap shadow-sm cursor-pointer ${on ? 'border-blue-600 ring-2 ring-blue-600' : 'border-slate-300'}`;
+        el.className = `flex items-center gap-1 rounded-full border bg-white pl-1 pr-2 py-0.5 text-[11px] leading-4 whitespace-nowrap shadow-sm cursor-pointer ${on ? 'border-[var(--c-primary)] ring-2 ring-[var(--c-primary)]' : 'border-slate-300'}`;
         el.title = n.kind === 'gauge' ? `${n.s.province} · ${n.s.name}` : n.label;
         const dot = document.createElement('span');
         dot.className = n.kind === 'dam' ? 'w-2.5 h-2.5 rounded-sm shrink-0' : 'w-2.5 h-2.5 rounded-full shrink-0';

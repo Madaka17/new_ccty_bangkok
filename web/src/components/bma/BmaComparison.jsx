@@ -179,7 +179,7 @@ export default function BmaComparison({ data, period, onPeriod, cycle, files, lo
                     <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 tabular-nums">
                       {fmtCompact(c.total)}
                     </span>
-                    <div className={`w-full max-w-[44px] rounded-t-md overflow-hidden flex flex-col-reverse ${isCur ? 'ring-2 ring-blue-600 ring-offset-1' : ''}`} style={{ height: `${Math.max(4, (c.total / max) * 100)}%` }}>
+                    <div className={`w-full max-w-[44px] rounded-t-md overflow-hidden flex flex-col-reverse ${isCur ? 'ring-2 ring-[var(--c-primary)] ring-offset-1' : ''}`} style={{ height: `${Math.max(4, (c.total / max) * 100)}%` }}>
                       <div className="bg-blue-600 w-full" style={{ height: `${(c.cars / (c.total || 1)) * 100}%` }} title={`รถยนต์: ${fmtNum(c.cars)}`} />
                       <div className="bg-amber-500 w-full" style={{ height: `${(c.motorcycles / (c.total || 1)) * 100}%` }} title={`มอเตอร์ไซค์: ${fmtNum(c.motorcycles)}`} />
                       <div className="bg-slate-500 w-full" style={{ height: `${(c.trucks / (c.total || 1)) * 100}%` }} title={`บรรทุก: ${fmtNum(c.trucks)}`} />

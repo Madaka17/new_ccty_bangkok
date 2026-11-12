@@ -84,8 +84,8 @@
   --c-primary-hover: #ea580c;
   --c-primary-tint: #fff1e6;
   --c-on-primary: #0f0f10;
-  --c-sel-bg: #18181b;
-  --c-sel-text: #ffffff;
+  --c-sel-bg: var(--c-primary-fill);
+  --c-sel-text: var(--c-on-primary);
   --c-wave: #d4d4d8;
   --c-yours: #8250df;
   --c-yours-tint: #fbefff;
@@ -111,11 +111,11 @@
   --c-here-text: #fb923c;
   --c-primary: #fb923c;
   --c-primary-fill: #f97316;
-  --c-primary-hover: #fb923c;
+  --c-primary-hover: #ea580c;
   --c-primary-tint: rgba(249, 115, 22, 0.14);
   --c-on-primary: #0f0f10;
-  --c-sel-bg: #f4f4f5;
-  --c-sel-text: #0f0f10;
+  --c-sel-bg: var(--c-primary-fill);
+  --c-sel-text: var(--c-on-primary);
   --c-wave: #3a3a40;
   --c-yours: #c678dd;
   --c-yours-tint: rgba(198, 120, 221, 0.14);

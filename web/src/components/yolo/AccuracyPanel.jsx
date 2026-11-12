@@ -151,7 +151,7 @@ export default function AccuracyPanel({ active, stats, camTitle, onToast }) {
                 onChange={(e) => setManual(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && save()}
                 placeholder="เช่น 1487"
-                className="mt-1 w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-600"
+                className="mt-1 w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-[var(--c-primary)]"
               />
             </label>
             <Button variant="primary" onClick={save} loading={saving} disabled={preview == null || !stats?.active}>
@@ -163,7 +163,7 @@ export default function AccuracyPanel({ active, stats, camTitle, onToast }) {
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="หมายเหตุ (ไม่บังคับ) เช่น ช่วงเย็น ฝนตก"
-            className="w-full h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs focus:outline-none focus:ring-2 focus:ring-blue-600"
+            className="w-full h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--c-primary)]"
           />
 
           {preview && (

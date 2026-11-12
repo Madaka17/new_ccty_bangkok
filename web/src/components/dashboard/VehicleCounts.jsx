@@ -193,7 +193,7 @@ function CameraPicker({ cameras, selected, max, saving, onChange, onClose }) {
                   full ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50'
                 }`}
               >
-                <span className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${on ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300 bg-white'}`}>
+                <span className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${on ? 'bg-[var(--c-sel-bg)] border-[var(--c-sel-bg)] text-[var(--c-sel-text)]' : 'border-slate-300 bg-white'}`}>
                   {on && <span className="block w-2 h-2 rounded-sm bg-white" />}
                 </span>
                 <Truncate text={c.short_title || c.title} className="flex-1 text-slate-900" />

@@ -98,13 +98,13 @@ const Tile = forwardRef(function Tile({ cam, pinned, flood, onOpen, children }, 
       type="button"
       onClick={() => onOpen(cam)}
       title={cam.title}
-      className={`text-left rounded-xl border bg-white overflow-hidden cursor-pointer transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
-        pinned ? 'border-blue-500 ring-1 ring-blue-500' : 'border-slate-200 hover:border-slate-400'
+      className={`text-left rounded-xl border bg-white overflow-hidden cursor-pointer transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--c-primary)] ${
+        pinned ? 'border-[var(--c-primary)] ring-1 ring-[var(--c-primary)]' : 'border-slate-200 hover:border-slate-400'
       }`}
     >
       <div className="relative aspect-video bg-slate-100">
         {children}
-        {pinned && <span className="absolute top-1.5 left-1.5 rounded-md bg-blue-600 px-1.5 py-0.5 text-[10px] font-medium text-white">เปิดค้างไว้</span>}
+        {pinned && <span className="absolute top-1.5 left-1.5 rounded-md bg-[var(--c-sel-bg)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--c-sel-text)]">เปิดค้างไว้</span>}
         {flood && <span className="absolute top-1.5 right-1.5 rounded-md bg-pink-600 px-1.5 py-0.5 text-[10px] font-medium text-white" title="AI เห็นน้ำบนถนนจากภาพกล้องนี้">{flood}</span>}
       </div>
       <div className="px-2.5 py-2 min-w-0">
