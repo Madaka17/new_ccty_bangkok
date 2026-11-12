@@ -1,4 +1,5 @@
 import logging
+import sys
 
 from backend.core.log import get_logger
 
@@ -55,3 +56,10 @@ def test_does_not_reach_root_logger(capsys):
         root.removeHandler(catch)
     assert seen == []
     assert capsys.readouterr().out == "[BMA] only once\n"
+
+
+def test_no_stdout_is_silent(monkeypatch, capsys):
+    # A windowless pythonw run has sys.stdout None; print() did nothing there, so logging must too.
+    monkeypatch.setattr(sys, "stdout", None)
+    get_logger("X").info("y")   # must not raise
+    assert capsys.readouterr().err == ""

@@ -17,6 +17,8 @@ class _StdoutHandler(logging.Handler):
         try:
             # Read sys.stdout here, not at setup: the server swaps it at startup and tests capture it.
             stream = sys.stdout
+            if stream is None:   # windowless pythonw: print() was a no-op here, so stay silent
+                return
             stream.write(self.format(record) + "\n")
             stream.flush()
         except Exception:
