@@ -10,7 +10,8 @@ REPLACE_RETRIES = 5
 
 def write_json_atomic(path, data, **dump_kwargs):
     """Dump to a per-thread tmp file, fsync, then swap it over path. On failure the old file stays."""
-    tmp = f"{path}.{threading.get_ident()}.tmp"
+    # The pid keeps two processes writing the same path from sharing one tmp file.
+    tmp = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"
     try:
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, **dump_kwargs)

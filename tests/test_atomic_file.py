@@ -1,6 +1,7 @@
 """write_json_atomic: a failed write leaves the old file in place and no tmp file behind."""
 import json
 import os
+import threading
 
 import pytest
 
@@ -56,3 +57,18 @@ def test_gives_up_after_retries(tmp_path, monkeypatch):
     with pytest.raises(PermissionError):
         write_json_atomic(str(path), {"ok": True})
     assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_tmp_name_has_pid_and_thread(tmp_path, monkeypatch):
+    # Two processes writing the same path must not share a tmp file, so the pid is in the name.
+    path = tmp_path / "state.json"
+    seen = []
+
+    def capture(src, dst):
+        seen.append(src)
+        os.rename(src, dst)
+
+    monkeypatch.setattr(atomic_file.os, "replace", capture)
+    write_json_atomic(str(path), {"ok": True})
+    expected = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"
+    assert seen == [expected]
