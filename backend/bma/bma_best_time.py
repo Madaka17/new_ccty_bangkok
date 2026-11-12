@@ -22,11 +22,13 @@ BEST_WORST_HOURS = range(6, 22)
 MORNING_HOURS = range(6, 10)   # 06:00-10:00 commute window, by start hour
 EVENING_HOURS = range(16, 20)  # 16:00-20:00 commute window, by start hour
 
+# Grouped by the raw hour text so idx_bma_hist_best_time streams the rows without a sort.
+# _load_cells folds the rows into hour-of-day cells in Python.
 CELLS_SQL = """
-    SELECT camid, date, CAST(substr(hour, 12, 2) AS INTEGER) h, AVG(total) a, COUNT(*)
+    SELECT camid, date, hour, AVG(total) a, COUNT(*) n
     FROM bma_history
     WHERE date >= ?
-    GROUP BY camid, date, h
+    GROUP BY camid, date, hour
 """
 
 RAMA_RE = re.compile(r"ถนนพระราม(?:ที่)?\s*(\d+)")
@@ -94,19 +96,24 @@ def _level(ratio):
 class BestTime:
     """Hourly car averages per road, rebuilt from the database when older than `ttl` seconds."""
 
-    def __init__(self, db_path, cameras, ttl=3600, today=date.today, clock=time.monotonic, holidays=None):
+    def __init__(self, db_path, cameras, ttl=3600, today=date.today, clock=time.monotonic, holidays=None,
+                 background_refresh=True):
         self.db_path = db_path
         self.holidays = load_holidays() if holidays is None else set(holidays)
         self.cameras = cameras
         self.ttl = ttl
         self.today = today
         self.clock = clock
+        self.background_refresh = background_refresh
         self.lock = threading.Lock()
         self.road_of = {str(c.get("camid")): clean_road(c) for c in cameras}
         self._cells = None
         self._built_at = 0.0
         self._built_ts = 0
         self._retry_at = 0.0   # after a failed load, no new attempt before this time
+        self._refreshing = False   # a background reload is running
+        self._refresh_thread = None
+        self._warm_thread = None
         self._known_roads = set(self.road_of.values()) | {""}
 
     def is_known_road(self, road):
@@ -122,22 +129,65 @@ class BestTime:
             rows = conn.execute(CELLS_SQL, (cutoff,)).fetchall()
         finally:
             conn.close()
-        return [(str(camid), d, h, a, n) for camid, d, h, a, n in rows if str(camid) in self.road_of]
+        # Fold the raw-hour rows into (camid, date, hour-of-day) cells. The weighted mean is the
+        # same AVG the old expression GROUP BY gave, even when several rows share a cell.
+        merged = {}
+        for camid, d, hour, a, n in rows:
+            cam = str(camid)
+            if cam not in self.road_of:
+                continue
+            key = (cam, d, int(hour[11:13]))
+            total, count = merged.get(key, (0.0, 0))
+            merged[key] = (total + a * n, count + n)
+        return [(cam, d, h, total / count, count) for (cam, d, h), (total, count) in merged.items()]
 
     def _get_cells(self):
         with self.lock:
             now = self.clock()
             stale = self._cells is None or now - self._built_at >= self.ttl
-            if stale and now >= self._retry_at:
-                try:
-                    self._cells = self._load_cells()
-                    self._built_at = now
-                    self._built_ts = int(time.time())
-                except Exception as e:
-                    # keep any old cells; try again in a minute, not on every request
-                    self._retry_at = now + RETRY_SECONDS
-                    log.warning(f"load failed, keeping {'old' if self._cells is not None else 'no'} data: {e}")
+            if not (stale and now >= self._retry_at):
+                return self._cells
+            if self._cells is not None and self.background_refresh:
+                # answer with the old cells now; one thread reloads them
+                if not self._refreshing:
+                    self._refreshing = True
+                    self._refresh_thread = threading.Thread(
+                        target=self._refresh_in_background, args=(now,), daemon=True, name="best-time-refresh")
+                    try:
+                        self._refresh_thread.start()
+                    except RuntimeError:
+                        self._refreshing = False   # no thread: let a later request try again
+                return self._cells
+            try:
+                self._cells = self._load_cells()
+                self._built_at = now
+                self._built_ts = int(time.time())
+            except Exception as e:
+                # keep any old cells; try again in a minute, not on every request
+                self._retry_at = now + RETRY_SECONDS
+                log.warning(f"load failed, keeping {'old' if self._cells is not None else 'no'} data: {e}")
             return self._cells
+
+    def _refresh_in_background(self, started):
+        # The SQL runs without self.lock; the lock is taken only to store the result.
+        try:
+            cells = self._load_cells()
+        except Exception as e:
+            with self.lock:
+                self._retry_at = started + RETRY_SECONDS
+                self._refreshing = False
+            log.warning(f"load failed, keeping old data: {e}")
+            return
+        with self.lock:
+            self._cells = cells
+            self._built_at = started
+            self._built_ts = int(time.time())
+            self._refreshing = False
+
+    def warm(self):
+        """Load the cells on a thread now, so the first visitor after a restart does not wait."""
+        self._warm_thread = threading.Thread(target=self._get_cells, daemon=True, name="best-time-warm")
+        self._warm_thread.start()
 
     def _day_type(self, iso):
         d = date.fromisoformat(iso)
