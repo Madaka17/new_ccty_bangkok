@@ -284,3 +284,34 @@ def test_control_denial_recorded(monkeypatch):
     r = c.post("/api/ping")
     assert r.status_code == 403
     assert [k[0] for k in fake.calls] == ["control_denied"]
+
+
+def test_self_check_token_changes_per_window_and_accepts_previous(monkeypatch):
+    monkeypatch.setattr(access_guard, "_secret", b"k" * 32)
+    t = 1_000_000.0
+    a = access_guard.self_check_token(t)
+    assert len(a) == 32 and a == access_guard.self_check_token(t + 1)
+    assert a != access_guard.self_check_token(t + access_guard.SELF_CHECK_WINDOW)
+    monkeypatch.setattr(access_guard.time, "time", lambda: t + access_guard.SELF_CHECK_WINDOW)
+    req = SimpleNamespace(headers={access_guard.SELF_CHECK_HEADER: a})
+    assert access_guard._is_self_check(req)          # previous window still accepted
+    monkeypatch.setattr(access_guard.time, "time", lambda: t + 2 * access_guard.SELF_CHECK_WINDOW)
+    assert not access_guard._is_self_check(req)      # two windows old
+    assert not access_guard._is_self_check(SimpleNamespace(headers={}))
+
+
+def test_self_check_request_still_blocked_but_recorded_as_self_check(monkeypatch):
+    monkeypatch.setattr(access_guard, "_secret", b"k" * 32)
+    c, fake = _guard_client(monkeypatch, "203.0.113.9")
+    r = c.get("/.env", headers={"user-agent": "chk/1",
+                                access_guard.SELF_CHECK_HEADER: access_guard.self_check_token()})
+    assert r.status_code == 404
+    assert [x[0] for x in fake.calls] == ["self_check"]
+
+
+def test_bad_self_check_header_records_real_kind(monkeypatch):
+    monkeypatch.setattr(access_guard, "_secret", b"k" * 32)
+    c, fake = _guard_client(monkeypatch, "203.0.113.9")
+    r = c.get("/.env", headers={access_guard.SELF_CHECK_HEADER: "0" * 32})
+    assert r.status_code == 404
+    assert [x[0] for x in fake.calls] == ["probe"]

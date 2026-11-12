@@ -2,6 +2,7 @@
 import base64
 import json
 import os
+import re
 import socket
 import ssl
 import subprocess
@@ -94,6 +95,32 @@ def local_attack_summary(instance_dir, days=30):
     return _parse_json(r.stdout) if r.returncode == 0 else None
 
 
+def _token_or_none(text):
+    t = (text or "").strip()
+    return t if re.fullmatch(r"[0-9a-f]{32}", t) else None
+
+
+def pi_self_check_token():
+    """The code that marks this program's own test requests; None when it cannot be read."""
+    repo = PI["repo"]
+    return _token_or_none(ssh(f"cd {repo} && INSTANCE_DIR={repo}/instances/production "
+                              f".venv/bin/python -m backend.core.security_log --self-check-token", timeout=40))
+
+
+def local_self_check_token(instance_dir):
+    py = os.path.join(ROOT, ".venv", "Scripts", "python.exe")
+    if not os.path.exists(py):
+        py = sys.executable
+    env = dict(os.environ, INSTANCE_DIR=instance_dir)
+    try:
+        r = subprocess.run([py, "-m", "backend.core.security_log", "--self-check-token"],
+                           cwd=ROOT, env=env, capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=60, stdin=subprocess.DEVNULL)
+    except Exception:
+        return None
+    return _token_or_none(r.stdout) if r.returncode == 0 else None
+
+
 def pi_config_flags():
     repo = PI["repo"]
     cmd = f"cd {repo} && echo {_b64(_FLAGS_SCRIPT)} | base64 -d | .venv/bin/python - {repo}/.env"
@@ -163,8 +190,8 @@ def pi_host_raw():
     return None if out is None else parse_host_output(out)
 
 
-def _get(url, timeout=15):
-    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
+def _get(url, timeout=15, extra_headers=None):
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*", **(extra_headers or {})})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.status, {k.lower(): v for k, v in r.headers.items()}, r.read(200)
@@ -185,18 +212,19 @@ def _cert_days_left(host, port=443):
     return (exp - datetime.now(timezone.utc)).days
 
 
-def web_checks(base_url):
+def web_checks(base_url, self_check_token=None):
     base = base_url.rstrip("/")
+    extra = {"X-BKK-Self-Check": self_check_token} if self_check_token else None
     out = {}
     try:
-        _code, headers, _ = _get(base + "/")
+        _code, headers, _ = _get(base + "/", extra_headers=extra)
         out["headers"] = headers
     except Exception:
         pass
     status = {}
     for p in STATUS_PATHS:
         try:
-            code, h, body = _get(base + p)
+            code, h, body = _get(base + p, extra_headers=extra)
             status[p] = (code, h.get("content-type", ""), body.decode("utf-8", "replace"))
         except Exception:
             continue

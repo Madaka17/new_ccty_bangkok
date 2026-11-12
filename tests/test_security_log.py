@@ -88,3 +88,19 @@ def test_record_never_raises(tmp_path):
     lg = SecurityLog(str(tmp_path / "missing" / "dir" / "x.db"), clock=Clock())
     lg.record("probe", "1.1.1.1", "/x" * 500, ua="u" * 500)
     assert lg.flush() == 0
+
+
+def test_summary_excludes_self_check(tmp_path):
+    lg = make(tmp_path)
+    for i in range(2):
+        lg.record("probe", "1.1.1.1", "/x")
+    for i in range(3):
+        lg.record("self_check", "9.9.9.9", "/.env")
+    lg.flush()
+    s = lg.summary()
+    assert s["total"] == 2 and s["self_checks"] == 3
+    assert "self_check" not in s["by_kind"]
+    assert sum(d["n"] for d in s["by_day"]) == 2
+    assert [i["ip"] for i in s["top_ips"]] == ["1.1.1.1"]
+    assert all(p["path"] != "/.env" for p in s["top_paths"])
+    assert all(r["kind"] != "self_check" for r in s["recent"])

@@ -268,6 +268,32 @@ def _sign(ts):
     return hmac.new(_secret, str(ts).encode(), hashlib.sha256).hexdigest()[:32]
 
 
+SELF_CHECK_HEADER = "x-bkk-self-check"
+SELF_CHECK_WINDOW = 600
+
+
+def self_check_token(now=None):
+    """Code the security checker sends so its own test requests are recorded as ``self_check``.
+    Derived from the session secret, changes every 10 minutes. It never grants trust."""
+    global _secret
+    if _secret is None:
+        _secret = _load_secret()
+    n = int((time.time() if now is None else now) // SELF_CHECK_WINDOW)
+    return hmac.new(_secret, f"self-check:{n}".encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def _is_self_check(request):
+    """True when the request carries the token for this or the previous window. Never raises."""
+    try:
+        got = request.headers.get(SELF_CHECK_HEADER)
+        if not got:
+            return False
+        now = time.time()
+        return any(hmac.compare_digest(got, self_check_token(now - k * SELF_CHECK_WINDOW)) for k in (0, 1))
+    except Exception:
+        return False
+
+
 def session_age(value, now=None):
     """Seconds since a page-session cookie was signed, or None when it is missing, forged or expired."""
     try:
@@ -319,6 +345,8 @@ def is_probe(path: str) -> bool:
 
 def _block(request, ip, kind, status, msg):
     """Record an untrusted request that is being refused, then answer it."""
+    if _is_self_check(request):
+        kind = "self_check"   # still refused exactly the same; only the record differs
     security_log.log.record(kind, ip, request.url.path, request.method, request.headers.get("user-agent", ""))
     return _deny(status, msg)
 

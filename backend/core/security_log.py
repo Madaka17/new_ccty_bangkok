@@ -5,6 +5,7 @@ flushes it to SQLite every 30 s. Two tables: hourly counts per kind (kept 30 day
 raw events. Only time, kind, ip, path, method and user agent are stored, no headers, cookies or bodies.
 
     python -m backend.core.security_log --summary-json [--days N]   prints the summary, never creates the DB
+    python -m backend.core.security_log --self-check-token  prints the code the security checker sends
 """
 import json
 import logging
@@ -17,7 +18,7 @@ from datetime import datetime, timedelta
 from backend.core.instance import DATA_DIR
 
 KINDS = ("bad_path", "docs_probe", "control_denied", "not_browser", "no_session",
-         "rate_limited", "chat_limited", "report_limited", "too_large", "probe")
+         "rate_limited", "chat_limited", "report_limited", "too_large", "probe", "self_check")
 RECENT_KEEP = 500
 HOURLY_KEEP_DAYS = 30
 
@@ -136,21 +137,24 @@ class SecurityLog:
         top_ips: list = []
         top_paths: list = []
         recent: list = []
+        self_checks = 0
         if os.path.exists(self.db_path):
             try:
                 con = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, timeout=5)
                 try:
                     for hour, kind, n in con.execute("SELECT hour, kind, n FROM hourly"):
                         d = hour[:10]
-                        if d in by_day:
+                        if d in by_day and kind == "self_check":
+                            self_checks += n
+                        elif d in by_day:
                             by_day[d] += n
                             by_kind[kind] = by_kind.get(kind, 0) + n
                     top_ips = [{"ip": r[0], "n": r[1]} for r in con.execute(
-                        "SELECT ip, COUNT(*) c FROM recent GROUP BY ip ORDER BY c DESC, ip LIMIT 10")]
+                        "SELECT ip, COUNT(*) c FROM recent WHERE kind != 'self_check' GROUP BY ip ORDER BY c DESC, ip LIMIT 10")]
                     top_paths = [{"path": r[0], "n": r[1]} for r in con.execute(
-                        "SELECT path, COUNT(*) c FROM recent GROUP BY path ORDER BY c DESC, path LIMIT 10")]
+                        "SELECT path, COUNT(*) c FROM recent WHERE kind != 'self_check' GROUP BY path ORDER BY c DESC, path LIMIT 10")]
                     recent = [dict(zip(("ts", "kind", "ip", "path", "method", "ua"), r)) for r in con.execute(
-                        "SELECT ts, kind, ip, path, method, ua FROM recent ORDER BY ts DESC, rowid DESC LIMIT 50")]
+                        "SELECT ts, kind, ip, path, method, ua FROM recent WHERE kind != 'self_check' ORDER BY ts DESC, rowid DESC LIMIT 50")]
                 finally:
                     con.close()
             except Exception as e:
@@ -158,6 +162,7 @@ class SecurityLog:
         return {
             "days": days,
             "total": sum(by_day.values()),
+            "self_checks": self_checks,
             "by_kind": by_kind,
             "by_day": [{"day": d, "n": by_day[d]} for d in day_list],
             "top_ips": top_ips,
@@ -175,7 +180,11 @@ if __name__ == "__main__":
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--summary-json", action="store_true")
+    ap.add_argument("--self-check-token", action="store_true")
     ap.add_argument("--days", type=int, default=30)
     args = ap.parse_args()
-    if args.summary_json:
+    if args.self_check_token:
+        from backend.core import access_guard
+        print(access_guard.self_check_token())
+    elif args.summary_json:
         print(json.dumps(log.summary(args.days), ensure_ascii=False))

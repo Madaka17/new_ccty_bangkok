@@ -51,15 +51,18 @@ def main(argv=None):
         summary = collect.pi_attack_summary(a.days)
         config = collect.pi_config_flags()
         host = rules.evaluate_host(collect.pi_host_raw())
-        web = collect.web_checks(PROD_URL)
+        token = collect.pi_self_check_token()
+        web = collect.web_checks(PROD_URL, self_check_token=token)
     else:
         summary = collect.local_attack_summary(os.path.join(ROOT, "instances", "test"), a.days)
         config = collect.local_config_flags(os.path.join(ROOT, "instances", "test", ".env"))
         host = [_f("host", "info", "ตรวจเครื่อง Pi เฉพาะ production")]
-        web = collect.web_checks(TEST_URL)
+        token = collect.local_self_check_token(os.path.join(ROOT, "instances", "test"))
+        web = collect.web_checks(TEST_URL, self_check_token=token)
 
     sections = {
-        "attack": _attack_findings(summary),
+        "attack": _attack_findings(summary) + ([] if token else [
+            _f("attack", "info", "ส่งรหัสตรวจตัวเองไม่ได้ รอบนี้จะถูกนับเป็นการโจมตี")]),
         "web": _web_findings(web, trusted_origin=(a.target == "test")),
         "config": rules.evaluate_config(config),
         "host": host,

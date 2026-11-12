@@ -64,7 +64,7 @@ def test_render_with_summary():
 
 def test_main_pi_unreachable(monkeypatch, tmp_path):
     monkeypatch.setattr(collect, "ssh", lambda cmd, timeout=20: None)
-    monkeypatch.setattr(collect, "web_checks", lambda url: {})
+    monkeypatch.setattr(collect, "web_checks", lambda url, self_check_token=None: {})
     monkeypatch.setattr(main_mod, "REPORTS_DIR", str(tmp_path / "reports"))
     assert main_mod.main(["--no-open"]) == 0
     files = list((tmp_path / "reports").glob("security-production-*.html"))
@@ -76,7 +76,7 @@ def test_main_pi_not_deployed(monkeypatch, tmp_path):
     def fake_ssh(cmd, timeout=20):
         return "" if "security_log" in cmd else "ok"
     monkeypatch.setattr(collect, "ssh", fake_ssh)
-    monkeypatch.setattr(collect, "web_checks", lambda url: {})
+    monkeypatch.setattr(collect, "web_checks", lambda url, self_check_token=None: {})
     monkeypatch.setattr(main_mod, "REPORTS_DIR", str(tmp_path))
     assert collect.pi_attack_summary() == {"_error": "not_deployed"}
     assert main_mod.main(["--no-open"]) == 0
@@ -99,7 +99,7 @@ def test_parse_host_output_denied():
 
 def test_main_test_target_trusted_origin(monkeypatch, tmp_path):
     seen = {}
-    def fake_web(url):
+    def fake_web(url, self_check_token=None):
         return {"headers": {}, "status": {"/openapi.json": (200, "application/json", "{}")}}
     monkeypatch.setattr(collect, "web_checks", fake_web)
     monkeypatch.setattr(collect, "local_attack_summary", lambda d, days=30: None)
@@ -116,3 +116,36 @@ def test_pi_config_flags_uses_stdin_no_tempfile(monkeypatch):
     monkeypatch.setattr(collect, "ssh", lambda cmd, timeout=20: cmds.append(cmd) or None)
     collect.pi_config_flags()
     assert "/tmp" not in cmds[0] and "rm " not in cmds[0] and "python -" in cmds[0]
+
+
+def test_web_checks_sends_self_check_header(monkeypatch):
+    import urllib.request
+    seen = []
+
+    def fake_urlopen(req, timeout=None):
+        seen.append({k.lower(): v for k, v in req.header_items()})
+        raise OSError("no network")
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    collect.web_checks("http://example.invalid", self_check_token="a" * 32)
+    assert seen and all(h.get("x-bkk-self-check") == "a" * 32 for h in seen)
+    seen.clear()
+    collect.web_checks("http://example.invalid")
+    assert seen and all("x-bkk-self-check" not in h for h in seen)
+
+
+def test_main_no_token_adds_info(monkeypatch, tmp_path):
+    monkeypatch.setattr(collect, "pi_self_check_token", lambda: None)
+    monkeypatch.setattr(collect, "pi_attack_summary", lambda days=30: None)
+    monkeypatch.setattr(collect, "pi_config_flags", lambda: {})
+    monkeypatch.setattr(collect, "pi_host_raw", lambda: None)
+    monkeypatch.setattr(collect, "web_checks", lambda url, self_check_token=None: {})
+    monkeypatch.setattr(main_mod, "REPORTS_DIR", str(tmp_path))
+    assert main_mod.main(["--no-open"]) == 0
+    html = next(tmp_path.glob("security-production-*.html")).read_text(encoding="utf-8")
+    assert "ส่งรหัสตรวจตัวเองไม่ได้ รอบนี้จะถูกนับเป็นการโจมตี" in html
+
+
+def test_report_shows_self_check_line():
+    s = {"days": 30, "total": 1, "self_checks": 4, "by_kind": {"probe": 1},
+         "by_day": [{"day": "2026-11-01", "n": 1}], "top_ips": [], "top_paths": [], "recent": []}
+    assert "ไม่นับการตรวจของโปรแกรมนี้เอง 4 ครั้ง" in render("production", {"attack": []}, s, "now")

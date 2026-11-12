@@ -59,6 +59,9 @@ def _attacks(summary):
         s += f'<div class="bars" role="img" aria-label="ยอดบล็อกรายวัน">{bars}</div>'
         s += (f'<div class="mut">{_e(str(by_day[0].get("day", "")))} ถึง '
               f'{_e(str(by_day[-1].get("day", "")))} (สูงสุด {mx} ครั้ง/วัน)</div>')
+    sc = int(summary.get("self_checks") or 0)
+    if sc > 0:
+        s += f'<div class="mut">ไม่นับการตรวจของโปรแกรมนี้เอง {sc:,} ครั้ง</div>'
     s += "</div>"
     kinds = sorted((summary.get("by_kind") or {}).items(), key=lambda kv: -kv[1])
     if kinds:

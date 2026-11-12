@@ -62,7 +62,17 @@ These are the labels shown in the report (`KIND_TH` in `launch/security_check/ru
 | `chat_limited` | ใช้แชท AI ถี่เกิน | Chat over its per-minute or per-day limit |
 | `report_limited` | แจ้งเหตุถี่เกิน | Public flood report or "car park full" over its limit |
 | `too_large` | ส่งข้อมูลใหญ่เกิน | Body larger than the cap |
+| `self_check` | ตรวจโดยโปรแกรมนี้เอง (ไม่นับ) | The checker's own test requests, left out of the totals |
 | `dropped` | นับไม่ทัน (ทิ้ง) | Events lost because the in-memory buffer was full |
+
+## The program's own test requests
+
+The checker probes the site like an outsider, so the server would count those requests as attacks.
+Before the web checks it asks the server for a short code (`python -m backend.core.security_log
+--self-check-token`, derived from the server's session secret, valid 10 to 20 minutes) and sends it in
+the `X-BKK-Self-Check` header. The request is still blocked exactly like any outsider's; the only
+difference is that it is recorded as `self_check` and left out of every total. The header grants no access.
+If the code cannot be read, the run still works and its probes are counted as attacks (the report says so).
 
 ## Deploy the server part
 
