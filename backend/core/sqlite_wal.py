@@ -28,4 +28,6 @@ def ensure_wal(db_path: str) -> str:
         return current
     if current == "wal" and before != "wal":
         log.info(f"{db_path} now uses WAL (readers no longer block writers)")
+    elif current != "wal":
+        log.warning(f"could not switch {db_path} to WAL: still {current}")
     return current
