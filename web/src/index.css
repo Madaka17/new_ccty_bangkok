@@ -19,16 +19,16 @@
   --text-base: 1.0625rem;
   --text-base--line-height: 1.6rem;
 
-  /* Legacy token names mapped onto the neutral system: cream/ink = slate, sage = emerald,
+  /* Legacy token names mapped onto the neutral system: cream/ink = zinc, sage = emerald,
      lavender = blue (accent), apricot = red, gold = amber. Keeps older pages on one palette. */
   --color-cream: #ffffff;
-  --color-cream-100: #f6f8fa;
-  --color-cream-200: #d8dee4;
-  --color-cream-300: #c4ccd4;
+  --color-cream-100: #f4f4f5;
+  --color-cream-200: #e4e4e7;
+  --color-cream-300: #d4d4d8;
 
-  --color-ink-900: #0d1117;
-  --color-ink-600: #57606a;
-  --color-ink-400: #8c959f;
+  --color-ink-900: #18181b;
+  --color-ink-600: #52525b;
+  --color-ink-400: #a1a1aa;
 
   --color-sage-50: #ecfdf5;
   --color-sage-100: #d1fae5;
@@ -63,87 +63,89 @@
 }
 
 /* ---------------------------------------------------------------- console look (light and dark)
-   Dark first: a graphite ground, panels split by 1px seams and one step of elevation, no glass and no glow.
-   Colour carries state only: --c-primary = action and "running", ok / watch / act = fine / keep an eye on it /
+   Dark first: a near-black zinc ground, panels split by 1px seams and one step of elevation, no glass.
+   Colour carries state only: --c-primary = action and "running" (orange), ok / watch / act = fine / keep an eye on it /
    take care, none = no data yet, --c-yours = what belongs to the viewer (my district, my route).
    --c-here marks the page you are on. Light keeps the same grammar on a cool white. */
 :root {
-  --c-ground: #f6f8fa;
+  --c-ground: #f7f7f8;
   --c-surface: #ffffff;
-  --c-raised: #f0f2f5;
-  --c-border: #d8dee4;
-  --c-border-strong: #c4ccd4;
-  --c-ink: #0d1117;
-  --c-muted: #57606a;
-  --c-line: #0d1117;
-  --c-here: #0969da;
-  --c-here-tint: #ddf4ff;
-  --c-here-text: #0550ae;
-  --c-primary: #0969da;
-  --c-primary-fill: #0969da;
-  --c-primary-hover: #0550ae;
-  --c-primary-tint: #ddf4ff;
-  --c-on-primary: #ffffff;
-  --c-sel-bg: #0d1117;
+  --c-raised: #f1f1f3;
+  --c-border: #e4e4e7;
+  --c-border-strong: #d4d4d8;
+  --c-ink: #18181b;
+  --c-muted: #52525b;
+  --c-line: #18181b;
+  --c-here: #c2410c;
+  --c-here-tint: #fff1e6;
+  --c-here-text: #9a3412;
+  --c-primary: #c2410c;
+  --c-primary-fill: #f97316;
+  --c-primary-hover: #ea580c;
+  --c-primary-tint: #fff1e6;
+  --c-on-primary: #0f0f10;
+  --c-sel-bg: #18181b;
   --c-sel-text: #ffffff;
   --c-wave: #c4ccd4;
   --c-yours: #8250df;
   --c-yours-tint: #fbefff;
+  --c-glow: 0 6px 16px -8px rgba(234, 88, 12, 0.45);
   --c-shadow: 0 1px 0 rgba(13, 17, 23, 0.04);
 
   --ok-ring: #1a7f37;   --ok-fill: var(--c-surface);   --ok-text: #1a7f37;   --ok-tint: #dafbe1;
-  --watch-ring: #bf8700; --watch-fill: #fff8c5;        --watch-text: #7d4e00; --watch-tint: #fff8c5;
+  --watch-ring: #ca8a04; --watch-fill: #fef9c3;        --watch-text: #854d0e; --watch-tint: #fef9c3;
   --act-ring: #cf222e;  --act-fill: #cf222e;           --act-text: #b3141f;  --act-tint: #ffebe9;
   --none-ring: #8c959f; --none-fill: var(--c-surface); --none-text: #57606a; --none-tint: #eaeef2;
 }
 .dark {
-  --c-ground: #0d1117;
-  --c-surface: #151a22;
-  --c-raised: #1b212b;
-  --c-border: #262c36;
-  --c-border-strong: #363d48;
-  --c-ink: #e6edf3;
-  --c-muted: #8b949e;
-  --c-line: #e6edf3;
-  --c-here: #79c0ff;
-  --c-here-tint: rgba(121, 192, 255, 0.12);
-  --c-here-text: #79c0ff;
-  --c-primary: #79c0ff;
-  --c-primary-fill: #1f6feb;
-  --c-primary-hover: #388bfd;
-  --c-primary-tint: rgba(121, 192, 255, 0.12);
-  --c-on-primary: #ffffff;
-  --c-sel-bg: #e6edf3;
-  --c-sel-text: #0d1117;
-  --c-wave: #363d48;
+  --c-ground: #0f0f10;
+  --c-surface: #18181b;
+  --c-raised: #222226;
+  --c-border: #2a2a2f;
+  --c-border-strong: #3a3a40;
+  --c-ink: #f4f4f5;
+  --c-muted: #a1a1aa;
+  --c-line: #f4f4f5;
+  --c-here: #fb923c;
+  --c-here-tint: rgba(249, 115, 22, 0.14);
+  --c-here-text: #fb923c;
+  --c-primary: #fb923c;
+  --c-primary-fill: #f97316;
+  --c-primary-hover: #fb923c;
+  --c-primary-tint: rgba(249, 115, 22, 0.14);
+  --c-on-primary: #0f0f10;
+  --c-sel-bg: #f4f4f5;
+  --c-sel-text: #0f0f10;
+  --c-wave: #3a3a40;
   --c-yours: #c678dd;
   --c-yours-tint: rgba(198, 120, 221, 0.14);
+  --c-glow: 0 8px 22px -8px rgba(249, 115, 22, 0.55);
   --c-shadow: 0 1px 0 rgba(1, 4, 9, 0.4);
 
   --ok-ring: #56d364;   --ok-text: #56d364;   --ok-tint: rgba(86, 211, 100, 0.12);
-  --watch-ring: #e3b341; --watch-fill: rgba(227, 179, 65, 0.25); --watch-text: #e3b341; --watch-tint: rgba(227, 179, 65, 0.12);
+  --watch-ring: #facc15; --watch-fill: rgba(250, 204, 21, 0.25); --watch-text: #facc15; --watch-tint: rgba(250, 204, 21, 0.12);
   --act-ring: #f85149;  --act-fill: #f85149;  --act-text: #ff7b72;  --act-tint: rgba(248, 81, 73, 0.12);
-  --none-ring: #6e7681; --none-text: #8b949e; --none-tint: #1b212b;
+  --none-ring: #6e7681; --none-text: #8b949e; --none-tint: #222226;
 }
 /* A status colour set on one element, read by its children as --t-* */
 .tone-green { --t-ring: var(--ok-ring); --t-fill: var(--ok-fill); --t-text: var(--ok-text); --t-tint: var(--ok-tint); --t-band: #1a7f37; --t-on: #ffffff; }
-.tone-yellow { --t-ring: var(--watch-ring); --t-fill: var(--watch-fill); --t-text: var(--watch-text); --t-tint: var(--watch-tint); --t-band: #e3b341; --t-on: #0d1117; }
+.tone-yellow { --t-ring: var(--watch-ring); --t-fill: var(--watch-fill); --t-text: var(--watch-text); --t-tint: var(--watch-tint); --t-band: #facc15; --t-on: #18181b; }
 .tone-red { --t-ring: var(--act-ring); --t-fill: var(--act-fill); --t-text: var(--act-text); --t-tint: var(--act-tint); --t-band: #cf222e; --t-on: #ffffff; }
 .tone-neutral { --t-ring: var(--none-ring); --t-fill: var(--none-fill); --t-text: var(--none-text); --t-tint: var(--none-tint); --t-band: #57606a; --t-on: #ffffff; }
 
-/* Light: Tailwind's slate and blue are moved onto the console neutrals and the action blue, so every page
-   follows the look without editing its classes. Dark remaps the same names further down. */
+/* Light: Tailwind's slate is moved onto the console zinc neutrals, so every page follows the look without
+   editing its classes. Dark remaps the same names further down. */
 :root:not(.dark) {
-  --color-slate-50: #f6f8fa;
-  --color-slate-100: #eaeef2;
-  --color-slate-200: #d8dee4;
-  --color-slate-300: #c4ccd4;
-  --color-slate-400: #8c959f;
-  --color-slate-500: #636c76;
-  --color-slate-600: #57606a;
-  --color-slate-700: #424a53;
-  --color-slate-800: #32383f;
-  --color-slate-900: #0d1117;
+  --color-slate-50: #fafafa;
+  --color-slate-100: #f4f4f5;
+  --color-slate-200: #e4e4e7;
+  --color-slate-300: #d4d4d8;
+  --color-slate-400: #a1a1aa;
+  --color-slate-500: #71717a;
+  --color-slate-600: #52525b;
+  --color-slate-700: #3f3f46;
+  --color-slate-800: #27272a;
+  --color-slate-900: #18181b;
 }
 :root {
   --color-blue-50: #ddf4ff;
@@ -169,7 +171,7 @@ body {
 
 h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.005em; }
 /* Panels: flat, a 1px seam, small corners; no shadow, no glass */
-.rounded-xl.border, .rounded-2xl.border { border-radius: 8px; }
+.rounded-xl.border, .rounded-2xl.border { border-radius: 12px; }
 .rounded-xl.border.bg-white, .rounded-2xl.border.bg-white, .glass, .glass-strong { box-shadow: none; }
 ::selection { background: color-mix(in srgb, var(--c-primary) 30%, transparent); color: var(--c-ink); }
 /* Figures and times read in the mono face, columns line up */
@@ -244,27 +246,27 @@ input, textarea { caret-color: var(--c-primary); }
    per utility because the same token (slate-900) is a dark surface in one place and dark text in another. */
 .dark {
   color-scheme: dark;
-  --color-slate-50: #1b212b;
-  --color-slate-100: #212833;
-  --color-slate-200: #262c36;
-  --color-slate-300: #363d48;
+  --color-slate-50: #222226;
+  --color-slate-100: #27272a;
+  --color-slate-200: #2a2a2f;
+  --color-slate-300: #3a3a40;
   --color-emerald-50: #0f2a19;
   --color-emerald-100: #12361f;
   --color-emerald-200: #174a2a;
-  --color-amber-50: #2b2111;
-  --color-amber-100: #3a2c12;
-  --color-amber-200: #4d3a15;
+  --color-amber-50: #2a2410;
+  --color-amber-100: #3a3213;
+  --color-amber-200: #4d4316;
   --color-red-50: #2d1517;
   --color-red-100: #3d1a1d;
   --color-red-200: #552226;
   --color-blue-50: #11233f;
   --color-blue-100: #142d52;
   --color-blue-200: #1a3a6b;
-  --color-cream: #151a22;
-  --color-cream-100: #1b212b;
-  --color-cream-200: #262c36;
-  --color-ink-900: #e6edf3;
-  --color-ink-600: #a8b1bb;
+  --color-cream: #18181b;
+  --color-cream-100: #222226;
+  --color-cream-200: #2a2a2f;
+  --color-ink-900: #f4f4f5;
+  --color-ink-600: #a1a1aa;
   --color-sage-50: #0f2a19;
   --color-sage-100: #12361f;
   --color-sage-200: #174a2a;
@@ -274,28 +276,28 @@ input, textarea { caret-color: var(--c-primary); }
   --color-apricot-50: #2d1517;
   --color-apricot-100: #3d1a1d;
   --color-apricot-200: #552226;
-  --color-gold-50: #2b2111;
-  --color-gold-100: #3a2c12;
-  --color-gold-200: #4d3a15;
+  --color-gold-50: #2a2410;
+  --color-gold-100: #3a3213;
+  --color-gold-200: #4d4316;
 }
 .dark body { background: var(--c-ground); color: var(--c-ink); }
 .dark .glass, .dark .glass-strong { border-color: var(--c-border); }
 .dark .text-slate-900, .dark .text-slate-800 { color: var(--c-ink); }
-.dark .text-slate-700 { color: #c9d1d9; }
-.dark .text-slate-600 { color: #a8b1bb; }
-.dark .text-slate-500 { color: #8b949e; }
+.dark .text-slate-700 { color: #d4d4d8; }
+.dark .text-slate-600 { color: #a1a1aa; }
+.dark .text-slate-500 { color: #a1a1aa; }
 .dark .text-emerald-700, .dark .text-emerald-800, .dark .text-emerald-900 { color: #56d364; }
-.dark .text-amber-700, .dark .text-amber-800, .dark .text-amber-900 { color: #e3b341; }
+.dark .text-amber-700, .dark .text-amber-800, .dark .text-amber-900 { color: #facc15; }
 .dark .text-red-700, .dark .text-red-800, .dark .text-red-900 { color: #ff7b72; }
 .dark .text-blue-700, .dark .text-blue-800, .dark .text-blue-900 { color: #79c0ff; }
 .dark .hover\:text-slate-900:hover { color: #ffffff; }
-.dark .hover\:bg-slate-50:hover, .dark .hover\:bg-slate-100:hover { background-color: #212833; }
+.dark .hover\:bg-slate-50:hover, .dark .hover\:bg-slate-100:hover { background-color: #27272a; }
 .dark .hover\:bg-white:hover { background-color: var(--c-raised); }
-.dark .bg-slate-900\/80 { background-color: rgba(1, 4, 9, 0.8); }
-.dark .bg-slate-900\/60, .dark .bg-slate-900\/50 { background-color: rgba(1, 4, 9, 0.7); }
+.dark .bg-slate-900\/80 { background-color: rgba(0, 0, 0, 0.8); }
+.dark .bg-slate-900\/60, .dark .bg-slate-900\/50 { background-color: rgba(0, 0, 0, 0.7); }
 .dark .scroll-soft::-webkit-scrollbar-thumb { background: var(--c-border-strong); }
 .dark .maplibregl-popup-content { background: var(--c-surface); color: var(--c-ink); border-color: var(--c-border); }
-.dark svg text { fill: #8b949e; }
+.dark svg text { fill: #a1a1aa; }
 
 /* Camera AI & Analysis view switch (CameraAiPage.jsx) */
 .seg-tray { background: var(--c-ground); border: 1px solid var(--c-border); }
