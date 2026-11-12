@@ -156,6 +156,16 @@ class AlertService:
         """Every alert condition true right now: [{topic, key, level, title, body}]."""
         now = now or time.time()
         out = []
+        out += self._flood_candidates(now)
+        out += self._zone_candidates(now)
+        out += self._incident_candidates()
+        out += self._air_candidates(now)
+        out += self._system_candidates()
+        return out
+
+    def _flood_candidates(self, now):
+        """Road water over the warning level, and Traffy flood reports piling up in one district."""
+        out = []
         flood = self._call("flood") or {}
         for s in flood.get("wet") or []:
             cm = s.get("level_cm") or 0
@@ -176,7 +186,11 @@ class AlertService:
                 out.append({"topic": "flood", "key": f"traffy:{district}", "level": 2 if len(reps) >= TRAFFY_SEVERE else 1,
                             "title": f"คนแจ้งน้ำท่วม {len(reps)} เรื่อง: เขต{district}",
                             "body": f"Traffy Fondue ในชั่วโมงที่ผ่านมา{depth} · {reps[0].get('text', '')[:100]}", "province": BKK})
+        return out
 
+    def _zone_candidates(self, now):
+        """Red weather watches, TMD warnings, flooded provinces, rivers over the bank, the AI flood report."""
+        out = []
         water = self._call("water") or {}
         for z in water.get("weather") or []:
             if z.get("watch") == "red":
@@ -204,13 +218,23 @@ class AlertService:
                             "title": f"ล้นตลิ่ง: {r.get('name')}",
                             "body": f"{r.get('district') or '-'} {r.get('province') or ''}{pct}".strip(),
                             "province": thai_regions.normalize(r.get("province")) or ""})
+        out += self._agent_candidates(now)
+        return out
+
+    def _agent_candidates(self, now):
+        """The AI flood analysis when it says warning or critical and is fresh enough."""
+        out = []
         rep = self._call("agent") or {}
         if rep.get("overall_level") in ("warning", "critical") and now - (rep.get("generated_at") or 0) <= AGENT_MAX_AGE:
             names = ", ".join(d.get("name", "") for d in (rep.get("districts") or [])[:4])
             out.append({"topic": "zone", "key": "agent:overall", "level": 2 if rep["overall_level"] == "critical" else 1,
                         "title": f"AI วิเคราะห์น้ำท่วม: {rep.get('level_th') or rep['overall_level']}",
                         "body": f"{rep.get('headline', '')}{' · เขต ' + names if names else ''}"[:180], "province": BKK})
+        return out
 
+    def _incident_candidates(self):
+        """Accidents, broken-down cars and closed roads from cameras, traffic news and the BMA centre."""
+        out = []
         inc = self._call("incidents") or {}
         for i in inc.get("camera") or []:
             if i.get("kind") in ("accident", "breakdown"):
@@ -242,7 +266,11 @@ class AlertService:
             if e.get("kind") in BMA_EVENT_KINDS or (e.get("kind") == "roadwork" and "ปิด" in title):
                 out.append({"topic": "incident", "key": _event_key(title), "level": 1,
                             "title": f"ศูนย์จราจร กทม.: {e.get('title')}", "body": (e.get("desc") or "")[:140], "province": BKK})
+        return out
 
+    def _air_candidates(self, now):
+        """Very unhealthy PM2.5 now, and a dusty tomorrow in the evening."""
+        out = []
         air = self._call("air") or {}
         for a in air.get("items") or []:
             if a.get("level") == "very_unhealthy":
@@ -260,7 +288,11 @@ class AlertService:
                             "title": f"พรุ่งนี้ฝุ่น PM2.5 {tomorrow.get('label_th')}",
                             "body": f"ค่าเฉลี่ยประมาณ {round(tomorrow.get('mean') or 0)} สูงสุดประมาณ {round(tomorrow.get('max') or 0)} · ควรเตรียมหน้ากาก N95",
                             "province": BKK})
+        return out
 
+    def _system_candidates(self):
+        """Our own pipeline broken: camera scan, BMA site, AI image check, data disk."""
+        out = []
         h = self._call("health") or {}
         scan = h.get("scan") or {}
         if h and not scan.get("ok", True):

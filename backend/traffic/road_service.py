@@ -184,119 +184,138 @@ class RoadRisk:
         for f in floods:
             by_name.setdefault(_norm(f.get("road")), []).append(f)
 
-        out = []
-        for r in roads:
-            lat, lng = r["lat"], r["lng"]
-            anchors = [(lat, lng)] + [(h["lat"], h["lon"]) for h in (r.get("hotspots") or [])]
-
-            # sensors on this road: by name first, then anything close to the road's own points
-            on_road = list(by_name.get(_norm(r["name"]), []))
-            seen = {f["code"] for f in on_road}
-            for f in floods:
-                if f["code"] in seen:
-                    continue
-                if min(flat_km(a[0], a[1], f["lat"], f["lng"], km_per_deg_lat=111.0, km_per_deg_lng=111.0) for a in anchors) <= NEAR_FLOOD_KM:
-                    on_road.append(f)
-                    seen.add(f["code"])
-            wet = [f for f in on_road if f["status"] in ("flood", "slight")]
-            flood_cm = max((f["level_cm"] or 0) for f in on_road) if on_road else None
-            worst = max(on_road, key=lambda f: f["level_cm"] or 0) if on_road else None
-
-            near_rain = min(rain, key=lambda s: flat_km(lat, lng, s["lat"], s["lng"], km_per_deg_lat=111.0, km_per_deg_lng=111.0)) if rain else None
-            rain_km = flat_km(lat, lng, near_rain["lat"], near_rain["lng"], km_per_deg_lat=111.0, km_per_deg_lng=111.0) if near_rain else None
-            if rain_km is None or rain_km > NEAR_RAIN_KM:
-                near_rain, rain_km = None, None
-
-            near_gauge = min(gauges, key=lambda g: flat_km(lat, lng, g["lat"], g["lng"], km_per_deg_lat=111.0, km_per_deg_lng=111.0)) if gauges else None
-            gauge_km = flat_km(lat, lng, near_gauge["lat"], near_gauge["lng"], km_per_deg_lat=111.0, km_per_deg_lng=111.0) if near_gauge else None
-            if gauge_km is None or gauge_km > NEAR_GAUGE_KM:
-                near_gauge, gauge_km = None, None
-
-            rain_mm = near_rain["rain_24h"] if near_rain else None
-            gauge_pct = near_gauge["storage_pct"] if near_gauge else None
-            red_pct = r.get("red_pct") or 0
-
-            water_cls, water_label, water_src = _classify(flood_cm, ROAD_WATER_BANDS)
-            rain_cls, rain_label, rain_src = _classify(rain_mm, RAIN_BANDS)
-            gauge_cls, gauge_label, gauge_src = _classify(gauge_pct, GAUGE_BANDS)
-
-            # Rain and the canal beside the road are circumstantial: halved and capped at "watch",
-            # they can flag a road but never declare it flooded.
-            around = max(rain_cls or 0, gauge_cls or 0)
-            inferred = min(INFERRED_MAX, around // 2)
-            measured = water_cls or 0
-            # The higher of the two wins. A sensor reading zero does not clear the whole road -
-            # it measures one point of it - so heavy rain around it still raises the row to watch.
-            cls = max(measured, inferred)
-            if on_road and measured >= inferred:
-                basis = "sensor"
-            elif on_road and inferred > 0:
-                basis = "both"
-            else:
-                basis = "inferred" if inferred else ("sensor" if on_road else "none")
-            level = LEVEL_ORDER[cls]
-
-            # Province: the nearest reference point of any kind wins. The road sensors are dense
-            # inside Bangkok, so a Bangkok road resolves to Bangkok even when the closest canal
-            # gauge happens to sit across the provincial line.
-            province, district = None, (worst or {}).get("district")
-            refs = []
-            if on_road:
-                refs.append((0.0, "กรุงเทพมหานคร", district))
-            # A road sensor only names the province when it is genuinely next to the road. The
-            # sensors are Bangkok-only and dense, so a loose radius would pull every long road
-            # that reaches into a province back into Bangkok.
-            nearest_flood = min(floods, key=lambda f: flat_km(lat, lng, f["lat"], f["lng"], km_per_deg_lat=111.0, km_per_deg_lng=111.0)) if floods else None
-            if nearest_flood:
-                d = flat_km(lat, lng, nearest_flood["lat"], nearest_flood["lng"], km_per_deg_lat=111.0, km_per_deg_lng=111.0)
-                if d <= FLOOD_PROVINCE_KM:
-                    refs.append((d, "กรุงเทพมหานคร", nearest_flood.get("district")))
-            if near_rain:
-                refs.append((rain_km, near_rain.get("province"), near_rain.get("district")))
-            if near_gauge:
-                refs.append((gauge_km, near_gauge.get("province"), near_gauge.get("district")))
-            if refs:
-                _, province, near_district = min(refs, key=lambda x: x[0])
-                district = district or near_district
-
-            out.append({
-                "road": r["name"],
-                "lat": lat, "lng": lng,
-                "province": province,
-                "district": district,
-                "length_km": r.get("length_km"),
-                # traffic
-                "flow": r.get("flow"), "red_pct": red_pct, "red_km": r.get("red_km"), "traffic_level": r.get("level"),
-                # water on the road (Bangkok sensors only)
-                "measured": bool(on_road),
-                "sensors": len(on_road), "wet_sensors": len(wet),
-                "flood_cm": flood_cm,
-                "flood_at": (worst or {}).get("short_name"),
-                "flood_status": (worst or {}).get("status"),
-                "flood_trend": (worst or {}).get("trend"),
-                "flood_started": (worst or {}).get("started"),
-                # rain that fell on it
-                "rain_24h": rain_mm,
-                "rain_at": (near_rain or {}).get("name"),
-                "rain_km": round(rain_km, 1) if rain_km else None,
-                "rain_level": (near_rain or {}).get("level"),
-                # the water body next to it
-                "gauge_pct": gauge_pct,
-                "gauge_at": (near_gauge or {}).get("name"),
-                "gauge_kind": (near_gauge or {}).get("kind"),
-                "gauge_level": (near_gauge or {}).get("level"),
-                "gauge_km": round(gauge_km, 1) if gauge_km else None,
-                "water_class": water_cls, "water_label": water_label, "water_source": water_src,
-                "rain_class": rain_cls, "rain_label": rain_label, "rain_source": rain_src,
-                "gauge_class": gauge_cls, "gauge_label": gauge_label, "gauge_source": gauge_src,
-                "basis": basis,
-                "class": cls,
-                "level": level,
-                "level_th": LEVEL_TH[level],
-            })
+        out = [self._road_row(r, floods, by_name, rain, gauges) for r in roads]
         out.sort(key=lambda x: (-x["class"], -(x["flood_cm"] or 0), -(x["rain_24h"] or 0),
                                 -(x["gauge_pct"] or 0), x["road"]))
         return out
+
+    def _road_row(self, r, floods, by_name, rain, gauges):
+        """The joined risk row for one road: its sensors, nearest rain gauge and water gauge, class and province."""
+        lat, lng = r["lat"], r["lng"]
+        anchors = [(lat, lng)] + [(h["lat"], h["lon"]) for h in (r.get("hotspots") or [])]
+
+        on_road = self._sensors_on_road(r, anchors, floods, by_name)
+        wet = [f for f in on_road if f["status"] in ("flood", "slight")]
+        flood_cm = max((f["level_cm"] or 0) for f in on_road) if on_road else None
+        worst = max(on_road, key=lambda f: f["level_cm"] or 0) if on_road else None
+
+        near_rain, rain_km = self._nearest_within(lat, lng, rain, NEAR_RAIN_KM)
+        near_gauge, gauge_km = self._nearest_within(lat, lng, gauges, NEAR_GAUGE_KM)
+
+        rain_mm = near_rain["rain_24h"] if near_rain else None
+        gauge_pct = near_gauge["storage_pct"] if near_gauge else None
+        red_pct = r.get("red_pct") or 0
+
+        water_cls, water_label, water_src = _classify(flood_cm, ROAD_WATER_BANDS)
+        rain_cls, rain_label, rain_src = _classify(rain_mm, RAIN_BANDS)
+        gauge_cls, gauge_label, gauge_src = _classify(gauge_pct, GAUGE_BANDS)
+
+        cls, basis = self._class_and_basis(water_cls, rain_cls, gauge_cls, bool(on_road))
+        level = LEVEL_ORDER[cls]
+        province, district = self._road_province(lat, lng, floods, on_road, worst, near_rain, rain_km, near_gauge, gauge_km)
+
+        return {
+            "road": r["name"],
+            "lat": lat, "lng": lng,
+            "province": province,
+            "district": district,
+            "length_km": r.get("length_km"),
+            # traffic
+            "flow": r.get("flow"), "red_pct": red_pct, "red_km": r.get("red_km"), "traffic_level": r.get("level"),
+            # water on the road (Bangkok sensors only)
+            "measured": bool(on_road),
+            "sensors": len(on_road), "wet_sensors": len(wet),
+            "flood_cm": flood_cm,
+            "flood_at": (worst or {}).get("short_name"),
+            "flood_status": (worst or {}).get("status"),
+            "flood_trend": (worst or {}).get("trend"),
+            "flood_started": (worst or {}).get("started"),
+            # rain that fell on it
+            "rain_24h": rain_mm,
+            "rain_at": (near_rain or {}).get("name"),
+            "rain_km": round(rain_km, 1) if rain_km else None,
+            "rain_level": (near_rain or {}).get("level"),
+            # the water body next to it
+            "gauge_pct": gauge_pct,
+            "gauge_at": (near_gauge or {}).get("name"),
+            "gauge_kind": (near_gauge or {}).get("kind"),
+            "gauge_level": (near_gauge or {}).get("level"),
+            "gauge_km": round(gauge_km, 1) if gauge_km else None,
+            "water_class": water_cls, "water_label": water_label, "water_source": water_src,
+            "rain_class": rain_cls, "rain_label": rain_label, "rain_source": rain_src,
+            "gauge_class": gauge_cls, "gauge_label": gauge_label, "gauge_source": gauge_src,
+            "basis": basis,
+            "class": cls,
+            "level": level,
+            "level_th": LEVEL_TH[level],
+        }
+
+    @staticmethod
+    def _sensors_on_road(r, anchors, floods, by_name):
+        """Sensors on this road: by name first, then anything close to the road's own points."""
+        on_road = list(by_name.get(_norm(r["name"]), []))
+        seen = {f["code"] for f in on_road}
+        for f in floods:
+            if f["code"] in seen:
+                continue
+            if min(flat_km(a[0], a[1], f["lat"], f["lng"], km_per_deg_lat=111.0, km_per_deg_lng=111.0) for a in anchors) <= NEAR_FLOOD_KM:
+                on_road.append(f)
+                seen.add(f["code"])
+        return on_road
+
+    @staticmethod
+    def _nearest_within(lat, lng, points, limit_km):
+        """(nearest point, km) or (None, None) when there is none within limit_km."""
+        near = min(points, key=lambda p: flat_km(lat, lng, p["lat"], p["lng"], km_per_deg_lat=111.0, km_per_deg_lng=111.0)) if points else None
+        km = flat_km(lat, lng, near["lat"], near["lng"], km_per_deg_lat=111.0, km_per_deg_lng=111.0) if near else None
+        if km is None or km > limit_km:
+            return None, None
+        return near, km
+
+    @staticmethod
+    def _class_and_basis(water_cls, rain_cls, gauge_cls, has_sensor):
+        """Road class and what it rests on. Returns (cls, basis)."""
+        # Rain and the canal beside the road are circumstantial: halved and capped at "watch",
+        # they can flag a road but never declare it flooded.
+        around = max(rain_cls or 0, gauge_cls or 0)
+        inferred = min(INFERRED_MAX, around // 2)
+        measured = water_cls or 0
+        # The higher of the two wins. A sensor reading zero does not clear the whole road -
+        # it measures one point of it - so heavy rain around it still raises the row to watch.
+        cls = max(measured, inferred)
+        if has_sensor and measured >= inferred:
+            basis = "sensor"
+        elif has_sensor and inferred > 0:
+            basis = "both"
+        else:
+            basis = "inferred" if inferred else ("sensor" if has_sensor else "none")
+        return cls, basis
+
+    @staticmethod
+    def _road_province(lat, lng, floods, on_road, worst, near_rain, rain_km, near_gauge, gauge_km):
+        """(province, district): the nearest reference point of any kind wins."""
+        # The road sensors are dense inside Bangkok, so a Bangkok road resolves to Bangkok even
+        # when the closest canal gauge happens to sit across the provincial line.
+        province, district = None, (worst or {}).get("district")
+        refs = []
+        if on_road:
+            refs.append((0.0, "กรุงเทพมหานคร", district))
+        # A road sensor only names the province when it is genuinely next to the road. The
+        # sensors are Bangkok-only and dense, so a loose radius would pull every long road
+        # that reaches into a province back into Bangkok.
+        nearest_flood = min(floods, key=lambda f: flat_km(lat, lng, f["lat"], f["lng"], km_per_deg_lat=111.0, km_per_deg_lng=111.0)) if floods else None
+        if nearest_flood:
+            d = flat_km(lat, lng, nearest_flood["lat"], nearest_flood["lng"], km_per_deg_lat=111.0, km_per_deg_lng=111.0)
+            if d <= FLOOD_PROVINCE_KM:
+                refs.append((d, "กรุงเทพมหานคร", nearest_flood.get("district")))
+        if near_rain:
+            refs.append((rain_km, near_rain.get("province"), near_rain.get("district")))
+        if near_gauge:
+            refs.append((gauge_km, near_gauge.get("province"), near_gauge.get("district")))
+        if refs:
+            _, province, near_district = min(refs, key=lambda x: x[0])
+            district = district or near_district
+        return province, district
 
     # ------------------------------------------------------------ AI read
     def _client(self):
