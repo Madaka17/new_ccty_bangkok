@@ -29,6 +29,9 @@ from urllib.parse import urljoin
 import cv2
 
 from backend.core.instance import BASE_DIR, DATA_DIR
+from backend.core.log import get_logger
+
+log = get_logger("iTIC frames")
 
 WORK_DIR = os.path.join(DATA_DIR, "cache", "itic_frames")
 METRO = "กรุงเทพมหานคร,นนทบุรี,ปทุมธานี,สมุทรปราการ,สมุทรสาคร,นครปฐม"
@@ -94,7 +97,7 @@ class IticFrames:
             try:
                 self.round()
             except Exception as e:  # noqa: BLE001 - try again next round
-                print(f"[iTIC frames] round failed: {type(e).__name__}: {str(e)[:160]}")
+                log.warning(f"round failed: {type(e).__name__}: {str(e)[:160]}")
             time.sleep(max(30, ROUND_SECONDS - (time.time() - t0)))
 
     def _download(self, cam):
@@ -127,7 +130,7 @@ class IticFrames:
                                input="".join(f"{ts}\t{jpg}\n" for _, ts, jpg in jobs), text=True, encoding="utf-8",
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except subprocess.TimeoutExpired:
-                print("[iTIC frames] decoder timed out")
+                log.info("decoder timed out")
         frames = 0
         for cam, _, jpg in jobs:
             img = cv2.imread(jpg)
@@ -137,4 +140,4 @@ class IticFrames:
             self._watch.observe(cam, img)
             frames += 1
         self.last_round = {"at": int(time.time()), "cameras": len(cams), "frames": frames}
-        print(f"[iTIC frames] {frames} frames from {len(cams)} cameras")
+        log.info(f"{frames} frames from {len(cams)} cameras")

@@ -15,6 +15,9 @@ import time
 import urllib.request
 
 from backend.core.instance import DATA_DIR
+from backend.core.log import get_logger
+
+log = get_logger("Warning")
 
 URL = "https://traffic.longdo.com/camera.json"
 FRESH_SECONDS = 300    # a live copy is reused this long
@@ -84,7 +87,7 @@ def longdo_cameras(fallback=()):
                 _save(_cache["data"])
                 return _cache["data"]
             except Exception as e:
-                print(f"[Warning] Failed to fetch live Longdo cameras: {e}")
+                log.warning(f"Failed to fetch live Longdo cameras: {e}")
                 _cache["next_try"] = now + RETRY_SECONDS
                 if _cache["data"] is None:
                     _cache["data"] = _load()

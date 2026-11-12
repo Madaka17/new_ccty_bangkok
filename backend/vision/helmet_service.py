@@ -42,6 +42,9 @@ from backend.vision.remote_yolo import is_remote, load_yolo, weights_available
 from backend.vision.yolo_switch import YoloOff
 from backend.vision.patrol_common import PatrolStore, archive_evidence, ask_cloud_vision, clean_cache_dir
 from backend.vision.frame_utils import fingerprint, iou, safe_id, safe_name, same_scene, write_jpeg
+from backend.core.log import get_logger
+
+log = get_logger("Helmet")
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "helmet")
 ARCHIVE_DIR = os.getenv("HELMET_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", DEFAULT_BMA_DATA_DIR), "helmet"))
 LOCAL_DET_PATH = os.getenv("HELMET_DET", os.path.join(BASE_DIR, "helmet_det.pt"))
@@ -113,7 +116,7 @@ class HelmetPatrol:
         threading.Thread(target=self._cleanup_loop, daemon=True).start()
         # Captures left "pending" by a restart (the in-memory queue is gone): run them again
         threading.Thread(target=self._resume_pending, daemon=True).start()
-        print(f"[Helmet] agent: {self.provider() or 'off'} · archive: {ARCHIVE_DIR}")
+        log.info(f"agent: {self.provider() or 'off'} · archive: {ARCHIVE_DIR}")
 
     # ------------------------------------------------------------ models (YOLO switch)
     def load_models(self):
@@ -127,9 +130,9 @@ class HelmetPatrol:
                 det = load_yolo(LOCAL_DET_PATH)
                 if not is_remote(det):
                     det(np.zeros((320, 320, 3), dtype=np.uint8), verbose=False)
-                print(f"[Helmet] local detector loaded: {LOCAL_DET_PATH} {det.names}")
+                log.info(f"local detector loaded: {LOCAL_DET_PATH} {det.names}")
             except Exception as e:  # noqa: BLE001
-                print(f"[Helmet] local detector failed to load: {e}")
+                log.warning(f"local detector failed to load: {e}")
                 det = None
         with self._det_lock:
             if self.local_det is None:
@@ -292,7 +295,7 @@ class HelmetPatrol:
             try:
                 self._analyse(hid, camid, cam, crop, marked)
             except Exception as e:  # noqa: BLE001 - one bad crop must not kill the worker
-                print(f"[Helmet] check failed {hid}: {e}")
+                log.warning(f"check failed {hid}: {e}")
                 self._update(hid, verdict="error", note=str(e)[:200])
             finally:
                 self._queue.task_done()
@@ -349,13 +352,13 @@ class HelmetPatrol:
             msg = str(e)
             if "429" in msg or "RATE_LIMIT" in msg:
                 self.agent_error = {"ts": now, "message": "เรียกใช้ถี่เกินไป", "for": RATE_BACKOFF_S}
-                print(f"[Helmet] cloud agent rate-limited, pausing {RATE_BACKOFF_S}s")
+                log.info(f"cloud agent rate-limited, pausing {RATE_BACKOFF_S}s")
             elif any(k in msg for k in ("402", "401", "400", "RESOURCE_EXHAUSTED", "credits", "API key")):
                 short = "โควตา AI หมด" if ("402" in msg or "credits" in msg or "RESOURCE_EXHAUSTED" in msg) else "ตั้งค่า AI ไม่ถูกต้อง"
                 self.agent_error = {"ts": now, "message": short, "for": AGENT_BACKOFF_S}
-                print(f"[Helmet] cloud agent paused {AGENT_BACKOFF_S}s: {msg[:160]}")
+                log.info(f"cloud agent paused {AGENT_BACKOFF_S}s: {msg[:160]}")
             else:
-                print(f"[Helmet] cloud agent error: {msg[:160]}")
+                log.warning(f"cloud agent error: {msg[:160]}")
             self._settle_without_agent(hid, camid, cam, crop, marked, local, "AI ตรวจซ้ำไม่ตอบ", provider)
             return
         self.agent_error = None
@@ -370,7 +373,7 @@ class HelmetPatrol:
         conf = float(v.get("confidence", 0) or 0)
         note = (v.get("note_th") or "").strip()[:300]
         self.last_check = int(now)
-        print(f"[Helmet] {source} · {cam.get('title') or camid}: riders {riders}, no helmet {bad}, conf {conf:.2f}")
+        log.info(f"{source} · {cam.get('title') or camid}: riders {riders}, no helmet {bad}, conf {conf:.2f}")
         if bad > 0 and conf >= HELMET_MIN_CONF:
             self._finish_no_helmet(hid, camid, cam, crop, marked, riders, bad, conf, note, source)
         elif conf >= 0.5 and riders > 0:
@@ -474,7 +477,7 @@ class HelmetPatrol:
         archived = self._archive(hid, camid, cam, crop, marked, riders, bad, conf, note)
         self._update(hid, verdict="no_helmet", source=source, riders=riders, no_helmet=bad,
                      confidence=round(conf, 2), note=note, archive=archived)
-        print(f"[Helmet] NO HELMET at {cam.get('title') or camid} ({bad}/{riders}, {conf:.0%})" + (f" -> {archived}" if archived else ""))
+        log.info(f"NO HELMET at {cam.get('title') or camid} ({bad}/{riders}, {conf:.0%})" + (f" -> {archived}" if archived else ""))
 
     def _archive(self, hid, camid, cam, crop, marked, riders, bad, conf, note):
         return archive_evidence(
@@ -570,4 +573,4 @@ class HelmetPatrol:
                 clean_cache_dir(CACHE_DIR, cutoff)
                 self._store.delete_older(cutoff, "no_helmet")   # the no-helmet log stays forever
             except (OSError, sqlite3.Error) as e:
-                print(f"[Helmet] cleanup failed: {e}")   # keep the thread alive for the next round
+                log.warning(f"cleanup failed: {e}")   # keep the thread alive for the next round

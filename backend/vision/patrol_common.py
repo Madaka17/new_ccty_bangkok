@@ -10,6 +10,7 @@ import cv2
 
 from backend.core import local_llm
 from backend.vision.frame_utils import safe_name, write_jpeg
+from backend.core.log import get_logger
 
 
 class PatrolStore:
@@ -102,7 +103,7 @@ def archive_evidence(archive_dir, csv_name, item_id, camid, cam, crop, marked, l
             w.writerow([item_id, stamp, camid, cam.get("title") or "", cam.get("district") or "", *values, frame_out, crop_out])
         return frame_out
     except OSError as e:
-        print(f"[{log_tag}] archive to {archive_dir} failed: {e}")
+        get_logger(log_tag).warning(f"archive to {archive_dir} failed: {e}")
         return None
 
 
@@ -126,7 +127,7 @@ def ask_cloud_vision(vision, system_prompt, jpeg, context, models, timeout_ms, l
                 # 503 = model overloaded right now: try the next model before giving up
                 if any(k in str(e) for k in ("503", "UNAVAILABLE", "504", "DEADLINE")):
                     if log_tag:
-                        print(f"[{log_tag}] {model} overloaded (503), trying {models[-1]}")
+                        get_logger(log_tag).info(f"{model} overloaded (503), trying {models[-1]}")
                     continue
                 raise
         raise RuntimeError("503 Gemini overloaded on every model")

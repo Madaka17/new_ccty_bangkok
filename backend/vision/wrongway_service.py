@@ -46,6 +46,9 @@ from backend.vision.remote_yolo import is_remote, load_yolo, weights_available
 from backend.vision.yolo_switch import YoloOff
 from backend.vision.patrol_common import PatrolStore, archive_evidence, ask_cloud_vision, clean_cache_dir
 from backend.vision.frame_utils import fingerprint, iou, safe_id, safe_name, same_scene, write_jpeg
+from backend.core.log import get_logger
+
+log = get_logger("WrongWay")
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "wrongway")
 FIELD_DIR = os.path.join(DATA_DIR, "cache", "heading")
 ARCHIVE_DIR = os.getenv("WRONGWAY_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", DEFAULT_BMA_DATA_DIR), "wrongway"))
@@ -272,9 +275,9 @@ class WrongWayPatrol:
                 cls = load_yolo(CLS_PATH)
                 if not is_remote(cls):
                     cls(np.zeros((CLS_IMGSZ, CLS_IMGSZ, 3), dtype=np.uint8), imgsz=CLS_IMGSZ, verbose=False)
-                print(f"[WrongWay] heading classifier loaded: {CLS_PATH} {list(cls.names.values())}")
+                log.info(f"heading classifier loaded: {CLS_PATH} {list(cls.names.values())}")
             except Exception as e:  # noqa: BLE001
-                print(f"[WrongWay] heading classifier failed to load: {e}")
+                log.warning(f"heading classifier failed to load: {e}")
                 cls = None
         if cls is None and weights_available(DET_PATH):
             try:
@@ -282,12 +285,12 @@ class WrongWayPatrol:
                 if not is_remote(det):
                     det(np.zeros((288, 352, 3), dtype=np.uint8), imgsz=DET_IMGSZ, verbose=False)
                 det_names = {int(k): v for k, v in det.names.items()}
-                print(f"[WrongWay] heading detector loaded: {DET_PATH} {list(det_names.values())}")
+                log.info(f"heading detector loaded: {DET_PATH} {list(det_names.values())}")
             except Exception as e:  # noqa: BLE001
-                print(f"[WrongWay] heading detector failed to load: {e}")
+                log.warning(f"heading detector failed to load: {e}")
                 det = None
         elif cls is None:
-            print(f"[WrongWay] no heading classifier or detector at {CLS_PATH}: patrol off (train it with local/pipeline/wrongway_pipeline.bat)")
+            log.info(f"no heading classifier or detector at {CLS_PATH}: patrol off (train it with local/pipeline/wrongway_pipeline.bat)")
         with self._det_lock:
             if self.cls is None and self.det is None:
                 self.cls, self.det, self.det_names = cls, det, det_names
@@ -506,7 +509,7 @@ class WrongWayPatrol:
             try:
                 self._analyse(wid, camid, cam, crop, marked, boxed=boxed)
             except Exception as e:  # noqa: BLE001
-                print(f"[WrongWay] check failed {wid}: {e}")
+                log.warning(f"check failed {wid}: {e}")
                 self._update(wid, verdict="error", note=str(e)[:200])
             finally:
                 self._queue.task_done()
@@ -556,7 +559,7 @@ class WrongWayPatrol:
             elif any(k in msg for k in ("402", "401", "400", "RESOURCE_EXHAUSTED", "credits", "API key")):
                 short = "โควตา AI หมด" if ("402" in msg or "credits" in msg or "RESOURCE_EXHAUSTED" in msg) else "ตั้งค่า AI ไม่ถูกต้อง"
                 self.agent_error = {"ts": now, "message": short, "for": AGENT_BACKOFF_S}
-            print(f"[WrongWay] cloud agent error: {msg[:160]}")
+            log.warning(f"cloud agent error: {msg[:160]}")
             self._update(wid, verdict="pending", note=f"{local_note} · รอ AI ตรวจซ้ำ (AI ไม่ตอบ)")
             return
         self.agent_error = None
@@ -566,7 +569,7 @@ class WrongWayPatrol:
         wrong = bool(v.get("wrong_way"))
         conf = float(v.get("confidence", 0) or 0)
         note = (v.get("note_th") or "").strip()[:300]
-        print(f"[WrongWay] {provider} · {cam.get('title') or camid}: wrong_way {wrong}, conf {conf:.2f}")
+        log.info(f"{provider} · {cam.get('title') or camid}: wrong_way {wrong}, conf {conf:.2f}")
         if wrong and conf >= AGENT_MIN_CONF:
             self._finish_wrong_way(wid, camid, cam, crop, marked, conf, note, provider)
         elif not wrong and conf >= 0.5:
@@ -585,7 +588,7 @@ class WrongWayPatrol:
     def _finish_wrong_way(self, wid, camid, cam, crop, marked, conf, note, source):
         archived = self._archive(wid, camid, cam, crop, marked, conf, note)
         self._update(wid, verdict="wrong_way", source=source, confidence=round(conf, 2), note=note, archive=archived)
-        print(f"[WrongWay] WRONG WAY at {cam.get('title') or camid} ({conf:.0%}, {source})" + (f" -> {archived}" if archived else ""))
+        log.info(f"WRONG WAY at {cam.get('title') or camid} ({conf:.0%}, {source})" + (f" -> {archived}" if archived else ""))
 
     def _archive(self, wid, camid, cam, crop, marked, conf, note):
         return archive_evidence(
@@ -755,4 +758,4 @@ class WrongWayPatrol:
                 for fl in list(self.fields.values()):
                     fl.save(force=True)
             except (OSError, sqlite3.Error) as e:
-                print(f"[WrongWay] cleanup failed: {e}")   # keep the thread alive for the next round
+                log.warning(f"cleanup failed: {e}")   # keep the thread alive for the next round

@@ -25,6 +25,9 @@ from backend.core import local_llm
 from backend.core.gemini import gemini_client
 from backend.core.hourly_budget import HourlyBudget
 from backend.vision.frame_utils import safe_id
+from backend.core.log import get_logger
+
+log = get_logger("Incident")
 
 try:
     import anthropic
@@ -98,7 +101,7 @@ class IncidentManager:
         self.national_incidents = []            # active Longdo accidents and breakdowns in every province
         self.closures = []                      # active closed roads and diversions in every province
         self.provider, self.client = self._client()
-        print(f"[Incident] vision provider: {self.provider or 'none (set VISION_LLM_MODEL, GEMINI_API_KEY or ANTHROPIC_API_KEY)'}")
+        log.info(f"vision provider: {self.provider or 'none (set VISION_LLM_MODEL, GEMINI_API_KEY or ANTHROPIC_API_KEY)'}")
         for inc in vehicle_log.active_incidents():
             self.camera_incidents[inc['camid']] = inc
         threading.Thread(target=self._feed_loop, daemon=True).start()
@@ -158,12 +161,12 @@ class IncidentManager:
         try:
             self._budget.spend()
             verdict = self._ask_vision(jpeg, title, cand)
-            print(f"[Incident] {title}: {cand.get('kind', 'stopped')} {cand['stopped_s']}s, "
+            log.info(f"{title}: {cand.get('kind', 'stopped')} {cand['stopped_s']}s, "
                   f"persons {cand['persons_near']} -> {verdict}")
             if verdict and verdict.get('kind') in ('accident', 'breakdown') and float(verdict.get('confidence', 0)) >= 0.6:
                 self._open(camid, title, cand, jpeg, verdict)
         except Exception as e:
-            print(f"[Incident] check failed for {title}: {e}")
+            log.warning(f"check failed for {title}: {e}")
         finally:
             st['checking'] = False
 
@@ -225,14 +228,14 @@ class IncidentManager:
         with self.lock:
             self.camera_incidents[camid] = inc
         self.vehicle_log.add_incident(inc)
-        print(f"[Incident] ALERT {inc['kind']} at {title}: {inc['description']}")
+        log.info(f"ALERT {inc['kind']} at {title}: {inc['description']}")
 
     def _clear(self, camid):
         with self.lock:
             inc = self.camera_incidents.pop(camid, None)
         if inc:
             self.vehicle_log.clear_incident(inc['id'])
-            print(f"[Incident] cleared at {inc['title']}")
+            log.info(f"cleared at {inc['title']}")
 
     def snapshot_path(self, incident_id):
         try:   # the id comes from the URL: it must not be a path
@@ -248,7 +251,7 @@ class IncidentManager:
             try:
                 self._refresh_feed()
             except Exception as e:
-                print(f"[Incident] Longdo feed: {e}")
+                log.info(f"Longdo feed: {e}")
             time.sleep(self.FEED_INTERVAL)
 
     def _refresh_feed(self):

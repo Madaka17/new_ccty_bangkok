@@ -21,6 +21,10 @@ from backend.vision.remote_yolo import is_remote, load_yolo
 from backend.vision.yolo_switch import YoloOff
 from backend.vision.vehicle_tracker import (CLASS_CONFIG, DEFAULT_CLASS, LEVEL_TEXT, PERSON_CLASS, VehicleTracker,
                                             frame_video_time, skip_elapsed_frames)
+from backend.core.log import get_logger
+
+log = get_logger("AI")
+log_ai_worker = get_logger("AI Worker")
 
 # The COCO classes the model looks for: vehicles (see CLASS_CONFIG) and people (PERSON_CLASS, incidents only)
 TARGET_CLASSES = [PERSON_CLASS, 1, 2, 3, 5, 7]
@@ -40,7 +44,7 @@ class VehicleDetectorYOLO11x:
         # Display name for the page and logs: yolo26x.pt -> YOLO26x, yolo26x_bkk.pt -> YOLO26x_bkk
         stem = os.path.splitext(os.path.basename(model_path))[0]
         self.model_name = 'YOLO' + stem[4:] if stem.lower().startswith('yolo') else stem
-        print(f"[AI] Initializing {self.model_name} ({model_path}) with target {target_fps} FPS...")
+        log.info(f"Initializing {self.model_name} ({model_path}) with target {target_fps} FPS...")
         self.model_path = model_path
         # One GPU: inference from all streams (this one and the background counters) is serialized
         self.model_lock = threading.Lock()
@@ -105,7 +109,7 @@ class VehicleDetectorYOLO11x:
             return
         model = load_yolo(self.model_path, local_factory=YOLO)
         if is_remote(model):   # runs on the PC's AI worker: no CUDA here, no warm-up over the network
-            print(f"[AI] detector runs on the AI worker: {model}")
+            log.info(f"detector runs on the AI worker: {model}")
             with self.model_lock:
                 if self.model is None:
                     self.model = model
@@ -113,9 +117,9 @@ class VehicleDetectorYOLO11x:
         if torch.cuda.is_available():
             try:
                 model.to('cuda').half()
-                print("[AI] Accelerated with CUDA FP16 (Tensor Cores active, TDR safe)")
+                log.info("Accelerated with CUDA FP16 (Tensor Cores active, TDR safe)")
             except Exception as e:
-                print(f"[AI] Note: FP16 acceleration skipped: {e}")
+                log.info(f"Note: FP16 acceleration skipped: {e}")
         # Warmup model once on dummy image so initial stream frames don't stall
         try:
             dummy = np.zeros((320, 320, 3), dtype=np.uint8)
@@ -143,7 +147,7 @@ class VehicleDetectorYOLO11x:
                 self.font_bold = ImageFont.truetype(chosen, 17)
                 self.font_title = ImageFont.truetype(chosen, 20)
             except Exception as e:
-                print(f"[AI] Font load warning: {e}")
+                log.warning(f"Font load warning: {e}")
                 self.font = ImageFont.load_default()
                 self.font_bold = self.font
                 self.font_title = self.font
@@ -321,16 +325,16 @@ class VehicleDetectorYOLO11x:
         self.target_fps = max(1.0, min(30.0, float(fps)))
         self.frame_interval = 1.0 / self.target_fps
         self.latest_stats['target_fps'] = self.target_fps
-        print(f"[AI] Target FPS updated to {self.target_fps}")
+        log.info(f"Target FPS updated to {self.target_fps}")
 
     def set_confidence(self, conf):
         self.conf_threshold = max(0.1, min(0.9, float(conf)))
-        print(f"[AI] Confidence threshold updated to {self.conf_threshold}")
+        log.info(f"Confidence threshold updated to {self.conf_threshold}")
 
     def set_night_mode(self, enabled: bool):
         self.night_mode = bool(enabled)
         self.latest_stats['night_mode'] = self.night_mode
-        print(f"[AI] Night mode updated to {self.night_mode}")
+        log.info(f"Night mode updated to {self.night_mode}")
 
     def enhance_low_light(self, frame):
         """Adaptive low-light enhancement: Gamma shadow lifting + CLAHE contrast normalization."""
@@ -346,7 +350,7 @@ class VehicleDetectorYOLO11x:
     def start_stream(self, stream_url, cam_info=None):
         with self.lock:
             if self.is_running and self.current_stream_url == stream_url:
-                print(f"[AI] Already streaming {stream_url}")
+                log.info(f"Already streaming {stream_url}")
                 return
 
             # Signal old worker to stop (do not join while holding the lock)
@@ -370,7 +374,7 @@ class VehicleDetectorYOLO11x:
                 daemon=True
             )
             self.thread.start()
-            print(f"[AI] Started detection thread for {self.current_cam_info.get('title', stream_url)}")
+            log.info(f"Started detection thread for {self.current_cam_info.get('title', stream_url)}")
 
     def stop_stream(self):
         with self.lock:
@@ -384,7 +388,7 @@ class VehicleDetectorYOLO11x:
             thread.join(timeout=2.0)
 
     def _process_loop(self, stream_url, cam_info, stop_event):
-        print(f"[AI Worker] Processing stream at target {self.target_fps} FPS...")
+        log_ai_worker.info(f"Processing stream at target {self.target_fps} FPS...")
         cap = None
         fail_count = 0
         # Fresh tracker per stream so IDs and counts do not carry over from the previous camera
@@ -410,7 +414,7 @@ class VehicleDetectorYOLO11x:
                             if not stop_event.is_set():
                                 self.latest_stats.update(active=False, stream_error='offline')
                         backoff = min(30.0, 5.0 * (1.5 ** min(fail_count, 4)))
-                        print(f"[AI Worker] Could not open stream: {stream_url}. Retrying in {backoff:.0f}s (attempt #{fail_count})...")
+                        log_ai_worker.warning(f"Could not open stream: {stream_url}. Retrying in {backoff:.0f}s (attempt #{fail_count})...")
                         stop_event.wait(backoff)
                         continue
                     try:
@@ -425,7 +429,7 @@ class VehicleDetectorYOLO11x:
 
                 if not ret or frame is None:
                     # Retry stream
-                    print("[AI Worker] Frame read failed. Reconnecting...")
+                    log_ai_worker.warning("Frame read failed. Reconnecting...")
                     if cap is not None:
                         try:
                             cap.release()
@@ -458,7 +462,7 @@ class VehicleDetectorYOLO11x:
                     try:
                         flagged = self.violations.observe(cam_info.get('camid', ''), cam_info.get('short_title', cam_info.get('title', '')), tracker, frame, dets, frame_t)
                     except Exception as e:
-                        print(f"[Violation] observe failed: {e}")
+                        get_logger("Violation").warning(f"observe failed: {e}")
                 annotated_jpeg = self._annotate_frame(frame, dets, stats, flagged)
                 if self.incidents:
                     self.incidents.observe(cam_info.get('camid', ''), cam_info.get('short_title', cam_info.get('title', '')), tracker, frame)
@@ -496,12 +500,12 @@ class VehicleDetectorYOLO11x:
                 skip_elapsed_frames(cap, iteration)
 
             except Exception as e:
-                print(f"[AI Worker] Processing error: {e}")
+                log_ai_worker.warning(f"Processing error: {e}")
                 time.sleep(1.0)
 
         if cap:
             cap.release()
-        print("[AI Worker] Worker stopped.")
+        log_ai_worker.info("Worker stopped.")
 
     VIOLATION_LABEL = {'wrong_way': 'ย้อนศร', 'no_helmet': 'ไม่สวมหมวก'}
 

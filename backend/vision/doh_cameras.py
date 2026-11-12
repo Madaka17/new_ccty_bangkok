@@ -25,6 +25,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 from backend.core import thai_regions
 from backend.core.instance import DATA_DIR
+from backend.core.log import get_logger
+
+log = get_logger("DOH cameras")
 
 PAGE = "https://highwaytraffic.go.th/DOHWeb/Home.aspx"
 STREAM1 = "https://streaming1.highwaytraffic.go.th/Phase{n}/PER_{n}_{k}{sfx}.stream/playlist.m3u8"
@@ -79,7 +82,7 @@ class DohCameras:
                 try:
                     self.refresh()
                 except Exception as e:
-                    print(f"[DOH cameras] refresh failed: {e}")
+                    log.warning(f"refresh failed: {e}")
             time.sleep(3600)
 
     # ------------------------------------------------------------------ building the list
@@ -164,7 +167,7 @@ class DohCameras:
             self._items, self._updated = unique, time.time()
         os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
         write_json_atomic(CACHE_FILE, {"updated": self._updated, "sites": len(ids), "items": unique}, ensure_ascii=False)
-        print(f"[DOH cameras] {len(unique)} live streams from {len(ids)} sites")
+        log.info(f"{len(unique)} live streams from {len(ids)} sites")
 
 
 doh_cameras = DohCameras()

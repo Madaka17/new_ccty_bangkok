@@ -41,6 +41,9 @@ from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 from backend.vision.frame_utils import safe_id
 from backend.vision.remote_yolo import is_remote, load_yolo, weights_available
+from backend.core.log import get_logger
+
+log = get_logger("Violation")
 FLOW_DIR = os.path.join(DATA_DIR, "cache", "flow")
 EVIDENCE_DIR = os.path.join(DATA_DIR, "cache", "violations")
 # Long-term copy of every evidence image on the data drive (same drive as the BMA CSV archive):
@@ -186,9 +189,9 @@ class ViolationMonitor:
                 cls = load_yolo(HELMET_CLS_PATH)
                 if not is_remote(cls):
                     cls(np.zeros((160, 160, 3), dtype=np.uint8), verbose=False)  # warm up
-                print(f"[Violation] helmet classifier loaded: {HELMET_CLS_PATH} {cls.names}")
+                log.info(f"helmet classifier loaded: {HELMET_CLS_PATH} {cls.names}")
             except Exception as e:  # noqa: BLE001
-                print(f"[Violation] helmet classifier failed to load: {e}")
+                log.warning(f"helmet classifier failed to load: {e}")
                 cls = None
         with self._cls_lock:
             if self.helmet_cls is None:
@@ -254,7 +257,7 @@ class ViolationMonitor:
                             round(float(confidence), 2), description, out])
             return out
         except OSError as e:
-            print(f"[Violation] archive to {ARCHIVE_DIR} failed: {e}")
+            log.warning(f"archive to {ARCHIVE_DIR} failed: {e}")
             return None
 
     def _log(self, camid, title, kind, confidence, description, track_id, image_bgr):
@@ -275,7 +278,7 @@ class ViolationMonitor:
             conn.execute("INSERT OR REPLACE INTO violations VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", row)
             conn.commit()
             conn.close()
-        print(f"[Violation] {KIND_TH.get(kind, kind)} at {title} (conf {confidence:.2f}): {description}"
+        log.info(f"{KIND_TH.get(kind, kind)} at {title} (conf {confidence:.2f}): {description}"
               + (f" -> {archived}" if archived else ""))
         return vid
 
@@ -470,7 +473,7 @@ class ViolationMonitor:
                     st["kind"] = st["kind"] or "no_helmet"
                 self.flagged[camid][tid] = self.flagged[camid].get(tid) or "no_helmet"
         except Exception as e:  # noqa: BLE001
-            print(f"[Violation] helmet classifier failed at {title}: {e}")
+            log.warning(f"helmet classifier failed at {title}: {e}")
 
     def _helmet_verdict(self, camid, title, tid, jpeg, crop):
         try:
@@ -480,7 +483,7 @@ class ViolationMonitor:
             if not v:
                 return
             riders, bad, conf = int(v.get("riders", 0)), int(v.get("no_helmet", 0)), float(v.get("confidence", 0))
-            print(f"[Violation] helmet check {title} track {tid}: riders {riders}, no helmet {bad}, conf {conf:.2f}")
+            log.info(f"helmet check {title} track {tid}: riders {riders}, no helmet {bad}, conf {conf:.2f}")
             if bad > 0 and conf >= HELMET_MIN_CONF:
                 desc = v.get("note_th") or f"ผู้ขับขี่/ซ้อน {bad} จาก {riders} คน ไม่สวมหมวกกันน็อก"
                 self._log(camid, title, "no_helmet", conf, desc, tid, crop)
@@ -490,7 +493,7 @@ class ViolationMonitor:
                         st["kind"] = st["kind"] or "no_helmet"
                     self.flagged[camid][tid] = self.flagged[camid].get(tid) or "no_helmet"
         except Exception as e:  # noqa: BLE001 - vision call is best effort
-            print(f"[Violation] helmet check failed at {title}: {e}")
+            log.warning(f"helmet check failed at {title}: {e}")
 
     def _ask(self, jpeg, context):
         vis = self.vision

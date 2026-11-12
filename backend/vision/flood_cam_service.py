@@ -45,6 +45,9 @@ from backend.core import local_llm
 from backend.core.hourly_budget import HourlyBudget
 from backend.core.instance import DATA_DIR   # cache root: instances/production, or instances/test for the test server
 from backend.vision.frame_utils import fingerprint, same_scene
+from backend.core.log import get_logger
+
+log = get_logger("FloodCam")
 
 STATE_FILE = os.path.join(DATA_DIR, "cache", "flood_cams.json")
 FRAME_DIR = os.path.join(DATA_DIR, "cache", "flood_cams")
@@ -277,7 +280,7 @@ class FloodCamWatch:
                 self.last_error = None
             except Exception as e:  # noqa: BLE001 - the model endpoint may be down; try again later
                 self.last_error = f"{type(e).__name__}: {str(e)[:160]}"
-                print(f"[FloodCam] check failed: {self.last_error}")
+                log.warning(f"check failed: {self.last_error}")
                 time.sleep(ERROR_BACKOFF)
 
     def _take(self):

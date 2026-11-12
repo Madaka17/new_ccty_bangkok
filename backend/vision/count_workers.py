@@ -7,6 +7,9 @@ from collections import deque
 
 from backend.vision.yolo_switch import YoloOff
 from backend.vision.vehicle_tracker import VehicleTracker, frame_video_time, skip_elapsed_frames
+from backend.core.log import get_logger
+
+log = get_logger("Counter")
 
 
 class CountManager:
@@ -69,7 +72,7 @@ class CountManager:
         url = cam.get('hls_url') or cam.get('vdourl')
         camid = cam['camid']
         title = status['title']
-        print(f"[Counter] Start {title}")
+        log.info(f"Start {title}")
         cap = None
         tracker = VehicleTracker()
         interval = 1.0 / self.target_fps
@@ -157,4 +160,4 @@ class CountManager:
         if cap:
             cap.release()
         status.update(active=False)
-        print(f"[Counter] Stop {title}")
+        log.info(f"Stop {title}")

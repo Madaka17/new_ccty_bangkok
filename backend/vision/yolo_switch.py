@@ -16,6 +16,9 @@ import os
 import subprocess
 import threading
 import time
+from backend.core.log import get_logger
+
+log = get_logger("YOLO")
 
 
 NOT_ALLOWED = "YOLO is not allowed on this machine (YOLO_ALLOWED=0)"
@@ -112,7 +115,7 @@ class YoloSwitch:
             with self.lock:
                 out = self._status()
             out["errors"] = {"switch": NOT_ALLOWED}
-            print(f"[YOLO] switch on refused: {NOT_ALLOWED}")
+            log.info(f"switch on refused: {NOT_ALLOWED}")
             return out
         with self.lock:
             self.enabled, self.changed_at = enabled, int(time.time())
@@ -122,13 +125,13 @@ class YoloSwitch:
                     holder.load_models() if enabled else holder.unload_models()
                 except Exception as e:  # noqa: BLE001 - one holder must not stop the others
                     errors[name] = str(e)[:200]
-                    print(f"[YOLO] {name}: {'load' if enabled else 'unload'} failed: {e}")
+                    log.warning(f"{name}: {'load' if enabled else 'unload'} failed: {e}")
             if not enabled:
                 self._free_cache()
             _forget_gpu_memory()
             out = self._status()
         out["errors"] = errors
-        print(f"[YOLO] switched {'on' if enabled else 'off'}: {out['holders']}")
+        log.info(f"switched {'on' if enabled else 'off'}: {out['holders']}")
         return out
 
     def retry_missing(self):
@@ -146,9 +149,9 @@ class YoloSwitch:
                     if holder.models_loaded():
                         done.append(name)
                 except Exception as e:  # noqa: BLE001 - one holder must not stop the others
-                    print(f"[YOLO] {name}: retry failed: {e}")
+                    log.warning(f"{name}: retry failed: {e}")
         if done:
-            print(f"[YOLO] loaded after retry: {done}")
+            log.info(f"loaded after retry: {done}")
         return done
 
     def _vram(self):
