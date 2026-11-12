@@ -8,10 +8,17 @@ rem Second copy of the server for trying changes before restarting production (l
 rem Same code, same models, same .env keys - but its own port and its own data folder instances\test
 rem (cache, database, BMA archive, web UI build), so nothing it does touches the live data.
 rem Map tiles are shared (read from the production cache). Delete instances\test\ to start it clean again.
-rem It runs the same background AI jobs as production on the same keys: stop it when not needed.
+rem It runs the same background jobs as production, with AI off (see below): stop it when not needed.
 set "PORT=8001"
 set "INSTANCE_DIR=%CD%\instances\test"
 set "BMA_DATA_DIR=%CD%\instances\test\data"
+rem AI off on test: it shares the production gateway key and its daily, weekly and monthly budget.
+rem A variable set here wins over .env. A blank model turns the model off, and a blank Gemini key stops the
+rem cloud fallback from billing instead. Delete these four lines while testing AI features.
+set "LOCAL_LLM_MODEL= "
+set "VISION_LLM_MODEL= "
+set "CHAT_LLM_MODEL= "
+set "GEMINI_API_KEY= "
 rem Started again: launch\watchdog may restart it from now on (stop.bat left this mark)
 if exist "launch\watchdog\state\stopped_8001" del "launch\watchdog\state\stopped_8001"
 

@@ -15,7 +15,11 @@ echo "== 1/2 SSH: keys only"
 if ! grep -qiE '^\s*Include\s+/etc/ssh/sshd_config.d/' /etc/ssh/sshd_config; then
     echo "STOP: /etc/ssh/sshd_config does not include sshd_config.d; nothing changed"; exit 1
 fi
-if ! ls /home/*/.ssh/authorized_keys /root/.ssh/authorized_keys >/dev/null 2>&1; then
+has_key=no
+for f in /home/*/.ssh/authorized_keys /root/.ssh/authorized_keys; do
+    [ -s "$f" ] && { has_key=yes; echo "key file: $f"; }
+done
+if [ "$has_key" != yes ]; then
     echo "STOP: no authorized_keys found; turning off passwords would lock you out"; exit 1
 fi
 printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\n' > "$DROPIN"
