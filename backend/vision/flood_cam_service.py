@@ -28,6 +28,7 @@ keeps the time of its frame, and the map fades the ones whose frame is older tha
 At most MAX_PER_HOUR vision calls. Served by /api/flood/cameras*.
 """
 import base64
+import copy
 import json
 from backend.core.atomic_file import write_json_atomic
 import os
@@ -212,8 +213,9 @@ class FloodCamWatch:
 
     def _save(self):
         with self._save_lock:   # the workers save in turn: one .tmp file, and never an older state over a newer one
-            with self._lock:   # held across the write: the dump must see a consistent state
-                write_json_atomic(STATE_FILE, self._state, ensure_ascii=False)
+            with self._lock:   # copy only: the frame and API paths take this lock, so not the disk write
+                snapshot = copy.deepcopy(self._state)
+            write_json_atomic(STATE_FILE, snapshot, ensure_ascii=False)
 
     # ------------------------------------------------------------ frames in
     def add_cameras(self, cameras):
