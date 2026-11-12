@@ -41,7 +41,7 @@ Options:
 - `--no-open`: do not open the report in the browser.
 
 The report is saved as `local\reports\security\security-<target>-<date>-<time>.html`. The last line
-of the output is the overall verdict: ok, warn or fail.
+of the output is the overall verdict, `ผลรวม: ปลอดภัยดี`, `ควรดู` or `ต้องแก้` (ok, warn, fail).
 
 For the Pi connection settings (address, user, key), see the `PI` block at the top of
 `launch/security_check/collect.py`.
