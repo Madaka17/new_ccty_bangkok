@@ -7,6 +7,7 @@ import { StatusBanner } from '../dashboard/primitives.jsx';
 import { agoText, fmtDateTime } from '../dashboard/format.js';
 import NorthRouteMap from './NorthRouteMap.jsx';
 import { bankShort, bankText } from './forecastData.js';
+import { fetchJson } from '../../lib/api.js';
 
 const POLL_MS = 5 * 60000;
 const LEVEL = {
@@ -15,7 +16,6 @@ const LEVEL = {
   watch: { label: 'น้ำมาก', tone: 'yellow', cell: 'bg-amber-50 border-amber-300 text-amber-900 dark:bg-amber-950/40 dark:border-amber-700/60 dark:text-amber-200', dot: 'bg-amber-500' },
   normal: { label: 'ปกติ', tone: 'green', cell: 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/30 dark:border-emerald-800/50 dark:text-emerald-300', dot: 'bg-emerald-500' },
 };
-const BKK = 'นนทบุรี-กรุงเทพฯ';
 const dayLabel = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short' });
 
 function DailyTable({ data }) {
@@ -75,11 +75,7 @@ export default function NorthRouteView({ isActive, onDetail }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(false);
   const load = useCallback(() => {
-    fetch('/api/water/north/route')
-      .then((r) => {
-        if (!r.ok) throw new Error('route');
-        return r.json();
-      })
+    fetchJson('/api/water/north/route', 'route')
       .then((d) => {
         setData(d);
         setError(false);

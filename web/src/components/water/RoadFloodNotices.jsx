@@ -27,7 +27,7 @@ export default function RoadFloodNotices({ isActive }) {
     load();
     const id = setInterval(load, POLL_MS);
     return () => clearInterval(id);
-  }, [isActive]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isActive]);
 
   if (error && !data) return <ErrorState message="โหลดถนนน้ำขังใน กทม. ไม่สำเร็จ" onRetry={load} />;
   if (!data) return <Skeleton className="h-[160px] rounded-xl" />;

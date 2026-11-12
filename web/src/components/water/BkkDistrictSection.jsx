@@ -6,6 +6,7 @@ import { Badge, Card, ErrorState, FOCUS, SectionHeader, Skeleton } from '../dash
 import { StatTile, StatusBanner } from '../dashboard/primitives.jsx';
 import { agoText, fmtDateTime } from '../dashboard/format.js';
 import { CHIP_OFF, CHIP_ON } from './forecastData.js';
+import { fetchJson } from '../../lib/api.js';
 
 const POLL_MS = 5 * 60000;
 const LEVEL = {
@@ -76,11 +77,7 @@ export default function BkkDistrictSection({ isActive }) {
   const [zone, setZone] = useState('');
   const [all, setAll] = useState(false);
   const load = useCallback(() => {
-    fetch('/api/flood/bkk-districts')
-      .then((r) => {
-        if (!r.ok) throw new Error('districts');
-        return r.json();
-      })
+    fetchJson('/api/flood/bkk-districts', 'districts')
       .then((d) => {
         setData(d);
         setError(false);

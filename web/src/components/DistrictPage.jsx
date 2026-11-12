@@ -196,7 +196,7 @@ function CameraCard({ cams }) {
   );
 }
 
-export default function DistrictPage({ isActive, onNavigate }) {
+export default function DistrictPage({ isActive }) {
   useEffect(() => trackView('district'), []);
   const [name, setName] = useState(readMyDistrict);
   const [typed, setTyped] = useState(name || '');

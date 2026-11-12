@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Card, Badge, Button, SectionHeader, Skeleton, EmptyState, ErrorState } from '../dashboard/ui.jsx';
 import { fmtNum } from '../dashboard/format.js';
 import { distanceKm, fmtKm } from '../../lib/geo.js';
+import { fetchJson } from '../../lib/api.js';
 
 const SHOWN = 10;   // nearest shelters listed before "แสดงเพิ่ม"
 const SELECT = 'h-10 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700';
@@ -67,8 +68,7 @@ export default function ShelterSection({ isActive }) {
 
   const load = () => {
     setError(false);
-    fetch('/riskbkk/shelter.geojson')
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('shelter'))))
+    fetchJson('/riskbkk/shelter.geojson', 'shelter')
       .then((d) => setShelters(d.features || []))
       .catch(() => setError(true));
   };

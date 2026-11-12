@@ -10,7 +10,7 @@ import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { baseStyle, bounds } from '../water/WaterMap.jsx';
 import { FOCUS } from '../dashboard/ui.jsx';
-import { fetchWindField } from '../../lib/api.js';
+import { fetchJson, fetchWindField } from '../../lib/api.js';
 import { WindLayer } from './windLayer.js';
 import { kindOf } from './Tiles.jsx';
 
@@ -221,7 +221,7 @@ export default function CameraMap({ cameras, flood, onOpen, onView, frameKey, cl
 
   // Newest rain radar picture, asked for again every few minutes
   useEffect(() => {
-    const load = () => fetch(RADAR_LIST).then((r) => r.json()).then((d) => {
+    const load = () => fetchJson(RADAR_LIST, 'rain_radar').then((d) => {
       const last = d.radar?.past?.at(-1);
       if (last) setRadar((r) => (r?.path === last.path ? r : { host: d.host, ...last }));
     }).catch(() => {});

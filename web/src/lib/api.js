@@ -1,7 +1,7 @@
 // The API client: one function per endpoint the pages use, grouped by topic.
 
 // Fetch a JSON endpoint (init as for fetch: method, headers, body); a non-2xx answer throws Error(tag).
-async function fetchJson(url, tag, init) {
+export async function fetchJson(url, tag, init) {
   const res = await fetch(url, init);
   if (!res.ok) throw new Error(tag);
   return res.json();
@@ -24,9 +24,7 @@ export async function fetchCameras() {
 
 // Every camera for the live camera page: ours, the rest of iTIC's (via Longdo) and the BMA ones (source 'bma')
 export async function fetchAllCameras() {
-  const res = await fetch('/api/cameras/all');
-  if (!res.ok) throw new Error('all_cameras');
-  return (await res.json()).items || [];
+  return (await fetchJson('/api/cameras/all', 'all_cameras')).items || [];
 }
 
 // { checked_at, items: [camid] }: cameras the newest status check (every 5 minutes) could not pull from
@@ -79,9 +77,7 @@ export async function fetchLongdoCameras() {
 }
 
 export async function fetchRoadCameras(name, maxKm = 0.25) {
-  const res = await fetch(`/api/traffic/road_cameras?name=${encodeURIComponent(name)}&max_km=${maxKm}`);
-  if (!res.ok) throw new Error('road_cameras');
-  return (await res.json()).items || [];
+  return (await fetchJson(`/api/traffic/road_cameras?name=${encodeURIComponent(name)}&max_km=${maxKm}`, 'road_cameras')).items || [];
 }
 
 // ---------------------------------------------------------------- Live AI camera: stream, counts, settings, incidents, checks
@@ -163,9 +159,7 @@ export async function fetchIncidents() {
 
 // Camera incidents from the last `hours`, including ones already cleared
 export async function fetchIncidentHistory(hours = 24) {
-  const res = await fetch(`/api/incidents/history?hours=${hours}`);
-  if (!res.ok) throw new Error('incident_history');
-  return (await res.json()).items || [];
+  return (await fetchJson(`/api/incidents/history?hours=${hours}`, 'incident_history')).items || [];
 }
 
 export async function fetchCountCameras() {
@@ -440,9 +434,7 @@ export async function fetchDistrict(name) {
 
 // Quietest and busiest hours on a road ('' = all Bangkok) for 'workday' | 'weekend'. See bestTime.js.
 export async function fetchBestTime(road, day) {
-  const res = await fetch(`/api/bma/best_time?road=${encodeURIComponent(road || '')}&day=${encodeURIComponent(day)}`);
-  if (!res.ok) throw new Error('best_time');
-  return res.json();
+  return fetchJson(`/api/bma/best_time?road=${encodeURIComponent(road || '')}&day=${encodeURIComponent(day)}`, 'best_time');
 }
 
 // NASA FIRMS fire hotspots in Thailand and along its borders (last 24 h, with the analysis); null until the
@@ -598,9 +590,7 @@ export async function fetchVisitorStats() {
 }
 
 export async function fetchOnlineCount() {
-  const res = await fetch('/api/telemetry/online');
-  if (!res.ok) throw new Error('online count failed');
-  const d = await res.json();
+  const d = await fetchJson('/api/telemetry/online', 'online count failed');
   return d.online;
 }
 

@@ -8,6 +8,7 @@ import { Badge } from './dashboard/ui.jsx';
 import { useAlertPopupCount } from './AlertPopups.jsx';
 import { useScrollDirection } from '../lib/scrollDirection.js';
 import { distanceKm, fmtKm, accuracyText, roughWarning } from '../lib/geo.js';
+import { fetchJson } from '../lib/api.js';
 
 const HOTLINES = [
   ['1669', 'เจ็บป่วยฉุกเฉิน', 'เรียกรถพยาบาล'],
@@ -24,7 +25,7 @@ const GEO_ERROR = {
   3: 'หาตำแหน่งนานเกินไป ลองกดใหม่',
 };
 
-const loadPoints = (file) => fetch(`/riskbkk/${file}`).then((r) => (r.ok ? r.json() : Promise.reject(new Error(file)))).then((d) => d.features || []);
+const loadPoints = (file) => fetchJson(`/riskbkk/${file}`, file).then((d) => d.features || []);
 
 function nearest(features, pos) {
   return features
