@@ -103,7 +103,6 @@ counter.load({c["camid"]: c for c in cameras_data})
 survey_workers = int(os.getenv("SURVEY_WORKERS", "0"))
 survey = SurveyManager(detector, vehicle_log, lambda: cameras_data, lambda: set(counter.workers),
                        workers=survey_workers, sample_seconds=12.0, target_fps=0.5)
-survey.start()
 # Accident / breakdown detection (camera AI + Claude vision) and Longdo accident reports
 incidents = IncidentManager(vehicle_log, lambda: {c["camid"]: c for c in cameras_data},
                             os.path.join(DATA_DIR, "cache", "incidents"))
@@ -116,7 +115,6 @@ violations = ViolationMonitor(os.path.join(DATA_DIR, "vehicle_counts.db"), visio
 detector.violations = violations
 # Which live-AI cameras answer right now (the camera search marks the ones without signal)
 camera_health = CameraHealth(lambda: cameras_data)
-camera_health.start()
 
 # BMA Traffic Scanner & YOLO Vehicle Counter for all cameras
 bma_scanner = BmaScanner(detector=detector)
@@ -246,6 +244,9 @@ def _retry_yolo_loop():
 
 def start():
     """Start every background job, in the order server.py always used."""
+    # Started here, not at import, so importing this module has no side effects
+    survey.start()
+    camera_health.start()
     if worker_url():
         threading.Thread(target=_retry_yolo_loop, daemon=True, name="yolo-retry").start()
     traffic.start()
