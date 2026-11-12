@@ -15,6 +15,7 @@ disk, so a restart does not ask again.
 import html
 import http.cookiejar
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import re
 import threading
@@ -162,10 +163,7 @@ class DohCameras:
         with self._lock:
             self._items, self._updated = unique, time.time()
         os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
-        tmp = CACHE_FILE + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump({"updated": self._updated, "sites": len(ids), "items": unique}, f, ensure_ascii=False)
-        os.replace(tmp, CACHE_FILE)
+        write_json_atomic(CACHE_FILE, {"updated": self._updated, "sites": len(ids), "items": unique}, ensure_ascii=False)
         print(f"[DOH cameras] {len(unique)} live streams from {len(ids)} sites")
 
 

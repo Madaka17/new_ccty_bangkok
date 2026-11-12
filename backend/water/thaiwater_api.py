@@ -3,6 +3,7 @@ The ThaiWater (HII) keyed API at twa-api-public.thaiwater.net: the anonymous key
 when it rotates, and _get(), which every ThaiWater call goes through. Moved out of water_service.py (Oct 2026).
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import re
 import threading
@@ -51,8 +52,7 @@ class _KeyStore:
     def _save(self, key):
         try:
             os.makedirs(os.path.dirname(KEY_FILE), exist_ok=True)
-            with open(KEY_FILE, "w", encoding="utf-8") as f:
-                json.dump({"key": key, "found_at": int(time.time())}, f)
+            write_json_atomic(KEY_FILE, {"key": key, "found_at": int(time.time())})
         except Exception as e:
             print(f"[Water] key save failed: {e}")
 

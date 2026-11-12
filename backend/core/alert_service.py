@@ -30,6 +30,7 @@ Subscriptions come from the Alerts page (browser Push API). Subscribing is a POS
 limits it to the team (LAN / tailnet / X-Admin-Token). The VAPID key pair is generated on first run.
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import threading
 import time
@@ -125,10 +126,9 @@ class AlertService:
             return default
 
     def _save(self):
-        with open(self.subs_path, "w", encoding="utf-8") as f:
-            json.dump(self.subs, f, ensure_ascii=False)
-        with open(self.state_path, "w", encoding="utf-8") as f:
-            json.dump({"sent": self.sent, "history": list(self.history), "seeded": sorted(self.seeded)}, f, ensure_ascii=False)
+        write_json_atomic(self.subs_path, self.subs, ensure_ascii=False)
+        write_json_atomic(self.state_path, {"sent": self.sent, "history": list(self.history), "seeded": sorted(self.seeded)},
+                          ensure_ascii=False)
 
     def _vapid(self):
         if os.path.exists(self.key_path):

@@ -12,6 +12,7 @@ model the Thai rule-based report stands in. Served by /api/traffy/analysis.
 import collections
 import hashlib
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import re
 import threading
@@ -250,8 +251,7 @@ class TraffyAgent:
             with self.lock:
                 self.result, self.sig, self.error = result, sig, err
                 try:
-                    with open(self.path, "w", encoding="utf-8") as f:
-                        json.dump({"result": result, "sig": sig}, f, ensure_ascii=False)
+                    write_json_atomic(self.path, {"result": result, "sig": sig}, ensure_ascii=False)
                 except OSError as e:
                     print(f"[TraffyAgent] save failed: {e}")
             return self.status()

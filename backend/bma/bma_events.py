@@ -9,6 +9,7 @@ minute, fetches details for unseen events once and keeps them on disk.
 import html
 import http.cookiejar
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import re
 import threading
@@ -97,8 +98,7 @@ class BMAEventFeed:
     def _save_cache(self):
         try:
             os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
-            with open(CACHE_FILE, "w", encoding="utf-8") as f:
-                json.dump({"events": self._sorted()[:MAX_KEEP], "bulletins": self.bulletins}, f, ensure_ascii=False)
+            write_json_atomic(CACHE_FILE, {"events": self._sorted()[:MAX_KEEP], "bulletins": self.bulletins}, ensure_ascii=False)
         except Exception as e:
             print(f"[BMA] cache save failed: {e}")
 

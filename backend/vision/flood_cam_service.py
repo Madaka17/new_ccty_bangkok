@@ -29,6 +29,7 @@ At most MAX_PER_HOUR vision calls. Served by /api/flood/cameras*.
 """
 import base64
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import re
 import threading
@@ -211,12 +212,8 @@ class FloodCamWatch:
 
     def _save(self):
         with self._save_lock:   # the workers save in turn: one .tmp file, and never an older state over a newer one
-            with self._lock:
-                data = json.dumps(self._state, ensure_ascii=False)
-            tmp = STATE_FILE + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                f.write(data)
-            os.replace(tmp, STATE_FILE)
+            with self._lock:   # held across the write: the dump must see a consistent state
+                write_json_atomic(STATE_FILE, self._state, ensure_ascii=False)
 
     # ------------------------------------------------------------ frames in
     def add_cameras(self, cameras):

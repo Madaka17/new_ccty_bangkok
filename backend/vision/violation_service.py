@@ -24,6 +24,7 @@ the evidence image are kept so every entry can be checked by a person.
 """
 import base64
 import json
+from backend.core.atomic_file import write_json_atomic
 import math
 import os
 import sqlite3
@@ -118,9 +119,8 @@ class FlowField:
         if not self.dirty or (not force and time.time() - self.last_save < FLOW_SAVE_EVERY):
             return
         os.makedirs(FLOW_DIR, exist_ok=True)
-        with open(self.path, "w", encoding="utf-8") as f:
-            json.dump({"camid": self.camid, "sum": self.sum.tolist(), "count": self.count.tolist(),
-                       "cols": GRID_COLS, "rows": GRID_ROWS, "saved": int(time.time())}, f)
+        write_json_atomic(self.path, {"camid": self.camid, "sum": self.sum.tolist(), "count": self.count.tolist(),
+                                      "cols": GRID_COLS, "rows": GRID_ROWS, "saved": int(time.time())})
         self.dirty = False
         self.last_save = time.time()
 

@@ -26,6 +26,7 @@ failed read keeps the last good list):
 Each camera says how the page shows it (media): "image" (a JPEG, refreshed), "video", "iframe" or "link".
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import re
 import ssl
@@ -335,9 +336,7 @@ class WorldCameras:
             self._by_id = {c["camid"]: c for cs in self._lists.values() for c in cs}
             data = {"updated": self._updated, "lists": self._lists}
         os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
-        with open(CACHE_FILE + ".tmp", "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False)
-        os.replace(CACHE_FILE + ".tmp", CACHE_FILE)
+        write_json_atomic(CACHE_FILE, data, ensure_ascii=False)
         print(f"[World cameras] {name}: {len(cams)} cameras")
 
     def image_bytes(self, camid):

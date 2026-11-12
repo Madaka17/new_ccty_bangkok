@@ -280,3 +280,22 @@ def test_dust_candidate_needs_tomorrow_date(tmp_path, monkeypatch):
     fc = {"days": [{"label": "พรุ่งนี้", "mean": 80, "max": 100, "level": "unhealthy", "label_th": "x"}]}
     svc, _ = _svc(tmp_path, monkeypatch, air_forecast=lambda: fc)
     assert [c for c in svc.candidates(now=_bkk(18, 18)) if c["topic"] == "air"] == []
+
+
+def test_alert_save_keeps_subscribers_when_write_fails(tmp_path, monkeypatch):
+    import pytest
+    from backend.core import atomic_file
+
+    keys = {"p256dh": "k", "auth": "a"}
+    svc, _ = _svc(tmp_path, monkeypatch)
+    svc.subscribe({"endpoint": "https://push/keep", "keys": keys}, ["flood"])
+    svc._save()
+
+    def boom(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(atomic_file.json, "dump", boom)
+    with pytest.raises(OSError):
+        svc._save()
+    fresh, _ = _svc(tmp_path, monkeypatch)
+    assert [s["endpoint"] for s in fresh.subs] == ["https://push/keep"]

@@ -26,6 +26,7 @@ and the rest of the metropolitan area have no equivalent public sensor feed, so 
 nothing for them - not "no flooding".
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import re
 import threading
@@ -168,9 +169,8 @@ class FloodRoads:
     def _save_cache(self):
         try:
             os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
-            with open(CACHE_FILE, "w", encoding="utf-8") as f:
-                json.dump({"items": self.items, "updated_at": self.updated_at, "feed_time": self.feed_time},
-                          f, ensure_ascii=False)
+            write_json_atomic(CACHE_FILE, {"items": self.items, "updated_at": self.updated_at, "feed_time": self.feed_time},
+                              ensure_ascii=False)
         except OSError as e:
             print(f"[Flood] cache save failed: {e}")
 

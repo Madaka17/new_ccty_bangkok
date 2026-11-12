@@ -21,6 +21,7 @@ the computed figures and reasons.
 Served by /api/flood/bkk-districts.
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import threading
 import time
@@ -282,9 +283,7 @@ class BkkDistricts:
         with self.lock:
             data = {"data": self.data, "ai": self.ai, "ai_sig": self.ai_sig, "forecast": self.forecast, "forecast_at": self.forecast_at}
         try:
-            with open(self.path + ".tmp", "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False)
-            os.replace(self.path + ".tmp", self.path)
+            write_json_atomic(self.path, data, ensure_ascii=False)
         except OSError as e:
             print(f"[BkkDistricts] save failed: {e}")
 

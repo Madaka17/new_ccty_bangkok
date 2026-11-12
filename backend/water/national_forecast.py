@@ -27,6 +27,7 @@ summary), run again only when the picture changed or the report is older than AI
 the page shows the computed levels and the built sentences only.
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import threading
 import time
@@ -425,8 +426,7 @@ class NationalForecast:
                     out[d["id"]][t] = []
         try:
             os.makedirs(os.path.dirname(self.history_path), exist_ok=True)
-            with open(self.history_path, "w", encoding="utf-8") as f:
-                json.dump({"date": today, "dams": out}, f, ensure_ascii=False)
+            write_json_atomic(self.history_path, {"date": today, "dams": out}, ensure_ascii=False)
         except OSError as e:
             print(f"[NationalForecast] history save failed: {e}")
         return out
@@ -589,9 +589,7 @@ class NationalForecast:
         with self.lock:
             data = {"data": self.data, "ai": self.ai, "ai_sig": self.ai_sig, "roads_cache": self.roads_cache}
         try:
-            with open(self.path + ".tmp", "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False)
-            os.replace(self.path + ".tmp", self.path)
+            write_json_atomic(self.path, data, ensure_ascii=False)
         except OSError as e:
             print(f"[NationalForecast] save failed: {e}")
 

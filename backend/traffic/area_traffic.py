@@ -16,6 +16,7 @@ Load on Longdo: at most MAX_RPS tiles a second. A tile already fetched in the la
 server or by the other instance, which shares the tile cache) is read from disk instead.
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import threading
 import time
@@ -100,8 +101,7 @@ class AreaTraffic:
 
     def _save_state(self):
         try:
-            with open(STATE_FILE, "w", encoding="utf-8") as f:
-                json.dump({"state": self.state, "history": self.history}, f, ensure_ascii=False)
+            write_json_atomic(STATE_FILE, {"state": self.state, "history": self.history}, ensure_ascii=False)
         except OSError:
             pass
 

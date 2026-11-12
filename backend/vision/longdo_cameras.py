@@ -7,6 +7,7 @@ none). After a failed fetch the next live try waits RETRY_SECONDS; with Longdo d
 otherwise wait out the 5 s timeout and call Longdo again.
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import re
 import threading
@@ -55,8 +56,7 @@ def _fetch():
 def _save(data):
     try:
         os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
-        with open(CACHE_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False)
+        write_json_atomic(CACHE_FILE, data, ensure_ascii=False)
     except Exception:
         pass
 

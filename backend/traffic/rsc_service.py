@@ -17,6 +17,7 @@ What we build from them:
 Points are cached on disk per (district, year). Victim names are dropped before caching.
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import math
 import os
 import ssl
@@ -238,8 +239,7 @@ def get_summary():
         # Save to disk cache
         try:
             os.makedirs(CACHE_DIR, exist_ok=True)
-            with open(SUMMARY_CACHE_FILE, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False)
+            write_json_atomic(SUMMARY_CACHE_FILE, data, ensure_ascii=False)
         except Exception as e:
             print(f"[RSC] Failed to cache summary: {e}")
 
@@ -304,8 +304,7 @@ def fetch_district_points(year, district, force=False):
             raise RuntimeError(res.get("status", {}).get("text") or "empty response")
         pts = [_strip(c) for c in res["data"]["accidents"]]
         pts = [p for p in pts if p["lat"] and p["lon"]]
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump({"year": year, "district": district, "fetched": int(time.time()), "points": pts}, f, ensure_ascii=False)
+        write_json_atomic(path, {"year": year, "district": district, "fetched": int(time.time()), "points": pts}, ensure_ascii=False)
         return {"year": year, "district": district, "fetched": int(time.time()), "points": pts}
     except Exception as e:
         if os.path.exists(path):

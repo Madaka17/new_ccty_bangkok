@@ -28,6 +28,7 @@ there is no road elevation or flood-wall data here, and the bank is the gauge's 
 Both are said on the page.
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import math
 import os
 import threading
@@ -231,8 +232,7 @@ def _load_log():
 def _save_log(log):
     try:
         os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
-        with open(LOG_FILE, "w", encoding="utf-8") as f:
-            json.dump(log, f)
+        write_json_atomic(LOG_FILE, log)
     except OSError as e:
         print(f"[RiverRoads] log save failed: {e}")
 

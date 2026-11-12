@@ -26,6 +26,7 @@ server off, the Thai rule-based report stands in, so the dashboard card always h
 """
 import hashlib
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import threading
 import time
@@ -198,8 +199,7 @@ class FloodAgent:
     def _save(self):
         try:
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
-            with open(self.path, "w", encoding="utf-8") as f:
-                json.dump({"report": self.report, "history": self.history, "sig": self._sig}, f, ensure_ascii=False)
+            write_json_atomic(self.path, {"report": self.report, "history": self.history, "sig": self._sig}, ensure_ascii=False)
         except OSError as e:
             print(f"[FloodAgent] save failed: {e}")
 

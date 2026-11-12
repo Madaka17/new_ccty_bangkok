@@ -17,6 +17,7 @@ Driving route from A to B that keeps out of flooded roads, for the chat bot's "h
 Valhalla's times are free-flow, so the minutes given are a range: its time plus the jam delay, to 30% more.
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import math
 import os
 import re
@@ -198,10 +199,7 @@ class FloodRouter:
 
     def _save(self):
         try:
-            tmp = GEOCODE_FILE + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(self._geo, f, ensure_ascii=False)
-            os.replace(tmp, GEOCODE_FILE)
+            write_json_atomic(GEOCODE_FILE, self._geo, ensure_ascii=False)
         except OSError as e:
             print(f"[Route] geocode cache not saved: {e}")
 

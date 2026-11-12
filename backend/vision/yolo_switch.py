@@ -11,6 +11,7 @@ whatever the saved state says, and switching it on is refused.
 """
 import gc
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import subprocess
 import threading
@@ -94,10 +95,7 @@ class YoloSwitch:
 
     def _save(self):
         os.makedirs(os.path.dirname(self.state_path), exist_ok=True)
-        tmp = self.state_path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump({"enabled": self.enabled, "changed_at": self.changed_at}, f)
-        os.replace(tmp, self.state_path)
+        write_json_atomic(self.state_path, {"enabled": self.enabled, "changed_at": self.changed_at})
 
     def _free_cache(self):
         gc.collect()

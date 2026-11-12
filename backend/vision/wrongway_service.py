@@ -28,6 +28,7 @@ person checks the evidence (a parked car facing the wrong way looks the same to 
 import base64
 import csv
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import queue
 import sqlite3
@@ -139,9 +140,8 @@ class HeadingField:
         if not self.dirty or (not force and time.time() - self.last_save < FIELD_SAVE_EVERY):
             return
         os.makedirs(FIELD_DIR, exist_ok=True)
-        with open(self.path, "w", encoding="utf-8") as f:
-            json.dump({"camid": self.camid, "cols": GRID_COLS, "rows": GRID_ROWS, "votes": self.votes.tolist(),
-                       "saved": int(time.time())}, f)
+        write_json_atomic(self.path, {"camid": self.camid, "cols": GRID_COLS, "rows": GRID_ROWS, "votes": self.votes.tolist(),
+                                      "saved": int(time.time())})
         self.dirty = False
         self.last_save = time.time()
 

@@ -24,6 +24,7 @@ Served by /api/water/north/route.
 """
 import heapq
 import json
+from backend.core.atomic_file import write_json_atomic
 import math
 import os
 import threading
@@ -406,9 +407,7 @@ class NorthRoute:
         with self.lock:
             data = {"data": self.data, "ai": self.ai, "ai_sig": self.ai_sig}
         try:
-            with open(self.path + ".tmp", "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False)
-            os.replace(self.path + ".tmp", self.path)
+            write_json_atomic(self.path, data, ensure_ascii=False)
         except OSError as e:
             print(f"[NorthRoute] save failed: {e}")
 

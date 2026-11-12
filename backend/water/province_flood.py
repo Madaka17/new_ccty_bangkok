@@ -23,6 +23,7 @@ shows the built summaries only.
 The Department of Disaster Prevention's daily list of affected households has no open API and is not read.
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import re
 import threading
@@ -368,9 +369,7 @@ class ProvinceFlood:
             data = {"provinces": self.provinces, "updated_at": self.updated_at, "ai": self.ai, "ai_sig": self.ai_sig,
                     "all_gauges": self.all_gauges, "all_rain": self.all_rain, "all_dams": self.all_dams}
         try:
-            with open(self.path + ".tmp", "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False)
-            os.replace(self.path + ".tmp", self.path)
+            write_json_atomic(self.path, data, ensure_ascii=False)
         except OSError as e:
             print(f"[ProvinceFlood] save failed: {e}")
 

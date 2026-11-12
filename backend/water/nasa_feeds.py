@@ -17,6 +17,7 @@ Served by /api/nasa/fires and /api/nasa/events.
 import csv
 import io
 import json
+from backend.core.atomic_file import write_json_atomic
 import math
 import os
 import threading
@@ -216,9 +217,7 @@ class NasaFeeds:
             if value is not None:
                 self._data[key] = value
         os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
-        with open(CACHE_FILE + ".tmp", "w", encoding="utf-8") as f:
-            json.dump(self._data, f, ensure_ascii=False)
-        os.replace(CACHE_FILE + ".tmp", CACHE_FILE)
+        write_json_atomic(CACHE_FILE, self._data, ensure_ascii=False)
         fires, events = self._data["fires"] or {}, self._data["events"] or {}
         print(f"[NASA] fires in Thailand 24 h: {fires.get('th_24h')} · events: {len(events.get('items') or [])}")
 

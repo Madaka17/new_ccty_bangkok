@@ -10,6 +10,7 @@ Traffic data service for the Bangkok metropolitan area.
 """
 import gzip
 import json
+from backend.core.atomic_file import write_json_atomic
 import math
 import os
 import threading
@@ -272,8 +273,7 @@ class TrafficService:
 
     def _save_history(self):
         try:
-            with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-                json.dump(self.history[-MAX_HISTORY:], f)
+            write_json_atomic(HISTORY_FILE, self.history[-MAX_HISTORY:])
         except Exception:
             pass
 

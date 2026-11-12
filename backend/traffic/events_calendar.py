@@ -6,6 +6,7 @@ merged with events the team adds (stored in one JSON file). Each item is sorted 
 start time in Bangkok time: ongoing, today, tomorrow or the next 7 days.
 """
 import json
+from backend.core.atomic_file import write_json_atomic
 import logging
 import math
 import os
@@ -197,10 +198,7 @@ class EventsCalendar:
 
     def _write_store(self, events):
         os.makedirs(os.path.dirname(self.store_path), exist_ok=True)
-        tmp = self.store_path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(events, f, ensure_ascii=False, indent=1)
-        os.replace(tmp, self.store_path)
+        write_json_atomic(self.store_path, events, ensure_ascii=False, indent=1)
 
     @staticmethod
     def _prune(events, now):

@@ -1,5 +1,6 @@
 import cv2
 import json
+from backend.core.atomic_file import write_json_atomic
 import os
 import threading
 import time
@@ -38,8 +39,7 @@ class CountManager:
             self.set_cameras(cams)
 
     def _save(self):
-        with open(self.config_path, 'w', encoding='utf-8') as f:
-            json.dump({'camids': list(self.workers.keys())}, f, ensure_ascii=False, indent=2)
+        write_json_atomic(self.config_path, {'camids': list(self.workers.keys())}, ensure_ascii=False, indent=2)
 
     # ---- control
     def set_cameras(self, cams):
