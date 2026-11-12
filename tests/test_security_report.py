@@ -4,6 +4,13 @@ from launch.security_check import collect, main as main_mod
 from launch.security_check.collect import parse_host_output, local_config_flags
 from launch.security_check.report import render
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _no_network_public_ip(monkeypatch):
+    monkeypatch.setattr(collect, "public_ip", lambda: None)
+
 HOST_TEXT = """@@listen
 LISTEN 0 128 0.0.0.0:22 0.0.0.0:*
 LISTEN 0 4096 127.0.0.1:8000 0.0.0.0:*

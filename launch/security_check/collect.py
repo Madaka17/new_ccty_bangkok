@@ -190,6 +190,64 @@ def pi_host_raw():
     return None if out is None else parse_host_output(out)
 
 
+_SSH_JOURNAL_SCRIPT = r'''
+days="$1"
+o=$(journalctl -u ssh -u sshd --since "$days days ago" --no-pager -o short-iso 2>/dev/null)
+if [ -z "$o" ]; then o=$(sudo -n journalctl -u ssh -u sshd --since "$days days ago" --no-pager -o short-iso 2>/dev/null); fi
+echo "$o" | grep -E 'Failed password for|Invalid user|Accepted (publickey|password) for'
+true
+'''
+
+_RE_FAILED = re.compile(r"Failed password for (?:invalid user )?(\S+) from (\S+)")
+_RE_INVALID = re.compile(r"Invalid user (\S+) from (\S+)")
+_RE_ACCEPT = re.compile(r"Accepted (publickey|password) for (\S+) from (\S+)")
+
+
+def _top(counter, key, limit=10):
+    return [{key: k, "n": n} for k, n in sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]]
+
+
+def parse_ssh_journal(text):
+    """Pure parser for `journalctl -u ssh -o short-iso` text."""
+    failed = invalid = 0
+    accepted, ips, users = {}, {}, {}
+    for line in (text or "").splitlines():
+        m = _RE_ACCEPT.search(line)
+        if m:
+            k = (m.group(3), m.group(2), m.group(1))
+            accepted[k] = accepted.get(k, 0) + 1
+            continue
+        m = _RE_FAILED.search(line)
+        if m:
+            failed += 1
+        else:
+            m = _RE_INVALID.search(line)
+            if not m:
+                continue
+            invalid += 1
+        users[m.group(1)] = users.get(m.group(1), 0) + 1
+        ips[m.group(2)] = ips.get(m.group(2), 0) + 1
+    acc = [{"ip": ip, "user": u, "method": meth, "n": n} for (ip, u, meth), n in sorted(accepted.items())]
+    return {"failed": failed, "invalid_user": invalid, "accepted": acc,
+            "failed_ips": _top(ips, "ip"), "users_tried": _top(users, "user")}
+
+
+def pi_ssh_log(days=30):
+    """Read-only: the Pi's SSH journal, parsed. None when ssh to the Pi fails."""
+    out = ssh(f"echo {_b64(_SSH_JOURNAL_SCRIPT)} | base64 -d | sh -s {int(days)}", timeout=60)
+    return None if out is None else parse_ssh_journal(out)
+
+
+def public_ip():
+    """The owner's home public IP, from our own domain's Cloudflare trace. None on failure."""
+    try:
+        _code, _h, body = _get("https://bkksmartstreet.com/cdn-cgi/trace", timeout=10)
+    except Exception:
+        return None
+    m = re.search(r"^ip=(\S+)$", body.decode("utf-8", "replace"), re.M)
+    return m.group(1) if m else None
+
+
 def _get(url, timeout=15, extra_headers=None):
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*", **(extra_headers or {})})
     try:

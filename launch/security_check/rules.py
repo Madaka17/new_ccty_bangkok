@@ -210,6 +210,54 @@ def evaluate_host(raw):
     return out
 
 
+def _same_home(ip, owners):
+    """True when ip is an owner IP or shares its /64 (home IPv6 uses many addresses in one /64)."""
+    import ipaddress
+    try:
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    for o in owners:
+        try:
+            b = ipaddress.ip_address(o)
+        except ValueError:
+            continue
+        if a == b or (a.version == 6 and b.version == 6 and (int(a) >> 64) == (int(b) >> 64)):
+            return True
+    return False
+
+
+def evaluate_ssh_log(d, lan_prefix="192.168.1.", owner_ips=()):
+    a = "host"
+    if d is None:
+        return [_f(a, "info", "อ่าน log SSH ไม่ได้")]
+    out = []
+    acc = d.get("accepted") or []
+
+    def local(ip):
+        return str(ip).startswith(lan_prefix) or _is_loopback(str(ip)) or _same_home(str(ip), owner_ips)
+    outside = [x for x in acc if not local(x.get("ip", ""))]
+    if outside:
+        who = ", ".join(f"{x['ip']} (ผู้ใช้ {x.get('user', '?')}, {x.get('n', 1)} ครั้ง)" for x in outside[:5])
+        out.append(_f(a, "fail", "มีคนเข้า SSH สำเร็จจากนอกบ้าน", who,
+                      "เปลี่ยนกุญแจใน ~/.ssh/authorized_keys ทันที, ดูประวัติด้วยคำสั่ง last, "
+                      "ถ้าไม่แน่ใจให้ลงระบบ Pi ใหม่"))
+    pw = [x for x in acc if x.get("method") == "password"]
+    if pw:
+        out.append(_f(a, "warn", "มีคนเข้า SSH ด้วยรหัสผ่าน",
+                      ", ".join(f"{x['ip']} ({x.get('user', '?')})" for x in pw[:5]),
+                      "ปิดการเข้าด้วยรหัสผ่าน: ตั้ง PasswordAuthentication no ใน /etc/ssh/sshd_config"))
+    tries = (d.get("failed") or 0) + (d.get("invalid_user") or 0)
+    if tries >= 50:
+        top = ", ".join(f"{x['ip']} ({x['n']})" for x in (d.get("failed_ips") or [])[:3])
+        out.append(_f(a, "warn", f"มีคนพยายามเดารหัส SSH {tries} ครั้ง", f"IP ที่ลองมากสุด: {top}" if top else "",
+                      "SSH ใช้กุญแจอย่างเดียวและเข้าได้เฉพาะในบ้านอยู่แล้ว; ถ้าอยากบล็อก IP: "
+                      "sudo ufw insert 1 deny from <ip>"))
+    if not out:
+        out.append(_f(a, "ok", "SSH ไม่มีคนแปลกหน้าเข้าได้"))
+    return out
+
+
 def overall(findings):
     levels = {f["level"] for f in findings}
     if "fail" in levels:

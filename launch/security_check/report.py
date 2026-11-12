@@ -75,7 +75,7 @@ def _attacks(summary):
     return s
 
 
-def render(target, sections, summary, generated):
+def render(target, sections, summary, generated, extra=None):
     allf = [f for fs in sections.values() for f in fs]
     ov = overall(allf)
     icon, word, sub = VERDICT[ov]

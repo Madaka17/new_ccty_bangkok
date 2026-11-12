@@ -5,7 +5,7 @@ import sys
 import webbrowser
 from datetime import datetime
 
-from . import collect, report, rules
+from . import collect, geo, report, rules
 
 ROOT = collect.ROOT
 REPORTS_DIR = os.path.join(ROOT, "local", "reports", "security")
@@ -36,6 +36,20 @@ def _web_findings(checks, trusted_origin=False):
     return fs
 
 
+def _extra(summary, ssh, owner_ips):
+    owners = set(owner_ips)
+    counts = {}
+    for src in ((summary or {}).get("top_ips") or [], (ssh or {}).get("failed_ips") or []):
+        for x in src:
+            counts[x["ip"]] = counts.get(x["ip"], 0) + int(x.get("n", 0))
+    rows = []
+    for ip, n in sorted(counts.items(), key=lambda kv: -kv[1]):
+        cc = geo.lookup(ip)
+        rows.append({"ip": ip, "cc": cc, "country": geo.country_name(cc) if cc else "",
+                     "n": n, "owner": ip in owners})
+    return {"ssh": ssh, "owner_ips": list(owner_ips), "geo": rows}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", choices=("production", "test"), default="production")
@@ -53,12 +67,17 @@ def main(argv=None):
         host = rules.evaluate_host(collect.pi_host_raw())
         token = collect.pi_self_check_token()
         web = collect.web_checks(PROD_URL, self_check_token=token)
+        ssh_log = collect.pi_ssh_log(a.days)
+        pub = collect.public_ip()
+        host = host + rules.evaluate_ssh_log(ssh_log, owner_ips=[pub] if pub else [])
     else:
         summary = collect.local_attack_summary(os.path.join(ROOT, "instances", "test"), a.days)
         config = collect.local_config_flags(os.path.join(ROOT, "instances", "test", ".env"))
         host = [_f("host", "info", "ตรวจเครื่อง Pi เฉพาะ production")]
         token = collect.local_self_check_token(os.path.join(ROOT, "instances", "test"))
         web = collect.web_checks(TEST_URL, self_check_token=token)
+        ssh_log = None
+        pub = collect.public_ip()
 
     sections = {
         "attack": _attack_findings(summary) + ([] if token else [
@@ -68,8 +87,14 @@ def main(argv=None):
         "host": host,
     }
     real = summary if isinstance(summary, dict) and not summary.get("_error") else None
+    owner_ips = [pub] if pub else []
+    for x in (ssh_log or {}).get("accepted") or []:
+        home = x["ip"].startswith("192.168.1.") or rules._same_home(x["ip"], [pub] if pub else [])
+        if home and x["ip"] not in owner_ips:
+            owner_ips.append(x["ip"])
+    extra = _extra(real, ssh_log, owner_ips)
     now = datetime.now()
-    html = report.render(a.target, sections, real, now.strftime("%Y-%m-%d %H:%M"))
+    html = report.render(a.target, sections, real, now.strftime("%Y-%m-%d %H:%M"), extra)
     os.makedirs(REPORTS_DIR, exist_ok=True)
     path = os.path.join(REPORTS_DIR, f"security-{a.target}-{now.strftime('%Y%m%d-%H%M')}.html")
     with open(path, "w", encoding="utf-8") as fh:
