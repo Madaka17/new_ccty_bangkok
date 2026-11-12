@@ -25,6 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import alerts as alerts_mod
 from . import collect, geo, rules
+from .live_page import build_page
 
 ROOT = collect.ROOT
 DEFAULT_PORT = 8770
@@ -323,17 +324,6 @@ class StreamRunner:
 
 
 # ---- HTTP ---------------------------------------------------------------
-PLACEHOLDER_PAGE = """<!doctype html><html lang="th"><meta charset="utf-8"><title>BKK Security Live</title>
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'">
-<body style="background:#0b0618;color:#eee;font:14px monospace"><h1>BKK Security Live</h1>
-<div id="s"></div><pre id="l"></pre>
-<script>
-const l=document.getElementById('l');
-new EventSource('/events').onmessage=e=>{l.textContent=e.data+'\\n'+l.textContent.slice(0,6000)};
-fetch('/state').then(r=>r.json()).then(s=>{document.getElementById('s').textContent=s.status+' '+s.since_start});
-</script></body></html>"""
-
-
 def make_handler(app):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -413,9 +403,12 @@ class LiveApp:
         self.server.daemon_threads = True
         self.port = self.server.server_address[1]
         self.runner = None
+        self._page = None
 
     def page(self):
-        return PLACEHOLDER_PAGE
+        if self._page is None:
+            self._page = build_page(self.target)
+        return self._page
 
     def handle_message(self, msg):
         for out in self.state.ingest(msg):

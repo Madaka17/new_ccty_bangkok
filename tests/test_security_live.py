@@ -202,3 +202,41 @@ def test_sse_delivers_events(server):
     ev = json.loads(line[6:])
     assert ev["ip"] == "5.5.5.5" and ev["cc"] == "RU"
     c.close()
+
+
+# ---- Part 3: the page ----------------------------------------------------
+import re
+
+from launch.security_check import live_page
+
+
+def test_page_contract():
+    html = live_page.build_page("production")
+    assert "prefers-reduced-motion" in html
+    assert 'http-equiv="Content-Security-Policy"' in html and "connect-src 'self'" in html
+    assert "BKK Security Live" in html and "ซ่อนของเจ้าของ" in html
+    assert not re.search(r"(?:src|href)=[\"']?https?:", html)
+    assert not re.search(r"url\(\s*[\"']?https?:", html)
+    js = html.split("<script>")[1]
+    assert "https://" not in js and "http://" not in js.replace("http://www.w3.org/2000/svg", "")
+    assert "innerHTML" not in html and "insertAdjacentHTML" not in html and "document.write" not in html
+    for field in ("ev.label_th", "ev.ip", "ev.path", "ev.user", "a.text"):
+        assert field in js
+    assert "textContent" in js
+    assert "MAXROW=100" in js and "MAXARC=30" in js
+    assert "__W__" not in html and "__BLAT__" not in html
+
+
+def test_page_served_and_host_guard():
+    app = live.LiveApp(port=0, start_stream=False)
+    threading.Thread(target=app.server.serve_forever, daemon=True).start()
+    try:
+        c = http.client.HTTPConnection("127.0.0.1", app.port, timeout=3)
+        c.request("GET", "/", headers={"Host": f"127.0.0.1:{app.port}"})
+        r = c.getresponse()
+        body = r.read().decode("utf-8")
+        assert r.status == 200 and "text/html" in r.getheader("Content-Type")
+        assert "EventSource('/events')" in body
+    finally:
+        app.server.shutdown()
+        app.server.server_close()

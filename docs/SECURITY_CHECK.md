@@ -86,3 +86,56 @@ The recording only starts after the server runs the new code. Until then the rep
   3. Check that it came back: `systemctl status bkk-production`.
 
 Restarting production briefly takes the public site offline, so do it when people are not using it.
+
+## Live view
+
+`launch\security_check\live.bat` (Desktop icon "BKK Security Live") starts a small receiver on this PC,
+hidden, and opens http://127.0.0.1:8770/ in the browser. The page shows attacks as they happen: a world
+map with an arc from the attacker's country to Bangkok, big counters, a live feed and alert banners.
+A second launch only opens the browser again; the receiver quits by itself about 90 seconds after the
+last browser tab is closed.
+
+How it works:
+- One long-lived read-only ssh connection to the Pi runs `python -m backend.core.security_stream`, which
+  prints one JSON line per blocked web request (read from the security log, polled every 2 s) and per SSH
+  login event (from the journal). It writes nothing and opens no port on the Pi. If the connection drops,
+  the receiver reconnects (2 s, doubling up to 60 s).
+- The receiver (`live.py`) adds owner / country / coordinates to each event and serves the page, `/state`
+  and `/events` (Server-Sent Events) on 127.0.0.1 only. Foreign Host headers are refused.
+- Events from the owner (own public IP, home network, loopback) are dimmed or hidden and never counted
+  or drawn. The checker's own test requests (`self_check`) are never shown.
+- `python -m launch.security_check.live --target test` runs the same thing against the local test
+  instance (no ssh, no SSH events). Log: `local\logs\security_live.log`.
+
+### LINE alerts (optional)
+
+Alerts always appear on the page. To get them on your phone too (LINE Notify is discontinued, so this
+uses the LINE Messaging API):
+1. Open https://developers.line.biz/ and log in; create a Provider.
+2. In the provider create a Messaging API channel.
+3. Channel "Basic settings" tab: copy "Your user ID" (starts with `U`).
+4. Channel "Messaging API" tab: issue "Channel access token (long-lived)" and copy it.
+5. On the same tab scan the bot's QR code with LINE and add the bot as a friend (it can only push to friends).
+6. Put both values in the repo `.env` (never commit them or paste them in chat):
+   `LINE_CHANNEL_ACCESS_TOKEN=...` and `LINE_USER_ID=U...`
+7. Test: `.venv\Scripts\python.exe -m launch.security_check.alerts --test` prints OK or failed
+   (the token is never printed). Restart the live view; the page pill then says "LINE เปิด".
+
+Rules (outside-the-house events only):
+
+| Rule | Fires when |
+|---|---|
+| SSH login succeeded | any successful SSH login from a non-owner IP (once per IP per 30 min) |
+| Web flood | 100 or more blocked web requests in 60 s |
+| SSH guessing | 20 or more failed / invalid SSH attempts in 5 min |
+
+Each rule has a 30 minute cooldown. At most 20 LINE messages a day (counter in
+`local\logs\security_live_alerts.json`); after that one last message says the cap was reached and the
+page keeps showing alerts. A failed send is logged (status code only) and shown as "LINE ส่งไม่สำเร็จ".
+
+### Deploy note
+
+The Pi must run the new code before the live view shows web attacks quickly: pull the repo on the Pi and
+restart production (`sudo systemctl restart bkk-production`, with the owner's go-ahead). The restart brings
+the 5 s security-log flush (was 30 s) and the `backend/core/security_stream.py` module that the PC starts
+over ssh. Until then the page connects but shows no events.
