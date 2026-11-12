@@ -13,15 +13,15 @@ PROD_URL = "https://bkksmartstreet.com"
 TEST_URL = "http://localhost:8001"
 
 
-def _f(area, level, title, detail="", fix=""):
-    return {"area": area, "level": level, "title": title, "detail": detail, "fix": fix}
+def _f(area, level, title, detail="", fix="", cmd=""):
+    return {"area": area, "level": level, "title": title, "detail": detail, "fix": fix, "cmd": cmd}
 
 
-def _attack_findings(summary):
+def _attack_findings(summary, owner_ips=()):
     if isinstance(summary, dict) and summary.get("_error") == "not_deployed":
         return [_f("attack", "info", "เซิร์ฟเวอร์บน Pi ยังไม่ได้อัปเดตตัวบันทึก",
                    "ยอดการโจมตีจะเริ่มนับหลังอัปเดตเซิร์ฟเวอร์")]
-    return rules.evaluate_attacks(summary)
+    return rules.evaluate_attacks(summary, owner_ips=owner_ips)
 
 
 def _web_findings(checks, trusted_origin=False):
@@ -41,13 +41,38 @@ def _extra(summary, ssh, owner_ips):
     counts = {}
     for src in ((summary or {}).get("top_ips") or [], (ssh or {}).get("failed_ips") or []):
         for x in src:
-            counts[x["ip"]] = counts.get(x["ip"], 0) + int(x.get("n", 0))
+            try:
+                ip = x.get("ip")
+                if not ip:
+                    continue
+                counts[ip] = counts.get(ip, 0) + int(x.get("n", 0))
+            except (AttributeError, TypeError, ValueError):
+                continue
     rows = []
     for ip, n in sorted(counts.items(), key=lambda kv: -kv[1]):
         cc = geo.lookup(ip)
         rows.append({"ip": ip, "cc": cc, "country": geo.country_name(cc) if cc else "",
                      "n": n, "owner": rules._same_home(ip, owners)})
     return {"ssh": ssh, "owner_ips": list(owner_ips), "geo": rows}
+
+
+def _public_ips():
+    return [ip for ip in (collect.public_ip(), collect.public_ip_v4()) if ip]
+
+
+def _owner_list(pubs, ssh_log):
+    """Owner IPs: our public IPs (v6 and v4) plus LAN/home IPs seen in accepted SSH logins, deduped."""
+    owners = []
+    for ip in pubs:
+        if ip not in owners:
+            owners.append(ip)
+    for x in (ssh_log or {}).get("accepted") or []:
+        ip = str(x.get("ip", "")) if isinstance(x, dict) else ""
+        if not ip:
+            continue
+        if (ip.startswith("192.168.1.") or rules._same_home(ip, pubs)) and ip not in owners:
+            owners.append(ip)
+    return owners
 
 
 def main(argv=None):
@@ -69,10 +94,10 @@ def main(argv=None):
         token = collect.pi_self_check_token()
         web = collect.web_checks(PROD_URL, self_check_token=token)
         ssh_log = collect.pi_ssh_log(a.days)
-        pub = collect.public_ip()
+        pubs = _public_ips()
+        owner_ips = _owner_list(pubs, ssh_log)
         pw_auth = ((host_raw or {}).get("sshd") or {}).get("passwordauthentication")
-        host = host + rules.evaluate_ssh_log(
-            ssh_log, owner_ips=[pub] if pub else [], password_auth=pw_auth)
+        host = host + rules.evaluate_ssh_log(ssh_log, owner_ips=owner_ips, password_auth=pw_auth)
     else:
         summary = collect.local_attack_summary(os.path.join(ROOT, "instances", "test"), a.days)
         config = collect.local_config_flags(os.path.join(ROOT, "instances", "test", ".env"))
@@ -80,21 +105,16 @@ def main(argv=None):
         token = collect.local_self_check_token(os.path.join(ROOT, "instances", "test"))
         web = collect.web_checks(TEST_URL, self_check_token=token)
         ssh_log = None
-        pub = collect.public_ip()
+        owner_ips = _owner_list(_public_ips(), None)
 
     sections = {
-        "attack": _attack_findings(summary) + ([] if token else [
+        "attack": _attack_findings(summary, owner_ips) + ([] if token else [
             _f("attack", "info", "ส่งรหัสตรวจตัวเองไม่ได้ รอบนี้จะถูกนับเป็นการโจมตี")]),
         "web": _web_findings(web, trusted_origin=(a.target == "test")),
         "config": rules.evaluate_config(config),
         "host": host,
     }
     real = summary if isinstance(summary, dict) and not summary.get("_error") else None
-    owner_ips = [pub] if pub else []
-    for x in (ssh_log or {}).get("accepted") or []:
-        home = x["ip"].startswith("192.168.1.") or rules._same_home(x["ip"], [pub] if pub else [])
-        if home and x["ip"] not in owner_ips:
-            owner_ips.append(x["ip"])
     extra = _extra(real, ssh_log, owner_ips)
     now = datetime.now()
     html = report.render(a.target, sections, real, now.strftime("%Y-%m-%d %H:%M"), extra)

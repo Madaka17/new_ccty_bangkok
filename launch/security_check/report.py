@@ -3,7 +3,7 @@ import math
 from html import escape as _e
 
 from . import geo
-from .rules import KIND_TH, overall
+from .rules import KIND_TH, overall, owner_total
 
 VERDICT = {"ok": ("✓", "ปลอดภัยดี", "ไม่พบเรื่องที่ต้องแก้"),
            "warn": ("!", "ควรดู", "มีเรื่องที่ควรตรวจและแก้"),
@@ -34,10 +34,12 @@ header{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:6px
 header svg{flex:none;filter:drop-shadow(0 0 6px var(--glow))}
 .hd{flex:1 1 240px;min-width:0}
 .chip{display:inline-block;font-size:.8rem;font-weight:600;padding:1px 10px;border-radius:99px;color:var(--ok);
-background:var(--chip);border:1px solid rgba(57,230,160,.45);margin:2px 4px 2px 0;white-space:nowrap;font-family:var(--mono)}
+background:var(--chip);border:1px solid rgba(57,230,160,.45);margin:2px 4px 2px 0;white-space:normal;overflow-wrap:anywhere;max-width:100%;font-family:var(--mono)}
 .chip.sans{font-family:inherit}
+.chip.nw{white-space:nowrap}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:0;min-width:0;
-box-shadow:0 0 14px rgba(196,77,255,.18),inset 0 0 18px rgba(196,77,255,.05);animation:glow 4s ease-in-out infinite alternate}
+box-shadow:0 0 14px rgba(196,77,255,.18),inset 0 0 18px rgba(196,77,255,.05)}
+.stat{animation:glow 4s ease-in-out infinite alternate}
 @keyframes glow{from{box-shadow:0 0 8px rgba(196,77,255,.15),inset 0 0 14px rgba(196,77,255,.04);border-color:rgba(170,90,255,.3)}
 to{box-shadow:0 0 22px rgba(255,79,216,.32),inset 0 0 22px rgba(255,79,216,.08);border-color:rgba(255,79,216,.6)}}
 .sec{margin:16px 0}
@@ -62,6 +64,7 @@ box-shadow:0 0 6px rgba(255,79,216,.5)}
 .fail .tag{border-color:var(--fail);color:var(--fail)}.warn .tag{border-color:var(--warn);color:var(--warn)}
 .ok .tag{border-color:var(--ok);color:var(--ok)}.info .tag{color:var(--mut)}
 .item{padding:10px 0;border-bottom:1px solid rgba(170,90,255,.18);overflow-wrap:anywhere}.item:last-child{border:0}
+.fixtxt{margin-top:6px}.fixtxt .h{font-size:.85rem;color:var(--mut)}
 .fixbox{margin-top:8px;border:1px dashed rgba(196,77,255,.55);border-radius:10px;padding:8px 10px;background:rgba(196,77,255,.07)}
 .fixbox .h{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.85rem;color:var(--mut)}
 pre{margin:6px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:.88rem;color:var(--fg)}
@@ -124,10 +127,15 @@ def _num(v, key=""):
     return f'<span class="big num" data-n="{_n(v)}">{_n(v):,}</span>'
 
 
-def _fix_box(fix):
-    return ('<div class="fixbox"><div class="h"><span>วิธีแก้</span>'
-            '<button type="button" class="copy" data-copy="1">คัดลอก</button></div>'
-            f'<pre>{_e(fix)}</pre></div>')
+def _fix_block(fix, cmd, title):
+    s = ""
+    if fix:
+        s += f'<div class="fixtxt"><div class="h">วิธีแก้</div><div>{_e(fix)}</div></div>'
+    if cmd:
+        s += ('<div class="fixbox"><div class="h"><span>คำสั่ง</span>'
+              f'<button type="button" class="copy" data-copy="1" aria-label="{_e("คัดลอกคำสั่ง: " + str(title), quote=True)}">คัดลอก</button></div>'
+              f'<pre>{_e(cmd)}</pre></div>')
+    return s
 
 
 def _item(f, with_fix=True):
@@ -135,8 +143,8 @@ def _item(f, with_fix=True):
     s = f'<div class="item {_e(lv)}"><span class="tag">{_e(MARK.get(lv, lv))}</span><b>{_e(f.get("title", ""))}</b>'
     if f.get("detail"):
         s += f'<div class="mut">{_e(f["detail"])}</div>'
-    if with_fix and f.get("fix"):
-        s += _fix_box(f["fix"])
+    if with_fix and (f.get("fix") or f.get("cmd")):
+        s += _fix_block(f.get("fix", ""), f.get("cmd", ""), f.get("title", ""))
     return s + "</div>"
 
 
@@ -150,18 +158,30 @@ def _stats(allf, ov, summary, ssh, owners):
     nwarn = sum(f["level"] == "warn" for f in allf)
     real = isinstance(summary, dict) and not summary.get("_error")
     total = summary.get("total", 0) if real else None
+    own_web = 0
+    if real:
+        own_web = min(owner_total(summary.get("top_ips"), owners), _n(total))
+        total = _n(total) - own_web
     top = ""
     if real and summary.get("by_kind"):
         k, n = max(summary["by_kind"].items(), key=lambda kv: kv[1])
         top = f"มากสุด: {KIND_TH.get(k, k)} {_n(n):,}"
+    if real and total == 0:
+        top = ""
     days = f"{_n(summary.get('days'))} วัน" if real and summary.get("days") else "30 วัน"
-    sshn = (_n(ssh.get("failed")) + _n(ssh.get("invalid_user"))) if ssh else None
+    own_ssh = 0
+    sshn = None
+    if ssh:
+        own_ssh = owner_total(ssh.get("failed_ips"), owners)
+        sshn = max(0, _n(ssh.get("failed")) + _n(ssh.get("invalid_user")) - own_ssh)
+    web_note = f" (+{own_web:,} ครั้งจากเจ้าของเครื่อง ไม่นับ)" if own_web > 0 else ""
+    ssh_note = f" (+{own_ssh:,} ครั้งจากเจ้าของเครื่อง ไม่นับ)" if own_ssh > 0 else ""
     return (
         '<div class="stats">'
         f'<div class="card stat"><div class="lbl">การโจมตีเว็บที่ถูกบล็อก</div>{_num(total)}'
-        f'<div class="mut">ใน {_e(days)}{" · " + _e(top) if top else ""}</div></div>'
+        f'<div class="mut">ใน {_e(days)}{" · " + _e(top) if top else ""}{_e(web_note)}</div></div>'
         f'<div class="card stat"><div class="lbl">คนพยายามเดารหัส SSH</div>{_num(sshn)}'
-        f'<div class="mut">{"ครั้ง ใน 30 วัน" if ssh else "อ่าน log SSH ไม่ได้"}</div></div>'
+        f'<div class="mut">{("ครั้ง ใน 30 วัน" + _e(ssh_note)) if ssh else "อ่าน log SSH ไม่ได้"}</div></div>'
         f'<div class="card stat risk {ov}"><div class="lbl">ระดับความเสี่ยง</div>'
         f'<div class="big">{icon} {_e(word)}</div>'
         f'<div class="mut">{nfail} เรื่องต้องแก้ · {nwarn} เรื่องควรดู</div></div>'
@@ -218,14 +238,16 @@ def _map(rows):
                f'<circle class="pulse" cx="{bx:.1f}" cy="{by:.1f}" r="5"/><circle class="tgt" cx="{bx:.1f}" cy="{by:.1f}" r="5">'
                '<title>กรุงเทพ</title></circle></svg>')
     note = ""
-    if not dots:
-        note = ('<div class="nomap">! ยังไม่มีข้อมูลประเทศ (ยังไม่มีฐานข้อมูล IP หรือยังไม่มีผู้โจมตีให้แสดง) '
+    if not dots and geo.available():
+        note = '<div class="nomap">ยังไม่มีผู้โจมตีนอกบ้านให้แสดง</div>'
+    elif not dots:
+        note = ('<div class="nomap">! ยังไม่มีข้อมูลประเทศ (ยังไม่มีฐานข้อมูล IP) '
                 'ดาวน์โหลดฐานข้อมูลด้วย update_geo.bat</div>')
     leg = f'<div class="legend">{"".join(legend)}</div>' if legend else ""
     return f'<section class="card sec"><h2>แผนที่ที่มาของการโจมตี</h2>{svg}{leg}{note}</section>'
 
 
-def _charts(summary):
+def _charts(summary, owners=()):
     if not (isinstance(summary, dict) and not summary.get("_error")):
         return ('<section class="card sec"><h2>ยอดโจมตีรายวัน</h2><div class="mut">'
                 'ต่อ Pi ไม่ได้ หรือยังไม่มีข้อมูล ยอดการโจมตีจะเริ่มนับหลังอัปเดตเซิร์ฟเวอร์</div></section>')
@@ -235,9 +257,12 @@ def _charts(summary):
                    f'title="{_e(str(d.get("day", "")))}: {_n(d.get("n"))}"></span>' for d in by_day)
     left = '<h2>ยอดโจมตีรายวัน</h2>'
     if bars:
-        left += (f'<div class="bars" role="img" aria-label="ยอดบล็อกรายวัน">{bars}</div>'
-                 f'<div class="mut">{_e(str(by_day[0].get("day", "")))} ถึง {_e(str(by_day[-1].get("day", "")))} '
-                 f'(สูงสุด {mx:,} ครั้ง/วัน)</div>')
+        d0, d1 = str(by_day[0].get("day", "")), str(by_day[-1].get("day", ""))
+        own = min(owner_total(summary.get("top_ips"), owners), _n(summary.get("total")))
+        note = f" (รวม {own:,} ครั้งจากเจ้าของเครื่อง นับในกราฟนี้)" if own > 0 else ""
+        left += (f'<div class="bars" role="img" aria-label="{_e(f"ยอดบล็อกรายวัน {d0} ถึง {d1} สูงสุด {mx:,} ครั้งต่อวัน", quote=True)}">{bars}</div>'
+                 f'<div class="mut">{_e(d0)} ถึง {_e(d1)} '
+                 f'(สูงสุด {mx:,} ครั้ง/วัน){_e(note)}</div>')
     else:
         left += '<div class="mut">ยังไม่มีข้อมูลรายวัน</div>'
     sc = _n(summary.get("self_checks"))
@@ -265,7 +290,7 @@ def _tables(summary, ssh, rows, owners):
         ip = str(i.get("ip", ""))
         g = cc_of.get(ip) or {}
         own = bool(g.get("owner")) or ip in owners
-        chip = ' <span class="chip sans">เจ้าของ</span>' if own else ""
+        chip = ' <span class="chip sans nw">เจ้าของ</span>' if own else ""
         ipr.append(f'<tr><td class="num">{_e(ip)}{chip}</td><td>{_e(g.get("country") or "—")}</td>'
                    f'<td class="n">{_n(i.get("n")):,}</td></tr>')
     pr = [f'<tr><td class="num">{_e(str(i.get("path", "")))}</td><td class="n">{_n(i.get("n")):,}</td></tr>'
@@ -297,11 +322,12 @@ def render(target, sections, summary, generated, extra=None):
         for a, fs in sections.items())
     p = [f'<!doctype html><html lang="th"><head><meta charset="utf-8">'
          f'<meta name="viewport" content="width=device-width,initial-scale=1">'
+         "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:\">"
          f'<title>ตรวจความปลอดภัย {_e(target)}</title><style>{CSS}</style></head><body><div class="wrap">',
          f'<header>{SHIELD}<div class="hd"><h1>ศูนย์เฝ้าระวังภัย BKK StreetSmart</h1>'
          f'<div class="mut">{_e(TARGET_TH.get(target, target))} · {_e(generated)}</div></div>'
          '<span class="chip sans">ไม่ส่งข้อมูลออกนอกเครื่อง</span></header>',
-         _stats(allf, ov, summary, ssh, owners), _todo(allf), _map(rows), _charts(summary),
+         _stats(allf, ov, summary, ssh, owners), _todo(allf), _map(rows), _charts(summary, owners),
          _tables(summary, ssh, rows, owners),
          f'<section class="card sec"><h2>ตรวจทุกข้อ</h2>{allsec}</section>',
          f'<footer>{foot}</footer>',

@@ -1,7 +1,7 @@
 """Pure rules: facts in, Thai findings out. No I/O. Secrets never reach here, only lengths and booleans.
 
 Finding = {"area": "attack"|"web"|"config"|"host", "level": "ok"|"info"|"warn"|"fail",
-           "title": str, "detail": str, "fix": str}
+           "title": str, "detail": str, "fix": str, "cmd": str}
 """
 import re
 
@@ -23,20 +23,41 @@ KNOWN_PORTS = {22: "SSH", 8000: "เว็บ", 5050: "ENVIRO", 9101: "pistats",
 WAF = "Cloudflare → Security → WAF"
 
 
-def _f(area, level, title, detail="", fix=""):
+def _f(area, level, title, detail="", fix="", cmd=""):
     if level in ("ok", "info"):
-        fix = ""
-    return {"area": area, "level": level, "title": title, "detail": detail, "fix": fix}
+        fix = cmd = ""
+    return {"area": area, "level": level, "title": title, "detail": detail, "fix": fix, "cmd": cmd}
 
 
-def evaluate_attacks(summary):
+def owner_total(rows, owners):
+    """Sum of n over rows ({ip, n}) whose ip is an owner IP (same /64 counts)."""
+    if not owners:
+        return 0
+    t = 0
+    for x in rows or []:
+        try:
+            if _same_home(str(x.get("ip", "")), owners):
+                t += int(x.get("n", 0))
+        except (AttributeError, TypeError, ValueError):
+            continue
+    return t
+
+
+def evaluate_attacks(summary, owner_ips=()):
     a = "attack"
     if summary is None:
         return [_f(a, "info", "ต่อ Pi ไม่ได้ ดูยอดโจมตีไม่ได้")]
-    total = summary.get("total") or 0
-    if total == 0:
+    raw_total = summary.get("total") or 0
+    if raw_total == 0:
         return [_f(a, "ok", "ยังไม่มีข้อมูล / ไม่พบการโจมตี")]
+    all_ips = summary.get("top_ips") or []
+    own = min(owner_total(all_ips, owner_ips), raw_total)
+    total = raw_total - own
+    if total == 0:
+        return [_f(a, "ok", "ไม่พบการโจมตีจากนอกบ้าน", f"{own} ครั้งที่ถูกบล็อกมาจากเจ้าของเครื่อง ไม่นับ")]
     by_kind = summary.get("by_kind") or {}
+    if own:  # per-kind counts have no IP; scale them down by the owner share
+        by_kind = {k: round(n * total / raw_total) for k, n in by_kind.items()}
     days = summary.get("days")
     out = []
     top = sorted(((k, n) for k, n in by_kind.items() if n), key=lambda kv: -kv[1])[:3]
@@ -50,7 +71,7 @@ def evaluate_attacks(summary):
         out.append(_f(a, "warn", "มีการสแกนหาช่องโหว่บ่อย", f"{probe} ครั้ง" + (f" เช่น {paths}" if paths else ""),
                       f"เพิ่มกฎใน {WAF} → Custom rules ให้บล็อก path ที่โดนบ่อย หรือบล็อก IP ที่ยิงมากสุด"))
 
-    ips = summary.get("top_ips") or []
+    ips = [x for x in all_ips if not (owner_ips and _same_home(str(x.get("ip", "")), owner_ips))]
     if ips and ips[0]["n"] >= 50 and ips[0]["n"] * 2 >= total:
         ip = ips[0]
         out.append(_f(a, "warn", f"IP {ip['ip']} ยิงมากผิดปกติ", f"{ip['n']} จาก {total} ครั้ง",
@@ -173,19 +194,23 @@ def evaluate_host(raw):
     elif sshd:
         if sshd.get("passwordauthentication") == "yes":
             out.append(_f(a, "fail", "SSH ยังเข้าด้วยรหัสผ่านได้", "คนเดารหัสผ่านได้",
-                          "แก้ /etc/ssh/sshd_config เป็น PasswordAuthentication no (กุญแจใช้ได้อยู่แล้ว) แล้ว sudo systemctl restart ssh"))
+                          "แก้ /etc/ssh/sshd_config เป็น PasswordAuthentication no (กุญแจใช้ได้อยู่แล้ว) แล้วรีสตาร์ต SSH",
+                          "sudo systemctl restart ssh"))
         root = sshd.get("permitrootlogin")
         # "without-password" is the old name of "prohibit-password" (root by key only); Debian's sshd -T prints it
         if root is not None and root not in ("no", "prohibit-password", "without-password"):
             out.append(_f(a, "fail", "SSH เปิดให้ root เข้าได้", f"PermitRootLogin = {root}",
-                          "แก้ /etc/ssh/sshd_config เป็น PermitRootLogin no แล้ว sudo systemctl restart ssh"))
+                          "แก้ /etc/ssh/sshd_config เป็น PermitRootLogin no แล้วรีสตาร์ต SSH",
+                          "sudo systemctl restart ssh"))
     fw = raw.get("firewall")
     if fw == "denied":
         out.append(_f(a, "info", "อ่านสถานะไฟร์วอลล์ไม่ได้ (ต้องใช้ sudo)", "ตรวจไฟร์วอลล์ไม่ได้ในรอบนี้"))
     elif fw is not None and fw != "active":
         out.append(_f(a, "warn", "ไฟร์วอลล์ยังไม่เปิด", f"สถานะ: {fw}",
-                      "รัน sudo ufw allow from 192.168.1.0/24 แล้ว sudo ufw enable"))
+                      "อนุญาตวง LAN แล้วเปิดไฟร์วอลล์",
+                      "sudo ufw allow from 192.168.1.0/24\nsudo ufw enable"))
     seen = set()
+    open_ports = []
     for addr in raw.get("listen") or []:
         host, port = _split_addr(addr)
         if port is None or _is_loopback(host) or port in seen:
@@ -195,16 +220,21 @@ def evaluate_host(raw):
             out.append(_f(a, "warn", "VNC เปิดให้ทั้งวง LAN", "พอร์ต 5900",
                           "ปิด VNC (sudo raspi-config → Interface Options → VNC) หรือจำกัดด้วย ufw"))
         elif port not in KNOWN_PORTS:
-            out.append(_f(a, "warn", f"พอร์ต {port} เปิดให้ทั้งวง LAN", f"ฟังที่ {addr}",
-                          f"ถ้าไม่ได้ใช้ ให้ปิดโปรแกรมนั้น หรือ sudo ufw insert 1 deny {port}"))
+            open_ports.append(port)
+    if open_ports:
+        open_ports.sort()
+        out.append(_f(a, "warn", f"มี {len(open_ports)} พอร์ตเปิดให้ทั้งวง LAN",
+                      "พอร์ต " + ", ".join(str(p) for p in open_ports),
+                      "ถ้าไม่ได้ใช้ ให้ปิดโปรแกรมนั้น หรือบล็อกด้วย ufw",
+                      "\n".join(f"sudo ufw insert 1 deny {p}" for p in open_ports)))
     up = raw.get("upgradable")
     if up is not None and up >= 20:
         out.append(_f(a, "warn", f"มีอัปเดตค้าง {up} รายการ", "",
-                      "รัน sudo apt update && sudo apt upgrade"))
+                      "อัปเดตแพ็กเกจที่ค้างอยู่", "sudo apt update && sudo apt upgrade"))
     if raw.get("unattended") is False:
         out.append(_f(a, "info", "ยังไม่ได้เปิดอัปเดตความปลอดภัยอัตโนมัติ", "แนะนำ: sudo apt install unattended-upgrades"))
     if raw.get("reboot_required"):
-        out.append(_f(a, "warn", "ต้องรีบูต Pi เพื่อใช้อัปเดต", "", "รัน sudo reboot ตอนไม่มีคนใช้"))
+        out.append(_f(a, "warn", "ต้องรีบูต Pi เพื่อใช้อัปเดต", "", "รีบูตตอนไม่มีคนใช้", "sudo reboot"))
     if raw.get("fail2ban") is False:
         out.append(_f(a, "info", "ยังไม่ได้ลง fail2ban", "แนะนำ: sudo apt install fail2ban"))
     return out
@@ -250,12 +280,14 @@ def evaluate_ssh_log(d, lan_prefix="192.168.1.", owner_ips=(), password_auth=Non
         out.append(_f(a, "warn", "มีคนเข้า SSH ด้วยรหัสผ่าน",
                       ", ".join(f"{x['ip']} ({x.get('user', '?')})" for x in pw[:5]),
                       "ปิดการเข้าด้วยรหัสผ่าน: ตั้ง PasswordAuthentication no ใน /etc/ssh/sshd_config"))
-    tries = (d.get("failed") or 0) + (d.get("invalid_user") or 0)
+    fips = d.get("failed_ips") or []
+    tries = max(0, (d.get("failed") or 0) + (d.get("invalid_user") or 0) - owner_total(fips, owner_ips))
     if tries >= 50:
-        top = ", ".join(f"{x['ip']} ({x['n']})" for x in (d.get("failed_ips") or [])[:3])
+        others = [x for x in fips if not _same_home(str(x.get("ip", "")), owner_ips)]
+        top = ", ".join(f"{x['ip']} ({x['n']})" for x in others[:3])
         out.append(_f(a, "warn", f"มีคนพยายามเดารหัส SSH {tries} ครั้ง", f"IP ที่ลองมากสุด: {top}" if top else "",
-                      "SSH ใช้กุญแจอย่างเดียวและเข้าได้เฉพาะในบ้านอยู่แล้ว; ถ้าอยากบล็อก IP: "
-                      "sudo ufw insert 1 deny from <ip>"))
+                      "SSH ใช้กุญแจอย่างเดียวและเข้าได้เฉพาะในบ้านอยู่แล้ว" + ("; ถ้าอยากบล็อก IP ให้ใช้คำสั่งนี้" if others else ""),
+                      f"sudo ufw insert 1 deny from {others[0]['ip']}" if others else ""))
     if not any(x["level"] in ("warn", "fail") for x in out):
         out.append(_f(a, "ok", "SSH ไม่มีคนแปลกหน้าเข้าได้"))
     return out

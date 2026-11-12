@@ -270,6 +270,31 @@ def public_ip():
     return m.group(1) if m else None
 
 
+def public_ip_v4():
+    """Owner's home public IPv4 (public_ip() returns whichever family this PC used). None on any failure."""
+    host = "bkksmartstreet.com"
+    try:
+        af, st, pr, _cn, sa = socket.getaddrinfo(host, 443, socket.AF_INET, socket.SOCK_STREAM)[0]
+        with socket.create_connection(sa[:2], timeout=10) as raw:
+            raw.settimeout(10)
+            with ssl.create_default_context().wrap_socket(raw, server_hostname=host) as s:
+                s.sendall((f"GET /cdn-cgi/trace HTTP/1.1\r\nHost: {host}\r\nUser-Agent: {UA}\r\n"
+                           "Accept: */*\r\nConnection: close\r\n\r\n").encode("ascii"))
+                buf = b""
+                while len(buf) < 4096:
+                    chunk = s.recv(1024)
+                    if not chunk:
+                        break
+                    buf += chunk
+        m = re.search(r"^ip=(\S+)$", buf.decode("utf-8", "replace"), re.M)
+        if not m:
+            return None
+        import ipaddress
+        return m.group(1) if ipaddress.ip_address(m.group(1)).version == 4 else None
+    except Exception:
+        return None
+
+
 def _get(url, timeout=15, extra_headers=None):
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*", **(extra_headers or {})})
     try:

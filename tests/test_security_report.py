@@ -10,6 +10,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def _no_network_public_ip(monkeypatch):
     monkeypatch.setattr(collect, "public_ip", lambda: None)
+    monkeypatch.setattr(collect, "public_ip_v4", lambda: None)
 
 HOST_TEXT = """@@listen
 LISTEN 0 128 0.0.0.0:22 0.0.0.0:*
@@ -212,10 +213,45 @@ def test_v2_owner_chip_and_excluded_from_map():
 
 def test_v2_copy_button_and_stats():
     html = render("production", {"host": [{"area": "host", "level": "fail", "title": "t", "detail": "d",
-                                           "fix": "sudo ufw deny from 1.2.3.4"}]}, _summ(), "now", _extra())
-    assert "data-copy" in html and "sudo ufw deny from 1.2.3.4" in html
+                                           "fix": "ทำตามนี้", "cmd": "sudo ufw deny from 1.2.3.4"}]}, _summ(), "now", _extra())
+    assert "data-copy" in html and "<pre>sudo ufw deny from 1.2.3.4</pre>" in html
+    assert 'aria-label="คัดลอกคำสั่ง: t"' in html and "ทำตามนี้" in html
     assert "ต้องแก้" in html and "45" in html
 
 
 def test_v2_extra_none_ok():
     assert "<svg" in render("test", {"web": [_f("ok")]}, None, "now")
+
+
+def test_fix_without_cmd_has_no_copy_box():
+    html = render("production", {"host": [{"area": "host", "level": "warn", "title": "t", "detail": "d",
+                                           "fix": "แก้ด้วยมือ"}]}, _summ(), "now", _extra())
+    assert "แก้ด้วยมือ" in html and "<button" not in html and "<pre>" not in html
+
+
+def test_owner_traffic_not_counted_in_cards():
+    summ = {"days": 30, "total": 11, "by_kind": {"probe": 11}, "by_day": [{"day": "2026-11-12", "n": 11}],
+            "top_ips": [{"ip": "7.7.7.7", "n": 11}], "top_paths": [], "recent": []}
+    ssh = {"failed": 5, "invalid_user": 0, "accepted": [], "failed_ips": [{"ip": "7.7.7.7", "n": 5}], "users_tried": []}
+    html = render("production", {"web": [_f("ok")]}, summ, "now", _extra(ssh=ssh))
+    assert 'data-n="0">0</span>' in html
+    assert html.count("(+11 ครั้งจากเจ้าของเครื่อง ไม่นับ)") == 1
+    assert "(+5 ครั้งจากเจ้าของเครื่อง ไม่นับ)" in html
+    assert "รวม 11 ครั้งจากเจ้าของเครื่อง" in html
+
+
+def test_chip_wraps_and_csp_and_glow_scope():
+    import re
+    html = render("production", {"web": [_f("ok")]}, _summ(), "now", _extra())
+    rule = re.search(r"\.chip\{[^}]*\}", html).group(0)
+    assert "overflow-wrap:anywhere" in rule and "max-width:100%" in rule and "nowrap" not in rule
+    assert 'http-equiv="Content-Security-Policy"' in html and "default-src 'none'" in html
+    assert re.search(r"\.card\{[^}]*animation", html) is None
+    assert 'class="bars" role="img" aria-label="ยอดบล็อกรายวัน' in html
+
+
+def test_map_message_when_db_present(monkeypatch):
+    from launch.security_check import geo
+    monkeypatch.setattr(geo, "available", lambda: True)
+    html = render("production", {"web": [_f("ok")]}, _summ(), "now", {"ssh": None, "owner_ips": [], "geo": []})
+    assert "ยังไม่มีผู้โจมตีนอกบ้านให้แสดง" in html and "update_geo" not in html

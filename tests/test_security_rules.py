@@ -170,7 +170,7 @@ def _port_warns(listen):
 
 def test_host_lan_address_unknown_port_warns():
     f = _port_warns(["192.168.1.109:3306"])
-    assert len(f) == 1 and "3306" in f[0]["title"]
+    assert len(f) == 1 and "3306" in f[0]["detail"] and "3306" in f[0]["cmd"]
 
 
 def test_host_lan_address_known_port_ok():
@@ -183,7 +183,7 @@ def test_host_loopback_variants_ignored():
 
 def test_host_iface_suffix_and_dedup():
     f = _port_warns(["0.0.0.0%eth0:53", "[::]:53", "192.168.1.109:53"])
-    assert len(f) == 1 and "53" in f[0]["title"]
+    assert len(f) == 1 and "53" in f[0]["detail"]
 
 
 def test_host_vnc_on_lan_address_warns():
@@ -203,3 +203,31 @@ def test_host_sudo_denied_is_info_not_pass_or_warn():
     f = evaluate_host({"sshd": {"_denied": True}, "firewall": "denied", "listen": []})
     assert [x["level"] for x in f] == ["info", "info"]
     assert any("SSH" in x["title"] for x in f) and any("ไฟร์วอลล์" in x["title"] for x in f)
+
+
+def test_host_ports_grouped_in_one_finding():
+    f = _port_warns(["0.0.0.0:3001", "0.0.0.0:53", "0.0.0.0:3306"])
+    assert len(f) == 1 and f[0]["title"] == "มี 3 พอร์ตเปิดให้ทั้งวง LAN"
+    assert f[0]["detail"] == "พอร์ต 53, 3001, 3306"
+    assert f[0]["cmd"].splitlines() == [f"sudo ufw insert 1 deny {p}" for p in (53, 3001, 3306)]
+
+
+def test_host_cmds_separate_from_fix():
+    f = evaluate_host(dict(GOOD_HOST, firewall="inactive", upgradable=25, reboot_required=True))
+    cmds = [x["cmd"] for x in f if x["level"] == "warn"]
+    assert "sudo apt update && sudo apt upgrade" in cmds and "sudo reboot" in cmds
+    assert "sudo ufw allow from 192.168.1.0/24\nsudo ufw enable" in cmds
+    assert all("sudo" not in x["fix"] for x in f)
+
+
+def test_attacks_owner_only_counts_zero():
+    s = {"days": 7, "total": 11, "by_kind": {"probe": 11}, "top_ips": [{"ip": "7.7.7.7", "n": 11}]}
+    f = evaluate_attacks(s, owner_ips=["7.7.7.7"])
+    assert [x["level"] for x in f] == ["ok"]
+
+
+def test_attacks_dominating_owner_ip_no_warn():
+    s = {"days": 7, "total": 200, "by_kind": {"bad_path": 200},
+         "top_ips": [{"ip": "7.7.7.7", "n": 150}, {"ip": "8.8.8.8", "n": 10}]}
+    assert "warn" not in _levels(evaluate_attacks(s, owner_ips=["7.7.7.7"]))
+    assert "warn" in _levels(evaluate_attacks(s))

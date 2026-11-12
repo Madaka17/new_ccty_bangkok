@@ -54,7 +54,7 @@ def test_eval_many_failed_warns():
          "users_tried": []}
     r = rules.evaluate_ssh_log(d)
     w = [x for x in r if x["level"] == "warn"]
-    assert w and "85" in w[0]["title"] and "ufw insert 1 deny from" in w[0]["fix"]
+    assert w and "85" in w[0]["title"] and w[0]["cmd"] == "sudo ufw insert 1 deny from 5.5.5.5"
 
 
 def test_eval_lan_password_warns():
@@ -76,6 +76,7 @@ def test_main_passes_extra(monkeypatch, tmp_path):
     monkeypatch.setattr(collect, "pi_host_raw", lambda: None)
     monkeypatch.setattr(collect, "pi_ssh_log", lambda days=30: ssh)
     monkeypatch.setattr(collect, "public_ip", lambda: "9.9.9.9")
+    monkeypatch.setattr(collect, "public_ip_v4", lambda: "9.9.9.9")
     monkeypatch.setattr(collect, "web_checks", lambda url, self_check_token=None: {})
     monkeypatch.setattr(main_mod.geo, "lookup", lambda ip: {"8.8.8.8": "US", "5.5.5.5": "RU"}.get(ip))
     monkeypatch.setattr(main_mod.geo, "country_name", lambda cc: cc + "-name")
@@ -184,6 +185,7 @@ def test_main_passes_password_auth(monkeypatch, tmp_path):
     monkeypatch.setattr(collect, "pi_host_raw", lambda: {"sshd": {"passwordauthentication": "no"}})
     monkeypatch.setattr(collect, "pi_ssh_log", lambda days=30: PW)
     monkeypatch.setattr(collect, "public_ip", lambda: None)
+    monkeypatch.setattr(collect, "public_ip_v4", lambda: None)
     monkeypatch.setattr(collect, "web_checks", lambda url, self_check_token=None: {})
     monkeypatch.setattr(main_mod, "REPORTS_DIR", str(tmp_path))
     orig = rules.evaluate_ssh_log
@@ -203,3 +205,48 @@ def test_geo_owner_uses_slash64(monkeypatch):
     e = main_mod._extra(s, None, ["2405:9800:b640:ac59:1:2:3:4"])
     o = {r["ip"]: r["owner"] for r in e["geo"]}
     assert o == {"2405:9800:b640:ac59::7": True, "2405:9800:b640:ffff::7": False}
+
+
+def test_main_owner_list_has_v6_and_v4(monkeypatch, tmp_path):
+    ssh = {"failed": 0, "invalid_user": 0,
+           "accepted": [{"ip": "192.168.1.50", "user": "t", "n": 1, "method": "publickey"},
+                        {"ip": "192.168.1.50", "user": "t", "n": 1, "method": "publickey"}],
+           "failed_ips": [], "users_tried": []}
+    seen = {}
+    monkeypatch.setattr(collect, "pi_self_check_token", lambda: None)
+    monkeypatch.setattr(collect, "pi_attack_summary", lambda days=30: None)
+    monkeypatch.setattr(collect, "pi_config_flags", lambda: {})
+    monkeypatch.setattr(collect, "pi_host_raw", lambda: None)
+    monkeypatch.setattr(collect, "pi_ssh_log", lambda days=30: ssh)
+    monkeypatch.setattr(collect, "public_ip", lambda: "2001:db8::1")
+    monkeypatch.setattr(collect, "public_ip_v4", lambda: "9.9.9.9")
+    monkeypatch.setattr(collect, "web_checks", lambda url, self_check_token=None: {})
+    real = main_mod.report.render
+
+    def spy(target, sections, summary, generated, extra=None):
+        seen["extra"] = extra
+        return real(target, sections, summary, generated)
+    monkeypatch.setattr(main_mod.report, "render", spy)
+    monkeypatch.setattr(main_mod, "REPORTS_DIR", str(tmp_path))
+    assert main_mod.main(["--no-open"]) == 0
+    assert seen["extra"]["owner_ips"] == ["2001:db8::1", "9.9.9.9", "192.168.1.50"]
+
+
+def test_extra_skips_bad_rows():
+    ex = main_mod._extra({"top_ips": [{"n": 3}, {"ip": "8.8.8.8", "n": 2}, "junk"]},
+                         {"failed_ips": [{"ip": "8.8.8.8", "n": "x"}]}, [])
+    assert [r["ip"] for r in ex["geo"]] == ["8.8.8.8"]
+
+
+def test_ssh_failed_excludes_owner_tries():
+    d = {"failed": 80, "invalid_user": 0, "accepted": [],
+         "failed_ips": [{"ip": "9.9.9.9", "n": 80}], "users_tried": []}
+    r = rules.evaluate_ssh_log(d, owner_ips=["9.9.9.9"])
+    assert not [x for x in r if x["level"] == "warn"]
+
+
+def test_public_ip_v4_none_on_failure(monkeypatch):
+    def boom(*a, **k):
+        raise OSError("no net")
+    monkeypatch.setattr(collect.socket, "getaddrinfo", boom)
+    assert collect.public_ip_v4() is None
