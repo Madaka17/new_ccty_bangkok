@@ -96,3 +96,12 @@ def test_bma_cycle_reports_failed_cameras(capsys, monkeypatch):
     s._run_scan_cycle()
     out = capsys.readouterr().out
     assert "[BMA] 2 cameras failed this cycle, first: net down" in out
+
+
+def test_incident_blank_keys_mean_no_vision_provider(monkeypatch):
+    # The test launcher blanks every AI key with " " to keep the test server off the paid providers
+    monkeypatch.setattr(incident_service, "VISION_AGENT", "none")
+    for name in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
+        monkeypatch.setenv(name, " ")
+    monkeypatch.setattr(incident_service.os.path, "exists", lambda p: False)
+    assert incident_service.IncidentManager._client() == (None, None)

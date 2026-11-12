@@ -115,7 +115,9 @@ class IncidentManager:
             client = gemini_client()
             if client is not None:
                 return 'gemini', client
-        if anthropic is not None and (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")
+        # A blank value means "no key": the test launcher sets ANTHROPIC_API_KEY to " " to switch Claude off
+        if anthropic is not None and ((os.environ.get("ANTHROPIC_API_KEY") or "").strip()
+                                      or (os.environ.get("ANTHROPIC_AUTH_TOKEN") or "").strip()
                                       or os.path.exists(os.path.join(os.path.expanduser("~"), ".config", "anthropic"))):
             try:
                 return 'claude', anthropic.Anthropic(timeout=60.0, max_retries=1)
