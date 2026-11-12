@@ -15,7 +15,6 @@ Tiles: zoom 11 outside Bangkok (the ones area_traffic.py reads for the whole cou
 the disk cache) and zoom 12 for Bangkok (the ones traffic_service.py reads every minute). Answers are kept
 CACHE_SECONDS per area.
 """
-import math
 import os
 import threading
 import time
@@ -23,6 +22,7 @@ import time
 import shapely
 
 from backend.core import thai_regions
+from backend.core.geo import flat_km
 from backend.traffic.area_traffic import BANGKOK, TILE_MAX_AGE, area_traffic
 from backend.traffic.guidance_service import FREE_FLOW, LEVEL_TH, GuidanceService, merge_spots
 from backend.traffic.traffic_service import (BASE_TILE_DIR, ROAD_TYPES, RoadIndex, classify_color, decode_tile,
@@ -40,12 +40,6 @@ WARM_RPS = 3            # base tiles a second while warm() fills the disk cache
 
 _lock = threading.Lock()
 _cache = {}             # (province code, district code) -> (time, answer)
-
-
-def _km(lat1, lng1, lat2, lng2):
-    dy = (lat2 - lat1) * 110.57
-    dx = (lng2 - lng1) * 111.32 * math.cos(math.radians((lat1 + lat2) / 2))
-    return math.hypot(dx, dy)
 
 
 def _tiles(geom, z):
@@ -208,7 +202,7 @@ def _build(pcode, acode, events):
                           "label": text, "camera": None})
         spots = merge_spots(spots)[:3]
         alts = [{"name": o["name"], "flow": o["flow"], "level": o["level"], "red_km": o["red_km"],
-                 "recommended": o["flow"] >= FREE_FLOW, "_d": _km(row["lat"], row["lng"], o["lat"], o["lng"])}
+                 "recommended": o["flow"] >= FREE_FLOW, "_d": flat_km(row["lat"], row["lng"], o["lat"], o["lng"])}
                 for o in rows if o["name"] != row["name"]]
         alts = sorted((a for a in alts if a["_d"] <= ALT_KM), key=lambda a: (not a["recommended"], a["_d"]))[:3]
         for a in alts:

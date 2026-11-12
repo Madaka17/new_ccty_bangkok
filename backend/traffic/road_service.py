@@ -35,7 +35,6 @@ AI_INTERVAL; with neither, a deterministic template says the same things from th
 Served by /api/roads/*.
 """
 import json
-import math
 import os
 import threading
 import time
@@ -48,6 +47,7 @@ except Exception:  # pragma: no cover - the template covers the no-key case
     genai_types = None
 
 from backend.core import local_llm
+from backend.core.geo import flat_km
 
 AI_MODEL = os.getenv("ROAD_AI_MODEL", os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"))
 AI_INTERVAL = int(os.getenv("ROAD_AI_SECONDS", "360"))
@@ -107,12 +107,6 @@ LEVEL_TH = {
     "closed": "ห้ามขับผ่าน",
 }
 INFERRED_MAX = 1   # a road with no sensor of its own can never be called flooded, only "watch"
-
-
-def _km(lat1, lon1, lat2, lon2):
-    dlat = (lat2 - lat1) * 111.0
-    dlon = (lon2 - lon1) * 111.0 * math.cos(math.radians((lat1 + lat2) / 2))
-    return math.hypot(dlat, dlon)
 
 
 def _norm(name):
@@ -202,20 +196,20 @@ class RoadRisk:
             for f in floods:
                 if f["code"] in seen:
                     continue
-                if min(_km(a[0], a[1], f["lat"], f["lng"]) for a in anchors) <= NEAR_FLOOD_KM:
+                if min(flat_km(a[0], a[1], f["lat"], f["lng"], km_per_deg_lat=111.0, km_per_deg_lng=111.0) for a in anchors) <= NEAR_FLOOD_KM:
                     on_road.append(f)
                     seen.add(f["code"])
             wet = [f for f in on_road if f["status"] in ("flood", "slight")]
             flood_cm = max((f["level_cm"] or 0) for f in on_road) if on_road else None
             worst = max(on_road, key=lambda f: f["level_cm"] or 0) if on_road else None
 
-            near_rain = min(rain, key=lambda s: _km(lat, lng, s["lat"], s["lng"])) if rain else None
-            rain_km = _km(lat, lng, near_rain["lat"], near_rain["lng"]) if near_rain else None
+            near_rain = min(rain, key=lambda s: flat_km(lat, lng, s["lat"], s["lng"], km_per_deg_lat=111.0, km_per_deg_lng=111.0)) if rain else None
+            rain_km = flat_km(lat, lng, near_rain["lat"], near_rain["lng"], km_per_deg_lat=111.0, km_per_deg_lng=111.0) if near_rain else None
             if rain_km is None or rain_km > NEAR_RAIN_KM:
                 near_rain, rain_km = None, None
 
-            near_gauge = min(gauges, key=lambda g: _km(lat, lng, g["lat"], g["lng"])) if gauges else None
-            gauge_km = _km(lat, lng, near_gauge["lat"], near_gauge["lng"]) if near_gauge else None
+            near_gauge = min(gauges, key=lambda g: flat_km(lat, lng, g["lat"], g["lng"], km_per_deg_lat=111.0, km_per_deg_lng=111.0)) if gauges else None
+            gauge_km = flat_km(lat, lng, near_gauge["lat"], near_gauge["lng"], km_per_deg_lat=111.0, km_per_deg_lng=111.0) if near_gauge else None
             if gauge_km is None or gauge_km > NEAR_GAUGE_KM:
                 near_gauge, gauge_km = None, None
 
@@ -253,9 +247,9 @@ class RoadRisk:
             # A road sensor only names the province when it is genuinely next to the road. The
             # sensors are Bangkok-only and dense, so a loose radius would pull every long road
             # that reaches into a province back into Bangkok.
-            nearest_flood = min(floods, key=lambda f: _km(lat, lng, f["lat"], f["lng"])) if floods else None
+            nearest_flood = min(floods, key=lambda f: flat_km(lat, lng, f["lat"], f["lng"], km_per_deg_lat=111.0, km_per_deg_lng=111.0)) if floods else None
             if nearest_flood:
-                d = _km(lat, lng, nearest_flood["lat"], nearest_flood["lng"])
+                d = flat_km(lat, lng, nearest_flood["lat"], nearest_flood["lng"], km_per_deg_lat=111.0, km_per_deg_lng=111.0)
                 if d <= FLOOD_PROVINCE_KM:
                     refs.append((d, "กรุงเทพมหานคร", nearest_flood.get("district")))
             if near_rain:

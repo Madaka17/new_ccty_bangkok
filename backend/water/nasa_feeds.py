@@ -18,7 +18,6 @@ import csv
 import io
 import json
 from backend.core.atomic_file import write_json_atomic
-import math
 import os
 import threading
 import time
@@ -26,6 +25,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 from backend.core import thai_regions
+from backend.core.geo import haversine_km
 from backend.core.instance import DATA_DIR
 from backend.traffic.area_traffic import area_traffic
 
@@ -50,12 +50,6 @@ def _get(url):
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
         return resp.read()
-
-
-def _km(lat1, lng1, lat2, lng2):
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lng2 - lng1) / 2) ** 2
-    return 6371 * 2 * math.asin(math.sqrt(a))
 
 
 # ---------------------------------------------------------------- FIRMS
@@ -107,7 +101,7 @@ def analyse_fires(points, now, locate=area_traffic.locate):
         "th_24h": len(th),
         "th_prev_24h": prev_th,
         "border_24h": len(fires) - len(th),
-        "near_bkk_24h": sum(1 for p in th if _km(p["lat"], p["lng"], *BANGKOK) <= NEAR_BKK_KM),
+        "near_bkk_24h": sum(1 for p in th if haversine_km(p["lat"], p["lng"], *BANGKOK) <= NEAR_BKK_KM),
         "near_bkk_km": NEAR_BKK_KM,
         "strong_24h": sum(1 for p in th if p["frp"] >= 20),
         "regions": sorted(({"region": r, "count": n} for r, n in regions.items()), key=lambda r: -r["count"]),
@@ -143,7 +137,7 @@ def km_to_thailand(lat, lng):
         return 0
     district = area_traffic.tree.geometries[int(area_traffic.tree.nearest(here))]
     edge = nearest_points(district, here)[0]
-    return round(_km(lat, lng, edge.y, edge.x))
+    return round(haversine_km(lat, lng, edge.y, edge.x))
 
 
 def _point_of(geom):

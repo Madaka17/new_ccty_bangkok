@@ -25,6 +25,7 @@ Served by /api/water/north/route.
 import heapq
 import json
 from backend.core.atomic_file import write_json_atomic
+from backend.core.geo import flat_km
 import math
 import os
 import threading
@@ -191,8 +192,7 @@ def bangkok_days(now):
 # ---------------------------------------------------------------- river network for the map
 def _km(a, b):
     """a, b: (lat, lng)."""
-    kx = 111.32 * math.cos(math.radians((a[0] + b[0]) / 2))
-    return math.hypot((a[1] - b[1]) * kx, (a[0] - b[0]) * 110.54)
+    return flat_km(a[0], a[1], b[0], b[1], km_per_deg_lat=110.54)
 
 
 class RiverNet:

@@ -18,7 +18,7 @@ Points are cached on disk per (district, year). Victim names are dropped before 
 """
 import json
 from backend.core.atomic_file import write_json_atomic
-import math
+from backend.core.geo import haversine_km
 import os
 import ssl
 import sqlite3
@@ -339,15 +339,6 @@ _risk = {
 }
 
 
-def _haversine_m(lat1, lon1, lat2, lon2):
-    R = 6371000.0
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dphi = p2 - p1
-    dl = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    return 2 * R * math.asin(math.sqrt(a))
-
-
 def _camera_rows(cameras, points, years, radius_m):
     """Count points within radius of each camera. Grid-bucket the points so 574 x 60k stays cheap."""
     cell = 0.005  # ~550 m
@@ -380,7 +371,7 @@ def _camera_rows(cameras, points, years, radius_m):
         for di in (-1, 0, 1):
             for dj in (-1, 0, 1):
                 for p in grid.get((gi + di, gj + dj), ()):
-                    if _haversine_m(lat, lon, p["lat"], p["lon"]) <= radius_m:
+                    if haversine_km(lat, lon, p["lat"], p["lon"], radius_km=6371.0) * 1000 <= radius_m:
                         near.append(p)
         cases = len(near)
         injured = sum(p["injured"] for p in near)
@@ -512,7 +503,7 @@ def get_points(camid=None, cameras=None, radius_m=None, lat=None, lon=None, limi
     if lat is None or lon is None:
         out = pts
     else:
-        out = [p for p in pts if not p.get("coarse") and _haversine_m(lat, lon, p["lat"], p["lon"]) <= radius_m]
+        out = [p for p in pts if not p.get("coarse") and haversine_km(lat, lon, p["lat"], p["lon"], radius_km=6371.0) * 1000 <= radius_m]
     out = sorted(out, key=lambda p: p.get("date") or "", reverse=True)[:limit]
     return {"total": len(out), "radius_m": radius_m, "items": out}
 

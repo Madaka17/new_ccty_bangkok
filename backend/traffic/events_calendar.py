@@ -17,6 +17,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from backend.core import thai_regions
+from backend.core.geo import haversine_km
 from backend.core.instance import BASE_DIR
 
 log = logging.getLogger(__name__)
@@ -88,13 +89,6 @@ def _text(event, key, limit, required=False):
     if len(v) > limit:
         raise ValueError(f"{key} is longer than {limit} characters")
     return v
-
-
-def _km(lat1, lng1, lat2, lng2):
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dp, dl = p2 - p1, math.radians(lng2 - lng1)
-    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    return 6371.0 * 2 * math.asin(math.sqrt(a))
 
 
 def _words(title):
@@ -313,7 +307,7 @@ class EventsCalendar:
             if b["source"] != "bma" or b["lat"] is None:
                 continue
             for lg in longdo:
-                if _km(b["lat"], b["lng"], lg["lat"], lg["lng"]) * 1000 <= DEDUP_METERS and _share_word(b["title"], lg["title"]):
+                if haversine_km(b["lat"], b["lng"], lg["lat"], lg["lng"]) * 1000 <= DEDUP_METERS and _share_word(b["title"], lg["title"]):
                     drop.add(id(b))
                     break
         return [i for i in items if id(i) not in drop]

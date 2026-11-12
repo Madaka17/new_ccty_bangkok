@@ -29,6 +29,7 @@ Both are said on the page.
 """
 import json
 from backend.core.atomic_file import write_json_atomic
+from backend.core.geo import flat_km
 import math
 import os
 import threading
@@ -58,8 +59,7 @@ CELL = 0.01
 
 def _km(a, b):
     """Equirectangular km between (lat, lng) points; fine at these distances."""
-    cos = math.cos(math.radians((a[0] + b[0]) / 2))
-    return math.hypot((a[1] - b[1]) * 111.32 * cos, (a[0] - b[0]) * 110.57)
+    return flat_km(a[0], a[1], b[0], b[1])
 
 
 def _closest_on_segment(p, a, b):
