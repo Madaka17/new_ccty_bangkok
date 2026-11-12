@@ -103,7 +103,7 @@ def _ping_loop(em: Emitter):
 PRECHECK_CMD = ["journalctl", "-u", "ssh", "-u", "sshd", "-n", "1", "--no-pager", "-o", "short-iso"]
 
 
-def _precheck(cmd, timeout=15):
+def _precheck(cmd, timeout=5):
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
                            timeout=timeout, stdin=subprocess.DEVNULL)
@@ -120,11 +120,14 @@ def pick_journal_cmd(runner=_precheck):
     return None
 
 
-def _stop_proc(p):
+def _stop_proc(p, group=False):
+    """Stop a child once. Only while it is still running (a finished pid may be recycled)."""
+    if p.poll() is not None:
+        return
     try:
-        if os.name == "posix":
+        if group and os.name == "posix":
             import signal
-            os.killpg(p.pid, signal.SIGTERM)   # whole group: a sudo child must not keep journalctl alive
+            os.killpg(p.pid, signal.SIGTERM)   # sudo child must not keep journalctl alive
         else:
             p.kill()
     except Exception:
@@ -132,6 +135,21 @@ def _stop_proc(p):
             p.kill()
         except Exception:
             pass
+
+
+def _pdeathsig():
+    """preexec_fn: child gets SIGTERM if this process dies (Linux only; silently skipped elsewhere)."""
+    if not sys.platform.startswith("linux"):
+        return None
+
+    def fn():
+        try:
+            import ctypes
+            import signal
+            ctypes.CDLL("libc.so.6", use_errno=True).prctl(1, signal.SIGTERM)  # PR_SET_PDEATHSIG
+        except Exception:
+            pass
+    return fn
 
 
 def _ssh_loop(em: Emitter, procs: list):
@@ -144,10 +162,15 @@ def _ssh_loop(em: Emitter, procs: list):
             if em.stop.wait(30):
                 return
             continue
+        if em.stop.is_set():
+            return
+        use_sudo = cmd[0] == "sudo"
         try:
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                  stdin=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace",
-                                 start_new_session=(os.name == "posix"))
+                                 start_new_session=(use_sudo and os.name == "posix"),
+                                 preexec_fn=_pdeathsig() if os.name == "posix" else None)
+            p._bkk_group = use_sudo
         except OSError:
             return
         procs[:] = [q for q in procs if q.poll() is None] + [p]
@@ -155,7 +178,7 @@ def _ssh_loop(em: Emitter, procs: list):
             ev = parse_ssh_line(line)
             if ev and not em.emit({"type": "ssh", **ev}):
                 break
-        _stop_proc(p)
+        _stop_proc(p, group=use_sudo)
         p.wait()
         if em.stop.is_set():
             return
@@ -174,6 +197,18 @@ def run(out=None, db_path=None, ssh_events=True):
                threading.Thread(target=_ping_loop, args=(em,), daemon=True)]
     if ssh_events:
         threads.append(threading.Thread(target=_ssh_loop, args=(em, procs), daemon=True))
+    if os.name == "posix":
+        import signal
+
+        def on_signal(signum, frame):
+            stop.set()
+            for q in list(procs):
+                _stop_proc(q, group=getattr(q, "_bkk_group", False))
+        for sig in (signal.SIGHUP, signal.SIGTERM):
+            try:
+                signal.signal(sig, on_signal)
+            except (ValueError, OSError):
+                pass
     for t in threads:
         t.start()
     try:
@@ -182,7 +217,7 @@ def run(out=None, db_path=None, ssh_events=True):
     except KeyboardInterrupt:
         stop.set()
     for p in list(procs):
-        _stop_proc(p)
+        _stop_proc(p, group=getattr(p, "_bkk_group", False))
     return 0
 
 

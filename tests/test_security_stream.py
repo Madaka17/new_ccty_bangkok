@@ -106,3 +106,52 @@ def test_pick_journal_cmd_prefers_plain_then_sudo():
         return "line" if cmd[0] == "sudo" else ""
     assert ss.pick_journal_cmd(runner_sudo) == ["sudo", "-n"] + ss.JOURNAL_CMD
     assert ss.pick_journal_cmd(lambda cmd: "") is None
+
+
+def test_stop_proc_skips_finished_process():
+    class P:
+        pid = 1
+        killed = False
+
+        def poll(self):
+            return 0
+
+        def kill(self):
+            self.killed = True
+    p = P()
+    ss._stop_proc(p, group=True)
+    assert not p.killed
+
+
+def test_stop_proc_kills_running_process_on_windows_path(monkeypatch):
+    class P:
+        pid = 1
+        killed = False
+
+        def poll(self):
+            return None
+
+        def kill(self):
+            self.killed = True
+    monkeypatch.setattr(ss.os, "name", "nt")
+    p = P()
+    ss._stop_proc(p, group=True)
+    assert p.killed
+
+
+def test_ssh_loop_does_not_start_after_stop(monkeypatch):
+    stop = threading.Event()
+    stop.set()
+    started = []
+    monkeypatch.setattr(ss.shutil, "which", lambda n: "/bin/journalctl")
+    monkeypatch.setattr(ss, "pick_journal_cmd", lambda: ss.JOURNAL_CMD)
+    monkeypatch.setattr(ss.subprocess, "Popen", lambda *a, **k: started.append(1))
+    ss._ssh_loop(ss.Emitter(io.StringIO(), stop), [])
+    assert started == []
+
+
+def test_pdeathsig_only_on_linux(monkeypatch):
+    monkeypatch.setattr(ss.sys, "platform", "win32")
+    assert ss._pdeathsig() is None
+    monkeypatch.setattr(ss.sys, "platform", "linux")
+    assert callable(ss._pdeathsig())
