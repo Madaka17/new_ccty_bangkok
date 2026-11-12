@@ -183,3 +183,21 @@ def test_cli_test_prints_ok_without_token(monkeypatch, capsys):
     monkeypatch.setattr(alerts, "load_config", lambda *a, **k: ("", ""))
     assert alerts.main(["--test"]) == 1
     assert "failed" in capsys.readouterr().out
+
+
+def test_ssh_accepted_cooldown_is_per_ip(tmp_path):
+    a, clock, s = mk(tmp_path)
+    assert len(a.observe(ssh("accepted", ip="9.9.9.9"))) == 1
+    clock.t += 60
+    assert len(a.observe(ssh("accepted", ip="8.8.8.8"))) == 1
+    clock.t += 60
+    assert a.observe(ssh("accepted", ip="9.9.9.9")) == []
+    assert len(s.sent) == 2
+
+
+def test_fired_entries_pruned(tmp_path):
+    a, clock, s = mk(tmp_path)
+    a.observe(ssh("accepted", ip="9.9.9.9"))
+    clock.t += alerts.COOLDOWN + 1
+    a.observe(ssh("accepted", ip="8.8.8.8"))
+    assert list(a._fired) == [("ssh_accepted", "8.8.8.8")]

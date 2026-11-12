@@ -56,6 +56,7 @@ def line_sender(token, user_id, timeout=10):
                 code = r.status
         except urllib.error.HTTPError as e:
             code = e.code
+            e.close()
         except Exception as e:
             _log.warning("LINE push failed (%s)", type(e).__name__)
             return 0
@@ -107,7 +108,8 @@ class Alerter:
                 if ev.get("event") == "accepted":
                     self._maybe(out, now, "ssh_accepted", "critical",
                                 f"🚨 มีคนเข้า SSH เครื่อง Pi สำเร็จจากนอกบ้าน: {ev.get('ip')} "
-                                f"({_where(ev.get('country'), ev.get('cc'))}) ผู้ใช้ {ev.get('user')}")
+                                f"({_where(ev.get('country'), ev.get('cc'))}) ผู้ใช้ {ev.get('user')}",
+                                key=ev.get("ip"))
                 elif ev.get("event") in ("failed", "invalid"):
                     self._ssh.append((now, ev.get("ip"), _where(ev.get("country"), ev.get("cc"))))
                     self._trim(self._ssh, now, SSH_BURST[1])
@@ -134,11 +136,12 @@ class Alerter:
         while dq and now - dq[0][0] > window:
             dq.popleft()
 
-    def _maybe(self, out, now, rule, level, text):
-        last = self._fired.get(rule)
-        if last is not None and now - last < COOLDOWN:
+    def _maybe(self, out, now, rule, level, text, key=None):
+        self._fired = {k: t for k, t in self._fired.items() if now - t < COOLDOWN}
+        k = (rule, key)
+        if k in self._fired:
             return
-        self._fired[rule] = now
+        self._fired[k] = now
         out.append({"type": "alert", "level": level, "text": text, "rule": rule})
 
     # ---- LINE --------------------------------------------------------

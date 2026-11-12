@@ -91,3 +91,18 @@ def test_emitter_writes_one_line_each():
     em.emit({"type": "hello"})
     em.emit({"type": "ping"})
     assert [json.loads(x)["type"] for x in buf.getvalue().splitlines()] == ["hello", "ping"]
+
+
+def test_pick_journal_cmd_prefers_plain_then_sudo():
+    calls = []
+
+    def runner_plain(cmd):
+        calls.append(cmd)
+        return "line"
+    assert ss.pick_journal_cmd(runner_plain) == ss.JOURNAL_CMD
+    assert len(calls) == 1 and calls[0][0] == "journalctl"
+
+    def runner_sudo(cmd):
+        return "line" if cmd[0] == "sudo" else ""
+    assert ss.pick_journal_cmd(runner_sudo) == ["sudo", "-n"] + ss.JOURNAL_CMD
+    assert ss.pick_journal_cmd(lambda cmd: "") is None

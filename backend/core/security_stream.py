@@ -100,32 +100,65 @@ def _ping_loop(em: Emitter):
             return
 
 
+PRECHECK_CMD = ["journalctl", "-u", "ssh", "-u", "sshd", "-n", "1", "--no-pager", "-o", "short-iso"]
+
+
+def _precheck(cmd, timeout=15):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           timeout=timeout, stdin=subprocess.DEVNULL)
+    except Exception:
+        return ""
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def pick_journal_cmd(runner=_precheck):
+    """Follow command whose pre-check printed output: plain journalctl first, then sudo -n. None if neither."""
+    for prefix in ([], ["sudo", "-n"]):
+        if runner(prefix + PRECHECK_CMD):
+            return prefix + JOURNAL_CMD
+    return None
+
+
+def _stop_proc(p):
+    try:
+        if os.name == "posix":
+            import signal
+            os.killpg(p.pid, signal.SIGTERM)   # whole group: a sudo child must not keep journalctl alive
+        else:
+            p.kill()
+    except Exception:
+        try:
+            p.kill()
+        except Exception:
+            pass
+
+
 def _ssh_loop(em: Emitter, procs: list):
     from launch.security_check.collect import parse_ssh_line
     if shutil.which("journalctl") is None:
         return  # not a systemd host (e.g. the Windows test run): no ssh events
-    cmds = [JOURNAL_CMD, ["sudo", "-n"] + JOURNAL_CMD]
-    idx = 0
     while not em.stop.is_set():
-        started = time.time()
-        got_line = False
+        cmd = pick_journal_cmd()
+        if cmd is None:
+            if em.stop.wait(30):
+                return
+            continue
         try:
-            p = subprocess.Popen(cmds[idx], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                 stdin=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace")
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                 stdin=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace",
+                                 start_new_session=(os.name == "posix"))
         except OSError:
             return
-        procs.append(p)
+        procs[:] = [q for q in procs if q.poll() is None] + [p]
         for line in p.stdout:
-            got_line = True
             ev = parse_ssh_line(line)
             if ev and not em.emit({"type": "ssh", **ev}):
                 break
+        _stop_proc(p)
         p.wait()
         if em.stop.is_set():
             return
-        if p.returncode != 0 and not got_line and time.time() - started < 3 and idx == 0:
-            idx = 1  # plain journalctl refused (no permission): try sudo -n
-            continue
         em.stop.wait(5)
 
 
@@ -149,10 +182,7 @@ def run(out=None, db_path=None, ssh_events=True):
     except KeyboardInterrupt:
         stop.set()
     for p in list(procs):
-        try:
-            p.kill()
-        except Exception:
-            pass
+        _stop_proc(p)
     return 0
 
 

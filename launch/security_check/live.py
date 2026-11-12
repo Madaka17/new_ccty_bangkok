@@ -259,7 +259,7 @@ def build_stream_cmd(target):
     remote = (f"cd {repo} && INSTANCE_DIR={repo}/instances/production "
               ".venv/bin/python -u -m backend.core.security_stream")
     argv = ["ssh", "-i", pi["key"], "-o", "BatchMode=yes", "-o", "ServerAliveInterval=15",
-            "-o", "ServerAliveCountMax=3", "-o", "ConnectTimeout=8", f"{pi['user']}@{pi['host']}", remote]
+            "-o", "ServerAliveCountMax=3", "-o", "ConnectTimeout=10", f"{pi['user']}@{pi['host']}", remote]
     return argv, None, None
 
 
@@ -276,8 +276,15 @@ class StreamRunner:
             try:
                 flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
                 self.proc = subprocess.Popen(argv, env=env, cwd=cwd, stdout=subprocess.PIPE,
-                                             stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+                                             stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
                                              text=True, encoding="utf-8", errors="replace", creationflags=flags)
+                last_err = []
+
+                def drain(f=self.proc.stderr, keep=last_err):
+                    for ln in f:
+                        if ln.strip():
+                            keep[:] = [ln.strip()[:200]]
+                threading.Thread(target=drain, daemon=True).start()
                 for line in self.proc.stdout:
                     try:
                         msg = json.loads(line)
@@ -292,6 +299,9 @@ class StreamRunner:
                     if self.stop.is_set():
                         break
                 self.proc.wait(timeout=5)
+                rc = self.proc.returncode
+                tail = last_err[0] if last_err else ""
+                log.info("stream exit code %s, last stderr line: %s", rc, tail or "-")
             except Exception as e:
                 log.warning("stream error (%s)", type(e).__name__)
             finally:
