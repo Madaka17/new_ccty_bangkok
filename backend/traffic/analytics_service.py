@@ -24,6 +24,9 @@ from backend.core.telemetry_service import telemetry
 from backend.traffic.traffic_service import traffic
 
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
+from backend.core.log import get_logger
+
+log = get_logger("Analytics")
 RSC_POINTS_GLOB = os.path.join(DATA_DIR, "cache", "rsc", "points_*.json")
 BKK_TZ = timezone(timedelta(hours=7))
 
@@ -97,7 +100,7 @@ def _safe(fn, default):
     try:
         return fn()
     except Exception as e:
-        print(f"[Analytics] {getattr(fn, '__name__', 'part')}: {e}")
+        log.info(f"{getattr(fn, '__name__', 'part')}: {e}")
         return default
 
 

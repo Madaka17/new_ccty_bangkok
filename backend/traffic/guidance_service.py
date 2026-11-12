@@ -21,6 +21,9 @@ import time
 from backend.core import local_llm
 from backend.core.gemini import gemini_client
 from backend.core.geo import flat_km
+from backend.core.log import get_logger
+
+log = get_logger("Guidance")
 
 try:
     from google.genai import types as genai_types
@@ -289,9 +292,9 @@ class GuidanceService:
             if out:
                 self._ai_text = out
                 self.ai_mode = mode
-                print(f"[Guidance] {mode} rewrote {len(out)} corridors")
+                log.info(f"{mode} rewrote {len(out)} corridors")
         except Exception as e:
-            print(f"[Guidance] AI failed, using template: {e}")
+            log.warning(f"AI failed, using template: {e}")
         self._ai_sig, self._ai_at = sig, now
 
     # ------------------------------------------------------------------ loop
@@ -316,7 +319,7 @@ class GuidanceService:
             try:
                 self.refresh()
             except Exception as e:
-                print(f"[Guidance] refresh error: {e}")
+                log.warning(f"refresh error: {e}")
             time.sleep(BUILD_INTERVAL)
 
     def status(self):

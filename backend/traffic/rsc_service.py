@@ -31,6 +31,9 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
+from backend.core.log import get_logger
+
+log = get_logger("RSC")
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "rsc")
 SUMMARY_CACHE_FILE = os.path.join(CACHE_DIR, "summary.json")
 DB_PATH = os.path.join(DATA_DIR, "vehicle_counts.db")
@@ -240,7 +243,7 @@ def get_summary():
             os.makedirs(CACHE_DIR, exist_ok=True)
             write_json_atomic(SUMMARY_CACHE_FILE, data, ensure_ascii=False)
         except Exception as e:
-            print(f"[RSC] Failed to cache summary: {e}")
+            log.warning(f"Failed to cache summary: {e}")
 
         with _summary_lock:
             _summary_cache.update(ts=time.time(), data=data)
@@ -254,7 +257,7 @@ def get_summary():
                 cached["risk"] = risk_status()
                 with _summary_lock:
                     _summary_cache.update(ts=time.time(), data=cached)
-                print(f"[RSC] Fresh fetch failed ({e}), using disk cache")
+                log.warning(f"Fresh fetch failed ({e}), using disk cache")
                 return cached
             except Exception:
                 pass
@@ -535,7 +538,7 @@ def warm(cameras):
         try:
             get_summary()
         except Exception as e:
-            print(f"[RSC] Summary warm note: {e}")
+            log.info(f"Summary warm note: {e}")
 
     threading.Thread(target=_warm_summary, daemon=True, name="rsc-summary-warm").start()
     build_camera_risk(cameras, background=True)

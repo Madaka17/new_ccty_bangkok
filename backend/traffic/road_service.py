@@ -47,6 +47,9 @@ except Exception:  # pragma: no cover - the template covers the no-key case
 from backend.core import local_llm
 from backend.core.gemini import gemini_client
 from backend.core.geo import flat_km
+from backend.core.log import get_logger
+
+log = get_logger("Roads")
 
 AI_MODEL = os.getenv("ROAD_AI_MODEL", os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"))
 AI_INTERVAL = int(os.getenv("ROAD_AI_SECONDS", "360"))
@@ -420,7 +423,7 @@ class RoadRisk:
                     "source": source,
                 }
         except Exception as e:  # noqa: BLE001
-            print(f"[Roads] AI failed, using template: {str(e)[:140]}")
+            log.warning(f"AI failed, using template: {str(e)[:140]}")
         with self.lock:
             self.analysis = {**out, "counts": counts, "updated_at": int(now)}
         self._ai_sig, self._ai_at = sig, now
@@ -445,7 +448,7 @@ class RoadRisk:
             except Exception as e:  # noqa: BLE001
                 with self.lock:
                     self.error = str(e)[:200]
-                print(f"[Roads] build failed: {e}")
+                log.warning(f"build failed: {e}")
             time.sleep(BUILD_INTERVAL)
 
     def _ai_loop(self):
@@ -456,7 +459,7 @@ class RoadRisk:
                 try:
                     self._analyse(self.items, force=True)
                 except Exception as e:  # noqa: BLE001 - the read must never kill the thread
-                    print(f"[Roads] analysis failed: {e}")
+                    log.warning(f"analysis failed: {e}")
             time.sleep(max(5.0, AI_INTERVAL - (time.time() - t0)) if self.items else 10.0)
 
     # ------------------------------------------------------------ api
