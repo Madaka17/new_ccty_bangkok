@@ -37,7 +37,7 @@ def _web_findings(checks, trusted_origin=False):
 
 
 def _extra(summary, ssh, owner_ips):
-    owners = set(owner_ips)
+    owners = list(owner_ips)
     counts = {}
     for src in ((summary or {}).get("top_ips") or [], (ssh or {}).get("failed_ips") or []):
         for x in src:
@@ -46,7 +46,7 @@ def _extra(summary, ssh, owner_ips):
     for ip, n in sorted(counts.items(), key=lambda kv: -kv[1]):
         cc = geo.lookup(ip)
         rows.append({"ip": ip, "cc": cc, "country": geo.country_name(cc) if cc else "",
-                     "n": n, "owner": ip in owners})
+                     "n": n, "owner": rules._same_home(ip, owners)})
     return {"ssh": ssh, "owner_ips": list(owner_ips), "geo": rows}
 
 
@@ -64,12 +64,15 @@ def main(argv=None):
     if a.target == "production":
         summary = collect.pi_attack_summary(a.days)
         config = collect.pi_config_flags()
-        host = rules.evaluate_host(collect.pi_host_raw())
+        host_raw = collect.pi_host_raw()
+        host = rules.evaluate_host(host_raw)
         token = collect.pi_self_check_token()
         web = collect.web_checks(PROD_URL, self_check_token=token)
         ssh_log = collect.pi_ssh_log(a.days)
         pub = collect.public_ip()
-        host = host + rules.evaluate_ssh_log(ssh_log, owner_ips=[pub] if pub else [])
+        pw_auth = ((host_raw or {}).get("sshd") or {}).get("passwordauthentication")
+        host = host + rules.evaluate_ssh_log(
+            ssh_log, owner_ips=[pub] if pub else [], password_auth=pw_auth)
     else:
         summary = collect.local_attack_summary(os.path.join(ROOT, "instances", "test"), a.days)
         config = collect.local_config_flags(os.path.join(ROOT, "instances", "test", ".env"))

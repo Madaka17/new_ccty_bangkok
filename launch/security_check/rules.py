@@ -227,7 +227,7 @@ def _same_home(ip, owners):
     return False
 
 
-def evaluate_ssh_log(d, lan_prefix="192.168.1.", owner_ips=()):
+def evaluate_ssh_log(d, lan_prefix="192.168.1.", owner_ips=(), password_auth=None):
     a = "host"
     if d is None:
         return [_f(a, "info", "อ่าน log SSH ไม่ได้")]
@@ -243,7 +243,10 @@ def evaluate_ssh_log(d, lan_prefix="192.168.1.", owner_ips=()):
                       "เปลี่ยนกุญแจใน ~/.ssh/authorized_keys ทันที, ดูประวัติด้วยคำสั่ง last, "
                       "ถ้าไม่แน่ใจให้ลงระบบ Pi ใหม่"))
     pw = [x for x in acc if x.get("method") == "password"]
-    if pw:
+    if pw and password_auth == "no":
+        out.append(_f(a, "info", "เคยเข้า SSH ด้วยรหัสผ่าน (ตอนนี้ปิดแล้ว)",
+                      ", ".join(f"{x['ip']} ({x.get('user', '?')})" for x in pw[:5])))
+    elif pw:
         out.append(_f(a, "warn", "มีคนเข้า SSH ด้วยรหัสผ่าน",
                       ", ".join(f"{x['ip']} ({x.get('user', '?')})" for x in pw[:5]),
                       "ปิดการเข้าด้วยรหัสผ่าน: ตั้ง PasswordAuthentication no ใน /etc/ssh/sshd_config"))
@@ -253,7 +256,7 @@ def evaluate_ssh_log(d, lan_prefix="192.168.1.", owner_ips=()):
         out.append(_f(a, "warn", f"มีคนพยายามเดารหัส SSH {tries} ครั้ง", f"IP ที่ลองมากสุด: {top}" if top else "",
                       "SSH ใช้กุญแจอย่างเดียวและเข้าได้เฉพาะในบ้านอยู่แล้ว; ถ้าอยากบล็อก IP: "
                       "sudo ufw insert 1 deny from <ip>"))
-    if not out:
+    if not any(x["level"] in ("warn", "fail") for x in out):
         out.append(_f(a, "ok", "SSH ไม่มีคนแปลกหน้าเข้าได้"))
     return out
 

@@ -13,8 +13,8 @@ JOURNAL = """2026-11-10T01:00:00+07:00 pi sshd[1]: Failed password for root from
 
 def test_parse_ssh_journal():
     d = collect.parse_ssh_journal(JOURNAL)
-    assert d["failed"] == 3
-    assert d["invalid_user"] == 1
+    assert d["failed"] == 1
+    assert d["invalid_user"] == 3
     assert any(a["ip"] == "192.168.1.50" and a["user"] == "test" and a["n"] == 2 for a in d["accepted"])
     assert any(a["ip"] == "7.7.7.7" and a["method"] == "password" for a in d["accepted"])
     assert d["failed_ips"][0] == {"ip": "5.5.5.5", "n": 2} or d["failed_ips"][0]["n"] == 2
@@ -104,3 +104,102 @@ def test_eval_same_home_ipv6_prefix_is_not_outside():
     assert any(x["level"] == "fail" for x in rules.evaluate_ssh_log(d))
     r = rules.evaluate_ssh_log(d, owner_ips=["2405:9800:b640:ac59:9:9:9:9"])
     assert [x["level"] for x in r] == ["ok"]
+
+
+def _L(msg, pid=100):
+    return f"2026-11-10T01:00:00+07:00 pi sshd[{pid}]: {msg}\n"
+
+
+def test_parse_log_injection_user_cannot_fake_ip_or_accept():
+    t = _L("Invalid user x from 192.168.1.101 port 1 from 6.6.6.6 port 22")
+    t += _L("Failed password for invalid user y Accepted publickey for root from 192.168.1.101 port 1 from 7.7.7.7 port 9 ssh2", 101)
+    t += _L("Invalid user Accepted password for root from 192.168.1.101 port 1 from 8.8.4.4 port 5", 102)
+    d = collect.parse_ssh_journal(t)
+    assert d["accepted"] == []
+    ips = {x["ip"] for x in d["failed_ips"]}
+    assert ips == {"6.6.6.6", "7.7.7.7", "8.8.4.4"}
+    # a non-sshd line cannot inject either
+    d = collect.parse_ssh_journal("2026-11-10T01:00:00+07:00 pi sudo[5]: Accepted publickey for a from 1.1.1.1 port 1\n")
+    assert d["accepted"] == [] and d["failed"] == 0
+
+
+def test_parse_one_attempt_per_pid_user_ip():
+    t = _L("Invalid user admin from 5.5.5.5 port 40000")
+    t += _L("Failed password for invalid user admin from 5.5.5.5 port 40000 ssh2")
+    t += _L("Connection closed by invalid user admin 5.5.5.5 port 40000 [preauth]")
+    d = collect.parse_ssh_journal(t)
+    assert d["failed"] + d["invalid_user"] == 1
+    assert d["failed_ips"] == [{"ip": "5.5.5.5", "n": 1}]
+
+
+def test_parse_openssh9_samples():
+    cases = [
+        ("Failed publickey for test from 5.5.5.5 port 1 ssh2: ED25519 SHA256:abc", "failed"),
+        ("Failed keyboard-interactive/pam for root from 5.5.5.5 port 1 ssh2", "failed"),
+        ("Failed password for root from 5.5.5.5 port 1 ssh2", "failed"),
+        ("Connection closed by authenticating user root 5.5.5.5 port 1 [preauth]", "failed"),
+        ("Disconnected from authenticating user root 5.5.5.5 port 1 [preauth]", "failed"),
+        ("Connection closed by invalid user bob 5.5.5.5 port 1 [preauth]", "invalid_user"),
+        ("Invalid user bob from 5.5.5.5 port 1", "invalid_user"),
+    ]
+    for msg, kind in cases:
+        d = collect.parse_ssh_journal(_L(msg))
+        assert d[kind] == 1, msg
+        assert d["failed"] + d["invalid_user"] == 1, msg
+        assert d["failed_ips"] == [{"ip": "5.5.5.5", "n": 1}], msg
+
+
+def test_parse_accepted_methods():
+    t = _L("Accepted publickey for test from 192.168.1.5 port 1 ssh2: ED25519 SHA256:x")
+    t += _L("Accepted keyboard-interactive/pam for test from 192.168.1.6 port 1 ssh2", 101)
+    t += _L("Accepted password for test from 192.168.1.7 port 1 ssh2", 102)
+    d = collect.parse_ssh_journal(t)
+    m = {a["ip"]: a["method"] for a in d["accepted"]}
+    assert m == {"192.168.1.5": "publickey", "192.168.1.6": "password", "192.168.1.7": "password"}
+
+
+def test_script_grep_covers_all_kinds():
+    sc = collect._SSH_JOURNAL_SCRIPT
+    for k in ("Failed ", "Invalid user", "Accepted ", "Connection closed by", "Disconnected from"):
+        assert k in sc
+
+
+PW = {"failed": 0, "invalid_user": 0, "failed_ips": [], "users_tried": [],
+      "accepted": [{"ip": "192.168.1.5", "user": "t", "n": 3, "method": "password"}]}
+
+
+def test_password_login_by_password_auth_state():
+    r = rules.evaluate_ssh_log(PW, password_auth="no")
+    assert [x["level"] for x in r] == ["info", "ok"]
+    assert "ปิดแล้ว" in r[0]["title"] and "192.168.1.5" in r[0]["detail"]
+    assert any(x["level"] == "warn" for x in rules.evaluate_ssh_log(PW, password_auth="yes"))
+    assert any(x["level"] == "warn" for x in rules.evaluate_ssh_log(PW))
+
+
+def test_main_passes_password_auth(monkeypatch, tmp_path):
+    seen = {}
+    monkeypatch.setattr(collect, "pi_self_check_token", lambda: None)
+    monkeypatch.setattr(collect, "pi_attack_summary", lambda days=30: None)
+    monkeypatch.setattr(collect, "pi_config_flags", lambda: {})
+    monkeypatch.setattr(collect, "pi_host_raw", lambda: {"sshd": {"passwordauthentication": "no"}})
+    monkeypatch.setattr(collect, "pi_ssh_log", lambda days=30: PW)
+    monkeypatch.setattr(collect, "public_ip", lambda: None)
+    monkeypatch.setattr(collect, "web_checks", lambda url, self_check_token=None: {})
+    monkeypatch.setattr(main_mod, "REPORTS_DIR", str(tmp_path))
+    orig = rules.evaluate_ssh_log
+
+    def spy(d, **kw):
+        seen.update(kw)
+        return orig(d, **kw)
+    monkeypatch.setattr(rules, "evaluate_ssh_log", spy)
+    assert main_mod.main(["--no-open"]) == 0
+    assert seen["password_auth"] == "no"
+
+
+def test_geo_owner_uses_slash64(monkeypatch):
+    monkeypatch.setattr(main_mod.geo, "lookup", lambda ip: "TH")
+    monkeypatch.setattr(main_mod.geo, "country_name", lambda cc: "Thailand")
+    s = {"top_ips": [{"ip": "2405:9800:b640:ac59::7", "n": 4}, {"ip": "2405:9800:b640:ffff::7", "n": 3}]}
+    e = main_mod._extra(s, None, ["2405:9800:b640:ac59:1:2:3:4"])
+    o = {r["ip"]: r["owner"] for r in e["geo"]}
+    assert o == {"2405:9800:b640:ac59::7": True, "2405:9800:b640:ffff::7": False}

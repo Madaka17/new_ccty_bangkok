@@ -194,13 +194,18 @@ _SSH_JOURNAL_SCRIPT = r'''
 days="$1"
 o=$(journalctl -u ssh -u sshd --since "$days days ago" --no-pager -o short-iso 2>/dev/null)
 if [ -z "$o" ]; then o=$(sudo -n journalctl -u ssh -u sshd --since "$days days ago" --no-pager -o short-iso 2>/dev/null); fi
-echo "$o" | grep -E 'Failed password for|Invalid user|Accepted (publickey|password) for'
+echo "$o" | grep -E 'sshd(-session)?\[[0-9]+\]: (Failed |Invalid user|Accepted |Connection closed by|Disconnected from)'
 true
 '''
 
-_RE_FAILED = re.compile(r"Failed password for (?:invalid user )?(\S+) from (\S+)")
-_RE_INVALID = re.compile(r"Invalid user (\S+) from (\S+)")
-_RE_ACCEPT = re.compile(r"Accepted (publickey|password) for (\S+) from (\S+)")
+# short-iso line = "TS host sshd[pid]: message". Every pattern is anchored on the message start and the
+# user part is greedy so the LAST " from IP port N" wins: a hostile user name cannot fake the IP.
+_RE_LINE = re.compile(r"^\S+ \S+ sshd(?:-session)?\[(\d+)\]: (.*)$")
+_RE_ACCEPT = re.compile(r"^Accepted (publickey|password|keyboard-interactive/pam) for (.*) from (\S+) port \d+")
+_RE_FAILED = re.compile(r"^Failed (?:password|publickey|keyboard-interactive/pam) for (invalid user )?(.*) from (\S+) port \d+")
+_RE_INVALID = re.compile(r"^Invalid user (.*) from (\S+)(?: port \d+)?")
+_RE_AUTHFAIL = re.compile(r"^(?:Connection closed by|Disconnected from) authenticating user (.*) (\S+) port \d+")
+_RE_CLOSED_INVALID = re.compile(r"^Connection closed by invalid user (.*) (\S+) port \d+")
 
 
 def _top(counter, key, limit=10):
@@ -208,25 +213,42 @@ def _top(counter, key, limit=10):
 
 
 def parse_ssh_journal(text):
-    """Pure parser for `journalctl -u ssh -o short-iso` text."""
-    failed = invalid = 0
-    accepted, ips, users = {}, {}, {}
+    """Pure parser for `journalctl -u ssh -o short-iso` text. One attempt per (pid, user, ip)."""
+    accepted, attempts = {}, {}
     for line in (text or "").splitlines():
-        m = _RE_ACCEPT.search(line)
+        lm = _RE_LINE.match(line)
+        if not lm:
+            continue
+        pid, msg = lm.group(1), lm.group(2)
+        m = _RE_ACCEPT.match(msg)
         if m:
-            k = (m.group(3), m.group(2), m.group(1))
+            meth = "publickey" if m.group(1) == "publickey" else "password"
+            k = (m.group(3), m.group(2), meth)
             accepted[k] = accepted.get(k, 0) + 1
             continue
-        m = _RE_FAILED.search(line)
+        inv = False
+        m = _RE_FAILED.match(msg)
         if m:
-            failed += 1
+            inv, user, ip = bool(m.group(1)), m.group(2), m.group(3)
+        elif (m := _RE_INVALID.match(msg)):
+            inv, user, ip = True, m.group(1), m.group(2)
+        elif (m := _RE_CLOSED_INVALID.match(msg)):
+            inv, user, ip = True, m.group(1), m.group(2)
+        elif (m := _RE_AUTHFAIL.match(msg)):
+            user, ip = m.group(1), m.group(2)
         else:
-            m = _RE_INVALID.search(line)
-            if not m:
-                continue
+            continue
+        key = (pid, user, ip)
+        attempts[key] = attempts.get(key, False) or inv
+    failed = invalid = 0
+    ips, users = {}, {}
+    for (_pid, user, ip), inv in attempts.items():
+        if inv:
             invalid += 1
-        users[m.group(1)] = users.get(m.group(1), 0) + 1
-        ips[m.group(2)] = ips.get(m.group(2), 0) + 1
+        else:
+            failed += 1
+        users[user] = users.get(user, 0) + 1
+        ips[ip] = ips.get(ip, 0) + 1
     acc = [{"ip": ip, "user": u, "method": meth, "n": n} for (ip, u, meth), n in sorted(accepted.items())]
     return {"failed": failed, "invalid_user": invalid, "accepted": acc,
             "failed_ips": _top(ips, "ip"), "users_tried": _top(users, "user")}

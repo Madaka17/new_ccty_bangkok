@@ -74,3 +74,28 @@ def test_project_corners():
     assert geo.project(90, -180) == (0, 0)
     assert geo.project(-90, 180) == (1000, 500)
     assert geo.project(0, 0, 200, 100) == (100, 50)
+
+
+def test_range_boundaries_inclusive(geodir):
+    assert geo.lookup("8.8.8.0") == "US" and geo.lookup("8.8.8.255") == "US"
+    assert geo.lookup("8.8.7.255") is None and geo.lookup("8.8.9.0") is None
+    assert geo.lookup("1.0.0.0") == "AU" and geo.lookup("1.0.0.255") == "AU"
+
+
+def test_ipv4_mapped_ipv6(geodir):
+    assert geo.lookup("::ffff:8.8.8.8") == "US"
+    assert geo.lookup("::ffff:10.1.2.3") is None
+
+
+def test_land_path_reversed_and_multi_arc(geodir):
+    topo = {"type": "Topology", "transform": {"scale": [1, 1], "translate": [0, 0]},
+            "arcs": [[[10, 10], [10, 0], [0, 10]], [[20, 20], [-10, 0], [0, -10]]],
+            "objects": {"land": {"type": "Polygon", "arcs": [[0, 1]]}}}
+    (geodir / "land-110m.json").write_text(json.dumps(topo), encoding="utf-8")
+    d = geo.land_path(360, 180)
+    assert d.count("M") == 1 and d.count("L") == 4  # 3 + 3 points, joint shared
+    topo["objects"]["land"]["arcs"] = [[0, ~1]]
+    (geodir / "land-110m.json").write_text(json.dumps(topo), encoding="utf-8")
+    d2 = geo.land_path(360, 180)
+    assert d2.count("L") == 4 and d2 != d
+    assert "nan" not in d2.lower()

@@ -19,7 +19,7 @@ import urllib.request
 from datetime import date
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-GEO_DIR = os.environ.get("BKK_GEO_DIR") or os.path.join(ROOT, "local", "geo")
+GEO_DIR = os.environ.get("BKK_GEO_DIR") or os.path.join(ROOT, "local", "geo")  # default at import; _dir() re-reads env
 DBIP_URL = "https://download.db-ip.com/free/dbip-country-lite-{ym}.csv.gz"
 
 
@@ -88,6 +88,8 @@ class GeoDB:
             a = ipaddress.ip_address(str(ip).strip())
         except ValueError:
             return None
+        if a.version == 6 and a.ipv4_mapped is not None:
+            a = a.ipv4_mapped
         if a.is_private or a.is_loopback or a.is_link_local or a.is_multicast or a.is_unspecified:
             return None
         self._load()
