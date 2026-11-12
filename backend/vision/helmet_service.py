@@ -21,8 +21,6 @@ The API budget is bounded: at most HELMET_PATROL_MAX_PER_HOUR agent calls, HELME
 crops per camera per cycle and one visit per camera every HELMET_PATROL_COOLDOWN seconds.
 Assistive log, not an enforcement record: confidence and both images are kept for a person to check.
 """
-import base64
-import csv
 import json
 import os
 import queue
@@ -42,6 +40,7 @@ from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 from backend.vision.remote_yolo import is_remote, load_yolo, weights_available
 from backend.vision.yolo_switch import YoloOff
+from backend.vision.patrol_common import PatrolStore, archive_evidence, ask_cloud_vision, clean_cache_dir
 from backend.vision.frame_utils import fingerprint, iou, safe_id, safe_name, same_scene, write_jpeg
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "helmet")
 ARCHIVE_DIR = os.getenv("HELMET_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", DEFAULT_BMA_DATA_DIR), "helmet"))
@@ -94,6 +93,7 @@ class HelmetPatrol:
         self.vision = vision
         self.scanner = scanner
         self.lock = threading.Lock()
+        self._open_store()
         self._last_visit = {}         # camid -> ts
         self._last_frame = {}         # camid -> fingerprint of the last snapshot we captured from
         self._last_boxes = {}         # camid -> [(x1,y1,x2,y2), ...] captured last time (parked / frozen bikes)
@@ -145,48 +145,36 @@ class HelmetPatrol:
         return self.local_det is not None
 
     # ------------------------------------------------------------ storage
+    def _open_store(self):
+        self._store = PatrolStore(self.db_path, "helmet_checks", """
+        CREATE TABLE IF NOT EXISTS helmet_checks (
+            id          TEXT PRIMARY KEY,
+            ts          INTEGER NOT NULL,
+            camid       TEXT NOT NULL,
+            title       TEXT,
+            district    TEXT,
+            box         TEXT,               -- [x1,y1,x2,y2] on the frame
+            verdict     TEXT NOT NULL,      -- pending | helmet | no_helmet | unclear | error
+            source      TEXT,               -- local | gemini | claude
+            riders      INTEGER,
+            no_helmet   INTEGER,
+            confidence  REAL,
+            note        TEXT,
+            archive     TEXT                -- evidence frame on the data drive when no_helmet
+        )""",
+                                  "CREATE INDEX IF NOT EXISTS helmet_checks_ts ON helmet_checks(ts)", self.lock)
+
     def _init_db(self):
-        conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS helmet_checks (
-                id          TEXT PRIMARY KEY,
-                ts          INTEGER NOT NULL,
-                camid       TEXT NOT NULL,
-                title       TEXT,
-                district    TEXT,
-                box         TEXT,               -- [x1,y1,x2,y2] on the frame
-                verdict     TEXT NOT NULL,      -- pending | helmet | no_helmet | unclear | error
-                source      TEXT,               -- local | gemini | claude
-                riders      INTEGER,
-                no_helmet   INTEGER,
-                confidence  REAL,
-                note        TEXT,
-                archive     TEXT                -- evidence frame on the data drive when no_helmet
-            )""")
-        conn.execute("CREATE INDEX IF NOT EXISTS helmet_checks_ts ON helmet_checks(ts)")
-        conn.commit()
-        conn.close()
+        self._store.init()
 
     def _db(self):
-        conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=10)
-        conn.row_factory = sqlite3.Row
-        return conn
+        return self._store.connect()
 
     def _insert(self, row):
-        with self.lock:
-            conn = self._db()
-            conn.execute("INSERT OR REPLACE INTO helmet_checks VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", row)
-            conn.commit()
-            conn.close()
+        self._store.insert(row)
 
     def _update(self, hid, **fields):
-        keys = list(fields)
-        with self.lock:
-            conn = self._db()
-            conn.execute(f"UPDATE helmet_checks SET {', '.join(k + ' = ?' for k in keys)} WHERE id = ?",
-                         [fields[k] for k in keys] + [hid])
-            conn.commit()
-            conn.close()
+        self._store.update(hid, **fields)
 
     # ------------------------------------------------------------ paths
     @staticmethod
@@ -489,75 +477,17 @@ class HelmetPatrol:
         print(f"[Helmet] NO HELMET at {cam.get('title') or camid} ({bad}/{riders}, {conf:.0%})" + (f" -> {archived}" if archived else ""))
 
     def _archive(self, hid, camid, cam, crop, marked, riders, bad, conf, note):
-        """Evidence on the data drive: frame with the red box, the crop, one CSV row. Best effort.
-        File names carry the capture time (from the id), not the time the verdict came in."""
-        try:
-            try:
-                ts = int(hid.rsplit("-", 2)[1])
-            except (IndexError, ValueError):
-                ts = time.time()
-            dt = datetime.fromtimestamp(ts)
-            day_dir = os.path.join(ARCHIVE_DIR, dt.strftime("%Y-%m-%d"))
-            os.makedirs(day_dir, exist_ok=True)
-            stem = os.path.join(day_dir, f"{safe_name(camid)}_{dt.strftime('%H%M%S')}_{hid[-1]}")
-            frame_out, crop_out = stem + ".jpg", stem + "_crop.jpg"
-            label = f"NO HELMET {bad}/{riders} {conf:.0%}  {dt.strftime('%Y-%m-%d %H:%M:%S')}"
-            banner = marked.copy()
-            cv2.rectangle(banner, (0, 0), (banner.shape[1], 18), (0, 0, 0), -1)
-            cv2.putText(banner, label, (4, 13), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 255), 1, cv2.LINE_AA)
-            write_jpeg(frame_out, banner, 92)
-            write_jpeg(crop_out, crop, 92)
-            index = os.path.join(ARCHIVE_DIR, "helmet.csv")
-            new_file = not os.path.exists(index)
-            with open(index, "a", newline="", encoding="utf-8-sig") as f:
-                w = csv.writer(f)
-                if new_file:
-                    w.writerow(["id", "datetime", "camid", "camera", "district", "riders", "no_helmet", "confidence", "note", "frame", "crop"])
-                w.writerow([hid, dt.strftime("%Y-%m-%d %H:%M:%S"), camid, cam.get("title") or "", cam.get("district") or "",
-                            riders, bad, round(float(conf), 2), note, frame_out, crop_out])
-            return frame_out
-        except OSError as e:
-            print(f"[Helmet] archive to {ARCHIVE_DIR} failed: {e}")
-            return None
+        return archive_evidence(
+            ARCHIVE_DIR, "helmet.csv", hid, camid, cam, crop, marked,
+            f"NO HELMET {bad}/{riders} {conf:.0%}  {{datetime}}", 18, 13, 0.42,
+            ["id", "datetime", "camid", "camera", "district", "riders", "no_helmet", "confidence", "note", "frame", "crop"],
+            [riders, bad, round(float(conf), 2), note], "Helmet")
 
     def _ask(self, jpeg, context):
         if self.provider() == "qwen":
             return local_llm.vision.look(AGENT_PROMPT, jpeg, context, timeout=AGENT_TIMEOUT_MS / 1000)
-        vis = self.vision
-        if vis.provider == "gemini":
-            from google.genai import types as genai_types
-            main = HELMET_MODEL
-            for model in dict.fromkeys([main, FALLBACK_MODEL]):
-                try:
-                    resp = vis.client.models.generate_content(
-                        model=model,
-                        contents=[genai_types.Part.from_bytes(data=jpeg, mime_type="image/jpeg"), genai_types.Part(text=context)],
-                        config=genai_types.GenerateContentConfig(system_instruction=AGENT_PROMPT, temperature=0.1,
-                                                                 max_output_tokens=300, response_mime_type="application/json",
-                                                                 http_options=genai_types.HttpOptions(timeout=AGENT_TIMEOUT_MS)),
-                    )
-                    local_llm.note_cloud(model, resp)
-                    return (resp.text or "").strip()
-                except Exception as e:  # noqa: BLE001
-                    # 503 = model overloaded right now: try the lite model once before giving up
-                    if any(k in str(e) for k in ("503", "UNAVAILABLE", "504", "DEADLINE")):
-                        print(f"[Helmet] {model} overloaded (503), trying {FALLBACK_MODEL}")
-                        continue
-                    raise
-            raise RuntimeError("503 Gemini overloaded on every model")
-        response = vis.client.messages.create(
-            model=os.environ.get("CLAUDE_VISION_MODEL", "claude-opus-5-5"),
-            output_config={"effort": "low"},
-            max_tokens=200,
-            system=AGENT_PROMPT,
-            messages=[{"role": "user", "content": [
-                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
-                                             "data": base64.standard_b64encode(jpeg).decode("ascii")}},
-                {"type": "text", "text": context},
-            ]}],
-        )
-        local_llm.note_cloud(response.model, response)
-        return "".join(b.text for b in response.content if b.type == "text").strip()
+        return ask_cloud_vision(self.vision, AGENT_PROMPT, jpeg, context, [HELMET_MODEL, FALLBACK_MODEL],
+                                AGENT_TIMEOUT_MS, log_tag="Helmet", caller=__name__)
 
     # ------------------------------------------------------------ API
     def status(self):
@@ -637,20 +567,7 @@ class HelmetPatrol:
             time.sleep(1800)
             cutoff = time.time() - CACHE_KEEP_H * 3600
             try:
-                for name in os.listdir(CACHE_DIR):
-                    p = os.path.join(CACHE_DIR, name)
-                    try:
-                        if os.path.getmtime(p) < cutoff:
-                            os.remove(p)
-                    except OSError:
-                        pass   # gone or locked: the next round tries again
-                with self.lock:
-                    conn = self._db()
-                    try:
-                        # keep the no-helmet log forever (evidence is on the data drive); drop stale routine checks
-                        conn.execute("DELETE FROM helmet_checks WHERE ts < ? AND verdict != 'no_helmet'", (int(cutoff),))
-                        conn.commit()
-                    finally:
-                        conn.close()
+                clean_cache_dir(CACHE_DIR, cutoff)
+                self._store.delete_older(cutoff, "no_helmet")   # the no-helmet log stays forever
             except (OSError, sqlite3.Error) as e:
                 print(f"[Helmet] cleanup failed: {e}")   # keep the thread alive for the next round

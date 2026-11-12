@@ -69,10 +69,10 @@ def _record(caller, model, prompt, reply, seconds, ok):
             _usage.popleft()
 
 
-def note_cloud(model, resp):
+def note_cloud(model, resp, caller=None):
     """Count a Gemini or Claude reply made outside Client.chat under the calling module, so /api/ai/usage
     shows the cloud tokens too (Gemini: usage_metadata, thinking counted as reply; Claude: usage)."""
-    caller = sys._getframe(1).f_globals.get("__name__", "?")
+    caller = caller or sys._getframe(1).f_globals.get("__name__", "?")   # caller= for helpers that call on behalf of a module
     gem = getattr(resp, "usage_metadata", None)
     if gem is not None:
         prompt = gem.prompt_token_count or 0
