@@ -36,6 +36,7 @@ import cv2
 import numpy as np
 
 from backend.core import local_llm
+from backend.core.hourly_budget import HourlyBudget
 from backend.core.instance import DEFAULT_BMA_DATA_DIR
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
@@ -168,7 +169,7 @@ class ViolationMonitor:
         self._tracks = defaultdict(dict)
         self._last_logged = {}          # (camid, kind) -> ts
         self._helmet_last = {}          # camid -> ts
-        self._helmet_calls = []
+        self._helmet_budget = HourlyBudget(HELMET_MAX_PER_HOUR)   # API helmet checks in the last hour
         self.flagged = defaultdict(dict)   # camid -> {track_id: kind} for the overlay
         os.makedirs(EVIDENCE_DIR, exist_ok=True)
         self._init_db()
@@ -420,15 +421,14 @@ class ViolationMonitor:
             return False
         if now - self._helmet_last.get(camid, 0) < HELMET_COOLDOWN:
             return False
-        self._helmet_calls = [t for t in self._helmet_calls if now - t < 3600]
-        return len(self._helmet_calls) < HELMET_MAX_PER_HOUR
+        return self._helmet_budget.allows(now)
 
     def _maybe_check_helmet(self, camid, title, tid, frame, box, now):
         if not self._helmet_budget_ok(camid, now):
             return
         if self.helmet_cls is None:
             self._helmet_last[camid] = now
-            self._helmet_calls.append(now)
+            self._helmet_budget.spend(now)
         h, w = frame.shape[:2]
         x1, y1, x2, y2 = box
         mx, my = int((x2 - x1) * CROP_MARGIN), int((y2 - y1) * CROP_MARGIN)
@@ -462,7 +462,7 @@ class ViolationMonitor:
                 return
             if HELMET_CONFIRM_API and self.vision and getattr(self.vision, "client", None)                     and now - self._helmet_last.get(camid, 0) >= HELMET_COOLDOWN:
                 self._helmet_last[camid] = now
-                self._helmet_calls.append(now)
+                self._helmet_budget.spend(now)
                 jpeg = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 90])[1].tobytes()
                 threading.Thread(target=self._helmet_verdict, args=(camid, title, tid, jpeg, crop), daemon=True).start()
                 return
