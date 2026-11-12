@@ -38,7 +38,7 @@ function CountdownText({ ts }) {
 }
 
 // Day / week / month comparison built only from archived cycles (no estimates).
-export default function BmaComparison({ data, period, onPeriod, cycle, files, loading }) {
+export default function BmaComparison({ data, period, onPeriod, cycle, loading }) {
   const [hover, setHover] = useState(null);
   const [chartMode, setChartMode] = useState('grouped'); // 'grouped' | 'stacked'
   const [filterType, setFilterType] = useState('all'); // 'all' | 'cars' | 'motorcycles' | 'trucks'

@@ -33,7 +33,7 @@ const SECTIONS = [
 ];
 
 
-export default function DashboardPage({ isActive, liveCount, cameras = [], incidents, onAsk, onAskText, onOpenRoad, onNavigate, onOpenAI, onToast }) {
+export default function DashboardPage({ isActive, incidents, onAskText, onOpenRoad, onNavigate, onOpenAI, onToast }) {
   // The summary comes from the Longdo road colours; the BMA camera count only stands in until Longdo has data
   const source = 'longdo';
   const [myDistrict] = useState(readMyDistrict);

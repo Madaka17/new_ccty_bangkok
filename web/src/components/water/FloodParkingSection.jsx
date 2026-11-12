@@ -83,7 +83,7 @@ export default function FloodParkingSection({ isActive }) {
     load();
     const id = setInterval(load, REFRESH_MS);
     return () => clearInterval(id);
-  }, [isActive]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isActive]);
 
   const locate = () => {
     if (!window.isSecureContext || !navigator.geolocation) {

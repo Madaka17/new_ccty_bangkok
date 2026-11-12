@@ -7,7 +7,7 @@ import { fmtNum } from './dashboard/format.js';
 const PRIORITY_TONE = { เร่งด่วน: 'red', สูง: 'yellow', ปานกลาง: 'neutral', เฝ้าระวัง: 'yellow' };
 
 // ---------------------------------------------------------------- hourly bars chart
-function Bars({ values, labelOf, highlight }) {
+function Bars({ values, highlight }) {
   if (!values?.length) return null;
   const max = Math.max(1, ...values);
   return (

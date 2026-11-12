@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { fetchBmaCameras, fetchBmaAnalytics, fetchBmaScanStatus, triggerBmaScan, fetchBmaComparison, fetchBmaDriveDStatus, fetchBmaCycle } from '../lib/api.js';
 import { Badge, Button } from './dashboard/ui.jsx';
 import { PageHeader, Tabs, StatusBanner } from './dashboard/primitives.jsx';
-import { fmtTime } from './dashboard/format.js';
 import BmaOverview from './bma/BmaOverview.jsx';
 import BmaSiteNotice, { bmaSiteDown } from './bma/BmaSiteNotice.jsx';
 import BmaComparison from './bma/BmaComparison.jsx';
