@@ -19,6 +19,8 @@ set "LOCAL_LLM_MODEL= "
 set "VISION_LLM_MODEL= "
 set "CHAT_LLM_MODEL= "
 set "GEMINI_API_KEY= "
+set "ANTHROPIC_API_KEY= "
+set "ANTHROPIC_AUTH_TOKEN= "
 rem Started again: launch\watchdog may restart it from now on (stop.bat left this mark)
 if exist "launch\watchdog\state\stopped_8001" del "launch\watchdog\state\stopped_8001"
 
