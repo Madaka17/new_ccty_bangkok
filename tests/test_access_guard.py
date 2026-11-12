@@ -224,3 +224,63 @@ def test_fixed_window_zero_means_unlimited():
 
 def test_general_day_is_a_fixed_window():
     assert isinstance(access_guard.general_day, _FixedWindow)
+
+
+class _FakeLog:
+    def __init__(self):
+        self.calls = []
+
+    def record(self, kind, ip, path, method="GET", ua=""):
+        self.calls.append((kind, ip, path, method, ua))
+
+
+def _guard_client(monkeypatch, ip):
+    fake = _FakeLog()
+    monkeypatch.setattr(access_guard.security_log, "log", fake)
+    app = FastAPI()
+    app.middleware("http")(access_guard.guard)
+
+    @app.get("/api/ping")
+    def ping():
+        return {"ok": True}
+
+    @app.post("/api/ping")
+    def ping_post():
+        return {"ok": True}
+
+    return TestClient(app, client=(ip, 1234)), fake
+
+
+def test_probe_path_recorded_and_404(monkeypatch):
+    c, fake = _guard_client(monkeypatch, "203.0.113.9")
+    r = c.get("/.env", headers={"user-agent": "scanner/1"})
+    assert r.status_code == 404
+    assert fake.calls == [("probe", "203.0.113.9", "/.env", "GET", "scanner/1")]
+
+
+def test_probe_from_trusted_not_recorded(monkeypatch):
+    c, fake = _guard_client(monkeypatch, "127.0.0.1")
+    c.get("/.env")
+    assert fake.calls == []
+
+
+def test_app_routes_are_not_probes():
+    for p in ("/", "/map", "/water", "/assets/index-abc.js", "/api/traffic/summary", "/enviro/", "/admin-guide"):
+        assert not access_guard.is_probe(p)
+    for p in ("/.env", "/wp-login.php", "/.git/HEAD", "/phpmyadmin/", "/admin", "/cgi-bin/x", "/db.sql"):
+        assert access_guard.is_probe(p)
+
+
+def test_session_denial_recorded_as_no_session(monkeypatch):
+    monkeypatch.setattr(access_guard, "API_SESSION", True)
+    c, fake = _guard_client(monkeypatch, "203.0.113.9")
+    r = c.get("/api/ping", headers={"sec-fetch-site": "same-origin"})
+    assert r.status_code == 403
+    assert [k[0] for k in fake.calls] == ["no_session"]
+
+
+def test_control_denial_recorded(monkeypatch):
+    c, fake = _guard_client(monkeypatch, "203.0.113.9")
+    r = c.post("/api/ping")
+    assert r.status_code == 403
+    assert [k[0] for k in fake.calls] == ["control_denied"]
