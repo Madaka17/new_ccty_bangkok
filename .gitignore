@@ -83,3 +83,4 @@ launch/logs/
 # SmallTV firmware tooling and build output
 local/pio/
 device/smalltv/.pio/
+local/reports/
