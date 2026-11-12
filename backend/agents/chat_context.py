@@ -6,6 +6,9 @@ first, so chat_service can cut them to the model's context window. Moved out of 
 import time
 
 from backend.core import thai_regions
+from backend.core.log import get_logger
+
+log = get_logger("Chat")
 
 
 WATCH_TH = {"green": "เขียว-ปกติ", "yellow": "เหลือง-ติดตาม", "orange": "ส้ม-เฝ้าระวัง", "red": "แดง-เตือนภัย"}
@@ -560,7 +563,7 @@ def province_weather_context(ex, named):
         try:
             lines += weather_context(fn(g["lat"], g["lng"]), None, None, place=f"จังหวัด{prov}")
         except Exception as e:  # noqa: BLE001 - MET Norway down: the Bangkok forecast still goes in
-            print(f"[Chat] weather for {prov} unavailable: {str(e)[:120]}")
+            log.info(f"weather for {prov} unavailable: {str(e)[:120]}")
     return lines
 
 

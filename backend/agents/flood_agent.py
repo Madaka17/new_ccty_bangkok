@@ -32,6 +32,9 @@ import threading
 import time
 
 from backend.core import local_llm
+from backend.core.log import get_logger
+
+log = get_logger("FloodAgent")
 
 AGENT_SECONDS = int(os.getenv("FLOOD_AGENT_SECONDS", "300"))
 MAX_AGE = int(os.getenv("FLOOD_AGENT_MAX_AGE", "300"))   # re-run an unchanged picture at least this often
@@ -201,7 +204,7 @@ class FloodAgent:
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
             write_json_atomic(self.path, {"report": self.report, "history": self.history, "sig": self._sig}, ensure_ascii=False)
         except OSError as e:
-            print(f"[FloodAgent] save failed: {e}")
+            log.warning(f"save failed: {e}")
 
     def _call(self, name, *args):
         fn = self.sources.get(name)
@@ -210,7 +213,7 @@ class FloodAgent:
         try:
             return fn(*args)
         except Exception as e:  # noqa: BLE001 - one broken source must not stop the others
-            print(f"[FloodAgent] source {name} failed: {str(e)[:120]}")
+            log.warning(f"source {name} failed: {str(e)[:120]}")
             return None
 
     # ------------------------------------------------------------ tools (compact JSON for the model)
@@ -482,7 +485,7 @@ class FloodAgent:
                     report, source = self._run_local(facts, question), "local"
                 except Exception as e:  # noqa: BLE001 - server off, model unloaded, context too small, bad JSON
                     err = f"{local_llm.default.model}: {str(e)[:160]}"
-                    print(f"[FloodAgent] local model failed: {e}")
+                    log.warning(f"local model failed: {e}")
             if report is None:
                 report, source = self._rules(facts, question), "rules"
             if report.get("overall_level") not in LEVELS:
@@ -526,7 +529,7 @@ class FloodAgent:
             try:
                 self.run()
             except Exception as e:  # noqa: BLE001 - keep the timer alive
-                print(f"[FloodAgent] run failed: {e}")
+                log.warning(f"run failed: {e}")
             time.sleep(AGENT_SECONDS)
 
     def start(self):

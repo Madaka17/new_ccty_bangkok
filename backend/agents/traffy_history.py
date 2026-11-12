@@ -18,6 +18,9 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from backend.agents.traffy_agent import _depth_level
+from backend.core.log import get_logger
+
+log = get_logger("TraffyHistory")
 
 SYNC_SECONDS = int(os.getenv("TRAFFY_HISTORY_SECONDS", "300"))
 BKK_TZ = timezone(timedelta(hours=7))
@@ -61,7 +64,7 @@ class TraffyHistory:
         try:
             st = self.source() or {}
         except Exception as e:  # noqa: BLE001 - feed down: try again next time
-            print(f"[TraffyHistory] source failed: {e}")
+            log.warning(f"source failed: {e}")
             return 0
         if not st.get("updated_at"):
             return 0            # feed not loaded yet after a restart
@@ -81,7 +84,7 @@ class TraffyHistory:
             try:
                 self.sync()
             except Exception as e:  # noqa: BLE001 - keep the timer alive
-                print(f"[TraffyHistory] sync failed: {e}")
+                log.warning(f"sync failed: {e}")
             time.sleep(SYNC_SECONDS)
 
     def start(self):
