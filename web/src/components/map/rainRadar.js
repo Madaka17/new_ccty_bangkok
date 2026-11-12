@@ -2,6 +2,7 @@
 // RainViewer sends one), one raster layer per frame under the traffic lines. Only the shown frame has opacity,
 // so stepping through time never flickers: every frame's tiles are already loaded.
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { fetchJson } from '../../lib/api.js';
 
 const ID_PREFIX = 'rain-radar-';
 const STEP_MS = 600;     // time on each frame while playing
@@ -75,11 +76,7 @@ export function useRainRadar(mapRef, isActive) {
     if (!isActive) return;
     let alive = true;
     const fetchRadar = () => {
-      fetch('https://api.rainviewer.com/public/weather-maps.json')
-        .then((res) => {
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          return res.json();
-        })
+      fetchJson('https://api.rainviewer.com/public/weather-maps.json', 'rain_radar')
         .then((data) => {
           if (!alive || !data?.host || !data?.radar?.past?.length) return;
           const ids = idsRef.current;

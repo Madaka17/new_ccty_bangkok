@@ -7,6 +7,7 @@ import { StatusBanner } from '../dashboard/primitives.jsx';
 import { agoText, fmtDateTime } from '../dashboard/format.js';
 import NorthRouteMap from './NorthRouteMap.jsx';
 import { bankShort, bankText } from './forecastData.js';
+import { fetchJson } from '../../lib/api.js';
 
 const POLL_MS = 5 * 60000;
 const LEVEL = {
@@ -75,11 +76,7 @@ export default function NorthRouteView({ isActive, onDetail }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(false);
   const load = useCallback(() => {
-    fetch('/api/water/north/route')
-      .then((r) => {
-        if (!r.ok) throw new Error('route');
-        return r.json();
-      })
+    fetchJson('/api/water/north/route', 'route')
       .then((d) => {
         setData(d);
         setError(false);

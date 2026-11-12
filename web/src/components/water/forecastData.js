@@ -1,6 +1,7 @@
 // The 7-day national outlook (/api/flood/forecast, national_forecast.py) shared by the first four tabs of the
 // Water page: dams, provinces, roads and the summary.
 import { useCallback, useEffect, useState } from 'react';
+import { fetchJson } from '../../lib/api.js';
 
 const POLL_MS = 5 * 60000;
 
@@ -39,11 +40,7 @@ export function useFloodForecast(isActive) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(false);
   const load = useCallback(() => {
-    fetch('/api/flood/forecast')
-      .then((r) => {
-        if (!r.ok) throw new Error('forecast');
-        return r.json();
-      })
+    fetchJson('/api/flood/forecast', 'forecast')
       .then((d) => {
         setData(d);
         setError(false);
