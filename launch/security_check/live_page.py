@@ -7,7 +7,7 @@ from html import escape as _e
 from . import geo
 from .report import BKK, CREDIT, CSS as REPORT_CSS, MAP_H, MAP_W
 
-CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'self'"
+CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'"
 
 CSS = REPORT_CSS + """
 .top{display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
@@ -172,7 +172,7 @@ var es;try{es=new EventSource('/events')}catch(e){return}
 es.onopen=function(){load()};
 es.onerror=function(){conn='reconnecting';paintConn()};
 es.onmessage=function(m){var d;try{d=JSON.parse(m.data)}catch(e){return}
-if(d.type==='status'){conn=d.status==='connected'?'connected':'reconnecting';if(conn==='connected')fails=0;else fails++;paintConn()}
+if(d.type==='status'){conn=d.status==='connected'?'connected':'reconnecting';if(conn==='connected')fails=0;else if(typeof d.failures==='number')fails=d.failures;else fails++;paintConn()}
 else if(d.type==='alert'){banner(d)}
 else if(d.type==='web'||d.type==='ssh'){onEvent(d)}}}
 paintConn();paintLine('off');showEmpty();load();connect();

@@ -84,6 +84,7 @@ class Alerter:
         self._ssh = deque()
         self._fired = {}         # rule -> last time
         self._failed = False
+        self.hold = False        # True: page alerts only, no LINE (owner IPs not known yet)
         self._q = None
         self._worker = None
 
@@ -167,7 +168,7 @@ class Alerter:
             pass
 
     def _send(self, text):
-        if not self.enabled:
+        if not self.enabled or self.hold:
             return
         if self.sync:
             self._do_send(text)

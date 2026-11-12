@@ -142,11 +142,17 @@ def _pdeathsig():
     if not sys.platform.startswith("linux"):
         return None
 
+    try:
+        import ctypes
+        import signal
+        prctl = ctypes.CDLL("libc.so.6", use_errno=True).prctl
+        sigterm = int(signal.SIGTERM)
+    except Exception:
+        return None
+
     def fn():
         try:
-            import ctypes
-            import signal
-            ctypes.CDLL("libc.so.6", use_errno=True).prctl(1, signal.SIGTERM)  # PR_SET_PDEATHSIG
+            prctl(1, sigterm)  # PR_SET_PDEATHSIG
         except Exception:
             pass
     return fn

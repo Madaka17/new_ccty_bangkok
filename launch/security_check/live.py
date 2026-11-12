@@ -32,6 +32,7 @@ DEFAULT_PORT = 8770
 LOG_PATH = os.path.join(ROOT, "local", "logs", "security_live.log")
 TEST_INSTANCE = os.path.join(ROOT, "instances", "test")
 LAN_PREFIX = "192.168.1."
+OWNERS_UNKNOWN_TH = "ยังหา IP เจ้าของเครื่องไม่ได้ จึงพัก LINE ไว้"
 UNKNOWN_TH = "ไม่ทราบประเทศ"
 OWNER_REFRESH = 600
 BASELINE_REFRESH = 300
@@ -53,8 +54,7 @@ def setup_logging(path=LOG_PATH):
     h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
     log.setLevel(logging.INFO)
     log.addHandler(h)
-    logging.getLogger("security_live.alerts").setLevel(logging.INFO)
-    logging.getLogger("security_live.alerts").addHandler(h)
+    logging.getLogger("security_live.alerts").setLevel(logging.INFO)  # propagates to `log`, which has the handler
 
 
 def _is_lan(ip):
@@ -77,6 +77,9 @@ class LiveState:
         self.alerter = alerter
         self.lock = threading.RLock()
         self.owners = []
+        self.owners_known = False
+        if alerter is not None:
+            alerter.hold = True      # no LINE until we know which IPs are the owner's
         self.started = clock()
         self.since_start = 0
         self.rolling = deque()          # (ts, is_ssh_guess)
@@ -93,8 +96,23 @@ class LiveState:
 
     # ---- owners / enrichment ----------------------------------------
     def set_owners(self, owners):
+        """Replace the public owner IPs. An empty lookup keeps the previous list. True when replaced."""
+        owners = [o for o in owners if o]
+        if not owners:
+            return False
         with self.lock:
-            self.owners = [o for o in owners if o]
+            self.owners = owners
+            self.owners_known = True
+        if self.alerter is not None:
+            self.alerter.hold = False
+        return True
+
+    def add_system_alert(self, level, text):
+        msg = {"type": "alert", "level": level, "text": text,
+               "ts": datetime.fromtimestamp(self.clock()).astimezone().isoformat(timespec="seconds")}
+        with self.lock:
+            self.alert_log.append(msg)
+        self.broadcast(msg)
 
     def is_owner(self, ip):
         with self.lock:
@@ -128,8 +146,6 @@ class LiveState:
             self.set_status("connected")
             return []
         if t == "ping":
-            with self.lock:
-                self.last_event = now
             return []
         if t not in ("web", "ssh"):
             return []
@@ -138,7 +154,8 @@ class LiveState:
         out = [ev]
         with self.lock:
             self.last_event = now
-            self.events.append(ev)
+            if ev.get("kind") != "self_check":
+                self.events.append(ev)
             if counted:
                 self.since_start += 1
                 is_guess = t == "ssh" and ev.get("event") in ("failed", "invalid")
@@ -171,7 +188,9 @@ class LiveState:
     def note_failure(self):
         with self.lock:
             self.failures += 1
-        self.set_status("reconnecting")
+            n = self.failures
+            self.status = "reconnecting"
+        self.broadcast({"type": "status", "status": "reconnecting", "failures": n})
 
     def set_baseline(self, summary, owners):
         """30-day count of blocked requests, owner-excluded like the report. None when unknown."""
@@ -416,7 +435,7 @@ class LiveApp:
 
     def _owners(self):
         owners = [ip for ip in (collect.public_ip(), collect.public_ip_v4()) if ip]
-        self.state.set_owners(owners)
+        self.state.set_owners(owners)   # keeps the old list when the lookup found nothing
         return owners
 
     def _bootstrap(self):
@@ -424,6 +443,8 @@ class LiveApp:
             self._owners()
         except Exception as e:
             log.warning("owner lookup failed (%s)", type(e).__name__)
+        if not self.state.owners_known:
+            self.state.add_system_alert("warn", OWNERS_UNKNOWN_TH)
         if self.start_stream and not self.stop.is_set():
             self.runner = StreamRunner(self.target, self.handle_message, self.state.note_failure, self.stop)
             threading.Thread(target=self.runner.run, name="stream", daemon=True).start()
@@ -433,7 +454,7 @@ class LiveApp:
                 return
 
     def _owner_loop(self):
-        while not self.stop.wait(OWNER_REFRESH):
+        while not self.stop.wait(OWNER_REFRESH if self.state.owners_known else 60):
             try:
                 self._owners()
             except Exception:

@@ -154,4 +154,16 @@ def test_pdeathsig_only_on_linux(monkeypatch):
     monkeypatch.setattr(ss.sys, "platform", "win32")
     assert ss._pdeathsig() is None
     monkeypatch.setattr(ss.sys, "platform", "linux")
-    assert callable(ss._pdeathsig())
+    import ctypes
+    calls = []
+
+    class Lib:
+        def prctl(self, *a):
+            calls.append(a)
+    monkeypatch.setattr(ctypes, "CDLL", lambda *a, **k: Lib())
+    fn = ss._pdeathsig()
+    assert callable(fn)
+    fn()
+    assert calls and calls[0][0] == 1
+    monkeypatch.setattr(ctypes, "CDLL", lambda *a, **k: (_ for _ in ()).throw(OSError()))
+    assert ss._pdeathsig() is None

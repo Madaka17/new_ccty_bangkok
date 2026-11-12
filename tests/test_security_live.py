@@ -65,7 +65,7 @@ def test_counters_exclude_owner_and_self_check():
     s = st.snapshot()
     assert s["since_start"] == 4 and s["last60"] == 4 and s["ssh60"] == 1
     assert {c["cc"]: c["n"] for c in s["countries"]} == {"RU": 2, "CN": 2}
-    assert len(s["events"]) == 7           # feed keeps everything, the page filters
+    assert len(s["events"]) == 6           # owner rows stay (page filters), self_check does not
     assert s["events"][0]["ip"] == "192.168.1.9"   # newest first
 
 
@@ -254,3 +254,43 @@ def test_map_has_fixed_height_css():
     assert "flex:none;\ngrid-template-rows:minmax(0,1fr)" in html
     assert ".mapbox svg.map{position:absolute;inset:0;width:100%;height:100%}" in html
     assert "aspect-ratio:2/1" in html and "overflow:hidden" in html
+
+
+def test_failed_owner_lookup_keeps_old_owners():
+    st = mk()
+    assert st.set_owners([]) is False
+    assert st.owners == ["203.0.113.7"] and st.is_owner("203.0.113.7")
+    assert st.set_owners(["198.51.100.1"]) is True and st.owners == ["198.51.100.1"]
+
+
+def test_line_held_until_owners_known(tmp_path):
+    sent = []
+    al = alerts.Alerter(sender=lambda t: sent.append(t) or 200, clock=Clock(),
+                        state_path=str(tmp_path / "s.json"), sync=True)
+    st = live.LiveState(clock=Clock(), alerter=al)
+    out = st.ingest(ssh("6.6.6.6", "accepted"))
+    assert any(m["type"] == "alert" for m in out)     # page still alerts
+    assert sent == []                                  # LINE held
+    st.set_owners(["203.0.113.7"])
+    st2 = st.ingest(ssh("5.5.5.5", "accepted"))
+    assert len(sent) == 1
+
+
+def test_self_check_not_in_feed_and_ping_keeps_last_event():
+    st = mk()
+    st.ingest(web("5.5.5.5", kind="self_check"))
+    st.ingest({"type": "ping", "ts": "t"})
+    s = st.snapshot()
+    assert s["events"] == [] and s["last_event"] is not None
+    st2 = mk()
+    st2.ingest({"type": "ping", "ts": "t"})
+    assert st2.snapshot()["last_event"] is None
+
+
+def test_note_failure_broadcasts_count():
+    st = mk()
+    q = st.add_client()
+    st.note_failure()
+    st.note_failure()
+    msgs = [q.get_nowait(), q.get_nowait()]
+    assert [m["failures"] for m in msgs] == [1, 2] and msgs[0]["type"] == "status"
