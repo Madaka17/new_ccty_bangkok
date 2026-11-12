@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import Sidebar, { PAGE_TITLES } from './components/Sidebar.jsx';
+import TopBar from './components/TopBar.jsx';
 import { PageHeader } from './components/dashboard/primitives.jsx';
 import DashboardPage from './components/DashboardPage.jsx';
 import BottomNav from './components/BottomNav.jsx';
@@ -324,8 +325,9 @@ export default function App() {
       {page !== 'dashboard' && <EmergencyButton />}
 
       {/* Earthquake scrolls inside its frame, so on desktop the page itself must fit the screen */}
-      <div className={`min-h-full flex flex-col pt-4 pb-24 min-w-0 ${page === 'enviro' ? 'lg:pb-4' : ''}`}>
-        <main className="flex-1 px-4 sm:px-6 min-w-0">
+      <div className={`min-h-full flex flex-col lg:pt-0 pt-4 pb-24 min-w-0 ${page === 'enviro' ? 'lg:pb-4' : ''}`}>
+        <TopBar page={page} onNavigate={navigate} liveCount={activeCams.length} weatherScene={weather.scene} />
+        <main className="flex-1 px-4 sm:px-6 min-w-0 lg:pt-4">
           {/* One width and one spacing rule for every page */}
           <motion.div
             key={page}
