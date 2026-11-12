@@ -53,6 +53,15 @@ def test_old_hours_pruned_after_30_days(tmp_path):
     clock.t = T0 + 31 * 86400
     lg.flush()
     assert lg.summary()["total"] == 0
+    con = sqlite3.connect(str(tmp_path / "sec.db"))
+    assert con.execute("SELECT COUNT(*) FROM hourly").fetchone()[0] == 0
+    con.close()
+
+
+def test_idle_flush_does_not_create_db(tmp_path):
+    lg = make(tmp_path)
+    assert lg.flush() == 0
+    assert not (tmp_path / "sec.db").exists()
 
 
 def test_buffer_overflow_counts_dropped(tmp_path):

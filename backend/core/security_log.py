@@ -39,6 +39,7 @@ class SecurityLog:
         self._flush_lock = threading.Lock()
         self._thread = None
         self._warned = False
+        self._last_prune = 0.0
 
     def record(self, kind: str, ip: str, path: str, method: str = "GET", ua: str = "") -> None:
         try:
@@ -56,9 +57,10 @@ class SecurityLog:
             with self._lock:
                 events, self._buf = self._buf, []
                 dropped, self._dropped = self._dropped, 0
-            if not events and not dropped:
-                return 0
             now = self._clock()
+            if not events and not dropped:
+                self._prune_idle(now)
+                return 0
             counts: dict = {}
             for ts, kind, *_ in events:
                 key = (_hour(ts), kind)
@@ -93,6 +95,21 @@ class SecurityLog:
                     self._warned = True
                     _log.warning("security log write failed (%s: %s); events dropped", type(e).__name__, e)
                 return 0
+
+    def _prune_idle(self, now: float) -> None:
+        """Nothing to write: still drop old hours, at most once an hour, and only if the DB exists."""
+        if now - self._last_prune < 3600 or not os.path.exists(self.db_path):
+            return
+        self._last_prune = now
+        try:
+            con = sqlite3.connect(self.db_path, timeout=5)
+            try:
+                con.execute("DELETE FROM hourly WHERE hour < ?", (_hour(now - HOURLY_KEEP_DAYS * 86400),))
+                con.commit()
+            finally:
+                con.close()
+        except Exception:
+            pass
 
     def start(self, interval: float = 30.0) -> None:
         with self._lock:
