@@ -87,7 +87,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend import services   # builds the detector, scanner, watchers and agents (see backend/services.py)
 from backend.api import bma, cameras, chat, flood, insights, live_ai, patrols, site, system, traffic, water, weather
-from backend.core import access_guard
+from backend.core import access_guard, security_log
 from backend.services import WEB_BUILT, WEB_DIST, detector
 
 app = FastAPI(title="BKK StreetSmart CCTV & YOLO Vehicle Detection")
@@ -100,6 +100,7 @@ if _origins:
                        allow_methods=["GET", "POST"], allow_headers=["Content-Type", "X-Admin-Token"])
 # Public-exposure guard: control endpoints operator-only, /api/chat rate limited (see access_guard.py)
 app.middleware("http")(access_guard.guard)
+security_log.log.start()
 
 # The API, one module per topic (backend/api/)
 ROUTERS = (system, cameras, bma, live_ai, traffic, weather, patrols, flood, water, chat, insights, site)

@@ -44,6 +44,7 @@ from collections import deque
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
+from backend.core import security_log
 from backend.core.instance import DATA_DIR
 
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "").strip()
@@ -67,6 +68,11 @@ SESSION_SECRET_FILE = os.path.join(DATA_DIR, "cache", "session_secret")
 TUNNEL_ADDR = os.getenv("CLOUDFLARE_TUNNEL_ADDR", "127.0.0.2")   # cloudflared's origin: http://127.0.0.2:8000
 DOC_PATHS = ("/docs", "/redoc", "/openapi.json")
 BAD_PATH = re.compile(r"\\|\.\.|:")
+# Paths only vulnerability scanners ask for: answered 404 and recorded (no route of this app matches)
+PROBE_PATH = re.compile(
+    r"/\.env|/\.git(/|$)|/wp-|/wordpress|phpmyadmin|\.php(\?|$)|/cgi-bin/|/actuator|/server-status"
+    r"|/\.aws|/\.ssh|/vendor/phpunit|/boaform|/HNAP1|/\.DS_Store|xmlrpc|/admin(/|$)"
+    r"|/config\.(json|yml|yaml)$|/backup|\.sql$", re.I)
 
 # Sent with every response. script-src 'self' is the XSS guard; images / video / HLS come from many
 # camera and map hosts, so those stay open to any https (and http for old camera feeds).
@@ -307,13 +313,27 @@ def _deny(status, msg):
     return _secure(JSONResponse(status_code=status, content={"error": msg}))
 
 
+def is_probe(path: str) -> bool:
+    return PROBE_PATH.search(path) is not None
+
+
+def _block(request, ip, kind, status, msg):
+    """Record an untrusted request that is being refused, then answer it."""
+    security_log.log.record(kind, ip, request.url.path, request.method, request.headers.get("user-agent", ""))
+    return _deny(status, msg)
+
+
 async def guard(request: Request, call_next):
     path = request.url.path
     if BAD_PATH.search(path):
-        return _deny(400, "bad path")
+        if is_trusted(request):
+            return _deny(400, "bad path")
+        return _block(request, client_ip(request), "bad_path", 400, "bad path")
     trusted = is_trusted(request)
     if path.startswith(DOC_PATHS) and not trusted:
-        return _deny(404, "not found")
+        return _block(request, client_ip(request), "docs_probe", 404, "not found")
+    if not trusted and is_probe(path):
+        return _block(request, client_ip(request), "probe", 404, "not found")
     if not path.startswith("/api/"):
         response = await call_next(request)
         if API_SESSION and request.method == "GET" and _is_page(path) and response.status_code < 400:
@@ -328,10 +348,10 @@ async def guard(request: Request, call_next):
     parking_full = request.method == "POST" and PARKING_FULL_PATH.fullmatch(path) is not None
     if request.method in ("POST", "PUT", "DELETE") and not path.startswith(PUBLIC_WRITE_PREFIXES) and not user_report             and not parking_full:
         if not trusted:
-            return _deny(403, "control endpoints are limited to the operator")
+            return _block(request, ip, "control_denied", 403, "control endpoints are limited to the operator")
 
     if parking_full and not trusted and not parking_hour.allow(ip):
-        return _deny(429, "too many reports, try again later")
+        return _block(request, ip, "report_limited", 429, "too many reports, try again later")
 
     if user_report and not trusted:
         try:
@@ -339,9 +359,9 @@ async def guard(request: Request, call_next):
         except ValueError:
             length = 0
         if length > USER_REPORT_MAX_BODY:
-            return _deny(413, "photo too large")
+            return _block(request, ip, "too_large", 413, "photo too large")
         if not report_hour.allow(ip) or not report_day.allow(ip):
-            return _deny(429, "too many reports, try again later")
+            return _block(request, ip, "report_limited", 429, "too many reports, try again later")
 
     if path == "/api/chat" and request.method == "POST" and not trusted:
         try:
@@ -349,21 +369,21 @@ async def guard(request: Request, call_next):
         except ValueError:
             length = 0
         if length > CHAT_MAX_BODY:
-            return _deny(413, "message too long")
+            return _block(request, ip, "too_large", 413, "message too long")
         if not chat_min.allow(ip) or not chat_day.allow(ip):
-            return _deny(429, "too many chat requests, try again later")
+            return _block(request, ip, "chat_limited", 429, "too many chat requests, try again later")
 
     if not trusted and API_BROWSER_ONLY and not _from_own_page(request):
-        return _deny(403, "the API answers this site's own pages only")
+        return _block(request, ip, "not_browser", 403, "the API answers this site's own pages only")
 
     session = None
     if not trusted and API_SESSION:
         session = session_age(request.cookies.get(SESSION_COOKIE))
         if session is None:
-            return _deny(403, "the API answers this site's own pages only (reload the page)")
+            return _block(request, ip, "no_session", 403, "the API answers this site's own pages only (reload the page)")
 
     if not trusted and (not general_min.allow(ip) or not general_day.allow(ip)):
-        return _deny(429, "too many requests")
+        return _block(request, ip, "rate_limited", 429, "too many requests")
 
     response = await call_next(request)
     if session is not None and session > SESSION_RENEW:
