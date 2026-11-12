@@ -52,6 +52,7 @@ from backend.water.north_route import NorthRoute
 from backend.water.province_flood import ProvinceFlood
 from backend.water.user_reports import UserReports
 from backend.core.log import get_logger
+from backend.core.sqlite_wal import ensure_wal
 
 log = get_logger("YOLO")
 log_warning = get_logger("Warning")
@@ -88,6 +89,8 @@ if os.path.exists(CAMERAS_FILE):
         log_warning.warning(f"Failed to load cameras_bkk.json: {e}")
 
 # Initialize the YOLO vehicle detector (model from AI_MODEL, target 10 FPS for smoother playback)
+# WAL first: long best-time reads in rollback-journal mode made every writer fail with "database is locked"
+ensure_wal(os.path.join(DATA_DIR, "vehicle_counts.db"))
 vehicle_log = VehicleLog(os.path.join(DATA_DIR, "vehicle_counts.db"))
 # YOLO on/off (launch\yolo_switch.bat): the saved state decides whether any model loads at startup
 yolo = YoloSwitch(os.path.join(DATA_DIR, "cache", "yolo_switch.json"),
