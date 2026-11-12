@@ -12,10 +12,19 @@ _key = None
 _client = None
 
 
+def gemini_key() -> str | None:
+    """The configured API key, stripped. A blank or whitespace value means "no key"; the test launcher uses that to switch Gemini off."""
+    for name in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
+        key = (os.environ.get(name) or "").strip()
+        if key:
+            return key
+    return None
+
+
 def gemini_client():
     """The shared client for the current key, or None (no SDK, no key, or the client would not build)."""
     global _key, _client
-    key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    key = gemini_key()
     if genai is None or not key:
         return None
     with _lock:

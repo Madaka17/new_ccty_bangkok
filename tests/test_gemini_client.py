@@ -75,6 +75,29 @@ def test_new_key_makes_new_client(monkeypatch):
     assert len(created) == 2
 
 
+def test_blank_gemini_key_means_no_key(monkeypatch):
+    created = []
+    _fake_genai(monkeypatch, created)
+    monkeypatch.setenv("GEMINI_API_KEY", " ")
+    assert gemini.gemini_key() is None
+    assert gemini.gemini_client() is None
+    assert created == []
+
+
+def test_blank_gemini_key_falls_back_to_google_key(monkeypatch):
+    created = []
+    _fake_genai(monkeypatch, created)
+    monkeypatch.setenv("GEMINI_API_KEY", " ")
+    monkeypatch.setenv("GOOGLE_API_KEY", "g")
+    assert gemini.gemini_key() == "g"
+    assert gemini.gemini_client().api_key == "g"
+
+
+def test_gemini_key_is_stripped(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", " k ")
+    assert gemini.gemini_key() == "k"
+
+
 def test_client_error_returns_none(monkeypatch):
     class BrokenClient:
         def __init__(self, api_key):

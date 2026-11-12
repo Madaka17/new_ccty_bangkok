@@ -22,7 +22,7 @@ import urllib.request
 import cv2
 
 from backend.core import local_llm
-from backend.core.gemini import gemini_client
+from backend.core.gemini import gemini_client, gemini_key
 from backend.core.hourly_budget import HourlyBudget
 from backend.vision.frame_utils import safe_id
 from backend.core.log import get_logger
@@ -110,7 +110,7 @@ class IncidentManager:
     def _client():
         if VISION_AGENT == "qwen" and local_llm.vision.enabled():
             return 'qwen', local_llm.vision
-        key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        key = gemini_key()
         if genai is not None and key:
             client = gemini_client()
             if client is not None:
