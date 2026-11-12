@@ -212,34 +212,49 @@ def _top(counter, key, limit=10):
     return [{key: k, "n": n} for k, n in sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]]
 
 
+def parse_ssh_line(line):
+    """One short-iso sshd journal line -> event dict, or None when it is not a login event.
+
+    {"ts", "pid", "event": accepted|failed|invalid, "method": publickey|password|None, "user", "ip"}"""
+    lm = _RE_LINE.match((line or "").rstrip("\r\n"))
+    if not lm:
+        return None
+    ts = line.split(" ", 1)[0]
+    pid, msg = lm.group(1), lm.group(2)
+    m = _RE_ACCEPT.match(msg)
+    if m:
+        meth = "publickey" if m.group(1) == "publickey" else "password"
+        return {"ts": ts, "pid": pid, "event": "accepted", "method": meth, "user": m.group(2), "ip": m.group(3)}
+    m = _RE_FAILED.match(msg)
+    if m:
+        meth = "publickey" if msg.startswith("Failed publickey") else "password"
+        return {"ts": ts, "pid": pid, "event": "invalid" if m.group(1) else "failed", "method": meth,
+                "user": m.group(2), "ip": m.group(3)}
+    m = _RE_INVALID.match(msg)
+    if m:
+        return {"ts": ts, "pid": pid, "event": "invalid", "method": None, "user": m.group(1), "ip": m.group(2)}
+    m = _RE_CLOSED_INVALID.match(msg)
+    if m:
+        return {"ts": ts, "pid": pid, "event": "invalid", "method": None, "user": m.group(1), "ip": m.group(2)}
+    m = _RE_AUTHFAIL.match(msg)
+    if m:
+        return {"ts": ts, "pid": pid, "event": "failed", "method": None, "user": m.group(1), "ip": m.group(2)}
+    return None
+
+
 def parse_ssh_journal(text):
     """Pure parser for `journalctl -u ssh -o short-iso` text. One attempt per (pid, user, ip)."""
     accepted, attempts = {}, {}
     for line in (text or "").splitlines():
-        lm = _RE_LINE.match(line)
-        if not lm:
+        ev = parse_ssh_line(line)
+        if not ev:
             continue
-        pid, msg = lm.group(1), lm.group(2)
-        m = _RE_ACCEPT.match(msg)
-        if m:
-            meth = "publickey" if m.group(1) == "publickey" else "password"
-            k = (m.group(3), m.group(2), meth)
+        if ev["event"] == "accepted":
+            k = (ev["ip"], ev["user"], ev["method"])
             accepted[k] = accepted.get(k, 0) + 1
             continue
-        inv = False
-        m = _RE_FAILED.match(msg)
-        if m:
-            inv, user, ip = bool(m.group(1)), m.group(2), m.group(3)
-        elif (m := _RE_INVALID.match(msg)):
-            inv, user, ip = True, m.group(1), m.group(2)
-        elif (m := _RE_CLOSED_INVALID.match(msg)):
-            inv, user, ip = True, m.group(1), m.group(2)
-        elif (m := _RE_AUTHFAIL.match(msg)):
-            user, ip = m.group(1), m.group(2)
-        else:
-            continue
-        key = (pid, user, ip)
-        attempts[key] = attempts.get(key, False) or inv
+        key = (ev["pid"], ev["user"], ev["ip"])
+        attempts[key] = attempts.get(key, False) or ev["event"] == "invalid"
     failed = invalid = 0
     ips, users = {}, {}
     for (_pid, user, ip), inv in attempts.items():

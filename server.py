@@ -100,7 +100,7 @@ if _origins:
                        allow_methods=["GET", "POST"], allow_headers=["Content-Type", "X-Admin-Token"])
 # Public-exposure guard: control endpoints operator-only, /api/chat rate limited (see access_guard.py)
 app.middleware("http")(access_guard.guard)
-security_log.log.start()
+security_log.log.start(interval=5.0)  # web attacks reach the live view within 5 s (only writes when there are events)
 
 # The API, one module per topic (backend/api/)
 ROUTERS = (system, cameras, bma, live_ai, traffic, weather, patrols, flood, water, chat, insights, site)

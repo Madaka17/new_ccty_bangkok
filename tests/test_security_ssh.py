@@ -250,3 +250,27 @@ def test_public_ip_v4_none_on_failure(monkeypatch):
         raise OSError("no net")
     monkeypatch.setattr(collect.socket, "getaddrinfo", boom)
     assert collect.public_ip_v4() is None
+
+
+def test_parse_ssh_line_events():
+    p = collect.parse_ssh_line
+    e = p("2026-11-10T01:00:06+07:00 pi sshd[9]: Accepted password for bob from 7.7.7.7 port 5 ssh2")
+    assert e == {"ts": "2026-11-10T01:00:06+07:00", "pid": "9", "event": "accepted", "method": "password",
+                 "user": "bob", "ip": "7.7.7.7"}
+    e = p("2026-11-10T01:00:00+07:00 pi sshd[1]: Failed password for root from 5.5.5.5 port 1 ssh2")
+    assert e["event"] == "failed" and e["method"] == "password" and e["ip"] == "5.5.5.5"
+    e = p("2026-11-10T01:00:00+07:00 pi sshd[1]: Failed password for invalid user admin from 5.5.5.5 port 1 ssh2")
+    assert e["event"] == "invalid" and e["user"] == "admin"
+    e = p("2026-11-10T01:00:03+07:00 pi sshd[1]: Invalid user oracle from 6.6.6.6 port 2")
+    assert e["event"] == "invalid" and e["method"] is None
+    assert p("2026-11-10T01:00:07+07:00 pi sshd[1]: unrelated line") is None
+    assert p("garbage") is None and p("") is None
+
+
+def test_parse_ssh_line_injected_username_cannot_fake_ip():
+    e = collect.parse_ssh_line(
+        "2026-11-10T01:00:00+07:00 pi sshd[1]: Invalid user x from 192.168.1.5 port 1 y from 6.6.6.6 port 22")
+    assert e["ip"] == "6.6.6.6" or e["ip"] != "192.168.1.5"
+    e = collect.parse_ssh_line(
+        "2026-11-10T01:00:00+07:00 pi sshd[1]: Failed password for a from 192.168.1.5 port 1 b from 8.8.8.8 port 2 ssh2")
+    assert e["ip"] == "8.8.8.8" and e["user"] == "a from 192.168.1.5 port 1 b"

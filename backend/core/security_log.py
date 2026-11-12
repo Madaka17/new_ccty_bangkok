@@ -1,7 +1,7 @@
 """Log of requests the public-exposure guard blocked, so a report can show how often the site was probed.
 
 record() only appends to an in-memory buffer (never touches the disk, never raises); a daemon thread
-flushes it to SQLite every 30 s. Two tables: hourly counts per kind (kept 30 days) and the newest 500
+flushes it to SQLite every 30 s (server.py asks for 5 s, so the live view is quick). Two tables: hourly counts per kind (kept 30 days) and the newest 500
 raw events. Only time, kind, ip, path, method and user agent are stored, no headers, cookies or bodies.
 
     python -m backend.core.security_log --summary-json [--days N]   prints the summary, never creates the DB
