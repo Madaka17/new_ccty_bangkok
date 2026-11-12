@@ -35,7 +35,6 @@ import os
 import re
 import threading
 import time
-from collections import deque
 from datetime import datetime, timedelta, timezone
 
 import cv2
@@ -43,6 +42,7 @@ import numpy as np
 
 from backend.bma.bma_service import CACHE_DIR as SNAPSHOT_DIR   # the scanner's last annotated frame per camera
 from backend.core import local_llm
+from backend.core.hourly_budget import HourlyBudget
 from backend.core.instance import DATA_DIR   # cache root: instances/production, or instances/test for the test server
 from backend.vision.frame_utils import fingerprint, same_scene
 
@@ -192,8 +192,7 @@ class FloodCamWatch:
         self._judged = {}      # camid -> fingerprint of the frame behind the current verdict
         self._force = set()    # camids to check now whatever their turn (check_all)
         self._inflight = set() # camids a worker is checking now, so no other worker takes them too
-        self._calls = deque()
-        self._calls_lock = threading.Lock()
+        self._budget = HourlyBudget(MAX_PER_HOUR)   # vision calls in the last hour
         self._save_lock = threading.Lock()
         self._lock = threading.Lock()
         self.last_error = None
@@ -307,15 +306,10 @@ class FloodCamWatch:
         return [camid for _, _, camid in sorted(out)]
 
     def _budget_ok(self):
-        now = time.time()
-        with self._calls_lock:
-            while self._calls and now - self._calls[0] > 3600:
-                self._calls.popleft()
-            return len(self._calls) < MAX_PER_HOUR
+        return self._budget.allows()
 
     def _ask(self, jpeg, prompt, text, max_tokens):
-        with self._calls_lock:
-            self._calls.append(time.time())
+        self._budget.spend()
         image = "data:image/jpeg;base64," + base64.standard_b64encode(jpeg).decode("ascii")
         return local_llm.default.chat(
             [{"role": "system", "content": prompt},
@@ -404,9 +398,8 @@ class FloodCamWatch:
                               "lat": cam.get("latitude"), "lng": cam.get("longitude"),
                               "level_th": LEVEL_TH[st["level"]], "stale": stale, **st})
         items.sort(key=lambda i: (i["stale"], RANK[i["level"]], -i["confidence"]))
-        self._budget_ok()
         return {"enabled": self.enabled(), "model": local_llm.default.model, "total": len(cams),
                 "checked": len(state), "with_frame": waiting, "counts": counts, "stale_wet": stale_wet,
                 "last_check": max((st["checked_at"] for st in state.values()), default=None),
-                "calls_last_hour": len(self._calls), "max_per_hour": MAX_PER_HOUR, "stale_minutes": STALE_MINUTES,
+                "calls_last_hour": self._budget.used(), "max_per_hour": MAX_PER_HOUR, "stale_minutes": STALE_MINUTES,
                 "error": self.last_error, "items": items}

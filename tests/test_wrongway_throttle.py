@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from backend.core.hourly_budget import HourlyBudget
 from backend.vision import wrongway_service as svc
 
 DARK = np.zeros((360, 640, 3), np.uint8)
@@ -37,7 +38,7 @@ def _patrol(monkeypatch, tmp_path, clock):
     p._last_frame = {}
     p._last_boxes = {}
     p._last_classify = {}
-    p._calls = []
+    p._budget = HourlyBudget(svc.MAX_PER_HOUR)
     p._queue = queue.Queue()
     p.last_check = 0
     p.agent_error = None

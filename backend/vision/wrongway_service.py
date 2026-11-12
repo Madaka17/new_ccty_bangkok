@@ -40,6 +40,7 @@ import cv2
 import numpy as np
 
 from backend.core import local_llm
+from backend.core.hourly_budget import HourlyBudget
 from backend.core.instance import DEFAULT_BMA_DATA_DIR
 from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
@@ -195,7 +196,7 @@ class WrongWayPatrol:
         self._last_frame = {}
         self._last_boxes = {}
         self._last_classify = {}   # camid -> ts of the last classifier pass (CLS_EVERY throttle)
-        self._calls = []
+        self._budget = HourlyBudget(MAX_PER_HOUR)   # agent calls in the last hour
         self._queue = queue.Queue()
         self.last_check = 0
         self.agent_error = None
@@ -502,10 +503,9 @@ class WrongWayPatrol:
 
     # ------------------------------------------------------------ analysis
     def _budget_ok(self, now):
-        self._calls = [t for t in self._calls if now - t < 3600]
         if self.agent_error and now - self.agent_error["ts"] < self.agent_error.get("for", AGENT_BACKOFF_S):
             return False
-        return len(self._calls) < MAX_PER_HOUR
+        return self._budget.allows(now)
 
     def _agent_reason(self, now):
         if self.agent_error and now - self.agent_error["ts"] < self.agent_error.get("for", AGENT_BACKOFF_S):
@@ -558,7 +558,7 @@ class WrongWayPatrol:
             return
         jpeg = cv2.imencode(".jpg", marked if boxed is None else boxed, [cv2.IMWRITE_JPEG_QUALITY, 90])[1].tobytes()
         context = f"Camera: {cam.get('title') or camid}, Bangkok."
-        self._calls.append(now)
+        self._budget.spend(now)
         try:
             text = self._ask(jpeg, context)
         except Exception as e:  # noqa: BLE001
@@ -740,7 +740,6 @@ class WrongWayPatrol:
                 "SELECT verdict, COUNT(*) n FROM wrongway_checks WHERE ts >= ? GROUP BY verdict", (day0,))}
             total = conn.execute("SELECT COUNT(*) FROM wrongway_checks WHERE verdict = 'wrong_way'").fetchone()[0]
             conn.close()
-        self._calls = [t for t in self._calls if now - t < 3600]
         learned = sum(1 for f in self.fields.values() if f.summary()["known"] > 0)
         return {
             "updated": int(now), "enabled": self.enabled(), "detector": self.model_name(),
@@ -749,7 +748,7 @@ class WrongWayPatrol:
             else AGENT_MODEL if self.provider() == "gemini"
             else (os.environ.get("CLAUDE_VISION_MODEL", "claude-opus-5-5") if self.provider() else None),
             "archive_dir": ARCHIVE_DIR, "archive_ok": os.path.isdir(os.path.dirname(ARCHIVE_DIR.rstrip("/\\"))),
-            "calls_last_hour": len(self._calls), "calls_per_hour_max": MAX_PER_HOUR, "queue": self._queue.qsize(),
+            "calls_last_hour": self._budget.used(now), "calls_per_hour_max": MAX_PER_HOUR, "queue": self._queue.qsize(),
             "agent_error": (self.agent_error["message"] if self.agent_error and now - self.agent_error["ts"] < self.agent_error.get("for", AGENT_BACKOFF_S) else None),
             "last_check": self.last_check, "cooldown_s": COOLDOWN, "per_camera": PER_CAM, "min_votes": HEADING_MIN_VOTES,
             "frames_seen": self.frames_seen, "cameras_seen": len(self.fields), "cameras_learned": learned,

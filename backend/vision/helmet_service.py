@@ -35,6 +35,7 @@ import cv2
 import numpy as np
 
 from backend.core import local_llm
+from backend.core.hourly_budget import HourlyBudget
 
 from backend.core.instance import DEFAULT_BMA_DATA_DIR
 from backend.core.instance import BASE_DIR  # project root
@@ -96,7 +97,7 @@ class HelmetPatrol:
         self._last_visit = {}         # camid -> ts
         self._last_frame = {}         # camid -> fingerprint of the last snapshot we captured from
         self._last_boxes = {}         # camid -> [(x1,y1,x2,y2), ...] captured last time (parked / frozen bikes)
-        self._calls = []              # ts of agent calls in the last hour
+        self._budget = HourlyBudget(MAX_PER_HOUR)   # agent calls in the last hour
         self._queue = queue.Queue()
         self.last_check = 0
         self.agent_error = None       # {"ts", "message"} after a quota/auth failure; calls pause AGENT_BACKOFF_S
@@ -288,10 +289,9 @@ class HelmetPatrol:
 
     # ------------------------------------------------------------ analysis
     def _budget_ok(self, now):
-        self._calls = [t for t in self._calls if now - t < 3600]
         if self.agent_error and now - self.agent_error["ts"] < self.agent_error.get("for", AGENT_BACKOFF_S):
             return False
-        return len(self._calls) < MAX_PER_HOUR
+        return self._budget.allows(now)
 
     def _agent_reason(self, now):
         if self.agent_error and now - self.agent_error["ts"] < self.agent_error.get("for", AGENT_BACKOFF_S):
@@ -354,7 +354,7 @@ class HelmetPatrol:
         jpeg = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 90])[1].tobytes()
         hint = f" A local detector suspects no helmet ({local[1]:.0%})." if local else ""
         context = f"Camera: {cam.get('title') or camid}, Bangkok. One motorcycle crop from a 352x288 CCTV frame.{hint}"
-        self._calls.append(now)
+        self._budget.spend(now)
         try:
             text = self._ask(jpeg, context)
         except Exception as e:  # noqa: BLE001
@@ -569,7 +569,6 @@ class HelmetPatrol:
                 "SELECT verdict, COUNT(*) n FROM helmet_checks WHERE ts >= ? GROUP BY verdict", (day0,))}
             total_no_helmet = conn.execute("SELECT COUNT(*) FROM helmet_checks WHERE verdict = 'no_helmet'").fetchone()[0]
             conn.close()
-        self._calls = [t for t in self._calls if now - t < 3600]
         return {
             "updated": int(now), "enabled": self.enabled(), "agent": self.provider() or "off",
             "agent_model": local_llm.vision.model if self.provider() == "qwen"
@@ -577,7 +576,7 @@ class HelmetPatrol:
             else (os.environ.get("CLAUDE_VISION_MODEL", "claude-opus-5-5") if self.provider() else None),
             "local_detector": os.path.basename(LOCAL_DET_PATH) if self.local_det is not None else None,
             "archive_dir": ARCHIVE_DIR, "archive_ok": os.path.isdir(os.path.dirname(ARCHIVE_DIR.rstrip("/\\"))),
-            "calls_last_hour": len(self._calls), "calls_per_hour_max": MAX_PER_HOUR, "queue": self._queue.qsize(),
+            "calls_last_hour": self._budget.used(now), "calls_per_hour_max": MAX_PER_HOUR, "queue": self._queue.qsize(),
             "agent_error": (self.agent_error["message"] if self.agent_error and now - self.agent_error["ts"] < self.agent_error.get("for", AGENT_BACKOFF_S) else None),
             "last_check": self.last_check, "cooldown_s": COOLDOWN, "per_camera": PER_CAM, "min_box_h": MIN_BOX_H,
             "today": {"captures": sum(today.values()), "pending": today.get("pending", 0), "helmet": today.get("helmet", 0),

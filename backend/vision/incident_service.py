@@ -22,6 +22,7 @@ import urllib.request
 import cv2
 
 from backend.core import local_llm
+from backend.core.hourly_budget import HourlyBudget
 from backend.vision.frame_utils import safe_id
 
 try:
@@ -86,7 +87,7 @@ class IncidentManager:
         self.lock = threading.Lock()
         # camid -> {'last_check': ts, 'last_anomaly': ts, 'checking': bool}
         self._state = {}
-        self._checks = []                       # wall times of vision calls (rolling hour)
+        self._budget = HourlyBudget(self.MAX_CHECKS_PER_HOUR)   # vision calls in the last hour
         self.camera_incidents = {}              # camid -> active incident dict
         self.longdo = []
         self.longdo_updated = 0
@@ -151,12 +152,11 @@ class IncidentManager:
                 self._clear(camid)
 
     def _budget_ok(self, now):
-        self._checks = [t for t in self._checks if now - t < 3600]
-        return len(self._checks) < self.MAX_CHECKS_PER_HOUR and self.client is not None
+        return self._budget.allows(now) and self.client is not None
 
     def _confirm(self, camid, title, cand, jpeg, st):
         try:
-            self._checks.append(time.time())
+            self._budget.spend()
             verdict = self._ask_vision(jpeg, title, cand)
             print(f"[Incident] {title}: {cand.get('kind', 'stopped')} {cand['stopped_s']}s, "
                   f"persons {cand['persons_near']} -> {verdict}")
