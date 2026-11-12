@@ -16,6 +16,9 @@ import threading
 import time
 import urllib.request
 from datetime import datetime, timedelta, timezone
+from backend.core.log import get_logger
+
+log = get_logger("Air")
 
 AIRBKK_URL = "https://stations.airbkk.com/api/web/data"
 AIR4THAI_URL = "https://air4thai.pcd.go.th/services/getNewAQI_JSON.php"
@@ -158,7 +161,7 @@ def _load_air4thai(now, skip_bma):
             if rows:
                 hourly[st["stationID"]] = rows[-1]
     except Exception as e:
-        print(f"[Air] Air4Thai hourly failed, using 24 h means: {e}")
+        log.warning(f"Air4Thai hourly failed, using 24 h means: {e}")
 
     items = []
     for s, lat, lon in stations:
@@ -215,7 +218,7 @@ class AirService:
             self.source_ts = latest
             self.error = "; ".join(errors) or None
         counts = ", ".join(f"{k} {len(v)}" for k, v in by_source.items())
-        print(f"[Air] {len(items)} stations ({counts}), max PM2.5 {items[0]['pm25'] if items else '-'} µg/m³")
+        log.info(f"{len(items)} stations ({counts}), max PM2.5 {items[0]['pm25'] if items else '-'} µg/m³")
         if len(errors) == len(SOURCES):
             raise RuntimeError(self.error)
 
@@ -226,7 +229,7 @@ class AirService:
             except Exception as e:
                 with self.lock:
                     self.error = str(e)
-                print(f"[Air] refresh error: {e}")
+                log.warning(f"refresh error: {e}")
             time.sleep(REFRESH_SECONDS)
 
     def status(self):

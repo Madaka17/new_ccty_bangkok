@@ -35,6 +35,9 @@ from datetime import datetime, timedelta
 from backend.core import local_llm
 from backend.core.instance import BASE_DIR
 from backend.water import north_flow, water_forecast, water_service as ws
+from backend.core.log import get_logger
+
+log = get_logger("NorthRoute")
 
 REFRESH_SECONDS = int(os.getenv("NORTH_ROUTE_SECONDS", "1800"))
 AI_MAX_AGE = int(os.getenv("NORTH_ROUTE_AI_MAX_AGE", "10800"))
@@ -164,7 +167,7 @@ def bangkok_days(now):
     try:
         f = water_forecast.get_forecast(north_flow.BANGKOK_STATION)
     except Exception as e:  # noqa: BLE001 - the province list stands without it
-        print(f"[NorthRoute] HII forecast: {e}")
+        log.info(f"HII forecast: {e}")
         return [], None
     bank = (f.get("levels") or {}).get("bank")
     if f.get("source") != "hii" or bank is None:
@@ -280,7 +283,7 @@ class NorthRoute:
         try:
             net = RiverNet()
         except (OSError, ValueError, KeyError) as e:
-            print(f"[NorthRoute] river lines: {e}")
+            log.info(f"river lines: {e}")
             return {}
         out = {}
         for e in edges:
@@ -353,7 +356,7 @@ class NorthRoute:
         with self.lock:
             self.data, self.error = data, None
         self._save()
-        print(f"[NorthRoute] {len(rows)} provinces, {sum(p['level'] != 'normal' for p in rows)} to watch, {len(data['paths'])} river paths")
+        log.info(f"{len(rows)} provinces, {sum(p['level'] != 'normal' for p in rows)} to watch, {len(data['paths'])} river paths")
 
     def analyse(self):
         with self.lock:
@@ -391,7 +394,7 @@ class NorthRoute:
         except Exception as e:  # noqa: BLE001 - model down or bad JSON: keep the last report
             with self.lock:
                 self.ai_error, self.ai_running = f"{local_llm.default.model}: {str(e)[:160]}", False
-            print(f"[NorthRoute] model failed: {e}")
+            log.warning(f"model failed: {e}")
             return
         known = {p["province"] for p in d["provinces"]}
         ai = {"headline": r.get("headline") or "", "now": r.get("now") or "", "next7": r.get("next7") or "",
@@ -409,7 +412,7 @@ class NorthRoute:
         try:
             write_json_atomic(self.path, data, ensure_ascii=False)
         except OSError as e:
-            print(f"[NorthRoute] save failed: {e}")
+            log.warning(f"save failed: {e}")
 
     def status(self):
         with self.lock:
@@ -424,11 +427,11 @@ class NorthRoute:
             except Exception as e:  # noqa: BLE001 - keep the last good answer
                 with self.lock:
                     self.error = str(e)[:200]
-                print(f"[NorthRoute] refresh failed: {e}")
+                log.warning(f"refresh failed: {e}")
             try:
                 self.analyse()
             except Exception as e:  # noqa: BLE001 - keep the timer alive
-                print(f"[NorthRoute] analysis failed: {e}")
+                log.warning(f"analysis failed: {e}")
             time.sleep(REFRESH_SECONDS)
 
     def start(self):

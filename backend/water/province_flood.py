@@ -33,6 +33,9 @@ from datetime import datetime
 from backend.core import local_llm, thai_regions
 from backend.water.flood_feeds import hdms_floods
 from backend.water.water_service import _ntw_get, _num, _ts
+from backend.core.log import get_logger
+
+log = get_logger("ProvinceFlood")
 
 REFRESH_SECONDS = int(os.getenv("PROVINCE_FLOOD_SECONDS", "1800"))
 AI_MAX_AGE = int(os.getenv("PROVINCE_FLOOD_AI_MAX_AGE", "3600"))
@@ -316,7 +319,7 @@ class ProvinceFlood:
         try:
             reports = list(self.reports())
         except Exception as e:  # noqa: BLE001 - the gauges still make a picture without them
-            print(f"[ProvinceFlood] reports: {e}")
+            log.info(f"reports: {e}")
             reports = []
         snapshot = _ntw_get("/public/thailand")
         provinces = build(snapshot, hdms_floods.national(), reports)
@@ -327,7 +330,7 @@ class ProvinceFlood:
             self.provinces, self.updated_at, self.error, self.anchors = provinces, int(time.time()), None, anchors
             self.all_gauges, self.all_rain, self.all_dams = all_gauges, all_rain, all_dams
         self._save()
-        print(f"[ProvinceFlood] {sum(p['level'] != 'normal' for p in provinces)} of {len(provinces)} provinces not normal")
+        log.info(f"{sum(p['level'] != 'normal' for p in provinces)} of {len(provinces)} provinces not normal")
 
     def analyse(self):
         with self.lock:
@@ -353,7 +356,7 @@ class ProvinceFlood:
         except Exception as e:  # noqa: BLE001 - model down or bad JSON: keep the last report
             with self.lock:
                 self.ai_error, self.ai_running = f"{local_llm.default.model}: {str(e)[:160]}", False
-            print(f"[ProvinceFlood] model failed: {e}")
+            log.warning(f"model failed: {e}")
             return
         known = {f["province"] for f in facts}
         report = {"overview": report.get("overview") or "",
@@ -371,7 +374,7 @@ class ProvinceFlood:
         try:
             write_json_atomic(self.path, data, ensure_ascii=False)
         except OSError as e:
-            print(f"[ProvinceFlood] save failed: {e}")
+            log.warning(f"save failed: {e}")
 
     def gauges(self):
         """Every fresh river gauge in the country from the last refresh (see parse_gauges)."""
@@ -407,11 +410,11 @@ class ProvinceFlood:
             except Exception as e:  # noqa: BLE001 - keep the last good answer
                 with self.lock:
                     self.error = str(e)[:200]
-                print(f"[ProvinceFlood] refresh failed: {e}")
+                log.warning(f"refresh failed: {e}")
             try:
                 self.analyse()
             except Exception as e:  # noqa: BLE001 - keep the timer alive
-                print(f"[ProvinceFlood] analysis failed: {e}")
+                log.warning(f"analysis failed: {e}")
             time.sleep(REFRESH_SECONDS)
 
     def start(self):

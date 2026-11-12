@@ -43,6 +43,9 @@ except Exception:  # pragma: no cover - the analyst falls back to a Thai templat
 from backend.core import local_llm
 from backend.core.gemini import gemini_client
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
+from backend.core.log import get_logger
+
+log = get_logger("Flood")
 CACHE_FILE = os.path.join(DATA_DIR, "cache", "flood_roads.json")
 SOURCE_URL = "https://weather.bangkok.go.th/Flood/PageMap/GetData?id=0"
 SOURCE_PAGE = "https://weather.bangkok.go.th/flood"
@@ -170,7 +173,7 @@ class FloodRoads:
             write_json_atomic(CACHE_FILE, {"items": self.items, "updated_at": self.updated_at, "feed_time": self.feed_time},
                               ensure_ascii=False)
         except OSError as e:
-            print(f"[Flood] cache save failed: {e}")
+            log.warning(f"cache save failed: {e}")
 
     # ------------------------------------------------------------ fetch
     def _fetch(self):
@@ -300,7 +303,7 @@ class FloodRoads:
             except Exception as e:  # noqa: BLE001 - one bad poll must not kill the thread
                 with self.lock:
                     self.error = str(e)[:200]
-                print(f"[Flood] refresh failed: {e}")
+                log.warning(f"refresh failed: {e}")
             time.sleep(POLL_SECONDS)
 
     def _ai_loop(self):
@@ -311,7 +314,7 @@ class FloodRoads:
                 try:
                     self._analyse(force=True)
                 except Exception as e:  # noqa: BLE001 - the report must never kill the thread
-                    print(f"[Flood] analysis failed: {e}")
+                    log.warning(f"analysis failed: {e}")
             time.sleep(max(5.0, AI_INTERVAL - (time.time() - t0)) if self.items else 10.0)
 
     def start(self):
@@ -454,10 +457,10 @@ class FloodRoads:
                          *(h["where"] + " " + h["note"] for h in out["hotspots"])]
                 bad = unsupported_numbers(texts, prompt)   # the prompt holds the facts and every threshold it names
                 if bad:
-                    print(f"[Flood] AI analysis has numbers not in the data {bad[:5]}, using template")
+                    log.info(f"AI analysis has numbers not in the data {bad[:5]}, using template")
                     out = dict(base)
         except Exception as e:  # noqa: BLE001
-            print(f"[Flood] AI analysis failed, using template: {str(e)[:140]}")
+            log.warning(f"AI analysis failed, using template: {str(e)[:140]}")
         with self.lock:
             self.analysis = {**out, "facts": f, "updated_at": int(now)}
         self._ai_sig, self._ai_at = sig, now

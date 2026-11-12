@@ -26,6 +26,7 @@ import urllib.parse
 import urllib.request
 import zlib
 from datetime import datetime, timedelta, timezone
+from backend.core.log import get_logger
 
 BKK_TZ = timezone(timedelta(hours=7))
 USER_AGENT = "Mozilla/5.0 (BKK StreetSmart dashboard)"
@@ -318,7 +319,7 @@ class _Poller:
         items = self.fetch()
         with self.lock:
             self.items, self.updated_at, self.error = items, int(time.time()), None
-        print(f"[{self.name}] {len(items)} items")
+        get_logger(self.name).info(f"{len(items)} items")
 
     def _loop(self):
         while True:
@@ -327,7 +328,7 @@ class _Poller:
             except Exception as e:  # noqa: BLE001 - keep the last good answer
                 with self.lock:
                     self.error = str(e)[:200]
-                print(f"[{self.name}] refresh error: {e}")
+                get_logger(self.name).warning(f"refresh error: {e}")
             time.sleep(self.refresh_seconds)
 
     def start(self):
@@ -368,7 +369,7 @@ class TraffyFloodReports(_Poller):
                     found.setdefault(item["id"], item)
             except Exception as e:  # noqa: BLE001 - the other API may still answer
                 failed.append(f"{source} API: {e}")
-                print(f"[{self.name}] {source} API failed: {e}")
+                get_logger(self.name).warning(f"{source} API failed: {e}")
         if len(failed) == 2:
             raise RuntimeError("; ".join(failed))
         now = time.time()
@@ -440,7 +441,7 @@ class HdmsFloods(_Poller):
                 detail = json.loads(_get(HDMS_DETAIL_URL.format(case_id=urllib.parse.quote(case_id)), timeout=20))
                 return case_id, parse_hdms_photos(detail.get("imageList"))
             except Exception as e:  # noqa: BLE001 - no photos this round, asked again next refresh
-                print(f"[{self.name}] detail {case_id}: {e}")
+                get_logger(self.name).info(f"detail {case_id}: {e}")
                 return case_id, None
 
         todo = [i["case_id"] for i in items if i["case_id"] and not i["photos"] and stale(i)]

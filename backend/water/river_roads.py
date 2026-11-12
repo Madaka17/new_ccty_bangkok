@@ -41,6 +41,7 @@ import numpy as np
 
 from backend.core.instance import DATA_DIR
 from backend.water import water_forecast, water_service as ws
+from backend.core.log import get_logger
 
 GAUGE_ID = 1132                                   # สะพานนวลฉวี, Pak Kret
 RIVER_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "config", "chao_phraya.json")
@@ -234,7 +235,7 @@ def _save_log(log):
         os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
         write_json_atomic(LOG_FILE, log)
     except OSError as e:
-        print(f"[RiverRoads] log save failed: {e}")
+        get_logger("RiverRoads").warning(f"log save failed: {e}")
 
 
 def logged_errors(log, observed_peaks):

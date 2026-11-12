@@ -28,6 +28,9 @@ from backend.core import thai_regions
 from backend.core.geo import haversine_km
 from backend.core.instance import DATA_DIR
 from backend.traffic.area_traffic import area_traffic
+from backend.core.log import get_logger
+
+log = get_logger("NASA")
 
 FIRMS = "https://firms.modaps.eosdis.nasa.gov/data/active_fire/{}/csv/{}_SouthEast_Asia_48h.csv"
 FIRMS_FILES = (("suomi-npp-viirs-c2", "SUOMI_VIIRS_C2"), ("noaa-20-viirs-c2", "J1_VIIRS_C2"), ("noaa-21-viirs-c2", "J2_VIIRS_C2"))
@@ -120,7 +123,7 @@ def read_fires():
             points += parse_firms(_get(FIRMS.format(folder, name)).decode("utf-8", "replace"), now)
             ok += 1
         except Exception as e:
-            print(f"[NASA] FIRMS {name} failed: {e}")
+            log.warning(f"FIRMS {name} failed: {e}")
     if not ok:
         return None
     return {**analyse_fires(points, now), "satellites": ok}
@@ -206,14 +209,14 @@ class NasaFeeds:
             try:
                 value = read()
             except Exception as e:
-                print(f"[NASA] {key} failed: {e}")
+                log.warning(f"{key} failed: {e}")
                 continue
             if value is not None:
                 self._data[key] = value
         os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
         write_json_atomic(CACHE_FILE, self._data, ensure_ascii=False)
         fires, events = self._data["fires"] or {}, self._data["events"] or {}
-        print(f"[NASA] fires in Thailand 24 h: {fires.get('th_24h')} · events: {len(events.get('items') or [])}")
+        log.info(f"fires in Thailand 24 h: {fires.get('th_24h')} · events: {len(events.get('items') or [])}")
 
     def _loop(self):
         while True:
