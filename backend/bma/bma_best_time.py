@@ -153,7 +153,10 @@ class BestTime:
                     self._refreshing = True
                     self._refresh_thread = threading.Thread(
                         target=self._refresh_in_background, args=(now,), daemon=True, name="best-time-refresh")
-                    self._refresh_thread.start()
+                    try:
+                        self._refresh_thread.start()
+                    except RuntimeError:
+                        self._refreshing = False   # no thread: let a later request try again
                 return self._cells
             try:
                 self._cells = self._load_cells()
