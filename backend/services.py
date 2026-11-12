@@ -51,6 +51,10 @@ from backend.water.national_forecast import NationalForecast
 from backend.water.north_route import NorthRoute
 from backend.water.province_flood import ProvinceFlood
 from backend.water.user_reports import UserReports
+from backend.core.log import get_logger
+
+log = get_logger("YOLO")
+log_warning = get_logger("Warning")
 
 # ids that end up in file names: letters, digits, _ . - only (never a path)
 SAFE_ID = re.compile(r"[A-Za-z0-9_.-]{1,80}")
@@ -61,7 +65,7 @@ SAFE_ID = re.compile(r"[A-Za-z0-9_.-]{1,80}")
 # the fine-tuned file is no longer picked up just because it exists (the first run missed motorcycles).
 MODEL_PATH = os.path.join(BASE_DIR, os.getenv("AI_MODEL", "yolo26x.pt"))
 if not os.path.exists(MODEL_PATH):
-    print(f"[AI] {MODEL_PATH} not found, falling back to yolo26x.pt")
+    get_logger("AI").info(f"{MODEL_PATH} not found, falling back to yolo26x.pt")
     MODEL_PATH = os.path.join(BASE_DIR, "yolo26x.pt")
 CAMERAS_FILE = os.path.join(BASE_DIR, "config", "cameras_bkk.json")
 # React UI (<instance>/dist, built by launch\build_web.bat). Without a build the API still runs and "/" says how to build it.
@@ -70,7 +74,7 @@ WEB_DIST = os.getenv("WEB_DIST") or os.path.join(DATA_DIR, "dist")
 INDEX_HTML = os.path.join(WEB_DIST, "index.html")
 WEB_BUILT = os.path.exists(INDEX_HTML)
 if not WEB_BUILT:
-    print(f"[Warning] {INDEX_HTML} not found: run launch\\build_web.bat (Windows) or launch/build_web.sh (macOS) (needs Node.js), then restart. Serving the API only.")
+    log_warning.warning(f"{INDEX_HTML} not found: run launch\\build_web.bat (Windows) or launch/build_web.sh (macOS) (needs Node.js), then restart. Serving the API only.")
 
 # Load cameras (strictly verified live streams)
 cameras_data = []
@@ -79,9 +83,9 @@ if os.path.exists(CAMERAS_FILE):
         with open(CAMERAS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
             cameras_data = data.get("items", [])
-            print(f"[Server] Loaded {len(cameras_data)} verified active cameras from {CAMERAS_FILE}")
+            get_logger("Server").info(f"Loaded {len(cameras_data)} verified active cameras from {CAMERAS_FILE}")
     except Exception as e:
-        print(f"[Warning] Failed to load cameras_bkk.json: {e}")
+        log_warning.warning(f"Failed to load cameras_bkk.json: {e}")
 
 # Initialize the YOLO vehicle detector (model from AI_MODEL, target 10 FPS for smoother playback)
 vehicle_log = VehicleLog(os.path.join(DATA_DIR, "vehicle_counts.db"))
@@ -89,11 +93,11 @@ vehicle_log = VehicleLog(os.path.join(DATA_DIR, "vehicle_counts.db"))
 yolo = YoloSwitch(os.path.join(DATA_DIR, "cache", "yolo_switch.json"),
                   allowed=yolo_allowed() or worker_url() is not None)
 if worker_url():
-    print(f"[YOLO] models run on the AI worker at {worker_url()}")
+    log.info(f"models run on the AI worker at {worker_url()}")
 if not yolo.allowed:
-    print("[YOLO] not allowed on this machine (YOLO_ALLOWED=0)")
+    log.info("not allowed on this machine (YOLO_ALLOWED=0)")
 if not yolo.enabled:
-    print("[YOLO] off (saved state): no models loaded")
+    log.info("off (saved state): no models loaded")
 detector = VehicleDetectorYOLO11x(model_path=MODEL_PATH, target_fps=10.0, conf_threshold=0.15, vehicle_log=vehicle_log,
                                   load_models=yolo.enabled)
 # Background counting on user-selected cameras (lower fps to prioritize live camera)
@@ -239,7 +243,7 @@ def _retry_yolo_loop():
         try:
             yolo.retry_missing()
         except Exception as e:  # noqa: BLE001 - keep retrying
-            print(f"[YOLO] retry loop: {e}")
+            log.info(f"retry loop: {e}")
 
 
 def start():

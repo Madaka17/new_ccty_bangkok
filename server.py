@@ -19,9 +19,14 @@ venv_python = (os.path.join(BASE_DIR, ".venv", "Scripts", "python.exe") if sys.p
                else os.path.join(BASE_DIR, ".venv", "bin", "python"))
 if os.path.exists(venv_python) and sys.prefix == sys.base_prefix and os.path.normcase(sys.executable) != os.path.normcase(venv_python):
     import subprocess
-    print("[Auto-Env] Switching to virtual environment (.venv)...")
+    from backend.core.log import get_logger  # stdlib only: safe on the global Python too
+    get_logger("Auto-Env").info("Switching to virtual environment (.venv)...")
     code = subprocess.call([venv_python] + sys.argv)
     sys.exit(code)
+
+from backend.core.log import get_logger
+
+log = get_logger("Server")
 
 import time
 try:
@@ -40,7 +45,7 @@ def free_port_if_needed(port=8000):
             if s.connect_ex(('127.0.0.1', port)) != 0:
                 return  # Port is free
         
-        print(f"[Server] Port {port} is occupied. Attempting to free it...")
+        log.info(f"Port {port} is occupied. Attempting to free it...")
         import subprocess
         my_pid = os.getpid()
         killed = False
@@ -50,7 +55,7 @@ def free_port_if_needed(port=8000):
             res = subprocess.run(["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"], capture_output=True, text=True)
             for pid in (int(p) for p in res.stdout.split() if p.isdigit()):
                 if pid != my_pid:
-                    print(f"[Server] Closing old process PID {pid} on port {port}...")
+                    log.info(f"Closing old process PID {pid} on port {port}...")
                     os.kill(pid, signal.SIGTERM)
                     killed = True
             if killed:
@@ -63,7 +68,7 @@ def free_port_if_needed(port=8000):
                 try:
                     pid = int(parts[4])
                     if pid != my_pid and pid > 0:
-                        print(f"[Server] Closing old process PID {pid} on port {port}...")
+                        log.info(f"Closing old process PID {pid} on port {port}...")
                         subprocess.run(f"taskkill /F /PID {pid}", shell=True, capture_output=True)
                         killed = True
                 except ValueError:
@@ -71,7 +76,7 @@ def free_port_if_needed(port=8000):
         if killed:
             time.sleep(1.0)
     except Exception as e:
-        print(f"[Server] Note during port check: {e}")
+        log.info(f"Note during port check: {e}")
 
 from backend.core.instance import PORT, DATA_DIR, IS_STAGE
 free_port_if_needed(PORT)
@@ -120,7 +125,7 @@ def start_browser_when_ready(url="http://localhost:8000"):
             try:
                 with urllib.request.urlopen(f"{url}/api/ai/stats", timeout=1.5) as resp:
                     if resp.status == 200:
-                        print(f"[Server] Server is ready! Opening browser at {url} ...")
+                        log.info(f"Server is ready! Opening browser at {url} ...")
                         webbrowser.open(url)
                         return
             except Exception:
@@ -134,6 +139,7 @@ if __name__ == "__main__":
     free_port_if_needed(PORT)
     if os.getenv("OPEN_BROWSER") == "1":
         start_browser_when_ready(f"http://localhost:{PORT}")
+    # startup banner: left as print (console output of the launcher, not a log line)
     print("=" * 60)
     print("  BKK StreetSmart CCTV & YOLO Vehicle Detection Server")
     print(f"  Model: {detector.model_name} | Processing Rate: {detector.target_fps:g} FPS")
@@ -146,7 +152,7 @@ if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info", server_header=False,
                     access_log=os.getenv("ACCESS_LOG", "0") == "1")
     except BaseException as e:
-        print(f"[Server] Exited with {type(e).__name__}: {e}")
+        log.info(f"Exited with {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
 

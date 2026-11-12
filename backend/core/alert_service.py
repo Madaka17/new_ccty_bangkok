@@ -38,6 +38,9 @@ from datetime import date, datetime, timedelta, timezone
 from collections import deque
 
 from backend.core import thai_regions
+from backend.core.log import get_logger
+
+log = get_logger("Alerts")
 
 try:
     from pywebpush import WebPushException, webpush
@@ -137,7 +140,7 @@ class AlertService:
             v = Vapid01()
             v.generate_keys()
             v.save_key(self.key_path)
-            print(f"[Alerts] generated VAPID key {self.key_path}")
+            log.info(f"generated VAPID key {self.key_path}")
         raw = v.public_key.public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
         return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
 
@@ -149,7 +152,7 @@ class AlertService:
         try:
             return fn(*args)
         except Exception as e:  # noqa: BLE001 - one broken source must not stop the others
-            print(f"[Alerts] source {name} failed: {str(e)[:120]}")
+            log.warning(f"source {name} failed: {str(e)[:120]}")
             return None
 
     def candidates(self, now=None):
@@ -397,12 +400,12 @@ class AlertService:
                 self.error = None
             except Exception as e:  # noqa: BLE001
                 self.error = str(e)[:200]
-                print(f"[Alerts] check failed: {e}")
+                log.warning(f"check failed: {e}")
             time.sleep(CHECK_SECONDS)
 
     def start(self):
         if webpush is None:
-            print("[Alerts] pywebpush not installed - alerts disabled")
+            log.info("pywebpush not installed - alerts disabled")
             return
         threading.Thread(target=self._loop, daemon=True, name="alerts").start()
 
@@ -428,9 +431,9 @@ class AlertService:
                 if code in (404, 410):          # the browser dropped the subscription
                     gone.append(s["endpoint"])
                 else:
-                    print(f"[Alerts] push failed ({code}): {str(e)[:120]}")
+                    log.warning(f"push failed ({code}): {str(e)[:120]}")
             except Exception as e:  # noqa: BLE001
-                print(f"[Alerts] push failed: {str(e)[:120]}")
+                log.warning(f"push failed: {str(e)[:120]}")
         if gone:
             with self.lock:
                 self.subs = [s for s in self.subs if s["endpoint"] not in gone]

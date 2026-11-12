@@ -12,6 +12,9 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
+from backend.core.log import get_logger
+
+log = get_logger("Telemetry")
 DB_PATH = os.path.join(DATA_DIR, "cache", "telemetry.db")
 BKK_TZ = timezone(timedelta(hours=7))
 
@@ -87,7 +90,7 @@ class Telemetry:
             self.conn.commit()
             future_views = self.conn.execute("SELECT COUNT(*) FROM views WHERE ts > ?", (cutoff,)).fetchone()[0]
         if n or future_views:
-            print(f"[Telemetry] dropped {n} session(s) stamped in the future"
+            log.info(f"dropped {n} session(s) stamped in the future"
                   + (f"; {future_views} view row(s) also carry a future timestamp and are excluded from the counts" if future_views else ""))
         return {"sessions": n, "future_views": future_views}
 

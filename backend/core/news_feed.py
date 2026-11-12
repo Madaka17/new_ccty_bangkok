@@ -17,6 +17,7 @@ import zlib
 
 from backend.core import thai_regions
 from backend.water.flood_feeds import _Poller, _get
+from backend.core.log import get_logger
 
 FEEDS = (
     ("มติชน", "https://www.matichon.co.th/feed"),
@@ -105,7 +106,7 @@ class NewsFeed(_Poller):
                 found += parse_rss(_get(url, timeout=30), source)
             except Exception as e:  # noqa: BLE001 - the other outlets may still answer
                 failed.append(source)
-                print(f"[{self.name}] {source}: {str(e)[:160]}")
+                get_logger(self.name).info(f"{source}: {str(e)[:160]}")
         if len(failed) == len(FEEDS):
             raise RuntimeError("every news feed failed")
         return merge(found)

@@ -39,6 +39,9 @@ import time
 from collections import deque
 
 import requests
+from backend.core.log import get_logger
+
+log = get_logger("LocalLLM")
 
 # Thai text runs about 2.2 characters per token on the Qwen tokenizer (measured on the chat context)
 CHARS_PER_TOKEN = 2.2
@@ -198,7 +201,7 @@ class Client:
             for wait in (*RETRY_429, None):
                 resp = requests.post(f"{self.url}/chat/completions", json=body, headers=headers, timeout=timeout)
                 if resp.status_code == 400 and "response_format" in body and "response_format" in resp.text:
-                    print(f"[LocalLLM] {self.url} refuses response_format: the JSON schema goes into the prompt")
+                    log.info(f"{self.url} refuses response_format: the JSON schema goes into the prompt")
                     self.response_format = False
                     del body["response_format"]
                     body["messages"] = _schema_in_prompt(messages, json_schema)
@@ -215,7 +218,7 @@ class Client:
         if resp.status_code == 429:
             # the body says which gateway limit was hit (parallel requests, rpm or tpm); keys in it are masked
             limits = {k: v for k, v in resp.headers.items() if "ratelimit" in k.lower() or k.lower() == "retry-after"}
-            print(f"[LocalLLM] 429 for {caller} after {len(RETRY_429)} retries: "
+            log.info(f"429 for {caller} after {len(RETRY_429)} retries: "
                   f"{_KEY.sub('<key>', resp.text[:400])} {limits or ''}".rstrip())
         resp.raise_for_status()
         data = resp.json()
