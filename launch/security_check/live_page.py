@@ -19,10 +19,10 @@ border:1px solid var(--line);background:rgba(196,77,255,.1);white-space:nowrap}
 .pill.fail{color:var(--fail);border-color:rgba(255,79,123,.7)}
 .pill.off{color:var(--mut)}
 .wrap{max-width:1600px;min-height:100vh;display:flex;flex-direction:column}
-.wall{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:14px;align-items:stretch;flex:1;
-height:calc(100vh - 270px);min-height:420px}
+.wall{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:14px;align-items:stretch;flex:none;
+grid-template-rows:minmax(0,1fr);height:calc(100vh - 270px);min-height:420px}
 .wall .card{margin:0;display:flex;flex-direction:column;min-height:0;overflow:hidden}
-.mapbox{flex:1;position:relative;min-height:0}
+.mapbox{flex:1 1 auto;position:relative;min-height:0;overflow:hidden}
 .mapbox svg.map{position:absolute;inset:0;width:100%;height:100%}
 .edgelbl{position:absolute;left:10px;bottom:8px;font-family:var(--mono);font-size:13px;color:var(--mut);
 background:rgba(11,6,24,.75);padding:1px 8px;border-radius:6px;pointer-events:none}
@@ -41,7 +41,7 @@ background:rgba(11,6,24,.75);padding:1px 8px;border-radius:6px;pointer-events:no
 .feedhd input{width:18px;height:18px;accent-color:#c44dff}
 #feed{list-style:none;margin:0;padding:0;flex:1;min-height:0;overflow-y:auto}
 #feed li{display:grid;grid-template-columns:auto 1fr;gap:0 10px;padding:7px 4px;border-bottom:1px solid rgba(170,90,255,.18);overflow-wrap:anywhere;
-animation:slidein .45s ease-out}
+animation:slidein .45s ease-out both}
 @keyframes slidein{from{transform:translateX(-14px);opacity:0}to{transform:none;opacity:1}}
 #feed .t{font-family:var(--mono);color:var(--mut);font-size:.85rem}
 #feed .lb{font-weight:700}
@@ -60,7 +60,7 @@ border:1px solid var(--warn);background:rgba(255,181,71,.1);color:var(--fg);over
 .banner button{flex:none;font:inherit;color:var(--fg);background:rgba(196,77,255,.2);border:1px solid var(--glow);border-radius:8px;
 min-height:32px;padding:0 12px;cursor:pointer}
 .banner button:focus-visible{outline:2px solid var(--glow2);outline-offset:2px}
-@media (max-width:900px){.wall{grid-template-columns:minmax(0,1fr);height:auto;min-height:0}.mapbox{flex:none;aspect-ratio:2/1}#feed{flex:none;max-height:60vh}}
+@media (max-width:900px){.wall{grid-template-columns:minmax(0,1fr);grid-template-rows:none;height:auto;min-height:0}.mapbox{flex:none;aspect-ratio:2/1}#feed{flex:none;max-height:60vh}}
 @media (max-width:720px){.stat .big{font-size:1.8rem}}
 @media (prefers-reduced-motion:reduce){#feed li{animation:none}.arc,.burst{display:none}.dot{transition:none}}
 """

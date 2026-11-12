@@ -246,3 +246,11 @@ def test_page_fills_screen():
     html = live_page.build_page()
     assert "max-width:1600px" in html and "preserveAspectRatio=\"xMidYMid meet\"" in html
     assert "edgelbl" in html and "max-height:60vh" in html
+
+
+def test_map_has_fixed_height_css():
+    html = live_page.build_page()
+    assert "min-height:0" in html and "calc(100vh - 270px)" in html
+    assert "flex:none;\ngrid-template-rows:minmax(0,1fr)" in html
+    assert ".mapbox svg.map{position:absolute;inset:0;width:100%;height:100%}" in html
+    assert "aspect-ratio:2/1" in html and "overflow:hidden" in html
