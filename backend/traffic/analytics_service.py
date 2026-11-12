@@ -15,7 +15,7 @@ import os
 import threading
 import time
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta, timezone
 
 from backend.traffic import rsc_service
 from backend.water import water_service
@@ -23,7 +23,6 @@ from backend.bma.bma_events import bma_feed
 from backend.core.telemetry_service import telemetry
 from backend.traffic.traffic_service import traffic
 
-from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 RSC_POINTS_GLOB = os.path.join(DATA_DIR, "cache", "rsc", "points_*.json")
 BKK_TZ = timezone(timedelta(hours=7))

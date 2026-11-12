@@ -18,7 +18,6 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 from backend.bma import bma_site
-from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 CACHE_FILE = os.path.join(DATA_DIR, "cache", "bma_events.json")
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) BKK-Traffic-CCTV/2.0"

@@ -640,13 +640,18 @@ class HelmetPatrol:
             try:
                 for name in os.listdir(CACHE_DIR):
                     p = os.path.join(CACHE_DIR, name)
-                    if os.path.getmtime(p) < cutoff:
-                        os.remove(p)
+                    try:
+                        if os.path.getmtime(p) < cutoff:
+                            os.remove(p)
+                    except OSError:
+                        pass   # gone or locked: the next round tries again
                 with self.lock:
                     conn = self._db()
-                    # keep the no-helmet log forever (evidence is on the data drive); drop stale routine checks
-                    conn.execute("DELETE FROM helmet_checks WHERE ts < ? AND verdict != 'no_helmet'", (int(cutoff),))
-                    conn.commit()
-                    conn.close()
-            except OSError:
-                pass
+                    try:
+                        # keep the no-helmet log forever (evidence is on the data drive); drop stale routine checks
+                        conn.execute("DELETE FROM helmet_checks WHERE ts < ? AND verdict != 'no_helmet'", (int(cutoff),))
+                        conn.commit()
+                    finally:
+                        conn.close()
+            except (OSError, sqlite3.Error) as e:
+                print(f"[Helmet] cleanup failed: {e}")   # keep the thread alive for the next round

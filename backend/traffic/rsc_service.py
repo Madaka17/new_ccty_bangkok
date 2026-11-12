@@ -30,7 +30,6 @@ from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
-from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "rsc")
 SUMMARY_CACHE_FILE = os.path.join(CACHE_DIR, "summary.json")
@@ -306,7 +305,7 @@ def fetch_district_points(year, district, force=False):
         pts = [p for p in pts if p["lat"] and p["lon"]]
         write_json_atomic(path, {"year": year, "district": district, "fetched": int(time.time()), "points": pts}, ensure_ascii=False)
         return {"year": year, "district": district, "fetched": int(time.time()), "points": pts}
-    except Exception as e:
+    except Exception:
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
@@ -366,7 +365,6 @@ def _camera_rows(cameras, points, years, radius_m):
         conn.close()
     except sqlite3.Error:
         pass
-    year_span = max(1, len(years))
     this_year = _now().year
     # fraction of the current year elapsed, so cases/yr is not deflated mid-year
     elapsed = (_now() - datetime(this_year, 1, 1, tzinfo=BKK_TZ)).days / 365.0

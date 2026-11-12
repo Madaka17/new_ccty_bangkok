@@ -147,6 +147,7 @@ class BmaScanner:
         # seconds from one cycle's start to the next: the helmet patrol checks each camera this often
         self.scan_interval = int(os.getenv("BMA_SCAN_INTERVAL", "180"))
         self.infer_lock = threading.Lock()
+        self._last_tick_error = None   # last start_scan error printed, so a repeating one prints once
         # HelmetPatrol (helmet_service.py) / WrongWayPatrol (wrongway_service.py) set by the server:
         # both get every snapshot (+ its boxes)
         self.helmet = None
@@ -227,13 +228,21 @@ class BmaScanner:
         time.sleep(3.0) # wait for server start
         last_start = 0.0
         while True:
-            try:
-                if not self.is_scanning and time.time() - last_start >= self.scan_interval:
-                    last_start = time.time()
-                    self.start_scan()
-            except Exception:
-                pass
+            last_start = self._scan_tick(last_start)
             time.sleep(5)
+
+    def _scan_tick(self, last_start):
+        """One pass of the scheduler: start a cycle if one is due. Returns the new last_start."""
+        try:
+            if not self.is_scanning and time.time() - last_start >= self.scan_interval:
+                last_start = time.time()
+                self.start_scan()
+        except Exception as e:
+            # Print only a new error: the same one would repeat every 5 s
+            if str(e) != self._last_tick_error:
+                self._last_tick_error = str(e)
+                print(f"[BMA] start_scan failed: {e}")
+        return last_start
 
     def _run_scan_cycle(self):
         t0 = time.time()
@@ -261,7 +270,6 @@ class BmaScanner:
                 return
             camid = cam['camid']
             try:
-                t_cam = time.time()
                 raw_bytes = self.session.fetch_snapshot(camid)
                 
                 if not raw_bytes:
@@ -367,11 +375,16 @@ class BmaScanner:
                     break
                 futures.append(executor.submit(process_camera, cam))
 
+            failed, first_error = 0, None
             for f in futures:
                 try:
                     f.result()
-                except Exception:
-                    pass
+                except Exception as e:
+                    failed += 1
+                    if failed == 1:
+                        first_error = str(e)
+            if failed:
+                print(f"[BMA] {failed} cameras failed this cycle, first: {first_error}")
 
         self.last_scan_duration = time.time() - t0
         self.last_scan_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')

@@ -43,7 +43,6 @@ except Exception:  # pragma: no cover - the analyst falls back to a Thai templat
     genai_types = None
 
 from backend.core import local_llm
-from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 CACHE_FILE = os.path.join(DATA_DIR, "cache", "flood_roads.json")
 SOURCE_URL = "https://weather.bangkok.go.th/Flood/PageMap/GetData?id=0"

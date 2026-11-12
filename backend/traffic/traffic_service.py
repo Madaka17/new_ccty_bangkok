@@ -19,7 +19,6 @@ import urllib.request
 
 import mapbox_vector_tile
 
-from backend.core.instance import BASE_DIR  # project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 from backend.core.instance import PRODUCTION_DIR
 CACHE_DIR = os.path.join(DATA_DIR, "cache")

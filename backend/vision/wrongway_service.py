@@ -817,14 +817,19 @@ class WrongWayPatrol:
             try:
                 for name in os.listdir(CACHE_DIR):
                     p = os.path.join(CACHE_DIR, name)
-                    if os.path.getmtime(p) < cutoff:
-                        os.remove(p)
+                    try:
+                        if os.path.getmtime(p) < cutoff:
+                            os.remove(p)
+                    except OSError:
+                        pass   # gone or locked: the next round tries again
                 with self.lock:
                     conn = self._db()
-                    conn.execute("DELETE FROM wrongway_checks WHERE ts < ? AND verdict != 'wrong_way'", (int(cutoff),))
-                    conn.commit()
-                    conn.close()
+                    try:
+                        conn.execute("DELETE FROM wrongway_checks WHERE ts < ? AND verdict != 'wrong_way'", (int(cutoff),))
+                        conn.commit()
+                    finally:
+                        conn.close()
                 for fl in list(self.fields.values()):
                     fl.save(force=True)
-            except OSError:
-                pass
+            except (OSError, sqlite3.Error) as e:
+                print(f"[WrongWay] cleanup failed: {e}")   # keep the thread alive for the next round

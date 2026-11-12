@@ -22,6 +22,7 @@ import urllib.request
 import cv2
 
 from backend.core import local_llm
+from backend.vision.frame_utils import safe_id
 
 try:
     import anthropic
@@ -234,7 +235,11 @@ class IncidentManager:
             print(f"[Incident] cleared at {inc['title']}")
 
     def snapshot_path(self, incident_id):
-        p = os.path.join(self.snapshot_dir, f"{incident_id}.jpg")
+        try:   # the id comes from the URL: it must not be a path
+            name = safe_id(incident_id)
+        except ValueError:
+            return None
+        p = os.path.join(self.snapshot_dir, f"{name}.jpg")
         return p if os.path.exists(p) else None
 
     # ---------------------------------------------------------------- Longdo feed
