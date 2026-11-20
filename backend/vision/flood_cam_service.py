@@ -25,6 +25,10 @@ cameras that sent no frame since, so the map has something while the BMA site is
 because the text bar on a saved snapshot hides the printed time the stale check reads. Every verdict
 keeps the time of its frame, and the map fades the ones whose frame is older than STALE_MINUTES.
 
+FLOOD_CAM_RESEED (seconds, 0 = off) keeps taking those saved snapshots every that often and replaces a
+held frame with a newer one. For a machine with BMA_FETCH=0 that is fed by a copy of another machine's
+snapshots (launch/test/pi_frames_sync.py copies the Raspberry Pi's into instances/test).
+
 At most MAX_PER_HOUR vision calls. Served by /api/flood/cameras*.
 """
 import base64
@@ -65,10 +69,15 @@ CONFIRM_W = 704
 STALE_MINUTES = int(os.getenv("FLOOD_CAM_STALE_MINUTES", "15"))
 SEED_MAX_AGE = 12 * 3600
 SEED_DELAY = 300               # about one scanner cycle: live frames first
+RESEED = int(os.getenv("FLOOD_CAM_RESEED", "0"))   # seconds between re-reads of the saved snapshots; 0 = seed once
 AGENT_TIMEOUT = 120
 ERROR_BACKOFF = 60
 STAMP_MAX_LAG = int(os.getenv("FLOOD_CAM_STAMP_MAX_LAG", "3600"))   # printed time this much older than the fetch: stale copy
-STAMP_MAX_AGE = 30 * 86400     # printed time older than this: a camera clock never set, not a stale copy
+# Printed time older than this: a camera clock never set (they reset to a default years back), not a stale
+# copy. Was 30 days, but the BMA site served camera 1463's flood picture of 26 Sep 2026 as new on 20 Nov,
+# 55 days later, so old copies outlive a month. A camera whose clock is months off now gets unclear for a
+# wet call, which is the safe side.
+STAMP_MAX_AGE = int(os.getenv("FLOOD_CAM_STAMP_MAX_AGE_DAYS", "365")) * 86400
 BKK = timezone(timedelta(hours=7))
 MONTHS = {m: i for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun",
                                       "jul", "aug", "sep", "oct", "nov", "dec"), 1)}
@@ -111,7 +120,16 @@ CONFIRM_PROMPT = (
 
 
 def _parse(text):
-    start, end = text.find("{"), text.rfind("}")
+    """The JSON object in a reply. A small local model (qwen3.5-4b) sometimes answers the screen with the bare
+    tile list, [{"tile": 1, ...}, ...], instead of {"tiles": [...]}; that list is taken as the tiles."""
+    obj, arr = text.find("{"), text.find("[")
+    if arr >= 0 and (obj < 0 or arr < obj):
+        end = text.rfind("]")
+        if end > arr:
+            tiles = json.loads(text[arr:end + 1])
+            if isinstance(tiles, list):
+                return {"tiles": tiles}
+    start, end = obj, text.rfind("}")
     return json.loads(text[start:end + 1]) if start >= 0 and end > start else {}
 
 
@@ -158,8 +176,9 @@ def _stale_copy(v, stamp, frame_ts):
     lag = frame_ts - at if at is not None else 0
     if not STAMP_MAX_LAG < lag < STAMP_MAX_AGE:
         return v
+    age = f"{lag / 86400:.0f} วัน" if lag >= 2 * 86400 else f"{lag / 3600:.0f} ชม."
     return {**v, "level": "unclear",
-            "note_th": f"ภาพค้าง: เวลาบนภาพ {str(stamp)[:40]} เก่ากว่าเวลาดึงภาพ {lag / 3600:.0f} ชม."}
+            "note_th": f"ภาพค้าง: เวลาบนภาพ {str(stamp)[:40]} เก่ากว่าเวลาดึงภาพ {age}"}
 
 
 def _tile(jpeg, n):
@@ -234,8 +253,9 @@ class FloodCamWatch:
             with self._lock:
                 self._frames[camid] = (buf.tobytes(), time.time(), fingerprint(frame))
 
-    def _seed(self):
-        """The scanner's saved snapshots, so a restart while the BMA site is down still has frames to check."""
+    def _seed(self, refresh=False):
+        """The scanner's saved snapshots, so a restart while the BMA site is down still has frames to check.
+        refresh=True (FLOOD_CAM_RESEED): a snapshot newer than the frame held replaces it."""
         now = time.time()
         for camid in list(self._cams):
             path = os.path.join(SNAPSHOT_DIR, f"{camid}.jpg")
@@ -243,6 +263,11 @@ class FloodCamWatch:
                 ts = os.path.getmtime(path)
                 if now - ts > SEED_MAX_AGE:
                     continue
+                if refresh:
+                    with self._lock:
+                        held = self._frames.get(camid)
+                    if held and ts <= held[1]:
+                        continue   # not newer than the frame held: not read again
                 with open(path, "rb") as f:
                     jpeg = f.read()
             except OSError:
@@ -251,7 +276,19 @@ class FloodCamWatch:
             if img is None:
                 continue
             with self._lock:
-                self._frames.setdefault(camid, (jpeg, ts, fingerprint(img)))
+                if refresh:
+                    self._frames[camid] = (jpeg, ts, fingerprint(img))
+                else:
+                    self._frames.setdefault(camid, (jpeg, ts, fingerprint(img)))
+
+    def _reseed_forever(self, every):
+        """Re-read the saved snapshots every `every` seconds; a failure is logged and the loop goes on."""
+        while True:
+            time.sleep(every)
+            try:
+                self._seed(refresh=True)
+            except Exception as e:  # noqa: BLE001 - one bad file or a read error must not stop the reseed
+                log.warning(f"reseed failed: {type(e).__name__}: {str(e)[:160]}")
 
     # ------------------------------------------------------------ worker
     def start(self):
@@ -263,6 +300,8 @@ class FloodCamWatch:
             threading.Thread(target=self._loop, daemon=True, name=f"flood-cam-watch-{n}").start()
         time.sleep(SEED_DELAY)
         self._seed()
+        if RESEED > 0:
+            self._reseed_forever(RESEED)
 
     def _loop(self):
         while True:

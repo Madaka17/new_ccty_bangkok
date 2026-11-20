@@ -21,6 +21,34 @@ set "CHAT_LLM_MODEL= "
 set "GEMINI_API_KEY= "
 set "ANTHROPIC_API_KEY= "
 set "ANTHROPIC_AUTH_TOKEN= "
+rem Bionic mode (opt-in): create launch\test\ai_bionic.flag and the flood watch runs on the local model in
+rem Bionic (LM Studio, port 1235), with no fetching from BMA here: the frames come from the Raspberry Pi's
+rem copy (pi_frames_sync.py, started below in --child mode). Delete the flag to go back to AI off.
+rem The flag file survives restarts, so the watchdog starts the test server in the same mode.
+rem Cloud keys and the vision and chat models stay blank in both modes.
+if exist "launch\test\ai_bionic.flag" (
+    set "LOCAL_LLM_URL=http://localhost:1235/v1"
+    set "LOCAL_LLM_MODEL=unsloth/qwen3.5-4b"
+    set "LOCAL_LLM_API_KEY=lm-studio"
+    set "LOCAL_LLM_MAX_PARALLEL=1"
+    rem Thinking off the LM Studio way: .env turns it off for the gateway's vLLM with LOCAL_LLM_EXTRA
+    rem (chat_template_kwargs), which LM Studio ignores, and the 4B then thinks until max_tokens runs out
+    set "LOCAL_LLM_REASONING=none"
+    set "LOCAL_LLM_EXTRA= "
+    rem The context the model is loaded with in Bionic (.env has the gateway's 32000)
+    set "LOCAL_LLM_CONTEXT=16384"
+    set "BMA_FETCH=0"
+    rem No YOLO here: no BMA frames to count, and the 4B already holds most of the 3080's VRAM
+    set "YOLO_ALLOWED=0"
+    set "FLOOD_CAM_RESEED=300"
+    set "FLOOD_CAM_WORKERS=1"
+    set "FLOOD_CAM_INTERVAL=1200"
+    set "FLOOD_CAM_WET_INTERVAL=600"
+    set "FLOOD_CAM_MAX_PER_HOUR=600"
+    set "FLOOD_CAM_STALE_MINUTES=35"
+    set "HELMET_PATROL_MAX_PER_HOUR=0"
+    set "WRONGWAY_MAX_PER_HOUR=0"
+)
 rem Started again: launch\watchdog may restart it from now on (stop.bat left this mark)
 if exist "launch\watchdog\state\stopped_8001" del "launch\watchdog\state\stopped_8001"
 
@@ -71,6 +99,10 @@ call launch\build_web.bat
 
 echo [*] Starting TEST server at http://localhost:8001 ...
 echo.
+rem Bionic mode: the copy of the Pi's snapshots runs beside the server (it exits by itself when the server stops)
+if "%MODE%"=="child" if exist "launch\test\ai_bionic.flag" (
+    start "" /b "%~dp0..\..\.venv\Scripts\pythonw.exe" "%~dp0pi_frames_sync.py"
+)
 if exist ".venv\Scripts\python.exe" (
     .venv\Scripts\python.exe server.py
 ) else (
