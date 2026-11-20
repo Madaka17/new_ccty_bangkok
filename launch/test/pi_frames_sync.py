@@ -30,6 +30,7 @@ import tarfile
 import tempfile
 import threading
 import time
+import traceback
 from datetime import datetime
 
 import msvcrt
@@ -249,10 +250,14 @@ def main(argv=None):
     next_sync = start
     next_check = start + GRACE
     misses = 0
+    _log(f"started (pid {os.getpid()})")
     while True:
         now = time.time()
         if now >= next_sync:
-            sync_once()
+            try:
+                sync_once()
+            except Exception:  # noqa: BLE001 - under pythonw an uncaught error ends the copy without a trace
+                _log("sync crashed: " + traceback.format_exc()[-400:].replace("\n", " | "))
             next_sync = time.time() + SECONDS
         if now >= next_check:
             next_check = now + CHECK_EVERY
@@ -264,4 +269,10 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except BaseException:  # noqa: BLE001 - pythonw has no console: leave the reason in the log
+        _log("exited on error: " + traceback.format_exc()[-400:].replace("\n", " | "))
+        raise

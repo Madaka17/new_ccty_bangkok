@@ -89,7 +89,7 @@ local/reports/
 local/geo/
 
 # Local flag: Bionic mode for the test server (see launch/test/start.bat), create or delete by hand
-launch/test/ai_bionic.flag
+launch/test/ai_bionic.flag*
 
 # Bionic usage logger data (usage.db, report.html, collect.log)
 local/bionic_usage/
