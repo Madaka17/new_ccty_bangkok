@@ -31,8 +31,8 @@ A failed unload waits GUARD_BACKOFF_SECONDS at once. A failed read of the model 
 check. Logging never changes what the guard does. Settings by environment variable (a bad number is logged
 once and the default is used):
     BIONIC_MODEL     model key                      unsloth/qwen3.5-4b
-    BIONIC_CONTEXT   context length                 16384
-    BIONIC_PARALLEL  parallel slots                 1
+    BIONIC_CONTEXT   context length                 32768 (shared by the slots)
+    BIONIC_PARALLEL  parallel slots                 2
     BIONIC_GUARD     1 = on, 0 = off (no thread)    1
 --once never starts the guard.
 """
@@ -74,8 +74,10 @@ def _env_int(name, default):
 
 
 GUARD_MODEL = os.getenv("BIONIC_MODEL", "unsloth/qwen3.5-4b")
-GUARD_CONTEXT = _env_int("BIONIC_CONTEXT", 16384)
-GUARD_PARALLEL = _env_int("BIONIC_PARALLEL", 1)
+# Two slots share one KV cache, so 32768 gives each request 16384 as before (raised from 16384/1 on 2026-11-21:
+# flood checks no longer wait behind a long agent prompt; VRAM cost of the larger cache is small)
+GUARD_CONTEXT = _env_int("BIONIC_CONTEXT", 32768)
+GUARD_PARALLEL = _env_int("BIONIC_PARALLEL", 2)
 GUARD_ENABLED = os.getenv("BIONIC_GUARD", "1") != "0"
 GUARD_SECONDS = 60           # check the model this often while Bionic answers
 GUARD_RETRY_SECONDS = 15     # after a failed load, try again this soon ...

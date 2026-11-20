@@ -14,6 +14,9 @@ _spec = importlib.util.spec_from_file_location("pi_bionic_tunnel_under_test", _P
 tunnel = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(tunnel)
 
+# the guard's settings (two slots sharing a 32768 context since 2026-11-21)
+CTX, PAR = tunnel.GUARD_CONTEXT, tunnel.GUARD_PARALLEL
+
 KEY = "unsloth/qwen3.5-4b"
 
 
@@ -69,7 +72,9 @@ def test_cleanup_command_names_the_listener_with_sudo_and_kills_only_sshd():
 
 # ---- model guard -------------------------------------------------------------------------------
 
-def inst(instance_id, ctx=16384, par=1):
+def inst(instance_id, ctx=None, par=None):
+    ctx = CTX if ctx is None else ctx
+    par = PAR if par is None else par
     """One loaded instance as GET /api/v1/models lists it."""
     return {"id": instance_id, "config": {"context_length": ctx, "parallel": par, "flash_attention": True}}
 
@@ -101,62 +106,62 @@ def make_post(fail_on=None, fail_times=None):
 
 
 def test_plan_nothing_loaded_means_load():
-    assert tunnel.plan_actions(listing(), KEY, 16384, 1) == [("load",)]
+    assert tunnel.plan_actions(listing(), KEY, CTX, PAR) == [("load",)]
 
 
 def test_plan_correct_instance_means_no_action():
-    assert tunnel.plan_actions(listing([inst(KEY)]), KEY, 16384, 1) == []
+    assert tunnel.plan_actions(listing([inst(KEY)]), KEY, CTX, PAR) == []
 
 
 def test_plan_wrong_context_unloads_then_loads():
-    assert tunnel.plan_actions(listing([inst(KEY, ctx=123648)]), KEY, 16384, 1) == [
+    assert tunnel.plan_actions(listing([inst(KEY, ctx=123648)]), KEY, CTX, PAR) == [
         ("unload", KEY), ("load",)]
 
 
 def test_plan_wrong_parallel_unloads_then_loads():
-    assert tunnel.plan_actions(listing([inst(KEY, par=4)]), KEY, 16384, 1) == [
+    assert tunnel.plan_actions(listing([inst(KEY, par=4)]), KEY, CTX, PAR) == [
         ("unload", KEY), ("load",)]
 
 
 def test_plan_two_instances_one_correct_unloads_only_the_wrong_one():
     loaded = [inst(KEY, ctx=123648), inst(KEY + ":2")]
-    assert tunnel.plan_actions(listing(loaded), KEY, 16384, 1) == [("unload", KEY)]
+    assert tunnel.plan_actions(listing(loaded), KEY, CTX, PAR) == [("unload", KEY)]
 
 
 def test_plan_two_correct_instances_keeps_one_and_unloads_the_other():
     loaded = [inst(KEY), inst(KEY + ":2")]
-    assert tunnel.plan_actions(listing(loaded), KEY, 16384, 1) == [("unload", KEY + ":2")]
+    assert tunnel.plan_actions(listing(loaded), KEY, CTX, PAR) == [("unload", KEY + ":2")]
 
 
 def test_plan_model_absent_from_the_list_means_load():
     answer = {"models": [{"key": "other/x", "loaded_instances": []}]}
-    assert tunnel.plan_actions(answer, KEY, 16384, 1) == [("load",)]
+    assert tunnel.plan_actions(answer, KEY, CTX, PAR) == [("load",)]
 
 
 def test_plan_garbage_answer_raises_value_error():
     for garbage in ("<html>", None, {"nope": 1}, {"models": "x"}):
         with pytest.raises(ValueError):
-            tunnel.plan_actions(garbage, KEY, 16384, 1)
+            tunnel.plan_actions(garbage, KEY, CTX, PAR)
 
 
 def test_plan_empty_config_is_unknown_so_the_instance_is_left_alone():
-    assert tunnel.plan_actions(listing([{"id": KEY, "config": {}}]), KEY, 16384, 1) == []
+    assert tunnel.plan_actions(listing([{"id": KEY, "config": {}}]), KEY, CTX, PAR) == []
 
 
 def test_plan_instance_without_a_config_block_is_left_alone():
-    assert tunnel.plan_actions(listing([{"id": KEY}]), KEY, 16384, 1) == []
+    assert tunnel.plan_actions(listing([{"id": KEY}]), KEY, CTX, PAR) == []
 
 
 def test_plan_only_a_present_differing_value_makes_an_instance_wrong():
     only_ctx_wrong = listing([{"id": KEY, "config": {"context_length": 123648}}])
-    assert tunnel.plan_actions(only_ctx_wrong, KEY, 16384, 1) == [("unload", KEY), ("load",)]
-    only_par_right = listing([{"id": KEY, "config": {"parallel": 1}}])
-    assert tunnel.plan_actions(only_par_right, KEY, 16384, 1) == []
+    assert tunnel.plan_actions(only_ctx_wrong, KEY, CTX, PAR) == [("unload", KEY), ("load",)]
+    only_par_right = listing([{"id": KEY, "config": {"parallel": PAR}}])
+    assert tunnel.plan_actions(only_par_right, KEY, CTX, PAR) == []
 
 
 def test_plan_two_unknown_instances_keeps_the_first_and_leaves_the_second():
     loaded = [{"id": KEY, "config": {}}, {"id": KEY + ":2", "config": {}}]
-    assert tunnel.plan_actions(listing(loaded), KEY, 16384, 1) == []
+    assert tunnel.plan_actions(listing(loaded), KEY, CTX, PAR) == []
 
 
 def test_guard_empty_config_does_nothing_and_logs_nothing(log_to_list):
@@ -170,9 +175,9 @@ def test_guard_nothing_loaded_loads_with_the_settings(log_to_list):
     post, calls = make_post()
     tunnel.guard_once(lambda: listing(), post, {"retry_at": 0.0})
     assert calls == [("/api/v1/models/load",
-                      {"model": KEY, "context_length": 16384, "flash_attention": True, "parallel": 1},
+                      {"model": KEY, "context_length": CTX, "flash_attention": True, "parallel": PAR},
                       180)]
-    assert any("loaded" in line and "16384" in line for line in log_to_list)
+    assert any("loaded" in line and str(CTX) in line for line in log_to_list)
 
 
 def test_guard_correct_instance_does_nothing_and_logs_nothing(log_to_list):
@@ -187,15 +192,15 @@ def test_guard_wrong_context_unloads_then_loads_and_logs_old_and_new(log_to_list
     tunnel.guard_once(lambda: listing([inst(KEY, ctx=123648)]), post, {"retry_at": 0.0})
     assert [c[0] for c in calls] == ["/api/v1/models/unload", "/api/v1/models/load"]
     assert calls[0][1] == {"instance_id": KEY}
-    assert calls[1][1]["context_length"] == 16384
-    assert any("123648" in line and "16384" in line for line in log_to_list)
+    assert calls[1][1]["context_length"] == CTX
+    assert any("123648" in line and str(CTX) in line for line in log_to_list)
 
 
 def test_guard_wrong_parallel_unloads_then_loads():
     post, calls = make_post()
     tunnel.guard_once(lambda: listing([inst(KEY, par=4)]), post, {"retry_at": 0.0})
     assert [c[0] for c in calls] == ["/api/v1/models/unload", "/api/v1/models/load"]
-    assert calls[1][1]["parallel"] == 1
+    assert calls[1][1]["parallel"] == PAR
 
 
 def test_guard_two_instances_one_correct_unloads_the_extra_only():
@@ -496,14 +501,14 @@ def test_once_does_not_start_the_guard_thread(monkeypatch):
 
 def test_guard_settings_come_from_the_environment(monkeypatch):
     mod = load_tunnel_with_env(monkeypatch, BIONIC_MODEL="other/m", BIONIC_CONTEXT="8192",
-                               BIONIC_PARALLEL="2")
-    assert (mod.GUARD_MODEL, mod.GUARD_CONTEXT, mod.GUARD_PARALLEL) == ("other/m", 8192, 2)
-    assert (tunnel.GUARD_MODEL, tunnel.GUARD_CONTEXT, tunnel.GUARD_PARALLEL) == (KEY, 16384, 1)
+                               BIONIC_PARALLEL="3")
+    assert (mod.GUARD_MODEL, mod.GUARD_CONTEXT, mod.GUARD_PARALLEL) == ("other/m", 8192, 3)
+    assert (tunnel.GUARD_MODEL, tunnel.GUARD_CONTEXT, tunnel.GUARD_PARALLEL) == (KEY, CTX, PAR)
 
 
 def test_bad_context_or_parallel_falls_back_to_the_default_and_is_reported_once(monkeypatch):
     mod = load_tunnel_with_env(monkeypatch, BIONIC_CONTEXT="16k", BIONIC_PARALLEL="")
-    assert (mod.GUARD_CONTEXT, mod.GUARD_PARALLEL) == (16384, 1)
+    assert (mod.GUARD_CONTEXT, mod.GUARD_PARALLEL) == (32768, 2)
     assert len(mod.CONFIG_WARNINGS) == 2
     lines = []
     _run_main_with_fake_thread(monkeypatch, mod, [], lines=lines)
