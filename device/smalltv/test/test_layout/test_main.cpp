@@ -201,7 +201,7 @@ void test_level_color_uses_layout() {
 }
 
 static Screen base() {
-    Screen s = {12, 34, 40, 48, 2660, 7820, false, false};
+    Screen s = {12, 34, 40, 48, 2660, 7820, 4000, 10240, false, false};
     return s;
 }
 
@@ -218,7 +218,7 @@ void test_changed_widgets_only_flags_changes() {
     TEST_ASSERT_EQUAL_HEX8((1 << W_RAM_VALUE) | (1 << W_RAM_BAR), changedWidgets(a, b));
 
     b = base();
-    b.watts10 = 41;
+    b.vram = 41;                                           // the W_POWER slot draws VRAM
     TEST_ASSERT_EQUAL_HEX8(1 << W_POWER, changedWidgets(a, b));
 
     b = base();

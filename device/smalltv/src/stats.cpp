@@ -5,30 +5,46 @@
 
 static const uint32_t STALE_MS = 10000;
 
+// Reads a key that must be present and hold a number or null. null gives NAN. A missing key fails.
+static bool numberOrNull(JsonDocument& doc, const char* key, float& out) {
+    bool present = false, isNull = false;
+    for (JsonPairConst kv : doc.as<JsonObjectConst>()) {
+        if (strcmp(kv.key().c_str(), key) == 0) {
+            present = true;
+            isNull = kv.value().isNull();
+        }
+    }
+    if (!present) return false;
+    if (isNull) {
+        out = NAN;
+        return true;
+    }
+    if (!doc[key].is<float>()) return false;
+    out = doc[key].as<float>();
+    return true;
+}
+
 bool parseStats(const char* json, Stats& out) {
     JsonDocument doc;
     if (deserializeJson(doc, json)) return false;
-    const char* numbers[] = {"cpu", "ram", "watts", "ram_used_mb", "ram_total_mb"};
+    const char* numbers[] = {"cpu", "ram", "ram_used_mb", "ram_total_mb", "vram_used_mb", "vram_total_mb"};
     for (const char* key : numbers) {
         if (!doc[key].is<float>()) return false;
     }
-    bool tempNull = false;  // key present with value null (a missing key still fails)
-    for (JsonPairConst kv : doc.as<JsonObjectConst>()) {
-        if (strcmp(kv.key().c_str(), "temp_c") == 0) tempNull = kv.value().isNull();
-    }
-    if (!tempNull && !doc["temp_c"].is<float>()) return false;
     Stats s;
+    if (!numberOrNull(doc, "vram", s.vram) || !numberOrNull(doc, "temp_c", s.tempC)) return false;
     s.cpu = doc["cpu"].as<float>();
     s.ram = doc["ram"].as<float>();
-    s.tempC = tempNull ? NAN : doc["temp_c"].as<float>();
-    s.watts = doc["watts"].as<float>();
     s.ramUsedMb = doc["ram_used_mb"].as<int>();
     s.ramTotalMb = doc["ram_total_mb"].as<int>();
+    s.vramUsedMb = doc["vram_used_mb"].as<int>();
+    s.vramTotalMb = doc["vram_total_mb"].as<int>();
     out = s;
     return true;
 }
 
 int barWidth(float pct, int maxW) {
+    if (isnan(pct)) return 0;
     if (pct < 0) pct = 0;
     if (pct > 100) pct = 100;
     return (int)(pct * maxW / 100.0f + 0.5f);
@@ -64,19 +80,21 @@ Screen screenOf(const Stats& s, bool stale, bool wifiDown) {
     Screen out;
     out.cpu = roundInt(s.cpu);
     out.ram = roundInt(s.ram);
-    out.watts10 = roundInt(s.watts * 10.0f);
-    out.temp = isnan(s.tempC) ? SCREEN_NO_TEMP : roundInt(s.tempC);
+    out.vram = isnan(s.vram) ? SCREEN_NONE : roundInt(s.vram);
+    out.temp = isnan(s.tempC) ? SCREEN_NONE : roundInt(s.tempC);
     out.ramUsedMb = s.ramUsedMb;
     out.ramTotalMb = s.ramTotalMb;
+    out.vramUsedMb = s.vramUsedMb;
+    out.vramTotalMb = s.vramTotalMb;
     out.stale = stale;
     out.wifiDown = wifiDown;
     return out;
 }
 
 bool sameScreen(const Screen& a, const Screen& b) {
-    return a.cpu == b.cpu && a.ram == b.ram && a.watts10 == b.watts10 && a.temp == b.temp &&
-           a.ramUsedMb == b.ramUsedMb && a.ramTotalMb == b.ramTotalMb && a.stale == b.stale &&
-           a.wifiDown == b.wifiDown;
+    return a.cpu == b.cpu && a.ram == b.ram && a.vram == b.vram && a.temp == b.temp &&
+           a.ramUsedMb == b.ramUsedMb && a.ramTotalMb == b.ramTotalMb && a.vramUsedMb == b.vramUsedMb &&
+           a.vramTotalMb == b.vramTotalMb && a.stale == b.stale && a.wifiDown == b.wifiDown;
 }
 
 bool validStatsUrl(const char* url) {

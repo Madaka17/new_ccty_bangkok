@@ -1,17 +1,17 @@
 #pragma once
 #include <stdint.h>
 
-// Latest values from the Pi stats service (GET /stats on the Pi).
+// Latest values from the PC stats service (GET /stats on the PC).
 struct Stats {
-    float cpu, ram, tempC, watts;
-    int ramUsedMb, ramTotalMb;
+    float cpu, ram, vram, tempC;
+    int ramUsedMb, ramTotalMb, vramUsedMb, vramTotalMb;
 };
 
 // False on bad JSON, a missing key or a non-number; out is left unchanged on false.
-// temp_c may be null (the Pi had no reading): tempC is then NAN.
+// vram and temp_c may be null (no GPU or temperature reading): those fields are then NAN.
 bool parseStats(const char* json, Stats& out);
 
-// Clamps pct to 0..100 and returns the bar length 0..maxW.
+// Clamps pct to 0..100 and returns the bar length 0..maxW. NAN gives 0.
 int barWidth(float pct, int maxW);
 
 // RGB565: under 60 green, under 85 yellow, else red.
@@ -37,10 +37,10 @@ RunWifi runWifiAction(uint32_t nowMs, uint32_t lastWifiOkMs, uint32_t lastKickMs
 
 // What the screen shows, at display precision. Redraw only when this changes.
 struct Screen {
-    int cpu, ram, watts10, temp, ramUsedMb, ramTotalMb;  // temp: SCREEN_NO_TEMP when NAN
+    int cpu, ram, vram, temp, ramUsedMb, ramTotalMb, vramUsedMb, vramTotalMb;  // vram, temp: SCREEN_NONE when NAN
     bool stale, wifiDown;
 };
-const int SCREEN_NO_TEMP = -10000;
+const int SCREEN_NONE = -10000;
 Screen screenOf(const Stats& s, bool stale, bool wifiDown);
 bool sameScreen(const Screen& a, const Screen& b);
 

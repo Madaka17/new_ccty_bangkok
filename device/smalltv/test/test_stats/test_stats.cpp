@@ -3,13 +3,16 @@
 #include <math.h>
 #include <string.h>
 
+// The contract example from the PC stats server (device/pcstats).
 static const char* GOOD =
-    "{\"cpu\": 12.5, \"ram\": 34.0, \"ram_used_mb\": 2660, \"ram_total_mb\": 7820,"
-    " \"temp_c\": 48.2, \"watts\": 4.2, \"watts_est\": true, \"uptime_s\": 100}";
+    "{\"cpu\": 12.5, \"ram\": 41.0, \"ram_used_mb\": 13420, \"ram_total_mb\": 32684,"
+    " \"vram\": 85.8, \"vram_used_mb\": 8789, \"vram_total_mb\": 10240,"
+    " \"temp_c\": 55.0, \"uptime_s\": 12345}";
 
 static Stats sentinel() {
     Stats s;
-    s.cpu = 1; s.ram = 2; s.tempC = 3; s.watts = 4; s.ramUsedMb = 5; s.ramTotalMb = 6;
+    s.cpu = 1; s.ram = 2; s.vram = 3; s.tempC = 4;
+    s.ramUsedMb = 5; s.ramTotalMb = 6; s.vramUsedMb = 7; s.vramTotalMb = 8;
     return s;
 }
 
@@ -20,18 +23,20 @@ void test_parse_ok() {
     Stats s = sentinel();
     TEST_ASSERT_TRUE(parseStats(GOOD, s));
     TEST_ASSERT_FLOAT_WITHIN(0.01, 12.5, s.cpu);
-    TEST_ASSERT_FLOAT_WITHIN(0.01, 34.0, s.ram);
-    TEST_ASSERT_FLOAT_WITHIN(0.01, 48.2, s.tempC);
-    TEST_ASSERT_FLOAT_WITHIN(0.01, 4.2, s.watts);
-    TEST_ASSERT_EQUAL_INT(2660, s.ramUsedMb);
-    TEST_ASSERT_EQUAL_INT(7820, s.ramTotalMb);
+    TEST_ASSERT_FLOAT_WITHIN(0.01, 41.0, s.ram);
+    TEST_ASSERT_FLOAT_WITHIN(0.01, 55.0, s.tempC);
+    TEST_ASSERT_FLOAT_WITHIN(0.01, 85.8, s.vram);
+    TEST_ASSERT_EQUAL_INT(13420, s.ramUsedMb);
+    TEST_ASSERT_EQUAL_INT(32684, s.ramTotalMb);
+    TEST_ASSERT_EQUAL_INT(8789, s.vramUsedMb);
+    TEST_ASSERT_EQUAL_INT(10240, s.vramTotalMb);
 }
 
 void test_parse_rejects_bad_json() {
     Stats s = sentinel();
     TEST_ASSERT_FALSE(parseStats("<html>", s));
     TEST_ASSERT_FLOAT_WITHIN(0.01, 1, s.cpu);
-    TEST_ASSERT_FLOAT_WITHIN(0.01, 4, s.watts);
+    TEST_ASSERT_FLOAT_WITHIN(0.01, 3, s.vram);
 }
 
 void test_parse_rejects_missing_field() {
@@ -41,10 +46,33 @@ void test_parse_rejects_missing_field() {
     TEST_ASSERT_FLOAT_WITHIN(0.01, 1, s.cpu);
 }
 
+void test_parse_rejects_missing_vram() {
+    Stats s = sentinel();
+    TEST_ASSERT_FALSE(parseStats("{\"cpu\": 12.5, \"ram\": 41.0, \"ram_used_mb\": 13420,"
+                                 " \"ram_total_mb\": 32684, \"vram_used_mb\": 8789,"
+                                 " \"vram_total_mb\": 10240, \"temp_c\": 55.0}", s));
+    TEST_ASSERT_FLOAT_WITHIN(0.01, 1, s.cpu);
+    TEST_ASSERT_FLOAT_WITHIN(0.01, 3, s.vram);
+}
+
+void test_parse_vram_null() {
+    // The GPU read failed: the server sends vram null with zero MB counts.
+    Stats s = sentinel();
+    TEST_ASSERT_TRUE(parseStats("{\"cpu\": 1, \"ram\": 2, \"ram_used_mb\": 3, \"ram_total_mb\": 4,"
+                                " \"vram\": null, \"vram_used_mb\": 0, \"vram_total_mb\": 0,"
+                                " \"temp_c\": 40}", s));
+    TEST_ASSERT_TRUE(isnan(s.vram));
+    TEST_ASSERT_EQUAL_INT(0, s.vramTotalMb);
+}
+
 void test_bar_width_clamps() {
     TEST_ASSERT_EQUAL_INT(200, barWidth(130, 200));
     TEST_ASSERT_EQUAL_INT(0, barWidth(-5, 200));
     TEST_ASSERT_EQUAL_INT(100, barWidth(50, 200));
+}
+
+void test_bar_width_nan_is_zero() {
+    TEST_ASSERT_EQUAL_INT(0, barWidth(NAN, 200));
 }
 
 void test_level_color() {
@@ -99,25 +127,28 @@ void test_run_wifi_safe_across_wrap() {
 }
 
 void test_parse_null_temp_is_nan() {
-    // pistats sends null when the Pi has no temperature reading.
+    // The PC server sends null when it has no temperature reading.
     Stats s = sentinel();
     TEST_ASSERT_TRUE(parseStats("{\"cpu\": 1, \"ram\": 2, \"ram_used_mb\": 3, \"ram_total_mb\": 4,"
-                                " \"temp_c\": null, \"watts\": 3.7}", s));
+                                " \"vram\": 5, \"vram_used_mb\": 6, \"vram_total_mb\": 7,"
+                                " \"temp_c\": null}", s));
     TEST_ASSERT_TRUE(isnan(s.tempC));
-    TEST_ASSERT_FLOAT_WITHIN(0.01, 3.7, s.watts);
+    TEST_ASSERT_FLOAT_WITHIN(0.01, 5, s.vram);
 }
 
 void test_parse_rejects_string_values() {
     Stats s = sentinel();
     TEST_ASSERT_FALSE(parseStats("{\"cpu\": \"12\", \"ram\": 2, \"ram_used_mb\": 3, \"ram_total_mb\": 4,"
-                                 " \"temp_c\": 40, \"watts\": 3.7}", s));
+                                 " \"vram\": 5, \"vram_used_mb\": 6, \"vram_total_mb\": 7,"
+                                 " \"temp_c\": 40}", s));
     TEST_ASSERT_FLOAT_WITHIN(0.01, 1, s.cpu);
 }
 
 void test_parse_rejects_null_cpu() {
     Stats s = sentinel();
     TEST_ASSERT_FALSE(parseStats("{\"cpu\": null, \"ram\": 2, \"ram_used_mb\": 3, \"ram_total_mb\": 4,"
-                                 " \"temp_c\": 40, \"watts\": 3.7}", s));
+                                 " \"vram\": 5, \"vram_used_mb\": 6, \"vram_total_mb\": 7,"
+                                 " \"temp_c\": 40}", s));
 }
 
 void test_same_screen_ignores_changes_below_display_precision() {
@@ -131,7 +162,10 @@ void test_same_screen_sees_value_change() {
     a.cpu = 12.2f; b.cpu = 13.0f;
     TEST_ASSERT_FALSE(sameScreen(screenOf(a, false, false), screenOf(b, false, false)));
     a = sentinel(); b = sentinel();
-    a.watts = 3.71f; b.watts = 3.86f;    // 3.7 W vs 3.9 W
+    a.vram = 85.4f; b.vram = 85.6f;      // 85% vs 86%
+    TEST_ASSERT_FALSE(sameScreen(screenOf(a, false, false), screenOf(b, false, false)));
+    a = sentinel(); b = sentinel();
+    a.vramUsedMb = 8789; b.vramUsedMb = 8790;   // the VRAM detail line shows MB
     TEST_ASSERT_FALSE(sameScreen(screenOf(a, false, false), screenOf(b, false, false)));
 }
 
@@ -145,6 +179,13 @@ void test_same_screen_nan_temp_equals_itself() {
     Stats a = sentinel();
     a.tempC = NAN;
     TEST_ASSERT_TRUE(sameScreen(screenOf(a, false, false), screenOf(a, false, false)));
+}
+
+void test_screen_vram_none() {
+    Stats a = sentinel();
+    a.vram = NAN;
+    TEST_ASSERT_EQUAL_INT(SCREEN_NONE, screenOf(a, false, false).vram);
+    TEST_ASSERT_EQUAL_INT(4, screenOf(a, false, false).temp);   // temp is unaffected by a missing vram
 }
 
 void test_valid_stats_url() {
@@ -166,7 +207,10 @@ int main() {
     RUN_TEST(test_parse_ok);
     RUN_TEST(test_parse_rejects_bad_json);
     RUN_TEST(test_parse_rejects_missing_field);
+    RUN_TEST(test_parse_rejects_missing_vram);
+    RUN_TEST(test_parse_vram_null);
     RUN_TEST(test_bar_width_clamps);
+    RUN_TEST(test_bar_width_nan_is_zero);
     RUN_TEST(test_level_color);
     RUN_TEST(test_is_stale_after_10s);
     RUN_TEST(test_boot_wifi_connected);
@@ -185,6 +229,7 @@ int main() {
     RUN_TEST(test_same_screen_sees_value_change);
     RUN_TEST(test_same_screen_sees_state_change);
     RUN_TEST(test_same_screen_nan_temp_equals_itself);
+    RUN_TEST(test_screen_vram_none);
     RUN_TEST(test_valid_stats_url);
     return UNITY_END();
 }

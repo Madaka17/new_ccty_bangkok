@@ -103,7 +103,7 @@ uint8_t changedWidgets(const Screen& a, const Screen& b) {
     const bool wifi = a.wifiDown != b.wifiDown;
     const bool cpu = a.cpu != b.cpu || stale;
     const bool ram = a.ram != b.ram || stale;
-    const bool power = a.watts10 != b.watts10 || stale;
+    const bool power = a.vram != b.vram || stale;  // W_POWER (layout key "power") draws VRAM
     const bool temp = a.temp != b.temp || stale;
     const bool footer = a.ramUsedMb != b.ramUsedMb || a.ramTotalMb != b.ramTotalMb || stale || wifi;
     const bool status = stale || wifi;

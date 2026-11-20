@@ -1,20 +1,18 @@
-# Desk display: Raspberry Pi stats on the GeekMagic SmallTV Ultra
+# Desk display: PC stats on the GeekMagic SmallTV Ultra
 
-The SmallTV Ultra (ESP8266, 240x240 ST7789V screen) on the desk shows the Raspberry Pi 4's
-CPU %, RAM %, power draw and temperature. It runs our own firmware, not the GeekMagic one.
+The SmallTV Ultra (ESP8266, 240x240 ST7789V screen) on the desk shows the PC's CPU %, RAM %,
+VRAM % and GPU temperature. It runs our own firmware, not the GeekMagic one.
 
 | Part | Where | What it does |
 |---|---|---|
-| `pistats/pistats.py` | Pi, `/mnt/ssd/device/pistats/`, systemd unit `pistats` | Samples `/proc` and `/sys` every second and serves JSON at `http://192.168.1.109:9101/stats` |
-| `smalltv/` | SmallTV at `192.168.1.111` | Polls that JSON every 2 s and draws it. `/` shows status, `/update` takes a new firmware |
+| `pcstats/pcstats.py` | PC, `C:\Users\user\Tools\pcstats\`, Task Scheduler task `PCStats`, firewall rule `PC stats 9101 (SmallTV)` | Serves the JSON at `http://192.168.1.188:9101/stats` (CPU, RAM, VRAM, GPU temp) |
+| `pistats/pistats.py` | Pi, `/mnt/ssd/device/pistats/`, systemd unit `pistats` | Still exists for the Pi, but the display no longer reads it |
+| `smalltv/` | SmallTV at `192.168.1.111` | Polls the PC JSON every 2 s and draws it. `/` shows status, `/update` takes a new firmware |
 
-The power value is an **estimate** (the screen shows `~`). The Pi 4 has no power sensor, so
-`watts = 2.7 + 3.7 * cpu / 100 + 1.0` (idle, CPU load, USB SSD). A USB power meter is needed for a real reading.
-
-When the screen gets no good answer for 10 s, the values turn grey and `Pi offline` shows in red.
+When the screen gets no good answer for 10 s, the values turn grey and `PC offline` shows in red.
 They come back by themselves when the service answers again.
 
-## Stored design (firmware 1.3.0)
+## Stored design (firmware 1.3.0 and later)
 
 Screen Studio can upload a design. Without one, the screen shows the built-in look above.
 
@@ -37,6 +35,9 @@ Otherwise, or when LittleFS fails to mount, the built-in look is drawn. A missin
 After a boot caused by a crash or watchdog (reset reasons 1, 2 or 3) the stored design is skipped for
 that boot, so a design that crashes the display cannot put it in a boot loop. The next normal restart,
 or a new upload, loads the design again. The footer is muted while the stale values show.
+
+The layout key `power` (widget `W_POWER`) now draws VRAM, as `VRAM 86%` (or `VRAM --%`). The key is
+unchanged, so layouts stored before 1.4.0 still load.
 
 ## Pi service
 
@@ -79,7 +80,8 @@ Settings are in `smalltv/src/config.h` (default stats URL, poll interval, backli
 The stats URL can also be changed without a new build, and the change survives restarts:
 `http://192.168.1.111/set?url=http://HOST:9101/stats` (`url=default` goes back to the built-in one).
 
-The screen redraws only when a shown value changes. A temperature the Pi cannot read shows as `-- C`.
+The screen redraws only when a shown value changes. A GPU temperature the PC cannot read shows as `-- C`,
+and a VRAM value it cannot read shows as `--%`.
 Display pins are in `smalltv/platformio.ini`: SPI CLK GPIO14, MOSI GPIO13, DC GPIO0, RST GPIO2,
 no CS, backlight PWM GPIO5 (inverted), SPI mode 3, colour inversion on, BGR.
 
@@ -93,11 +95,11 @@ router rejects the saved password. Join it with a phone, open `192.168.4.1` and 
 After 5 minutes without setup it restarts and tries again.
 
 When WiFi drops later, the screen greys out and shows `No WiFi`. The firmware asks for a reconnect
-every 30 s and restarts after 5 minutes without WiFi. `Pi offline` means WiFi is fine but the Pi
+every 30 s and restarts after 5 minutes without WiFi. `PC offline` means WiFi is fine but the PC
 service does not answer (or answers 503 because its sampler stalled).
 
-A Pi that is off or unreachable blocks each poll for at most about 1.5 s (checked 2026-11-02 by
-dropping the Pi's replies to the display for 30 s).
+A PC that is off or unreachable blocks each poll for at most about 1.5 s (the timing was checked
+2026-11-02 on the Pi, by dropping its replies to the display for 30 s).
 
 `/update` has no password, like the stock firmware: anyone on the home LAN can flash the display.
 
