@@ -18,8 +18,8 @@ Log: launch\logs\pi_bionic_tunnel.log.
     pythonw launch\test\pi_bionic_tunnel.py          run hidden (the logon task runs this)
     python launch\test\pi_bionic_tunnel.py --once    one connection attempt, exits when ssh exits (testing)
 
-Logon task (run once):
-    schtasks /Create /TN "BKK Bionic tunnel to Pi" /SC ONLOGON /RL LIMITED /F /TR "\"E:\new_ccty_bangkok\.venv\Scripts\pythonw.exe\" \"E:\new_ccty_bangkok\launch\test\pi_bionic_tunnel.py\""
+Start at logon (run once; a Startup-folder shortcut, because "schtasks /SC ONLOGON" needs admin rights):
+    powershell -NoProfile -ExecutionPolicy Bypass -File launch\test\install_pi_tunnel_startup.ps1
 """
 import argparse
 import os
