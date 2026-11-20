@@ -1,4 +1,9 @@
 """launch/test/pi_bionic_tunnel.py: the ssh command for the Bionic reverse tunnel and the forward-failure check."""
+import pytest
+
+# The script runs on the Windows PC only (msvcrt file lock); CI runs on Linux
+pytest.importorskip("msvcrt")
+
 import importlib.util
 from pathlib import Path
 

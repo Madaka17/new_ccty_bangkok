@@ -1,4 +1,9 @@
 """launch/test/pi_frames_sync.py: the tar stream from the Pi lands as atomic, dated, safely named files."""
+import pytest
+
+# The script runs on the Windows PC only (msvcrt file lock); CI runs on Linux
+pytest.importorskip("msvcrt")
+
 import importlib.util
 import io
 import os
