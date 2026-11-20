@@ -112,7 +112,23 @@ h2 { font-size: 17px; margin: 22px 0 8px; }
 .bar { grid-column: 1 / -1; height: 6px; background: var(--grid); border-radius: 3px; overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--series-1); border-radius: 3px; }
 .chart { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
-.chart svg { width: 100%; height: auto; display: block; }
+.chart svg { display: block; }
+.chart-head {
+  display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between;
+  margin: 0 0 8px;
+}
+.chart-summary { margin: 0; font-size: 14px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button {
+  font: inherit; font-size: 14px; background: var(--surface); color: var(--text-2);
+  border: 0; padding: 6px 14px; min-width: 64px; cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed="true"] { background: var(--series-1); color: var(--bg); }
+.seg button:focus-visible { outline: 2px solid var(--series-1); outline-offset: -2px; }
+.bucket-details { margin-top: 10px; font-size: 14px; }
+.bucket-details summary { cursor: pointer; color: var(--text-2); padding: 4px 0; }
+.bucket-table { min-width: 0; }
 .tip {
   position: absolute; pointer-events: none; background: var(--text); color: var(--bg);
   border-radius: 6px; padding: 4px 8px; font-size: 13px; white-space: nowrap;
@@ -177,12 +193,27 @@ a { color: var(--series-1); }
 <h2>สรุป</h2>
 <div class="tiles" id="tiles"></div>
 
-<h2>โทเคนต่อนาที (60 นาทีล่าสุด)</h2>
+<h2>กราฟ 1 ชั่วโมงล่าสุด (จุดละ 5 นาที)</h2>
+<div class="chart-head">
+  <p class="chart-summary" id="chartSummary"></p>
+  <div class="seg" role="group" aria-label="เลือกว่าจะดูเป็นจำนวนครั้งหรือ token">
+    <button type="button" id="mCalls" aria-pressed="true">ครั้ง</button>
+    <button type="button" id="mTokens" aria-pressed="false">token</button>
+  </div>
+</div>
 <div class="chart" id="chart">
-  <svg id="chartSvg" viewBox="0 0 960 220" role="img" aria-label="กราฟโทเคนต่อนาที 60 นาทีล่าสุด"></svg>
+  <svg id="chartSvg" viewBox="0 0 960 240" role="img" aria-label="กราฟการใช้งาน 1 ชั่วโมงล่าสุด จุดละ 5 นาที"></svg>
   <div class="tip" id="tip" hidden></div>
 </div>
-<p class="muted" id="chartNote" style="font-size:13px;margin:6px 0 0"></p>
+<details class="bucket-details">
+  <summary>ดูเป็นตาราง</summary>
+  <div class="table-wrap">
+    <table class="bucket-table">
+      <thead><tr><th>ช่วงเวลา</th><th class="num">ครั้ง</th><th class="num">token</th></tr></thead>
+      <tbody id="bucketRows"></tbody>
+    </table>
+  </div>
+</details>
 
 <h2>ล่าสุด 50 ครั้ง</h2>
 <div class="table-wrap">
@@ -299,68 +330,262 @@ a { color: var(--series-1); }
     }).join("");
   }
 
-  var chartNow = { per: [], start: 0 };
+  // The chart shows 12 buckets of 5 minutes. The metric is calls ("ครั้ง") or tokens,
+  // chosen with the toggle and remembered in localStorage when the browser allows it.
+  var METRIC_KEY = "bionicChartMetric";
+  var metric = readMetric();
+  var lastChart = null;
 
-  function drawChart(perMinute, minuteStart) {
-    var W = 960, L = 56, R = 944, T = 16, B = 190;
-    var n = perMinute.length;
-    var peak = Math.max.apply(null, perMinute.concat([0])) || 1;
-    var plotH = B - T, slot = (R - L) / n, gap = 2, rMax = 4;
-    var parts = [];
-    [0, 0.5, 1].forEach(function (f) {
-      var y = B - f * plotH;
-      parts.push('<line x1="' + L + '" x2="' + R + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) +
-        '" stroke="var(--grid)" stroke-width="1"/>');
-      parts.push('<text x="' + (L - 8) + '" y="' + (y + 4).toFixed(1) + '" text-anchor="end" font-size="12" ' +
-        'fill="var(--text-3)">' + nf.format(Math.round(peak * f)) + '</text>');
-    });
-    for (var i = 0; i < n; i++) {
-      var v = perMinute[i];
-      var x0 = L + i * slot, w = slot - gap;
-      if (v > 0) {
-        var h = Math.max(1, v / peak * plotH);
-        var r = Math.min(rMax, h / 2, w / 2);
-        var left = x0 + gap / 2, right = left + w, top = B - h;
-        var d = "M" + left.toFixed(1) + "," + B + " V" + (top + r).toFixed(1) +
-          " Q" + left.toFixed(1) + "," + top.toFixed(1) + " " + (left + r).toFixed(1) + "," + top.toFixed(1) +
-          " H" + (right - r).toFixed(1) +
-          " Q" + right.toFixed(1) + "," + top.toFixed(1) + " " + right.toFixed(1) + "," + (top + r).toFixed(1) +
-          " V" + B + " Z";
-        parts.push('<path d="' + d + '" fill="var(--series-1)"/>');
-      }
-      // A transparent column over each minute is the hover target.
-      parts.push('<rect data-i="' + i + '" x="' + x0.toFixed(1) + '" y="' + T + '" width="' + slot.toFixed(1) +
-        '" height="' + plotH + '" fill="transparent"/>');
-      if (i % 10 === 0) {
-        var label = fmtMin.format(new Date((minuteStart + i * 60) * 1000));
-        parts.push('<text x="' + (x0 + slot / 2).toFixed(1) + '" y="' + (B + 18) + '" text-anchor="middle" ' +
-          'font-size="12" fill="var(--text-3)">' + label + '</text>');
-      }
+  function readMetric() {
+    try {
+      return localStorage.getItem(METRIC_KEY) === "tokens" ? "tokens" : "calls";
+    } catch (err) {
+      return "calls";
     }
-    $("chartSvg").innerHTML = parts.join("");
-    chartNow.per = perMinute;
-    chartNow.start = minuteStart;
-    var total = perMinute.reduce(function (a, b) { return a + b; }, 0);
-    $("chartNote").textContent = total > 0 ? "รวม " + num(total) + " โทเคนใน 60 นาที" : "ยังไม่มีการใช้งานใน 60 นาทีนี้";
   }
 
-  function showTip(evt) {
-    var target = evt.target;
-    var tip = $("tip");
-    var box = $("chart");
-    if (!target || target.tagName !== "rect" || target.getAttribute("data-i") == null) {
-      tip.hidden = true;
+  function saveMetric(value) {
+    try {
+      localStorage.setItem(METRIC_KEY, value);
+    } catch (err) {
+      // storage blocked (private window): the choice lasts until the page reloads
+    }
+  }
+
+  function shortNum(value) {
+    function trim(x) { return String(Math.round(x * 10) / 10); }
+    if (value >= 1000000) return trim(value / 1000000) + "M";
+    if (value >= 1000) return trim(value / 1000) + "k";
+    return nf.format(Math.round(value));
+  }
+
+  function unitText() { return metric === "tokens" ? "token" : "ครั้ง"; }
+  function shortVal(value) { return metric === "tokens" ? shortNum(value) : num(value); }
+  function bucketStart(chart, i) { return chart.start + i * chart.bucket_minutes * 60; }
+
+  function bucketRange(chart, i) {
+    var a = bucketStart(chart, i), b = a + chart.bucket_minutes * 60;
+    return fmtMin.format(new Date(a * 1000)) + "–" + fmtMin.format(new Date(b * 1000));
+  }
+
+  function applyMetricButtons() {
+    $("mCalls").setAttribute("aria-pressed", metric === "calls" ? "true" : "false");
+    $("mTokens").setAttribute("aria-pressed", metric === "tokens" ? "true" : "false");
+  }
+
+  function setMetric(value) {
+    metric = value;
+    saveMetric(value);
+    applyMetricButtons();
+    $("tip").hidden = true;
+    if (lastChart) drawChart(lastChart);
+  }
+
+  function setSummary(chart, data) {
+    var box = $("chartSummary");
+    if (data.total <= 0) {
+      box.textContent = "ยังไม่มีการใช้งานใน 1 ชม. ล่าสุด";
       return;
     }
-    var i = Number(target.getAttribute("data-i"));
-    var when = fmtMin.format(new Date((chartNow.start + i * 60) * 1000));
-    tip.textContent = when + ": " + num(chartNow.per[i]) + " โทเคน";
+    var text = "1 ชม. ล่าสุด: " + num(data.total) + " " + unitText() +
+      " · เฉลี่ย " + num(data.average) + " " + unitText() + "/" + chart.bucket_minutes + " นาที";
+    if (data.peak_index != null) {
+      text += " · สูงสุด " + num(data.peak) + " (" + bucketRange(chart, data.peak_index) + ")";
+    }
+    box.textContent = text;
+  }
+
+  function renderBucketTable(chart) {
+    var body = $("bucketRows");
+    body.textContent = "";
+    for (var i = 0; i < chart.count; i++) {
+      var tr = document.createElement("tr");
+      var label = bucketRange(chart, i) + (i === chart.count - 1 ? " (กำลังเก็บ)" : "");
+      var cells = [label, num(chart.calls.values[i]), num(chart.tokens.values[i])];
+      for (var c = 0; c < cells.length; c++) {
+        var td = document.createElement("td");
+        td.textContent = cells[c];
+        if (c > 0) td.className = "num";
+        tr.appendChild(td);
+      }
+      body.appendChild(tr);
+    }
+  }
+
+  // ---- chart: one line over 12 five-minute buckets (calls or tokens) ----
+  // The SVG is drawn at the container's own pixel width, so 1 SVG unit = 1 CSS px and the
+  // text keeps the page's small size on any screen. It is redrawn on resize.
+  var CHART_H = 240;
+  var CHART_PAD_L = 52, CHART_PAD_R = 84, CHART_T = 32, CHART_B = 196;
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var geo = null;          // geometry of the last drawing, used by the hover code
+  var hoverIndex = null;   // bucket under the pointer, or null
+  var guideGroup = null;   // hover group (guide line and marker) inside the svg
+  var guideLine = null;
+  var guideDot = null;
+
+  function svgEl(name, attrs, text) {
+    var node = document.createElementNS(SVG_NS, name);
+    Object.keys(attrs || {}).forEach(function (key) { node.setAttribute(key, String(attrs[key])); });
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function xOf(i) { return geo.L + (i + 0.5) * geo.slot; }
+  function yOf(v) { return geo.B - (v / geo.top) * (geo.B - geo.T); }
+
+  function chartWidth() {
+    return Math.max(260, $("chart").clientWidth - 20); // minus the box padding
+  }
+
+  function drawChart(chart) {
+    lastChart = chart;
+    var data = chart[metric];
+    var n = chart.count;
+    var W = chartWidth(), H = CHART_H;
+    var L = CHART_PAD_L, R = W - CHART_PAD_R, T = CHART_T, B = CHART_B;
+    var slot = (R - L) / n;
+    var top = data.axis_top, step = data.axis_step;
+    geo = { W: W, L: L, R: R, T: T, B: B, slot: slot, top: top, n: n };
+
+    var svg = $("chartSvg");
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    svg.setAttribute("width", String(W));
+    svg.setAttribute("height", String(H));
+    svg.textContent = "";
+
+    svg.appendChild(svgEl("text", { x: L, y: 14, "font-size": 12, fill: "var(--text-2)" },
+      metric === "tokens" ? "token ต่อ 5 นาที" : "ครั้ง ต่อ 5 นาที"));
+
+    // solid hairline gridlines at each round step, with the value at the left
+    var rows = Math.round(top / step);
+    for (var k = 0; k <= rows; k++) {
+      var gy = yOf(k * step);
+      svg.appendChild(svgEl("line", { x1: L, x2: R, y1: gy, y2: gy, stroke: "var(--grid)", "stroke-width": 1 }));
+      svg.appendChild(svgEl("text", { x: L - 8, y: gy + 4, "text-anchor": "end", "font-size": 12,
+        fill: "var(--text-3)" }, shortVal(k * step)));
+    }
+
+    var pts = [];
+    for (var i = 0; i < n; i++) pts.push({ x: xOf(i), y: yOf(data.values[i]) });
+    var last = n - 1;
+
+    // light area under the whole series
+    var areaD = "M" + pts[0].x.toFixed(1) + "," + B;
+    pts.forEach(function (p) { areaD += " L" + p.x.toFixed(1) + "," + p.y.toFixed(1); });
+    areaD += " L" + pts[last].x.toFixed(1) + "," + B + " Z";
+    svg.appendChild(svgEl("path", { d: areaD, fill: "var(--series-1)", "fill-opacity": 0.12,
+      stroke: "none", "pointer-events": "none" }));
+
+    // average: a thin muted dashed line, labelled in the right margin so no point is covered
+    if (data.total > 0) {
+      var ay = yOf(data.average);
+      svg.appendChild(svgEl("line", { x1: L, x2: R, y1: ay, y2: ay, stroke: "var(--text-3)", "stroke-width": 1,
+        "stroke-dasharray": "4 3", "pointer-events": "none" }));
+      svg.appendChild(svgEl("text", { x: R + 6, y: ay + 4, "font-size": 12, fill: "var(--text-2)",
+        "pointer-events": "none" }, "เฉลี่ย " + shortVal(data.average)));
+    }
+
+    // the series line: solid 2px through the complete buckets, dotted to the filling one
+    var solid = "";
+    for (var s = 0; s < last; s++) solid += (s === 0 ? "M" : " L") + pts[s].x.toFixed(1) + "," + pts[s].y.toFixed(1);
+    if (solid) {
+      svg.appendChild(svgEl("path", { d: solid, fill: "none", stroke: "var(--series-1)", "stroke-width": 2,
+        "stroke-linejoin": "round", "stroke-linecap": "round", "pointer-events": "none" }));
+    }
+    if (last >= 1) {
+      svg.appendChild(svgEl("line", { x1: pts[last - 1].x, y1: pts[last - 1].y, x2: pts[last].x, y2: pts[last].y,
+        stroke: "var(--series-1)", "stroke-width": 2, "stroke-dasharray": "2 4", "stroke-linecap": "round",
+        "pointer-events": "none" }));
+    }
+    for (var d = 0; d < n; d++) {
+      if (d === last) {
+        // the still-filling bucket: a hollow point
+        svg.appendChild(svgEl("circle", { cx: pts[d].x, cy: pts[d].y, r: 4, fill: "var(--surface)",
+          stroke: "var(--series-1)", "stroke-width": 2, "pointer-events": "none" }));
+      } else {
+        svg.appendChild(svgEl("circle", { cx: pts[d].x, cy: pts[d].y, r: 3.5, fill: "var(--series-1)",
+          "pointer-events": "none" }));
+      }
+    }
+
+    // time labels every 15 minutes (Bangkok time), at the start of the bucket
+    for (var t = 0; t < n; t++) {
+      var at = bucketStart(chart, t);
+      if (at % 900 === 0) {
+        svg.appendChild(svgEl("text", { x: L + t * slot, y: B + 16, "text-anchor": "middle", "font-size": 12,
+          fill: "var(--text-3)", "pointer-events": "none" }, fmtMin.format(new Date(at * 1000))));
+      }
+    }
+    svg.appendChild(svgEl("text", { x: R, y: B + 34, "text-anchor": "end", "font-size": 12, fill: "var(--text-2)",
+      "pointer-events": "none" }, "ตอนนี้"));
+
+    // hover guide, hidden until the pointer moves over the chart
+    guideGroup = svgEl("g", { visibility: "hidden", "pointer-events": "none" });
+    guideLine = svgEl("line", { x1: 0, x2: 0, y1: T, y2: B, stroke: "var(--text-3)", "stroke-width": 1 });
+    guideDot = svgEl("circle", { cx: 0, cy: 0, r: 5, fill: "var(--series-1)", stroke: "var(--surface)",
+      "stroke-width": 2 });
+    guideGroup.appendChild(guideLine);
+    guideGroup.appendChild(guideDot);
+    svg.appendChild(guideGroup);
+
+    setSummary(chart, data);
+    renderBucketTable(chart);
+    if (hoverIndex != null) showHover(hoverIndex);
+  }
+
+  function tipText(i) {
+    var c = lastChart;
+    var filling = i === c.count - 1;
+    var label = bucketRange(c, i) + (filling ? " (กำลังเก็บ ยังไม่ครบ " + c.bucket_minutes + " นาที)" : "");
+    return label + ": " + num(c[metric].values[i]) + " " + unitText();
+  }
+
+  function showTipAt(i, x, y) {
+    var tip = $("tip"), box = $("chart");
+    var svgRect = $("chartSvg").getBoundingClientRect(), boxRect = box.getBoundingClientRect();
+    var left = svgRect.left - boxRect.left + x;
+    tip.textContent = tipText(i);
     tip.hidden = false;
-    var rect = box.getBoundingClientRect();
-    var x = evt.clientX - rect.left + 12;
-    if (x > rect.width - 170) x = evt.clientX - rect.left - 170;
-    tip.style.left = x + "px";
-    tip.style.top = "12px";
+    var tx = left + 12;
+    if (tx + tip.offsetWidth > box.clientWidth) tx = left - 12 - tip.offsetWidth;
+    tip.style.left = Math.max(0, tx) + "px";
+    tip.style.top = Math.max(0, svgRect.top - boxRect.top + y - 36) + "px";
+  }
+
+  function showHover(i) {
+    if (!geo || !guideGroup) return;
+    if (i == null) {
+      guideGroup.setAttribute("visibility", "hidden");
+      $("tip").hidden = true;
+      return;
+    }
+    var x = xOf(i), y = yOf(lastChart[metric].values[i]);
+    guideLine.setAttribute("x1", x);
+    guideLine.setAttribute("x2", x);
+    guideDot.setAttribute("cx", x);
+    guideDot.setAttribute("cy", y);
+    guideGroup.setAttribute("visibility", "visible");
+    showTipAt(i, x, y);
+  }
+
+  // The bucket nearest the pointer (or the tap), from its x position in svg units.
+  function nearestIndex(clientX) {
+    var rect = $("chartSvg").getBoundingClientRect();
+    var x = (clientX - rect.left) * (geo.W / rect.width);
+    var i = Math.round((x - geo.L) / geo.slot - 0.5);
+    return Math.max(0, Math.min(geo.n - 1, i));
+  }
+
+  function onPointer(evt) {
+    if (!lastChart || !geo) return;
+    hoverIndex = nearestIndex(evt.clientX);
+    showHover(hoverIndex);
+  }
+
+  function onLeave() {
+    hoverIndex = null;
+    showHover(null);
   }
 
   function renderRows(rows) {
@@ -473,7 +698,7 @@ a { color: var(--series-1); }
     renderFlights(flights);
     updateElapsed();
     renderTiles(s.totals);
-    drawChart(s.per_minute, s.minute_start);
+    if (s.chart) drawChart(s.chart);
     renderRows(s.recent || []);
     var newest = s.newest_log_ts ? clock(s.newest_log_ts) : "-";
     var text = "อัปเดตล่าสุด " + clock(s.now) + " · ข้อมูลล่าสุดในบันทึก " + newest;
@@ -510,9 +735,17 @@ a { color: var(--series-1); }
       });
   }
 
-  $("chartSvg").addEventListener("pointermove", showTip);
-  $("chartSvg").addEventListener("pointerdown", showTip);
-  $("chartSvg").addEventListener("pointerleave", function () { $("tip").hidden = true; });
+  $("chartSvg").addEventListener("pointermove", onPointer);
+  $("chartSvg").addEventListener("pointerdown", onPointer);
+  $("chartSvg").addEventListener("pointerleave", onLeave);
+  if (typeof ResizeObserver === "function") {
+    new ResizeObserver(function () { if (lastChart) drawChart(lastChart); }).observe($("chart"));
+  } else {
+    window.addEventListener("resize", function () { if (lastChart) drawChart(lastChart); });
+  }
+  $("mCalls").addEventListener("click", function () { setMetric("calls"); });
+  $("mTokens").addEventListener("click", function () { setMetric("tokens"); });
+  applyMetricButtons();
   setInterval(updateElapsed, 500);
   poll();
 })();
