@@ -587,7 +587,7 @@ class PanelPageTests(unittest.TestCase):
 
     def test_page_has_the_tunnel_panel_with_plain_thai_labels(self):
         html = live.PAGE_HTML
-        for text in ("ทางเชื่อม Pi → Bionic", "เทสบน Pi", "อย่างน้อย", "โปรแกรมบน PC"):
+        for text in ("ทางเชื่อม Pi → Bionic", "เว็บจริงบน Pi", "อย่างน้อย", "โปรแกรมบน PC"):
             self.assertIn(text, html)
 
 

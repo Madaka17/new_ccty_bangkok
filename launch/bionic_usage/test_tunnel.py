@@ -219,7 +219,7 @@ def test_overall_pi_http_unknown_is_degraded():
 
 def test_overall_pi_errors_is_degraded():
     assert tunnel.overall(snap(pi={"http": 200, "errors_5min": 3})) == (
-        "degraded", "เทสบน Pi มี error 3 ครั้งใน 5 นาที")
+        "degraded", "เว็บจริงบน Pi มี error 3 ครั้งใน 5 นาที")
 
 
 def test_overall_no_pi_check_yet_is_ok():
@@ -355,7 +355,7 @@ def test_check_pi_stores_parsed_values(fakes, status):
     assert "-i" in cmd and tunnel.PI_KEY in cmd
     assert tunnel.PI_SSH in cmd
     assert f"http://127.0.0.1:{PORT}/v1/models" in cmd[-1]
-    assert "bkk-test" in cmd[-1]
+    assert "bkk-production" in cmd[-1]
     assert kwargs["timeout"] == 20
     assert kwargs["text"] is True
     assert kwargs["stdin"] == subprocess.DEVNULL
