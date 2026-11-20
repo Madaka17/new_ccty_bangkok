@@ -626,3 +626,134 @@ class ServerIdReloadTests(unittest.TestCase):
         from live_page import PAGE_HTML
         self.assertIn("s.server_id !== serverId", PAGE_HTML)
         self.assertIn("location.reload()", PAGE_HTML)
+
+
+class PerMinuteCallsTests(DbTestBase):
+
+    def test_per_minute_calls_counts_requests_per_minute(self):
+        self.add(at(minutes_before=0), prompt=5, completion=5)
+        self.add(at(minutes_before=0), prompt=0, completion=0)
+        self.add(at(minutes_before=59), prompt=3, completion=0)
+        self.add(at(minutes_before=60), prompt=100, completion=0)  # outside the window
+        parts = live.read_db_parts(self.db, NOW)
+        self.assertEqual(len(parts["per_minute_calls"]), 60)
+        self.assertEqual(parts["per_minute_calls"][-1], 2)
+        self.assertEqual(parts["per_minute_calls"][0], 1)
+        self.assertEqual(sum(parts["per_minute_calls"]), 3)
+
+    def test_state_carries_per_minute_calls_with_the_same_minute_start(self):
+        self.add(at(minutes_before=1))
+        state = live.build_state(self.db, {"in_flight": [], "newest_log_ts": None},
+                                 {"up": None, "loaded": [], "checked_ts": None, "error": None}, NOW)
+        self.assertEqual(len(state["per_minute_calls"]), 60)
+        self.assertEqual(sum(state["per_minute_calls"]), 1)
+        self.assertEqual(state["minute_start"], NOW - 59 * 60)
+
+
+class ChartWindowTests(unittest.TestCase):
+
+    def test_window_is_eleven_full_buckets_before_the_current_one(self):
+        # 12:00 Bangkok is on a five-minute mark; the window starts at 11:05.
+        self.assertEqual(live.chart_window_start(NOW), NOW - 55 * 60)
+
+    def test_window_start_snaps_down_to_a_five_minute_mark(self):
+        self.assertEqual(live.chart_window_start(NOW + 150), NOW - 55 * 60)  # 12:02:30
+
+
+class FiveMinuteBucketTests(DbTestBase):
+
+    def test_twelve_buckets_count_calls_and_tokens_by_clock_aligned_start(self):
+        self.add(at(minutes_before=55), prompt=10, completion=0)      # 11:05 -> bucket 0
+        self.add(at(minutes_before=20), prompt=30, completion=20)     # 11:40 -> bucket 7
+        self.add(at(minutes_before=0), prompt=1, completion=1)        # 12:00 -> bucket 11 (filling)
+        self.add(at(minutes_before=0), prompt=2, completion=0)        # same bucket, second call
+        parts = live.read_db_parts(self.db, NOW)
+        self.assertEqual(parts["bucket_start"], NOW - 55 * 60)
+        self.assertEqual(len(parts["bucket_calls"]), 12)
+        self.assertEqual(parts["bucket_calls"][0], 1)
+        self.assertEqual(parts["bucket_tokens"][0], 10)
+        self.assertEqual(parts["bucket_calls"][7], 1)
+        self.assertEqual(parts["bucket_tokens"][7], 50)
+        self.assertEqual(parts["bucket_calls"][11], 2)
+        self.assertEqual(parts["bucket_tokens"][11], 4)
+
+    def test_a_request_just_before_the_window_is_not_in_any_bucket(self):
+        self.add(at(minutes_before=55) - 1, prompt=999, completion=0)  # 11:04:59
+        parts = live.read_db_parts(self.db, NOW)
+        self.assertEqual(sum(parts["bucket_tokens"]), 0)
+        self.assertEqual(sum(parts["per_minute_calls"]), 1)  # still in the 60-minute list
+
+    def test_state_chart_gives_both_metrics_with_summary_fields(self):
+        self.add(at(minutes_before=20), prompt=30, completion=20)
+        state = live.build_state(self.db, {"in_flight": [], "newest_log_ts": None},
+                                 {"up": None, "loaded": [], "checked_ts": None, "error": None}, NOW)
+        chart = state["chart"]
+        self.assertEqual(chart["bucket_minutes"], 5)
+        self.assertEqual(chart["start"], NOW - 55 * 60)
+        self.assertEqual(chart["count"], 12)
+        self.assertEqual(chart["calls"]["values"][7], 1)
+        self.assertEqual(chart["calls"]["total"], 1)
+        self.assertEqual(chart["calls"]["peak"], 1)
+        self.assertEqual(chart["calls"]["peak_index"], 7)
+        self.assertEqual(chart["tokens"]["values"][7], 50)
+        self.assertEqual(chart["tokens"]["total"], 50)
+        json.dumps(state)
+
+
+class NiceScaleTests(unittest.TestCase):
+
+    def test_small_count_peak_gets_round_steps(self):
+        self.assertEqual(live.nice_scale(61), (80, 20))
+
+    def test_token_peak_gets_thousand_steps(self):
+        self.assertEqual(live.nice_scale(45618), (60000, 20000))
+
+    def test_round_peak_is_its_own_top(self):
+        self.assertEqual(live.nice_scale(100), (100, 25))
+
+    def test_axis_has_three_or_four_steps_above_zero(self):
+        for peak in (7, 61, 157, 999, 45618, 745527):
+            top, step = live.nice_scale(peak)
+            self.assertGreaterEqual(top, peak)
+            self.assertIn(round(top / step), (3, 4), msg=f"peak {peak}")
+
+    def test_peak_of_one_gives_whole_steps(self):
+        self.assertEqual(live.nice_scale(1), (1, 1))
+
+    def test_zero_peak_gives_a_small_neutral_axis(self):
+        self.assertEqual(live.nice_scale(0), (30, 10))
+
+
+class ChartMetricTests(unittest.TestCase):
+
+    def test_total_average_and_peak_of_a_metric(self):
+        values = [40, 42, 61, 50, 40, 40, 42, 41, 42, 43, 42, 42]  # total 525
+        metric = live.chart_metric(values)
+        self.assertEqual(metric["values"], values)
+        self.assertEqual(metric["total"], 525)
+        self.assertEqual(metric["average"], 44)  # 525 / 12 = 43.75
+        self.assertEqual(metric["peak"], 61)
+        self.assertEqual(metric["peak_index"], 2)
+        self.assertEqual((metric["axis_top"], metric["axis_step"]), (80, 20))
+
+    def test_all_zero_metric_has_no_peak_index(self):
+        metric = live.chart_metric([0] * 12)
+        self.assertEqual(metric["total"], 0)
+        self.assertEqual(metric["average"], 0)
+        self.assertIsNone(metric["peak_index"])
+
+
+class ChartPageTests(unittest.TestCase):
+
+    def test_page_offers_calls_and_tokens_toggle_with_plain_thai(self):
+        html = live.PAGE_HTML
+        for text in ("ครั้ง", "token", "ตอนนี้", "เฉลี่ย", "ต่อ 5 นาที", "กำลังเก็บ"):
+            self.assertIn(text, html)
+
+    def test_page_remembers_the_chosen_metric_in_storage(self):
+        html = live.PAGE_HTML
+        self.assertIn("localStorage", html)
+        self.assertIn("bionicChartMetric", html)
+
+    def test_old_token_per_minute_heading_is_gone(self):
+        self.assertNotIn("โทเคนต่อนาที", live.PAGE_HTML)

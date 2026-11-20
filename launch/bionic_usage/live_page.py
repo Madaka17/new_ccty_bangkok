@@ -112,7 +112,24 @@ h2 { font-size: 17px; margin: 22px 0 8px; }
 .bar { grid-column: 1 / -1; height: 6px; background: var(--grid); border-radius: 3px; overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--series-1); border-radius: 3px; }
 .chart { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
-.chart svg { width: 100%; height: auto; display: block; }
+.chart { overflow-x: auto; }
+.chart svg { width: 100%; min-width: 560px; height: auto; display: block; }
+.chart-head {
+  display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between;
+  margin: 0 0 8px;
+}
+.chart-summary { margin: 0; font-size: 14px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button {
+  font: inherit; font-size: 14px; background: var(--surface); color: var(--text-2);
+  border: 0; padding: 6px 14px; min-width: 64px; cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed="true"] { background: var(--series-1); color: var(--bg); }
+.seg button:focus-visible { outline: 2px solid var(--series-1); outline-offset: -2px; }
+.bucket-details { margin-top: 10px; font-size: 14px; }
+.bucket-details summary { cursor: pointer; color: var(--text-2); padding: 4px 0; }
+.bucket-table { min-width: 0; }
 .tip {
   position: absolute; pointer-events: none; background: var(--text); color: var(--bg);
   border-radius: 6px; padding: 4px 8px; font-size: 13px; white-space: nowrap;
@@ -177,12 +194,27 @@ a { color: var(--series-1); }
 <h2>สรุป</h2>
 <div class="tiles" id="tiles"></div>
 
-<h2>โทเคนต่อนาที (60 นาทีล่าสุด)</h2>
+<h2>กราฟ 1 ชั่วโมงล่าสุด (แท่งละ 5 นาที)</h2>
+<div class="chart-head">
+  <p class="chart-summary" id="chartSummary"></p>
+  <div class="seg" role="group" aria-label="เลือกว่าจะดูเป็นจำนวนครั้งหรือ token">
+    <button type="button" id="mCalls" aria-pressed="true">ครั้ง</button>
+    <button type="button" id="mTokens" aria-pressed="false">token</button>
+  </div>
+</div>
 <div class="chart" id="chart">
-  <svg id="chartSvg" viewBox="0 0 960 220" role="img" aria-label="กราฟโทเคนต่อนาที 60 นาทีล่าสุด"></svg>
+  <svg id="chartSvg" viewBox="0 0 960 240" role="img" aria-label="กราฟการใช้งาน 1 ชั่วโมงล่าสุด แท่งละ 5 นาที"></svg>
   <div class="tip" id="tip" hidden></div>
 </div>
-<p class="muted" id="chartNote" style="font-size:13px;margin:6px 0 0"></p>
+<details class="bucket-details">
+  <summary>ดูเป็นตาราง</summary>
+  <div class="table-wrap">
+    <table class="bucket-table">
+      <thead><tr><th>ช่วงเวลา</th><th class="num">ครั้ง</th><th class="num">token</th></tr></thead>
+      <tbody id="bucketRows"></tbody>
+    </table>
+  </div>
+</details>
 
 <h2>ล่าสุด 50 ครั้ง</h2>
 <div class="table-wrap">
@@ -299,66 +331,169 @@ a { color: var(--series-1); }
     }).join("");
   }
 
-  var chartNow = { per: [], start: 0 };
+  // The chart shows 12 buckets of 5 minutes. The metric is calls ("ครั้ง") or tokens,
+  // chosen with the toggle and remembered in localStorage when the browser allows it.
+  var METRIC_KEY = "bionicChartMetric";
+  var metric = readMetric();
+  var lastChart = null;
 
-  function drawChart(perMinute, minuteStart) {
-    var W = 960, L = 56, R = 944, T = 16, B = 190;
-    var n = perMinute.length;
-    var peak = Math.max.apply(null, perMinute.concat([0])) || 1;
-    var plotH = B - T, slot = (R - L) / n, gap = 2, rMax = 4;
-    var parts = [];
-    [0, 0.5, 1].forEach(function (f) {
-      var y = B - f * plotH;
-      parts.push('<line x1="' + L + '" x2="' + R + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) +
-        '" stroke="var(--grid)" stroke-width="1"/>');
-      parts.push('<text x="' + (L - 8) + '" y="' + (y + 4).toFixed(1) + '" text-anchor="end" font-size="12" ' +
-        'fill="var(--text-3)">' + nf.format(Math.round(peak * f)) + '</text>');
-    });
-    for (var i = 0; i < n; i++) {
-      var v = perMinute[i];
-      var x0 = L + i * slot, w = slot - gap;
-      if (v > 0) {
-        var h = Math.max(1, v / peak * plotH);
-        var r = Math.min(rMax, h / 2, w / 2);
-        var left = x0 + gap / 2, right = left + w, top = B - h;
-        var d = "M" + left.toFixed(1) + "," + B + " V" + (top + r).toFixed(1) +
-          " Q" + left.toFixed(1) + "," + top.toFixed(1) + " " + (left + r).toFixed(1) + "," + top.toFixed(1) +
-          " H" + (right - r).toFixed(1) +
-          " Q" + right.toFixed(1) + "," + top.toFixed(1) + " " + right.toFixed(1) + "," + (top + r).toFixed(1) +
-          " V" + B + " Z";
-        parts.push('<path d="' + d + '" fill="var(--series-1)"/>');
+  function readMetric() {
+    try {
+      return localStorage.getItem(METRIC_KEY) === "tokens" ? "tokens" : "calls";
+    } catch (err) {
+      return "calls";
+    }
+  }
+
+  function saveMetric(value) {
+    try {
+      localStorage.setItem(METRIC_KEY, value);
+    } catch (err) {
+      // storage blocked (private window): the choice lasts until the page reloads
+    }
+  }
+
+  function shortNum(value) {
+    function trim(x) { return String(Math.round(x * 10) / 10); }
+    if (value >= 1000000) return trim(value / 1000000) + "M";
+    if (value >= 1000) return trim(value / 1000) + "k";
+    return nf.format(Math.round(value));
+  }
+
+  function unitText() { return metric === "tokens" ? "token" : "ครั้ง"; }
+  function shortVal(value) { return metric === "tokens" ? shortNum(value) : num(value); }
+  function bucketStart(chart, i) { return chart.start + i * chart.bucket_minutes * 60; }
+
+  function bucketRange(chart, i) {
+    var a = bucketStart(chart, i), b = a + chart.bucket_minutes * 60;
+    return fmtMin.format(new Date(a * 1000)) + "–" + fmtMin.format(new Date(b * 1000));
+  }
+
+  function applyMetricButtons() {
+    $("mCalls").setAttribute("aria-pressed", metric === "calls" ? "true" : "false");
+    $("mTokens").setAttribute("aria-pressed", metric === "tokens" ? "true" : "false");
+  }
+
+  function setMetric(value) {
+    metric = value;
+    saveMetric(value);
+    applyMetricButtons();
+    $("tip").hidden = true;
+    if (lastChart) drawChart(lastChart);
+  }
+
+  function setSummary(chart, data) {
+    var box = $("chartSummary");
+    if (data.total <= 0) {
+      box.textContent = "ยังไม่มีการใช้งานใน 1 ชม. ล่าสุด";
+      return;
+    }
+    var text = "1 ชม. ล่าสุด: " + num(data.total) + " " + unitText() +
+      " · เฉลี่ย " + num(data.average) + " " + unitText() + "/" + chart.bucket_minutes + " นาที";
+    if (data.peak_index != null) {
+      text += " · สูงสุด " + num(data.peak) + " (" + bucketRange(chart, data.peak_index) + ")";
+    }
+    box.textContent = text;
+  }
+
+  function renderBucketTable(chart) {
+    var body = $("bucketRows");
+    body.textContent = "";
+    for (var i = 0; i < chart.count; i++) {
+      var tr = document.createElement("tr");
+      var label = bucketRange(chart, i) + (i === chart.count - 1 ? " (กำลังเก็บ)" : "");
+      var cells = [label, num(chart.calls.values[i]), num(chart.tokens.values[i])];
+      for (var c = 0; c < cells.length; c++) {
+        var td = document.createElement("td");
+        td.textContent = cells[c];
+        if (c > 0) td.className = "num";
+        tr.appendChild(td);
       }
-      // A transparent column over each minute is the hover target.
+      body.appendChild(tr);
+    }
+  }
+
+  function drawChart(chart) {
+    lastChart = chart;
+    var data = chart[metric];
+    var n = chart.count;
+    var W = 960, L = 60, R = 944, T = 34, B = 196;
+    var plotH = B - T, slot = (R - L) / n, barW = Math.min(slot * 0.6, 56);
+    var top = data.axis_top, step = data.axis_step;
+    var parts = [];
+    // The bucket still filling is hatched and lighter; the hatch is a pattern in the surface colour.
+    parts.push('<defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" ' +
+      'patternTransform="rotate(45)"><rect width="6" height="6" fill="var(--surface)"/>' +
+      '<line x1="0" y1="0" x2="0" y2="6" stroke="var(--series-1)" stroke-width="2.5"/></pattern></defs>');
+    parts.push('<text x="' + L + '" y="18" font-size="13" fill="var(--text-2)">' +
+      (metric === "tokens" ? "token ต่อ 5 นาที" : "ครั้ง ต่อ 5 นาที") + '</text>');
+    // Solid hairline gridlines at each round step, with the axis labels at their left.
+    var rows = Math.round(top / step);
+    for (var k = 0; k <= rows; k++) {
+      var gy = B - (k * step / top) * plotH;
+      parts.push('<line x1="' + L + '" x2="' + R + '" y1="' + gy.toFixed(1) + '" y2="' + gy.toFixed(1) +
+        '" stroke="var(--grid)" stroke-width="1" pointer-events="none"/>');
+      parts.push('<text x="' + (L - 8) + '" y="' + (gy + 4).toFixed(1) + '" text-anchor="end" font-size="13" ' +
+        'fill="var(--text-3)">' + shortVal(k * step) + '</text>');
+    }
+    for (var i = 0; i < n; i++) {
+      var v = data.values[i];
+      var x0 = L + i * slot, bx = x0 + (slot - barW) / 2;
+      var filling = i === n - 1;
+      if (v > 0) {
+        var h = Math.max(2, v / top * plotH);
+        var r = Math.min(4, h / 2, barW / 2);
+        var right = bx + barW, ptop = B - h;
+        var d = "M" + bx.toFixed(1) + "," + B + " V" + (ptop + r).toFixed(1) +
+          " Q" + bx.toFixed(1) + "," + ptop.toFixed(1) + " " + (bx + r).toFixed(1) + "," + ptop.toFixed(1) +
+          " H" + (right - r).toFixed(1) +
+          " Q" + right.toFixed(1) + "," + ptop.toFixed(1) + " " + right.toFixed(1) + "," + (ptop + r).toFixed(1) +
+          " V" + B + " Z";
+        parts.push('<path d="' + d + '"' + (filling
+          ? ' fill="url(#hatch)" stroke="var(--series-1)" stroke-width="1.5"'
+          : ' fill="var(--series-1)"') + '/>');
+      }
+      // The whole bucket column is the hover target (larger than the bar itself).
       parts.push('<rect data-i="' + i + '" x="' + x0.toFixed(1) + '" y="' + T + '" width="' + slot.toFixed(1) +
         '" height="' + plotH + '" fill="transparent"/>');
-      if (i % 10 === 0) {
-        var label = fmtMin.format(new Date((minuteStart + i * 60) * 1000));
-        parts.push('<text x="' + (x0 + slot / 2).toFixed(1) + '" y="' + (B + 18) + '" text-anchor="middle" ' +
-          'font-size="12" fill="var(--text-3)">' + label + '</text>');
+      // Time labels every 15 minutes, at the start of the bucket (Bangkok time).
+      var at = bucketStart(chart, i);
+      if (at % 900 === 0) {
+        parts.push('<text x="' + x0.toFixed(1) + '" y="' + (B + 18) + '" text-anchor="middle" font-size="13" ' +
+          'fill="var(--text-3)" pointer-events="none">' + fmtMin.format(new Date(at * 1000)) + '</text>');
       }
     }
+    parts.push('<text x="' + R + '" y="' + (B + 36) + '" text-anchor="end" font-size="13" fill="var(--text-2)" ' +
+      'pointer-events="none">ตอนนี้</text>');
+    // Dashed average line with its value at the right.
+    if (data.total > 0) {
+      var ay = B - (data.average / top) * plotH;
+      parts.push('<line x1="' + L + '" x2="' + R + '" y1="' + ay.toFixed(1) + '" y2="' + ay.toFixed(1) +
+        '" stroke="var(--text-2)" stroke-width="1.5" stroke-dasharray="6 4" pointer-events="none"/>');
+      parts.push('<text x="' + R + '" y="' + (ay - 6).toFixed(1) + '" text-anchor="end" font-size="13" ' +
+        'fill="var(--text-2)" stroke="var(--surface)" stroke-width="4" paint-order="stroke" ' +
+        'pointer-events="none">เฉลี่ย ' + shortVal(data.average) + '</text>');
+    }
     $("chartSvg").innerHTML = parts.join("");
-    chartNow.per = perMinute;
-    chartNow.start = minuteStart;
-    var total = perMinute.reduce(function (a, b) { return a + b; }, 0);
-    $("chartNote").textContent = total > 0 ? "รวม " + num(total) + " โทเคนใน 60 นาที" : "ยังไม่มีการใช้งานใน 60 นาทีนี้";
+    setSummary(chart, data);
+    renderBucketTable(chart);
   }
 
   function showTip(evt) {
     var target = evt.target;
     var tip = $("tip");
     var box = $("chart");
-    if (!target || target.tagName !== "rect" || target.getAttribute("data-i") == null) {
+    if (!lastChart || !target || target.tagName !== "rect" || target.getAttribute("data-i") == null) {
       tip.hidden = true;
       return;
     }
     var i = Number(target.getAttribute("data-i"));
-    var when = fmtMin.format(new Date((chartNow.start + i * 60) * 1000));
-    tip.textContent = when + ": " + num(chartNow.per[i]) + " โทเคน";
+    var progress = i === lastChart.count - 1 ? " (กำลังเก็บ ยังไม่ครบ " + lastChart.bucket_minutes + " นาที)" : "";
+    tip.textContent = bucketRange(lastChart, i) + progress + ": " + num(lastChart[metric].values[i]) + " " + unitText();
     tip.hidden = false;
     var rect = box.getBoundingClientRect();
     var x = evt.clientX - rect.left + 12;
-    if (x > rect.width - 170) x = evt.clientX - rect.left - 170;
+    if (x > rect.width - 300) x = evt.clientX - rect.left - 300;
     tip.style.left = x + "px";
     tip.style.top = "12px";
   }
@@ -473,7 +608,7 @@ a { color: var(--series-1); }
     renderFlights(flights);
     updateElapsed();
     renderTiles(s.totals);
-    drawChart(s.per_minute, s.minute_start);
+    if (s.chart) drawChart(s.chart);
     renderRows(s.recent || []);
     var newest = s.newest_log_ts ? clock(s.newest_log_ts) : "-";
     var text = "อัปเดตล่าสุด " + clock(s.now) + " · ข้อมูลล่าสุดในบันทึก " + newest;
@@ -513,6 +648,9 @@ a { color: var(--series-1); }
   $("chartSvg").addEventListener("pointermove", showTip);
   $("chartSvg").addEventListener("pointerdown", showTip);
   $("chartSvg").addEventListener("pointerleave", function () { $("tip").hidden = true; });
+  $("mCalls").addEventListener("click", function () { setMetric("calls"); });
+  $("mTokens").addEventListener("click", function () { setMetric("tokens"); });
+  applyMetricButtons();
   setInterval(updateElapsed, 500);
   poll();
 })();

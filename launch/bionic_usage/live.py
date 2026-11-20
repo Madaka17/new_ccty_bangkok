@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sqlite3
 import sys
@@ -60,6 +61,9 @@ IDLE_LIMIT_SECONDS = 15 * 60
 IDLE_CHECK_SECONDS = 30
 RECENT_LIMIT = 50
 MINUTES = 60
+# The page chart: 12 buckets of 5 minutes on the Bangkok clock, covering the last hour.
+BUCKET_SECONDS = 300
+BUCKET_COUNT = 12
 # How often each background job runs, in seconds.
 INTERVALS = {"collect": 3.0, "bionic": 10.0, "tunnel_local": 2.0, "tunnel_pi": 30.0}
 UNAVAILABLE_TUNNEL = {"available": False,
@@ -151,10 +155,77 @@ def _totals_from(row) -> dict:
             "prompt": prompt, "completion": completion, "errors": int(errors or 0)}
 
 
+def chart_window_start(now: int) -> int:
+    """Start of the oldest of the 12 chart buckets.
+
+    Buckets sit on the clock (xx:00, xx:05, ...). The last bucket is the one that
+    holds `now`, so it is still filling.
+    """
+    now = int(now)
+    return (now // BUCKET_SECONDS) * BUCKET_SECONDS - (BUCKET_COUNT - 1) * BUCKET_SECONDS
+
+
+def _whole(value):
+    """An int when the number is whole, so the axis labels stay plain."""
+    return int(value) if float(value).is_integer() else value
+
+
+def nice_scale(peak, target: int = 4) -> tuple:
+    """A round (top, step) for the y-axis, with top >= peak.
+
+    The step is 1, 2, 2.5 or 5 times a power of ten, chosen so the axis has three
+    or four steps above zero. A zero peak gets a small neutral axis: 0, 10, 20, 30.
+    """
+    if peak <= 0:
+        return 30, 10
+    raw = peak / target
+    magnitude = 10 ** math.floor(math.log10(raw))
+    step = magnitude
+    for multiple in (1, 2, 2.5, 5, 10):
+        step = multiple * magnitude
+        if step >= raw:
+            break
+    step = max(step, 1)
+    top = math.ceil(peak / step - 1e-9) * step
+    return _whole(top), _whole(step)
+
+
+def chart_metric(values: list) -> dict:
+    """Totals, average, peak and axis for one series of chart buckets."""
+    values = [int(v) for v in values]
+    total = sum(values)
+    peak = max(values) if values else 0
+    top, step = nice_scale(peak)
+    return {
+        "values": values,
+        "total": total,
+        "average": round(total / len(values)) if values else 0,
+        "peak": peak,
+        "peak_index": values.index(peak) if peak > 0 else None,
+        "axis_top": top,
+        "axis_step": step,
+    }
+
+
+def chart_block(bucket_start: int, bucket_calls: list, bucket_tokens: list) -> dict:
+    """The chart part of the state: both metrics over the same 12 buckets."""
+    return {
+        "bucket_minutes": BUCKET_SECONDS // 60,
+        "start": bucket_start,
+        "count": BUCKET_COUNT,
+        "calls": chart_metric(bucket_calls),
+        "tokens": chart_metric(bucket_tokens),
+    }
+
+
 def _empty_parts() -> dict:
     return {
         "totals": {"hour": _empty_totals(), "today": _empty_totals(), "all": _empty_totals()},
         "per_minute": [0] * MINUTES,
+        "per_minute_calls": [0] * MINUTES,
+        "bucket_start": 0,
+        "bucket_calls": [0] * BUCKET_COUNT,
+        "bucket_tokens": [0] * BUCKET_COUNT,
         "recent": [],
         "db_error": None,
     }
@@ -167,13 +238,16 @@ def read_db_parts(db_path: Path, now: float) -> dict:
     error is reported in `db_error` and never raised.
     """
     parts = _empty_parts()
+    now_int = int(now)
+    parts["bucket_start"] = chart_window_start(now_int)
     db_path = Path(db_path)
     if not db_path.exists():
         return parts
-    now_int = int(now)
     today_start = int(report._day_start(datetime.fromtimestamp(now_int, BANGKOK)).timestamp())
     minute_start = (now_int // 60) * 60
     window_start = minute_start - (MINUTES - 1) * 60
+    # One read covers both the 60 one-minute counts and the 12 chart buckets.
+    read_from = min(window_start, parts["bucket_start"])
     try:
         con = sqlite3.connect(db_path, timeout=5)
         try:
@@ -188,10 +262,16 @@ def read_db_parts(db_path: Path, now: float) -> dict:
             }
             for ts, prompt, completion in con.execute(
                     "SELECT ts, prompt_tokens, completion_tokens FROM requests WHERE ts >= ?",
-                    (window_start,)).fetchall():
+                    (read_from,)).fetchall():
+                tokens = int(prompt or 0) + int(completion or 0)
                 index = (ts - window_start) // 60
                 if 0 <= index < MINUTES:
-                    parts["per_minute"][index] += int(prompt or 0) + int(completion or 0)
+                    parts["per_minute"][index] += tokens
+                    parts["per_minute_calls"][index] += 1
+                bucket = (ts - parts["bucket_start"]) // BUCKET_SECONDS
+                if 0 <= bucket < BUCKET_COUNT:
+                    parts["bucket_tokens"][bucket] += tokens
+                    parts["bucket_calls"][bucket] += 1
             rows = con.execute(
                 "SELECT ts, model, job, prompt_tokens, completion_tokens, reasoning_tokens, "
                 "total_ms, ok FROM requests ORDER BY ts DESC, id DESC LIMIT ?",
@@ -226,7 +306,9 @@ def build_state(db_path: Path, tracker_snap: dict, bionic_snap: dict, now: float
         "recent": parts["recent"],
         "totals": parts["totals"],
         "per_minute": parts["per_minute"],
+        "per_minute_calls": parts["per_minute_calls"],
         "minute_start": minute_start - (MINUTES - 1) * 60,
+        "chart": chart_block(parts["bucket_start"], parts["bucket_calls"], parts["bucket_tokens"]),
         "newest_log_ts": tracker_snap["newest_log_ts"],
         "db_error": parts["db_error"],
     }
