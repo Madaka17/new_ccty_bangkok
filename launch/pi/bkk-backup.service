@@ -12,9 +12,9 @@ WorkingDirectory=/mnt/ssd/new_ccty_bangkok
 # .env is read by backup_db.py (python-dotenv, never overriding), so these win over the PC paths in it.
 Environment=BMA_DATA_DIR=/mnt/ssd/data_smartstreet
 Environment=PYTHONUNBUFFERED=1
-ExecStartPre=/usr/bin/mkdir -p /mnt/ssd/new_ccty_bangkok/local/logs
-ExecStart=/mnt/ssd/new_ccty_bangkok/.venv/bin/python /mnt/ssd/new_ccty_bangkok/local/pipeline/backup_db.py
-StandardOutput=append:/mnt/ssd/new_ccty_bangkok/local/logs/backup.log
-StandardError=append:/mnt/ssd/new_ccty_bangkok/local/logs/backup.log
+# local/logs is gitignored, so it may not exist. systemd opens StandardOutput=append: files before
+# ExecStartPre runs, so an ExecStartPre mkdir can never create it in time (the unit then fails with
+# 209/STDOUT). Create the folder and redirect inside the same shell instead.
+ExecStart=/bin/sh -c 'mkdir -p local/logs && exec .venv/bin/python local/pipeline/backup_db.py >> local/logs/backup.log 2>&1'
 Nice=10
 IOSchedulingClass=idle
