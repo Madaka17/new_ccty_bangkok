@@ -112,8 +112,7 @@ h2 { font-size: 17px; margin: 22px 0 8px; }
 .bar { grid-column: 1 / -1; height: 6px; background: var(--grid); border-radius: 3px; overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--series-1); border-radius: 3px; }
 .chart { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
-.chart { overflow-x: auto; }
-.chart svg { width: 100%; min-width: 560px; height: auto; display: block; }
+.chart svg { display: block; }
 .chart-head {
   display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between;
   margin: 0 0 8px;
@@ -194,7 +193,7 @@ a { color: var(--series-1); }
 <h2>สรุป</h2>
 <div class="tiles" id="tiles"></div>
 
-<h2>กราฟ 1 ชั่วโมงล่าสุด (แท่งละ 5 นาที)</h2>
+<h2>กราฟ 1 ชั่วโมงล่าสุด (จุดละ 5 นาที)</h2>
 <div class="chart-head">
   <p class="chart-summary" id="chartSummary"></p>
   <div class="seg" role="group" aria-label="เลือกว่าจะดูเป็นจำนวนครั้งหรือ token">
@@ -203,7 +202,7 @@ a { color: var(--series-1); }
   </div>
 </div>
 <div class="chart" id="chart">
-  <svg id="chartSvg" viewBox="0 0 960 240" role="img" aria-label="กราฟการใช้งาน 1 ชั่วโมงล่าสุด แท่งละ 5 นาที"></svg>
+  <svg id="chartSvg" viewBox="0 0 960 240" role="img" aria-label="กราฟการใช้งาน 1 ชั่วโมงล่าสุด จุดละ 5 นาที"></svg>
   <div class="tip" id="tip" hidden></div>
 </div>
 <details class="bucket-details">
@@ -413,89 +412,180 @@ a { color: var(--series-1); }
     }
   }
 
+  // ---- chart: one line over 12 five-minute buckets (calls or tokens) ----
+  // The SVG is drawn at the container's own pixel width, so 1 SVG unit = 1 CSS px and the
+  // text keeps the page's small size on any screen. It is redrawn on resize.
+  var CHART_H = 240;
+  var CHART_PAD_L = 52, CHART_PAD_R = 84, CHART_T = 32, CHART_B = 196;
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var geo = null;          // geometry of the last drawing, used by the hover code
+  var hoverIndex = null;   // bucket under the pointer, or null
+  var guideGroup = null;   // hover group (guide line and marker) inside the svg
+  var guideLine = null;
+  var guideDot = null;
+
+  function svgEl(name, attrs, text) {
+    var node = document.createElementNS(SVG_NS, name);
+    Object.keys(attrs || {}).forEach(function (key) { node.setAttribute(key, String(attrs[key])); });
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function xOf(i) { return geo.L + (i + 0.5) * geo.slot; }
+  function yOf(v) { return geo.B - (v / geo.top) * (geo.B - geo.T); }
+
+  function chartWidth() {
+    return Math.max(260, $("chart").clientWidth - 20); // minus the box padding
+  }
+
   function drawChart(chart) {
     lastChart = chart;
     var data = chart[metric];
     var n = chart.count;
-    var W = 960, L = 60, R = 944, T = 34, B = 196;
-    var plotH = B - T, slot = (R - L) / n, barW = Math.min(slot * 0.6, 56);
+    var W = chartWidth(), H = CHART_H;
+    var L = CHART_PAD_L, R = W - CHART_PAD_R, T = CHART_T, B = CHART_B;
+    var slot = (R - L) / n;
     var top = data.axis_top, step = data.axis_step;
-    var parts = [];
-    // The bucket still filling is hatched and lighter; the hatch is a pattern in the surface colour.
-    parts.push('<defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" ' +
-      'patternTransform="rotate(45)"><rect width="6" height="6" fill="var(--surface)"/>' +
-      '<line x1="0" y1="0" x2="0" y2="6" stroke="var(--series-1)" stroke-width="2.5"/></pattern></defs>');
-    parts.push('<text x="' + L + '" y="18" font-size="13" fill="var(--text-2)">' +
-      (metric === "tokens" ? "token ต่อ 5 นาที" : "ครั้ง ต่อ 5 นาที") + '</text>');
-    // Solid hairline gridlines at each round step, with the axis labels at their left.
+    geo = { W: W, L: L, R: R, T: T, B: B, slot: slot, top: top, n: n };
+
+    var svg = $("chartSvg");
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    svg.setAttribute("width", String(W));
+    svg.setAttribute("height", String(H));
+    svg.textContent = "";
+
+    svg.appendChild(svgEl("text", { x: L, y: 14, "font-size": 12, fill: "var(--text-2)" },
+      metric === "tokens" ? "token ต่อ 5 นาที" : "ครั้ง ต่อ 5 นาที"));
+
+    // solid hairline gridlines at each round step, with the value at the left
     var rows = Math.round(top / step);
     for (var k = 0; k <= rows; k++) {
-      var gy = B - (k * step / top) * plotH;
-      parts.push('<line x1="' + L + '" x2="' + R + '" y1="' + gy.toFixed(1) + '" y2="' + gy.toFixed(1) +
-        '" stroke="var(--grid)" stroke-width="1" pointer-events="none"/>');
-      parts.push('<text x="' + (L - 8) + '" y="' + (gy + 4).toFixed(1) + '" text-anchor="end" font-size="13" ' +
-        'fill="var(--text-3)">' + shortVal(k * step) + '</text>');
+      var gy = yOf(k * step);
+      svg.appendChild(svgEl("line", { x1: L, x2: R, y1: gy, y2: gy, stroke: "var(--grid)", "stroke-width": 1 }));
+      svg.appendChild(svgEl("text", { x: L - 8, y: gy + 4, "text-anchor": "end", "font-size": 12,
+        fill: "var(--text-3)" }, shortVal(k * step)));
     }
-    for (var i = 0; i < n; i++) {
-      var v = data.values[i];
-      var x0 = L + i * slot, bx = x0 + (slot - barW) / 2;
-      var filling = i === n - 1;
-      if (v > 0) {
-        var h = Math.max(2, v / top * plotH);
-        var r = Math.min(4, h / 2, barW / 2);
-        var right = bx + barW, ptop = B - h;
-        var d = "M" + bx.toFixed(1) + "," + B + " V" + (ptop + r).toFixed(1) +
-          " Q" + bx.toFixed(1) + "," + ptop.toFixed(1) + " " + (bx + r).toFixed(1) + "," + ptop.toFixed(1) +
-          " H" + (right - r).toFixed(1) +
-          " Q" + right.toFixed(1) + "," + ptop.toFixed(1) + " " + right.toFixed(1) + "," + (ptop + r).toFixed(1) +
-          " V" + B + " Z";
-        parts.push('<path d="' + d + '"' + (filling
-          ? ' fill="url(#hatch)" stroke="var(--series-1)" stroke-width="1.5"'
-          : ' fill="var(--series-1)"') + '/>');
-      }
-      // The whole bucket column is the hover target (larger than the bar itself).
-      parts.push('<rect data-i="' + i + '" x="' + x0.toFixed(1) + '" y="' + T + '" width="' + slot.toFixed(1) +
-        '" height="' + plotH + '" fill="transparent"/>');
-      // Time labels every 15 minutes, at the start of the bucket (Bangkok time).
-      var at = bucketStart(chart, i);
-      if (at % 900 === 0) {
-        parts.push('<text x="' + x0.toFixed(1) + '" y="' + (B + 18) + '" text-anchor="middle" font-size="13" ' +
-          'fill="var(--text-3)" pointer-events="none">' + fmtMin.format(new Date(at * 1000)) + '</text>');
-      }
-    }
-    parts.push('<text x="' + R + '" y="' + (B + 36) + '" text-anchor="end" font-size="13" fill="var(--text-2)" ' +
-      'pointer-events="none">ตอนนี้</text>');
-    // Dashed average line with its value at the right.
+
+    var pts = [];
+    for (var i = 0; i < n; i++) pts.push({ x: xOf(i), y: yOf(data.values[i]) });
+    var last = n - 1;
+
+    // light area under the whole series
+    var areaD = "M" + pts[0].x.toFixed(1) + "," + B;
+    pts.forEach(function (p) { areaD += " L" + p.x.toFixed(1) + "," + p.y.toFixed(1); });
+    areaD += " L" + pts[last].x.toFixed(1) + "," + B + " Z";
+    svg.appendChild(svgEl("path", { d: areaD, fill: "var(--series-1)", "fill-opacity": 0.12,
+      stroke: "none", "pointer-events": "none" }));
+
+    // average: a thin muted dashed line, labelled in the right margin so no point is covered
     if (data.total > 0) {
-      var ay = B - (data.average / top) * plotH;
-      parts.push('<line x1="' + L + '" x2="' + R + '" y1="' + ay.toFixed(1) + '" y2="' + ay.toFixed(1) +
-        '" stroke="var(--text-2)" stroke-width="1.5" stroke-dasharray="6 4" pointer-events="none"/>');
-      parts.push('<text x="' + R + '" y="' + (ay - 6).toFixed(1) + '" text-anchor="end" font-size="13" ' +
-        'fill="var(--text-2)" stroke="var(--surface)" stroke-width="4" paint-order="stroke" ' +
-        'pointer-events="none">เฉลี่ย ' + shortVal(data.average) + '</text>');
+      var ay = yOf(data.average);
+      svg.appendChild(svgEl("line", { x1: L, x2: R, y1: ay, y2: ay, stroke: "var(--text-3)", "stroke-width": 1,
+        "stroke-dasharray": "4 3", "pointer-events": "none" }));
+      svg.appendChild(svgEl("text", { x: R + 6, y: ay + 4, "font-size": 12, fill: "var(--text-2)",
+        "pointer-events": "none" }, "เฉลี่ย " + shortVal(data.average)));
     }
-    $("chartSvg").innerHTML = parts.join("");
+
+    // the series line: solid 2px through the complete buckets, dotted to the filling one
+    var solid = "";
+    for (var s = 0; s < last; s++) solid += (s === 0 ? "M" : " L") + pts[s].x.toFixed(1) + "," + pts[s].y.toFixed(1);
+    if (solid) {
+      svg.appendChild(svgEl("path", { d: solid, fill: "none", stroke: "var(--series-1)", "stroke-width": 2,
+        "stroke-linejoin": "round", "stroke-linecap": "round", "pointer-events": "none" }));
+    }
+    if (last >= 1) {
+      svg.appendChild(svgEl("line", { x1: pts[last - 1].x, y1: pts[last - 1].y, x2: pts[last].x, y2: pts[last].y,
+        stroke: "var(--series-1)", "stroke-width": 2, "stroke-dasharray": "2 4", "stroke-linecap": "round",
+        "pointer-events": "none" }));
+    }
+    for (var d = 0; d < n; d++) {
+      if (d === last) {
+        // the still-filling bucket: a hollow point
+        svg.appendChild(svgEl("circle", { cx: pts[d].x, cy: pts[d].y, r: 4, fill: "var(--surface)",
+          stroke: "var(--series-1)", "stroke-width": 2, "pointer-events": "none" }));
+      } else {
+        svg.appendChild(svgEl("circle", { cx: pts[d].x, cy: pts[d].y, r: 3.5, fill: "var(--series-1)",
+          "pointer-events": "none" }));
+      }
+    }
+
+    // time labels every 15 minutes (Bangkok time), at the start of the bucket
+    for (var t = 0; t < n; t++) {
+      var at = bucketStart(chart, t);
+      if (at % 900 === 0) {
+        svg.appendChild(svgEl("text", { x: L + t * slot, y: B + 16, "text-anchor": "middle", "font-size": 12,
+          fill: "var(--text-3)", "pointer-events": "none" }, fmtMin.format(new Date(at * 1000))));
+      }
+    }
+    svg.appendChild(svgEl("text", { x: R, y: B + 34, "text-anchor": "end", "font-size": 12, fill: "var(--text-2)",
+      "pointer-events": "none" }, "ตอนนี้"));
+
+    // hover guide, hidden until the pointer moves over the chart
+    guideGroup = svgEl("g", { visibility: "hidden", "pointer-events": "none" });
+    guideLine = svgEl("line", { x1: 0, x2: 0, y1: T, y2: B, stroke: "var(--text-3)", "stroke-width": 1 });
+    guideDot = svgEl("circle", { cx: 0, cy: 0, r: 5, fill: "var(--series-1)", stroke: "var(--surface)",
+      "stroke-width": 2 });
+    guideGroup.appendChild(guideLine);
+    guideGroup.appendChild(guideDot);
+    svg.appendChild(guideGroup);
+
     setSummary(chart, data);
     renderBucketTable(chart);
+    if (hoverIndex != null) showHover(hoverIndex);
   }
 
-  function showTip(evt) {
-    var target = evt.target;
-    var tip = $("tip");
-    var box = $("chart");
-    if (!lastChart || !target || target.tagName !== "rect" || target.getAttribute("data-i") == null) {
-      tip.hidden = true;
+  function tipText(i) {
+    var c = lastChart;
+    var filling = i === c.count - 1;
+    var label = bucketRange(c, i) + (filling ? " (กำลังเก็บ ยังไม่ครบ " + c.bucket_minutes + " นาที)" : "");
+    return label + ": " + num(c[metric].values[i]) + " " + unitText();
+  }
+
+  function showTipAt(i, x, y) {
+    var tip = $("tip"), box = $("chart");
+    var svgRect = $("chartSvg").getBoundingClientRect(), boxRect = box.getBoundingClientRect();
+    var left = svgRect.left - boxRect.left + x;
+    tip.textContent = tipText(i);
+    tip.hidden = false;
+    var tx = left + 12;
+    if (tx + tip.offsetWidth > box.clientWidth) tx = left - 12 - tip.offsetWidth;
+    tip.style.left = Math.max(0, tx) + "px";
+    tip.style.top = Math.max(0, svgRect.top - boxRect.top + y - 36) + "px";
+  }
+
+  function showHover(i) {
+    if (!geo || !guideGroup) return;
+    if (i == null) {
+      guideGroup.setAttribute("visibility", "hidden");
+      $("tip").hidden = true;
       return;
     }
-    var i = Number(target.getAttribute("data-i"));
-    var progress = i === lastChart.count - 1 ? " (กำลังเก็บ ยังไม่ครบ " + lastChart.bucket_minutes + " นาที)" : "";
-    tip.textContent = bucketRange(lastChart, i) + progress + ": " + num(lastChart[metric].values[i]) + " " + unitText();
-    tip.hidden = false;
-    var rect = box.getBoundingClientRect();
-    var x = evt.clientX - rect.left + 12;
-    if (x > rect.width - 300) x = evt.clientX - rect.left - 300;
-    tip.style.left = x + "px";
-    tip.style.top = "12px";
+    var x = xOf(i), y = yOf(lastChart[metric].values[i]);
+    guideLine.setAttribute("x1", x);
+    guideLine.setAttribute("x2", x);
+    guideDot.setAttribute("cx", x);
+    guideDot.setAttribute("cy", y);
+    guideGroup.setAttribute("visibility", "visible");
+    showTipAt(i, x, y);
+  }
+
+  // The bucket nearest the pointer (or the tap), from its x position in svg units.
+  function nearestIndex(clientX) {
+    var rect = $("chartSvg").getBoundingClientRect();
+    var x = (clientX - rect.left) * (geo.W / rect.width);
+    var i = Math.round((x - geo.L) / geo.slot - 0.5);
+    return Math.max(0, Math.min(geo.n - 1, i));
+  }
+
+  function onPointer(evt) {
+    if (!lastChart || !geo) return;
+    hoverIndex = nearestIndex(evt.clientX);
+    showHover(hoverIndex);
+  }
+
+  function onLeave() {
+    hoverIndex = null;
+    showHover(null);
   }
 
   function renderRows(rows) {
@@ -645,9 +735,14 @@ a { color: var(--series-1); }
       });
   }
 
-  $("chartSvg").addEventListener("pointermove", showTip);
-  $("chartSvg").addEventListener("pointerdown", showTip);
-  $("chartSvg").addEventListener("pointerleave", function () { $("tip").hidden = true; });
+  $("chartSvg").addEventListener("pointermove", onPointer);
+  $("chartSvg").addEventListener("pointerdown", onPointer);
+  $("chartSvg").addEventListener("pointerleave", onLeave);
+  if (typeof ResizeObserver === "function") {
+    new ResizeObserver(function () { if (lastChart) drawChart(lastChart); }).observe($("chart"));
+  } else {
+    window.addEventListener("resize", function () { if (lastChart) drawChart(lastChart); });
+  }
   $("mCalls").addEventListener("click", function () { setMetric("calls"); });
   $("mTokens").addEventListener("click", function () { setMetric("tokens"); });
   applyMetricButtons();

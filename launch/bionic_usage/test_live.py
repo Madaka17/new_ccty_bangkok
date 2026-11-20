@@ -757,3 +757,47 @@ class ChartPageTests(unittest.TestCase):
 
     def test_old_token_per_minute_heading_is_gone(self):
         self.assertNotIn("โทเคนต่อนาที", live.PAGE_HTML)
+
+
+class LineChartPageTests(unittest.TestCase):
+    """The chart is a line over 12 five-minute points, sized 1 SVG unit = 1 CSS px."""
+
+    def test_chart_height_is_fixed_in_the_agreed_range(self):
+        self.assertIn("var CHART_H = 240;", live.PAGE_HTML)
+
+    def test_chart_redraws_on_resize_with_a_window_fallback(self):
+        html = live.PAGE_HTML
+        self.assertIn("ResizeObserver", html)
+        self.assertIn('addEventListener("resize"', html)
+
+    def test_svg_viewbox_follows_the_container_width(self):
+        html = live.PAGE_HTML
+        self.assertIn('setAttribute("viewBox"', html)
+        self.assertNotIn("min-width: 560px", html)  # the old fixed-scale workaround
+
+    def test_series_is_a_line_with_area_dots_and_a_hollow_filling_point(self):
+        html = live.PAGE_HTML
+        self.assertIn('"fill-opacity"', html)
+        self.assertIn('"circle"', html)
+        self.assertIn("stroke-dasharray", html)  # dotted join to the filling point
+        self.assertNotIn("url(#hatch)", html)     # bars and their hatch are gone
+
+    def test_average_is_thin_muted_and_labelled_outside_the_plot(self):
+        html = live.PAGE_HTML
+        self.assertIn('"var(--text-3)"', html)
+        self.assertIn("CHART_PAD_R", html)
+        self.assertIn("เฉลี่ย ", html)
+
+    def test_chart_text_is_built_with_textcontent_not_html_strings(self):
+        html = live.PAGE_HTML
+        self.assertIn("createElementNS", html)
+        self.assertIn("textContent", html)
+
+    def test_hover_snaps_to_the_nearest_point_with_a_guide(self):
+        html = live.PAGE_HTML
+        self.assertIn("nearestIndex", html)
+        self.assertIn("showHover", html)
+
+    def test_plain_thai_labels_for_the_line_chart(self):
+        for text in ("ตอนนี้", "กำลังเก็บ", "ครั้ง ต่อ 5 นาที", "token ต่อ 5 นาที"):
+            self.assertIn(text, live.PAGE_HTML)
