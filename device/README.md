@@ -5,7 +5,7 @@ VRAM % and GPU temperature. It runs our own firmware, not the GeekMagic one.
 
 | Part | Where | What it does |
 |---|---|---|
-| `pcstats/pcstats.py` | PC, `C:\Users\user\Tools\pcstats\`, Task Scheduler task `PCStats`, firewall rule `PC stats 9101 (SmallTV)` | Serves the JSON at `http://192.168.1.188:9101/stats` (CPU, RAM, VRAM, GPU temp) |
+| `pcstats/pcstats.py` | PC, `C:\Users\user\Tools\pcstats\`, Task Scheduler task `PCStats`, firewall rule `PC stats 9101 (SmallTV)` (see PC service below) | Serves the JSON at `http://192.168.1.188:9101/stats` (CPU, RAM, VRAM, GPU temp) |
 | `pistats/pistats.py` | Pi, `/mnt/ssd/device/pistats/`, systemd unit `pistats` | Still exists for the Pi, but the display no longer reads it |
 | `smalltv/` | SmallTV at `192.168.1.111` | Polls the PC JSON every 2 s and draws it. `/` shows status, `/update` takes a new firmware |
 
@@ -38,6 +38,76 @@ or a new upload, loads the design again. The footer is muted while the stale val
 
 The layout key `power` (widget `W_POWER`) now draws VRAM, as `VRAM 86%` (or `VRAM --%`). The key is
 unchanged, so layouts stored before 1.4.0 still load.
+
+## PC service
+
+`device/pcstats/pcstats.py` runs on the PC and serves the stats JSON on port 9101. It uses only the
+Python standard library. It is installed as `C:\Users\user\Tools\pcstats\pcstats.py`.
+
+Task Scheduler runs it through the task `PCStats`:
+
+- Trigger: at logon of the user.
+- Action: `C:\Users\user\AppData\Local\Programs\Python\Python314\pythonw.exe "C:\Users\user\Tools\pcstats\pcstats.py"`
+- Restart: 3 times, every 1 minute.
+- Time limit: none.
+
+After a power cut, the service does not start until someone logs on. Until then the display shows `PC offline`.
+
+### Update or redeploy
+
+From the repo root, in PowerShell:
+
+```powershell
+Copy-Item device\pcstats\pcstats.py C:\Users\user\Tools\pcstats\pcstats.py -Force
+Stop-ScheduledTask PCStats; Get-CimInstance Win32_Process -Filter "Name='pythonw.exe'" | Where-Object CommandLine -match 'pcstats' | ForEach-Object { Stop-Process -Id $_.ProcessId }
+Start-ScheduledTask PCStats
+curl.exe -s http://127.0.0.1:9101/stats
+```
+
+The last line should print the JSON.
+
+### Firewall
+
+Run once, in an admin PowerShell. The rule lets only the display reach port 9101:
+
+```powershell
+New-NetFirewallRule -DisplayName "PC stats 9101 (SmallTV)" -Direction Inbound -Protocol TCP -LocalPort 9101 -RemoteAddress 192.168.1.111 -Action Allow -Profile Any
+```
+
+### PC address
+
+The PC address is `192.168.1.188`. It comes from DHCP, so it can change. The address appears in:
+
+- `smalltv/src/config.h`, the default `STATS_URL`.
+- The URL stored on the display.
+
+The firewall rule does not hold the PC address. Its `RemoteAddress` is the display (`192.168.1.111`).
+
+Reserve `192.168.1.188` for the PC in the router, so it does not change. If it does change, point the
+display at the new address:
+
+```powershell
+curl.exe "http://192.168.1.111/set?url=http://NEW_IP:9101/stats"
+```
+
+### After flashing 1.4.0 on a display that ran 1.3.0
+
+Two things from the old setup can still be on the display:
+
+1. The stored stats URL may still point at the Pi. Set it to the PC:
+
+   ```powershell
+   curl.exe "http://192.168.1.111/set?url=http://192.168.1.188:9101/stats"
+   ```
+
+2. An old Screen Studio design has the Pi labels baked into its base image. Remove the stored design
+   so the built-in look shows:
+
+   ```powershell
+   curl.exe -X POST http://192.168.1.111/design/reset
+   ```
+
+Tests (on the PC): `.venv\Scripts\python -m pytest tests/test_pcstats.py`
 
 ## Pi service
 
