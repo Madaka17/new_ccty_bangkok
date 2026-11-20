@@ -136,7 +136,9 @@ def read_gpu(run=subprocess.run) -> str | None:
 
 
 def _uptime_s() -> int:
-    return ctypes.windll.kernel32.GetTickCount64() // 1000
+    get_tick = ctypes.windll.kernel32.GetTickCount64
+    get_tick.restype = ctypes.c_uint64  # it returns a 64-bit value; the default 32-bit int wraps after about 24.8 days
+    return get_tick() // 1000
 
 
 def is_fresh(sample_ts: float | None, now: float) -> bool:

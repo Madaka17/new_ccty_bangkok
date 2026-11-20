@@ -1,8 +1,11 @@
 """Pure-function tests for device/pcstats/pcstats.py (the Windows PC stats service for the desk display)."""
 import importlib.util
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 _PATH = Path(__file__).resolve().parents[1] / "device" / "pcstats" / "pcstats.py"
 _spec = importlib.util.spec_from_file_location("pcstats", _PATH)
@@ -104,6 +107,13 @@ def test_gpu_query_nonzero_exit():
         return SimpleNamespace(returncode=9, stdout="")
 
     assert read_gpu(run=fake) is None
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="reads Windows system calls")
+def test_win32_readers_smoke():
+    assert pcstats.read_memory()[1] > 0
+    assert pcstats.read_cpu_times()[1] > 0
+    assert pcstats._uptime_s() >= 0
 
 
 def test_is_fresh_recent_sample():
