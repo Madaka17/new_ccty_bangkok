@@ -414,7 +414,7 @@ a { color: var(--series-1); }
     var pi = t.pi;
     var piErr = pi ? (pi.errors_5min || 0) : null;
     var steps = [
-      ["เทสบน Pi :8001",
+      ["เว็บจริงบน Pi :8000",
         !pi ? "unknown" : (piErr > 0 ? "bad" : "ok"),
         !pi ? "ยังไม่เช็ก" : (piErr > 0 ? "error " + piErr + " ครั้งใน 5 นาที" : "ไม่มี error ใน 5 นาที")],
       ["Pi 127.0.0.1:1235",

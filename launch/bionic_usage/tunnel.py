@@ -1,4 +1,4 @@
-"""SSH reverse tunnel status: is the Raspberry Pi test server reaching Bionic?
+"""SSH reverse tunnel status: is the Raspberry Pi production server reaching Bionic?
 
 The Pi test server (192.168.1.109) uses the Bionic model on this PC through an
 SSH reverse tunnel. launch/test/pi_bionic_tunnel.py runs under pythonw and keeps
@@ -14,7 +14,7 @@ Two checks run in the background:
     counts Pi requests and local clients, and reads the tunnel log tail;
   * check_pi() every 30 s: asks the Pi (over ssh) whether /v1/models on its
     127.0.0.1:1235 answers HTTP 200, and counts "Connection refused" or
-    "no free slot" lines in the last 5 minutes of bkk-test's journal.
+    "no free slot" lines in the last 5 minutes of the PI_SERVICE journal (bkk-production).
 
 pi_seen_60s is a lower bound: a connection that opens and closes between two
 2-second polls is not seen, and HTTP keep-alive can carry several requests on
@@ -25,7 +25,7 @@ Wiring into live.py (done by the other session):
 1. `tunnel = TunnelStatus()` in main(); jobs {"tunnel_local": tunnel.check_local,
    "tunnel_pi": tunnel.check_pi} in background_loop with INTERVALS 2 and 30 seconds;
 2. build_state adds "tunnel": tunnel.snapshot();
-3. the page draws the flow Pi test :8001 -> Pi 127.0.0.1:1235 -> ssh link -> ssh.exe
+3. the page draws the flow Pi production :8000 -> Pi 127.0.0.1:1235 -> ssh link -> ssh.exe
    -> Bionic :1235, colouring each hop from link_up / bionic_listening / pi.http and
    showing pi_conns, pi_seen_60s, local_clients and the last log line.
 
@@ -47,6 +47,9 @@ import psutil
 PORT = int(os.environ.get("BIONIC_PORT") or 1235)
 PI_HOST_IP = os.environ.get("PI_SYNC_HOST_IP") or "192.168.1.109"
 PI_SSH = os.environ.get("PI_SYNC_HOST") or "test@192.168.1.109"
+# The Pi server whose journal is searched for failed Bionic calls. Production has used the 4B since
+# 2026-11-21 (the test server's AI is off), so that is the default; set PI_SERVICE=bkk-test to watch test.
+PI_SERVICE = os.environ.get("PI_SERVICE") or "bkk-production"
 PI_KEY = os.environ.get("PI_SYNC_KEY") or r"C:\Users\user\.ssh\bkkpi_ed25519"
 TUNNEL_LOG = Path(os.environ.get("BIONIC_TUNNEL_LOG")
                   or r"E:\new_ccty_bangkok-tunnel\launch\logs\pi_bionic_tunnel.log")
@@ -60,7 +63,7 @@ LOG_TAIL_BYTES = 8 * 1024
 REMOTE = (
     f"curl -s -o /dev/null -w '%{{http_code}} %{{time_total}}' -m 5 "
     f"http://127.0.0.1:{PORT}/v1/models; echo; "
-    "journalctl -u bkk-test --since -5min -o cat --no-pager "
+    f"journalctl -u {PI_SERVICE} --since -5min -o cat --no-pager "
     "| grep -cE 'Connection refused|no free slot'"
 )
 
@@ -159,7 +162,7 @@ def overall(snap) -> tuple:
     if pi is not None and pi.get("http") != 200:
         return ("degraded", "Pi เรียก Bionic ไม่ผ่าน")
     if pi is not None and (pi.get("errors_5min") or 0) > 0:
-        return ("degraded", f"เทสบน Pi มี error {pi['errors_5min']} ครั้งใน 5 นาที")
+        return ("degraded", f"เว็บจริงบน Pi มี error {pi['errors_5min']} ครั้งใน 5 นาที")
     return ("ok", "tunnel ทำงานปกติ")
 
 

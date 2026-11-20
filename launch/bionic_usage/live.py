@@ -8,7 +8,7 @@ The server does three things in the background:
   * runs collect.run() every 3 s, so the usage database stays up to date;
   * reads the newest Bionic log (live_tail.py) to show requests still running;
   * asks Bionic which models are loaded, every 10 s (2 s timeout);
-  * reads the SSH tunnel that carries the Pi test server's Bionic calls (tunnel.py):
+  * reads the SSH tunnel that carries the Pi production server's Bionic calls (tunnel.py):
     local state every 2 s, and one ssh check of the Pi every 30 s on its own thread.
 
 Routes:

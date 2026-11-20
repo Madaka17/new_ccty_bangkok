@@ -35,8 +35,8 @@ opens the browser at `http://127.0.0.1:8199/`. The page shows:
 The page polls `/api/state` every 2 seconds. If the server stops answering, a
 banner says the viewer stopped and it keeps retrying.
 
-- "ทางเชื่อม Pi → Bionic": the path the Pi test server uses to reach Bionic
-  (Pi :8001 → Pi 127.0.0.1:1235 → SSH link → ssh.exe on this PC → Bionic :1235).
+- "ทางเชื่อม Pi → Bionic": the path the Pi production server uses to reach Bionic
+  (Pi :8000 → Pi 127.0.0.1:1235 → SSH link → ssh.exe on this PC → Bionic :1235).
   Each hop shows an icon and a word as well as a colour. It also shows how many
   Pi connections are open, how many the page has seen (at least, not an exact count),
   which programs on this PC call Bionic directly, the last Pi check and the last
