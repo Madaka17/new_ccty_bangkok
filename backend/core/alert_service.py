@@ -303,7 +303,7 @@ class AlertService:
                         "body": f"สแกนล่าสุด {scan.get('age_s')} วินาทีก่อน (รอบที่ {scan.get('cycle')}) watchdog จะ restart ถ้ายังไม่ฟื้น"})
         src = h.get("bma_source") or {}
         if src.get("state") in ("down", "frozen"):
-            since = (" ตั้งแต่ " + datetime.fromtimestamp(src["last_frame_at"]).strftime("%H:%M") + " น.") if src.get("last_frame_at") else ""
+            since = (" ตั้งแต่ " + datetime.fromtimestamp(src["last_frame_at"], BKK_TZ).strftime("%H:%M") + " น.") if src.get("last_frame_at") else ""
             out.append({"topic": "system", "key": "sys:bma_site", "level": 1,
                         "title": "เว็บกล้อง กทม. ล่ม" if src["state"] == "down" else "เว็บกล้อง กทม. ส่งภาพค้าง",
                         "body": f"{src.get('site')} ไม่ส่งภาพใหม่{since} ข้อมูลรถติดจากกล้อง กทม. ไม่อัปเดต"})
