@@ -25,6 +25,21 @@ cameras that sent no frame since, so the map has something while the BMA site is
 because the text bar on a saved snapshot hides the printed time the stale check reads. Every verdict
 keeps the time of its frame, and the map fades the ones whose frame is older than STALE_MINUTES.
 
+FLOOD_CAM_RESEED (seconds, 0 = off) keeps taking those saved snapshots every that often and replaces a
+held frame with a newer one. For a machine with BMA_FETCH=0 that is fed by a copy of another machine's
+snapshots (launch/test/pi_frames_sync.py copies the Raspberry Pi's into instances/test).
+
+Three guards on the verdicts (the small local model made false floods on a rainy night). Each has a switch,
+read from the environment at import, default on:
+    FLOOD_CAM_CORRUPT_CHECK=1   a frame with broken-stream colour blocks (_corrupt) is never sent to the model:
+                                it gets level unclear, note "ภาพเสีย", source corrupt, and spends no call.
+                                FLOOD_CAM_CORRUPT_SHARE (0.025) is the share of the frame in such blocks.
+    FLOOD_CAM_NOTE_CHECK=1      a confirm asks for the note before the level, and a wet level whose note says
+                                there is no water (_note_check) is set to none.
+    FLOOD_CAM_CONFIRM_TWICE=1   flooded or severe on a confirm is first a candidate (level unclear, note
+                                "รอยืนยัน"); it is published when the next confirm, on a different frame,
+                                is wet too. A candidate expires after 2 x WET_INTERVAL without that look.
+
 At most MAX_PER_HOUR vision calls. Served by /api/flood/cameras*.
 """
 import base64
@@ -65,10 +80,25 @@ CONFIRM_W = 704
 STALE_MINUTES = int(os.getenv("FLOOD_CAM_STALE_MINUTES", "15"))
 SEED_MAX_AGE = 12 * 3600
 SEED_DELAY = 300               # about one scanner cycle: live frames first
+RESEED = int(os.getenv("FLOOD_CAM_RESEED", "0"))   # seconds between re-reads of the saved snapshots; 0 = seed once
 AGENT_TIMEOUT = 120
 ERROR_BACKOFF = 60
 STAMP_MAX_LAG = int(os.getenv("FLOOD_CAM_STAMP_MAX_LAG", "3600"))   # printed time this much older than the fetch: stale copy
-STAMP_MAX_AGE = 30 * 86400     # printed time older than this: a camera clock never set, not a stale copy
+# Printed time older than this: a camera clock never set (they reset to a default years back), not a stale
+# copy. Was 30 days, but the BMA site served camera 1463's flood picture of 26 Sep 2026 as new on 20 Nov,
+# 55 days later, so old copies outlive a month. A camera whose clock is months off now gets unclear for a
+# wet call, which is the safe side.
+STAMP_MAX_AGE = int(os.getenv("FLOOD_CAM_STAMP_MAX_AGE_DAYS", "365")) * 86400
+# Guard 1: broken video frames. Share of the frame in flat, strongly coloured 7x7 patches (see _corrupt).
+# Set by hand on ~670 frames (Pi copies and production cache): 2.5% flags the two broken copies of camera 1379
+# and six good frames (about 1%); the next-highest good frame is at 2.25%. Some broken frames score lower.
+CORRUPT_CHECK = int(os.getenv("FLOOD_CAM_CORRUPT_CHECK", "1"))
+CORRUPT_SHARE = float(os.getenv("FLOOD_CAM_CORRUPT_SHARE", "0.025"))
+CORRUPT_VERDICT = {"level": "unclear", "confidence": 1.0, "note_th": "ภาพเสีย (สัญญาณภาพแตก)"}
+# Guard 2: the note must agree with the level (_note_check)
+NOTE_CHECK = int(os.getenv("FLOOD_CAM_NOTE_CHECK", "1"))
+# Guard 3: flooded or severe is seen on two frames before it is published (_second_look)
+CONFIRM_TWICE = int(os.getenv("FLOOD_CAM_CONFIRM_TWICE", "1"))
 BKK = timezone(timedelta(hours=7))
 MONTHS = {m: i for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun",
                                       "jul", "aug", "sep", "oct", "nov", "dec"), 1)}
@@ -87,6 +117,8 @@ _LEVEL_RULES = (
     "severe = road fully under deep water: water up to the wheels, strong wakes, stalled vehicles or people wading; "
     "unclear = too dark, blurred, rain on the lens hides the road, frozen, a placeholder or no-signal image, "
     "or the road is not visible. "
+    "A broken or glitched picture (blocky smears, a pixelated mosaic, patches of wrong colour from a bad video "
+    "signal) is unclear, never puddle or flooded; ordinary night grain and blur are not broken. "
     "Headlight and street-light reflections on wet asphalt (at night and in rain) look like water but are NOT flooding: "
     "call flooded only when you see a water surface (ripples, splashes, wakes, brown water) or markings hidden under it. "
     "Ignore any text bar and boxes drawn on top of the picture. A river, canal or pond beside the road is NOT flooding."
@@ -104,14 +136,38 @@ CONFIRM_PROMPT = (
     "You are the flood-watch agent of the Bangkok traffic control room. The image is one low-resolution street "
     "CCTV snapshot. Decide whether flood water stands or flows on the road surface. " + _LEVEL_RULES + " "
     "Never guess: when unsure between two levels, pick the lower one. "
-    'Answer ONLY with JSON: {"level": "none|puddle|flooded|severe|unclear", "confidence": <0..1>, '
-    '"note_th": "<one short Thai sentence: where the water is and how deep it looks>", '
+    "Describe what you see first (note_th), then choose the level that the description supports. "
+    'Answer ONLY with JSON: {"note_th": "<one short Thai sentence: what the road looks like and where any water is, '
+    'and how deep it looks; say so when there is no water>", '
+    '"level": "none|puddle|flooded|severe|unclear", "confidence": <0..1>, '
     '"stamp": "<the date and time printed on the picture, copied exactly; empty when there is none>"}.'
 )
+# Guard 2: a note that says there is no water, against a wet level. Negations are cut out first, so
+# "ไม่มีน้ำท่วม แต่มีน้ำขังเล็กน้อย" still has a positive phrase left (น้ำขัง) and stays a puddle.
+_NO_WATER_TH = ("ไม่มีน้ำท่วม", "ไม่มีน้ำขัง", "ไม่มีแอ่งน้ำ", "ไม่พบน้ำท่วม", "ไม่พบน้ำขัง", "ไม่พบน้ำ", "ไม่มีน้ำ",
+                "แห้ง", "no standing water", "no flooding", "not flooded", "no water", "dry")
+# "not dry" is wet, so these block the downgrade before the dry words are looked for ("แห้ง" sits inside "ไม่แห้ง")
+_PROTECTED_TH = ("ไม่แห้ง", "not dry")
+_WATER_TH = ("น้ำขัง", "น้ำท่วม", "ท่วม", "แอ่งน้ำ", "น้ำนอง", "น้ำไหล", "น้ำลึก", "จมน้ำ", "ปกคลุม",
+             "standing water", "flood", "puddle", "water")
+_NO_WATER_RE = re.compile("|".join(re.escape(p) for p in sorted(_NO_WATER_TH, key=len, reverse=True)), re.I)
+_PROTECTED_RE = re.compile("|".join(re.escape(p) for p in _PROTECTED_TH), re.I)
+_NOTE_SUFFIX = " (ระดับปรับเป็นไม่มีน้ำ: คำบรรยายบอกว่าไม่มีน้ำ)"
+_CANDIDATE_TH = "รอยืนยัน: "
+_EXPIRED_TH = "ยังไม่ยืนยัน: ตรวจซ้ำไม่ทัน"
 
 
 def _parse(text):
-    start, end = text.find("{"), text.rfind("}")
+    """The JSON object in a reply. A small local model (qwen3.5-4b) sometimes answers the screen with the bare
+    tile list, [{"tile": 1, ...}, ...], instead of {"tiles": [...]}; that list is taken as the tiles."""
+    obj, arr = text.find("{"), text.find("[")
+    if arr >= 0 and (obj < 0 or arr < obj):
+        end = text.rfind("]")
+        if end > arr:
+            tiles = json.loads(text[arr:end + 1])
+            if isinstance(tiles, list):
+                return {"tiles": tiles}
+    start, end = obj, text.rfind("}")
     return json.loads(text[start:end + 1]) if start >= 0 and end > start else {}
 
 
@@ -158,8 +214,64 @@ def _stale_copy(v, stamp, frame_ts):
     lag = frame_ts - at if at is not None else 0
     if not STAMP_MAX_LAG < lag < STAMP_MAX_AGE:
         return v
+    age = f"{lag / 86400:.0f} วัน" if lag >= 2 * 86400 else f"{lag / 3600:.0f} ชม."
     return {**v, "level": "unclear",
-            "note_th": f"ภาพค้าง: เวลาบนภาพ {str(stamp)[:40]} เก่ากว่าเวลาดึงภาพ {lag / 3600:.0f} ชม."}
+            "note_th": f"ภาพค้าง: เวลาบนภาพ {str(stamp)[:40]} เก่ากว่าเวลาดึงภาพ {age}"}
+
+
+def _corrupt(frame):
+    """True when the frame is a broken video stream: a large share of it is flat 7x7 patches with strong colour
+    (H.264 macroblock smear, wrong-colour blocks). Accepts JPEG bytes or an image. The text bar on top is skipped.
+    Colour alone is not enough: a warm sodium-lit street is saturated too, so only big flat patches count."""
+    img = cv2.imdecode(np.frombuffer(frame, np.uint8), cv2.IMREAD_COLOR) if isinstance(frame, (bytes, bytearray)) else frame
+    if img is None:
+        return False
+    img = img[int(img.shape[0] * 0.10):]
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32)
+    luma = lab[:, :, 0]
+    chroma = np.sqrt((lab[:, :, 1] - 128.0) ** 2 + (lab[:, :, 2] - 128.0) ** 2)
+    mean = cv2.blur(luma, (7, 7))
+    spread = np.sqrt(np.maximum(cv2.blur(luma * luma, (7, 7)) - mean * mean, 0))   # local luma std
+    colour = cv2.blur(chroma, (7, 7))
+    share = float(((spread < 2.5) & (colour > 35)).mean())
+    return share >= CORRUPT_SHARE
+
+
+def _note_check(v):
+    """A wet level whose note says there is no water is set to none (the note is the model's own description,
+    written before the level). Only the note is read: the level is not second-guessed when the note is silent."""
+    note = str(v.get("note_th") or "")
+    if v.get("level") not in WET or not note or _PROTECTED_RE.search(note) or not _NO_WATER_RE.search(note):
+        return v   # "not dry" is wet: a protected phrase is never a reason to downgrade
+    rest = _NO_WATER_RE.sub(" ", note).lower()
+    if any(p in rest for p in _WATER_TH):
+        return v   # some water is still described after the negations: keep the level
+    return {**v, "level": "none", "note_th": note + _NOTE_SUFFIX}
+
+
+def _earlier_wet(prev, ts, now):
+    """The flooded or severe level of the previous look at this camera, when that look still counts: a candidate
+    not older than 2 x WET_INTERVAL, or a published confirm. The new look must be on a newer frame time; the
+    picture itself may be the same (a quiet road is still a second model judgement). None otherwise."""
+    if not prev or prev.get("frame_ts") is None or not int(ts) > prev["frame_ts"]:
+        return None
+    if prev.get("candidate"):
+        return prev["candidate"] if now - prev.get("checked_at", 0) <= 2 * WET_INTERVAL else None
+    if prev.get("source") == "confirm" and prev.get("level") in ("flooded", "severe"):
+        return prev["level"]
+    return None
+
+
+def _second_look(prev, v, ts, now):
+    """The confirm verdict to publish, and the state fields to keep with it (candidate, when held back).
+    flooded or severe is published only when the previous wet look was on an older frame; the first one is held
+    as a candidate (level unclear). When both agree the more cautious level is published (flooded if either was)."""
+    if not CONFIRM_TWICE or v["level"] not in ("flooded", "severe"):
+        return v, {}
+    earlier = _earlier_wet(prev, ts, now)
+    if earlier:
+        return {**v, "level": "flooded" if "flooded" in (earlier, v["level"]) else "severe"}, {}
+    return {**v, "level": "unclear", "note_th": _CANDIDATE_TH + v["note_th"]}, {"candidate": v["level"]}
 
 
 def _tile(jpeg, n):
@@ -234,8 +346,9 @@ class FloodCamWatch:
             with self._lock:
                 self._frames[camid] = (buf.tobytes(), time.time(), fingerprint(frame))
 
-    def _seed(self):
-        """The scanner's saved snapshots, so a restart while the BMA site is down still has frames to check."""
+    def _seed(self, refresh=False):
+        """The scanner's saved snapshots, so a restart while the BMA site is down still has frames to check.
+        refresh=True (FLOOD_CAM_RESEED): a snapshot newer than the frame held replaces it."""
         now = time.time()
         for camid in list(self._cams):
             path = os.path.join(SNAPSHOT_DIR, f"{camid}.jpg")
@@ -243,6 +356,11 @@ class FloodCamWatch:
                 ts = os.path.getmtime(path)
                 if now - ts > SEED_MAX_AGE:
                     continue
+                if refresh:
+                    with self._lock:
+                        held = self._frames.get(camid)
+                    if held and ts <= held[1]:
+                        continue   # not newer than the frame held: not read again
                 with open(path, "rb") as f:
                     jpeg = f.read()
             except OSError:
@@ -251,7 +369,19 @@ class FloodCamWatch:
             if img is None:
                 continue
             with self._lock:
-                self._frames.setdefault(camid, (jpeg, ts, fingerprint(img)))
+                if refresh:
+                    self._frames[camid] = (jpeg, ts, fingerprint(img))
+                else:
+                    self._frames.setdefault(camid, (jpeg, ts, fingerprint(img)))
+
+    def _reseed_forever(self, every):
+        """Re-read the saved snapshots every `every` seconds; a failure is logged and the loop goes on."""
+        while True:
+            time.sleep(every)
+            try:
+                self._seed(refresh=True)
+            except Exception as e:  # noqa: BLE001 - one bad file or a read error must not stop the reseed
+                log.warning(f"reseed failed: {type(e).__name__}: {str(e)[:160]}")
 
     # ------------------------------------------------------------ worker
     def start(self):
@@ -263,6 +393,8 @@ class FloodCamWatch:
             threading.Thread(target=self._loop, daemon=True, name=f"flood-cam-watch-{n}").start()
         time.sleep(SEED_DELAY)
         self._seed()
+        if RESEED > 0:
+            self._reseed_forever(RESEED)
 
     def _loop(self):
         while True:
@@ -284,28 +416,44 @@ class FloodCamWatch:
                 time.sleep(ERROR_BACKOFF)
 
     def _take(self):
-        """The next grid of due cameras, marked in flight for this worker."""
+        """The next grid of due cameras, marked in flight for this worker. A camera waiting for its second look
+        (a candidate) is taken alone, so it goes straight to the single-frame confirm."""
         with self._lock:
-            batch = self._due()[:TILES]
+            self._expire_candidates(time.time())
+            due = self._due()
+            cands = [c for c in due if (self._state.get(c) or {}).get("candidate")]
+            batch = cands[:1] or due[:TILES]
             self._inflight.update(batch)
         return batch
 
+    def _expire_candidates(self, now):
+        """A candidate with no second look within 2 x WET_INTERVAL is dropped; its level stays unclear and its note
+        says the look did not come in time. A camera a worker is checking now is left alone. The caller holds the lock."""
+        for camid, st in self._state.items():
+            if camid in self._inflight:
+                continue
+            if st.get("candidate") and now - st.get("checked_at", 0) > 2 * WET_INTERVAL:
+                st.pop("candidate", None)
+                st["note_th"] = _EXPIRED_TH
+
     def _due(self):
-        """Cameras holding a frame worth a look, wet ones first, then never checked, then the oldest check.
-        The caller holds the lock."""
+        """Cameras holding a frame worth a look, wet ones and candidates first, then never checked, then the oldest
+        check. The caller holds the lock."""
         now = time.time()
         out = []
         for camid, (jpeg, ts, fp) in self._frames.items():
             if camid in self._inflight:
                 continue
             st = self._state.get(camid)
+            held = bool(st and st.get("candidate"))   # waiting for its second look
+            wet = bool(st and (st["level"] in WET or held))
             if st and camid not in self._force:
-                wait = WET_INTERVAL if st["level"] in WET else INTERVAL
+                wait = WET_INTERVAL if wet else INTERVAL
                 if ts <= st["frame_ts"] or now - st["checked_at"] < wait:
                     continue
-                if same_scene(fp, self._judged.get(camid)):
-                    continue   # frozen feed: same picture as the one already judged
-            out.append((0 if st and st["level"] in WET else 1 if not st else 2, st["checked_at"] if st else 0, camid))
+                if not held and same_scene(fp, self._judged.get(camid)):
+                    continue   # frozen feed: same picture as the one already judged (a candidate gets its second look anyway)
+            out.append((0 if wet else 1 if not st else 2, st["checked_at"] if st else 0, camid))
         return [camid for _, _, camid in sorted(out)]
 
     def _budget_ok(self):
@@ -322,6 +470,24 @@ class FloodCamWatch:
     def _screen(self, camids):
         with self._lock:
             frames = [(camid, *self._frames[camid]) for camid in camids]
+            held = len(camids) == 1 and bool((self._state.get(camids[0]) or {}).get("candidate"))
+        clean = []
+        for camid, jpeg, ts, fp in frames:
+            if CORRUPT_CHECK and _corrupt(jpeg):
+                # a broken stream: no call to the model, no budget spent, shown as unclear
+                self._record(camid, jpeg, ts, fp, CORRUPT_VERDICT, "corrupt")
+            else:
+                clean.append((camid, jpeg, ts, fp))
+        frames = clean
+        if not frames:
+            return
+        if held:
+            # a candidate goes straight to the single-frame confirm; the grid is not needed for one camera
+            if self._budget_ok():
+                camid, jpeg, ts, fp = frames[0]
+                v, extra = self._confirm(camid, jpeg, ts)
+                self._record(camid, jpeg, ts, fp, v, "confirm", extra)
+            return
         reply = _parse(self._ask(_mosaic([f[1] for f in frames]), SCREEN_PROMPT, f"{len(frames)} tiles.", 120 * len(frames)))
         by_tile = {}
         for t in reply.get("tiles") or []:
@@ -333,30 +499,43 @@ class FloodCamWatch:
         for n, (camid, jpeg, ts, fp) in enumerate(frames, 1):
             if n not in by_tile:
                 continue   # the model skipped this tile: it stays due and goes in the next grid
-            v, source = _verdict(by_tile[n]), "screen"
+            v, source, extra = _verdict(by_tile[n]), "screen", None
             if v["level"] in WET:
                 # water goes on the map only after a closer look at the frame alone; until then the camera stays due
                 if not self._budget_ok():
                     continue
                 try:
-                    answer = _parse(self._ask(_enlarge(jpeg), CONFIRM_PROMPT, "One camera.", 300))
-                    v, source = _stale_copy(_verdict(answer), answer.get("stamp"), ts), "confirm"
+                    v, extra = self._confirm(camid, jpeg, ts)
+                    source = "confirm"
                 except Exception as e:  # noqa: BLE001 - the loop backs off after this grid
                     failed = failed or e
                     continue
-            self._record(camid, jpeg, ts, fp, v, source)
+            self._record(camid, jpeg, ts, fp, v, source, extra)
         if failed:
             raise failed
 
-    def _record(self, camid, jpeg, ts, fp, v, source):
+    def _confirm(self, camid, jpeg, ts):
+        """One frame asked alone: the verdict to publish and the state fields to keep with it. The previous state is
+        read before the model call, so a candidate that expires while the model thinks still counts."""
+        with self._lock:
+            prev = dict(self._state.get(camid) or {})
+        answer = _parse(self._ask(_enlarge(jpeg), CONFIRM_PROMPT, "One camera.", 300))
+        v = _verdict(answer)
+        if NOTE_CHECK:
+            v = _note_check(v)
+        v = _stale_copy(v, answer.get("stamp"), ts)
+        return _second_look(prev, v, ts, time.time())
+
+    def _record(self, camid, jpeg, ts, fp, v, source, extra=None):
         with open(os.path.join(FRAME_DIR, f"{camid}.jpg"), "wb") as f:
             f.write(jpeg)
         prev = self._state.get(camid) or {}
-        # when the water was first seen, kept while the camera stays wet
+        # when the water was first seen, kept while the camera stays wet. A candidate is unclear, so wet_since
+        # starts at the second look, the one that is published.
         wet_since = (prev.get("wet_since") or ts) if v["level"] in WET else None
         with self._lock:
             self._state[camid] = {**v, "checked_at": int(time.time()), "frame_ts": int(ts), "source": source,
-                                  "wet_since": int(wet_since) if wet_since else None}
+                                  "wet_since": int(wet_since) if wet_since else None, **(extra or {})}
             self._judged[camid] = fp
             self._force.discard(camid)
 
@@ -399,7 +578,8 @@ class FloodCamWatch:
                               "road": cam.get("road") or "", "district": cam.get("district") or "",
                               "province": cam.get("province") or "",
                               "lat": cam.get("latitude"), "lng": cam.get("longitude"),
-                              "level_th": LEVEL_TH[st["level"]], "stale": stale, **st})
+                              "level_th": LEVEL_TH[st["level"]], "stale": stale,
+                              **st})
         items.sort(key=lambda i: (i["stale"], RANK[i["level"]], -i["confidence"]))
         return {"enabled": self.enabled(), "model": local_llm.default.model, "total": len(cams),
                 "checked": len(state), "with_frame": waiting, "counts": counts, "stale_wet": stale_wet,
