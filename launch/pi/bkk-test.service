@@ -1,24 +1,40 @@
 # BKK StreetSmart TEST server on the Raspberry Pi: http://192.168.1.109:8001 (LAN only, no tunnel).
-# YOLO stays off (no GPU) and nothing is fetched from BMA (the PC already does, on the same public IP).
+# It runs from its own checkout, /mnt/ssd/new_ccty_bangkok-test (a git worktree of the production repo on
+# branch pi-test), so switching branches for a test never changes the code production restarts with.
+# It uses the production .venv read-only (same packages); a branch that changes dependencies needs its own venv.
+# Data lives in /mnt/ssd/new_ccty_bangkok-test/instances/test. The web UI is built on the PC and copied to
+# instances/test/dist (the Pi has no Node).
+# YOLO stays off (no GPU) and nothing is fetched from BMA (production already does, on the same public IP).
+# AI is off: test shares the production gateway key and its daily, weekly and monthly budget.
 # Install: bash launch/pi/install_units.sh bkk-test.service    Start: sudo systemctl start bkk-test
 [Unit]
-Description=BKK StreetSmart test server (:8001, YOLO off, no BMA fetching)
+Description=BKK StreetSmart test server (:8001, YOLO off, AI off, no BMA fetching)
 After=network-online.target
 Wants=network-online.target
 RequiresMountsFor=/mnt/ssd
 
 [Service]
 User=test
-WorkingDirectory=/mnt/ssd/new_ccty_bangkok
+WorkingDirectory=/mnt/ssd/new_ccty_bangkok-test
 # .env is read by server.py (python-dotenv, never overriding), so the values below win over it.
 Environment=PORT=8001
-Environment=INSTANCE_DIR=/mnt/ssd/new_ccty_bangkok/instances/test
-Environment=BMA_DATA_DIR=/mnt/ssd/new_ccty_bangkok/instances/test/data
+Environment=INSTANCE_DIR=/mnt/ssd/new_ccty_bangkok-test/instances/test
+Environment=BMA_DATA_DIR=/mnt/ssd/new_ccty_bangkok-test/instances/test/data
 Environment=YOLO_ALLOWED=0
 Environment=BMA_FETCH=0
+# An empty model turns that model off; empty cloud keys stop the fallbacks from billing instead.
+# Remove these lines while testing AI features.
+Environment=LOCAL_LLM_MODEL=
+Environment=VISION_LLM_MODEL=
+Environment=CHAT_LLM_MODEL=
+Environment=GEMINI_API_KEY=
+Environment=GOOGLE_API_KEY=
+Environment=ANTHROPIC_API_KEY=
+Environment=ANTHROPIC_AUTH_TOKEN=
+Environment=AI_WORKER_URL=
 Environment=OPENCV_FFMPEG_LOGLEVEL=-8
 Environment=PYTHONUNBUFFERED=1
-ExecStartPre=/usr/bin/mkdir -p /mnt/ssd/new_ccty_bangkok/instances/test/data
+ExecStartPre=/usr/bin/mkdir -p /mnt/ssd/new_ccty_bangkok-test/instances/test/data
 ExecStart=/mnt/ssd/new_ccty_bangkok/.venv/bin/python server.py
 Restart=always
 RestartSec=5
