@@ -37,3 +37,10 @@ def test_other_ssh_errors_are_not_forward_failures():
     assert tunnel.is_forward_failure("Permission denied (publickey).") is False
     assert tunnel.is_forward_failure("") is False
     assert tunnel.is_forward_failure(None) is False
+
+
+def test_cleanup_command_names_the_listener_with_sudo_and_kills_only_sshd():
+    cmd = tunnel.cleanup_command(1235)
+    assert 'sudo -n ss -ltnpH "sport = :1235"' in cmd
+    assert "sshd|sshd-session) kill" in cmd
+    assert "*) echo none" in cmd

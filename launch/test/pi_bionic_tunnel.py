@@ -52,10 +52,12 @@ def ssh_command(key, host, port):
 
 
 def cleanup_command(port):
-    """Run on the Pi: kill the process that listens on the port, only if it is sshd."""
-    return (f'pid=$(ss -ltnpH "sport = :{port}" | grep -o "pid=[0-9]*" | head -1 | cut -d= -f2); '
-            'if [ -n "$pid" ] && [ "$(ps -o comm= -p "$pid")" = sshd ]; then kill "$pid" && echo killed "$pid"; '
-            'else echo none; fi')
+    """Run on the Pi: kill the process that listens on the port, only if it is sshd (sshd-session from
+    OpenSSH 9.8). ss needs sudo to name it: sshd marks its sessions non-dumpable, so even their own user
+    cannot read their sockets. The kill needs no sudo, the session runs as the ssh user."""
+    return (f'pid=$(sudo -n ss -ltnpH "sport = :{port}" | grep -o "pid=[0-9]*" | head -1 | cut -d= -f2); '
+            'comm=$([ -n "$pid" ] && ps -o comm= -p "$pid"); '
+            'case "$comm" in sshd|sshd-session) kill "$pid" && echo killed "$pid" ;; *) echo none ;; esac')
 
 
 def is_forward_failure(stderr_text):
@@ -74,7 +76,10 @@ def _log(line):
             with open(LOG_FILE, "w", encoding="utf-8") as f:
                 f.writelines(lines[-LOG_KEEP:])
     if sys.stdout is not None:   # pythonw has no console
-        print(f"{stamp} {line}")
+        try:
+            print(f"{stamp} {line}")
+        except (OSError, UnicodeError):
+            pass   # the log file has it; a console that cannot show a character must not stop the loop
 
 
 def bionic_up():
