@@ -121,7 +121,7 @@ static const uint32_t BASE_BYTES = PANEL_PX * PANEL_PX * 2;
 static const uint32_t LAYOUT_MAX = 2048;
 static const uint32_t ANIM_HEADER = 48;
 static const uint32_t ANIM_MAX = ANIM_HEADER + 4096;  // v2 header plus at most 4096 cells
-static const uint8_t ALL_WIDGETS = (1u << W_COUNT) - 1;
+static const uint16_t ALL_WIDGETS = (1u << W_COUNT) - 1;
 static const char* const BASE_PATH = "/base.rgb";
 static const char* const LAYOUT_PATH = "/layout.json";
 static const char* const ANIM_PATH = "/anim.bin";
@@ -161,6 +161,7 @@ static void drawDesignText(const Rect& r, const String& text, uint16_t color) {
     tft.drawString(text, r.x + r.w, r.y, r.font);
 }
 
+// Draws one design widget. The detail lines are muted while stale; the base restore clears the old text.
 static void drawDesignWidget(int id, const Rect& r, const Screen& now) {
     const uint16_t value = now.stale ? layout.muted : layout.text;
     tft.setViewport(r.x, r.y, r.w, r.h, false);
@@ -169,14 +170,20 @@ static void drawDesignWidget(int id, const Rect& r, const Screen& now) {
         case W_CPU_BAR: drawDesignBar(r, stats.cpu, now.stale); break;
         case W_RAM_VALUE: drawDesignText(r, String(now.ram) + "%", value); break;
         case W_RAM_BAR: drawDesignBar(r, stats.ram, now.stale); break;
-        case W_POWER:  // layout key "power" shows VRAM
-            drawDesignText(r, now.vram == SCREEN_NONE ? String("VRAM --%") : "VRAM " + String(now.vram) + "%", value);
+        case W_VRAM_VALUE:
+            drawDesignText(r, now.vram == SCREEN_NONE ? String("--%") : String(now.vram) + "%", value);
             break;
+        case W_VRAM_BAR: drawDesignBar(r, stats.vram, now.stale); break;  // NaN gives an empty bar
         case W_TEMP:
             drawDesignText(r, now.temp == SCREEN_NONE ? String("-- C") : String(now.temp) + " C", value);
             break;
-        case W_FOOTER:  // muted while stale; the base restore clears the old text
-            drawDesignText(r, String(now.ramUsedMb) + "/" + String(now.ramTotalMb) + " MB", layout.muted);
+        case W_RAM_DETAIL:
+            drawDesignText(r, "RAM " + gbText(now.ramUsedMb) + "/" + gbText(now.ramTotalMb) + " GB", layout.muted);
+            break;
+        case W_VRAM_DETAIL:
+            drawDesignText(r, now.vramTotalMb == 0 ? String("VRAM --")
+                                                   : "VRAM " + gbText(now.vramUsedMb) + "/" + gbText(now.vramTotalMb) + " GB",
+                           layout.muted);
             break;
         case W_STATUS:
             if (now.stale) drawDesignText(r, now.wifiDown ? "No WiFi" : "PC offline", layout.critical);
@@ -189,7 +196,7 @@ static void drawDesignWidget(int id, const Rect& r, const Screen& now) {
 // streams the whole base image first.
 static void drawDesign(const Screen& now) {
     const bool full = !shownValid;
-    const uint8_t bits = full ? ALL_WIDGETS : changedWidgets(shown, now);
+    const uint16_t bits = full ? ALL_WIDGETS : changedWidgets(shown, now);
     shown = now;
     shownValid = true;
     if (!bits) return;

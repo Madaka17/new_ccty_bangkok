@@ -5,15 +5,17 @@
 #include <string.h>
 
 static const char* GOOD =
-    "{\"v\":1,\"c\":[65535,33808,2016,65504,63488,8452],\"w\":{"
+    "{\"v\":2,\"c\":[65535,33808,2016,65504,63488,8452],\"w\":{"
     "\"cpu_value\":[140,38,90,26,4,1],"
     "\"cpu_bar\":[10,68,220,10,0,1],"
     "\"ram_value\":[140,86,90,26,4,1],"
     "\"ram_bar\":[10,116,220,10,0,1],"
-    "\"power\":[12,164,108,26,4,1],"
-    "\"temp\":[134,164,96,26,4,1],"
-    "\"footer\":[120,228,110,12,1,1],"
-    "\"status\":[120,226,110,14,2,1]}}";
+    "\"vram_value\":[140,134,90,26,4,1],"
+    "\"vram_bar\":[10,164,220,10,0,1],"
+    "\"temp\":[160,6,70,26,4,1],"
+    "\"ram_detail\":[10,182,220,16,2,1],"
+    "\"vram_detail\":[10,202,220,16,2,1],"
+    "\"status\":[120,222,110,16,2,1]}}";
 
 // Copies src into out with the first occurrence of from replaced by to.
 static void replaceOnce(char* out, size_t cap, const char* src, const char* from, const char* to) {
@@ -43,9 +45,10 @@ void tearDown() {}
 void test_default_layout_matches_draw_positions() {
     Layout l;
     defaultLayout(l);
-    TEST_ASSERT_EQUAL_INT16(140, l.w[W_CPU_VALUE].x);    // right edge 230, pad 90
+    TEST_ASSERT_EQUAL_INT16(140, l.w[W_CPU_VALUE].x);
     TEST_ASSERT_EQUAL_INT16(38, l.w[W_CPU_VALUE].y);
     TEST_ASSERT_EQUAL_INT16(90, l.w[W_CPU_VALUE].w);
+    TEST_ASSERT_EQUAL_INT16(26, l.w[W_CPU_VALUE].h);
     TEST_ASSERT_EQUAL_UINT8(4, l.w[W_CPU_VALUE].font);
     TEST_ASSERT_TRUE(l.w[W_CPU_VALUE].visible);
     TEST_ASSERT_EQUAL_INT16(10, l.w[W_CPU_BAR].x);
@@ -55,17 +58,24 @@ void test_default_layout_matches_draw_positions() {
     TEST_ASSERT_EQUAL_UINT8(0, l.w[W_CPU_BAR].font);
     TEST_ASSERT_EQUAL_INT16(86, l.w[W_RAM_VALUE].y);
     TEST_ASSERT_EQUAL_INT16(116, l.w[W_RAM_BAR].y);
-    TEST_ASSERT_EQUAL_INT16(12, l.w[W_POWER].x);         // right edge 120, pad 108
-    TEST_ASSERT_EQUAL_INT16(164, l.w[W_POWER].y);
-    TEST_ASSERT_EQUAL_INT16(108, l.w[W_POWER].w);
-    TEST_ASSERT_EQUAL_INT16(134, l.w[W_TEMP].x);         // right edge 230, pad 96
-    TEST_ASSERT_EQUAL_INT16(96, l.w[W_TEMP].w);
-    TEST_ASSERT_EQUAL_INT16(120, l.w[W_FOOTER].x);       // right edge 230, font 1 bottom at 238
-    TEST_ASSERT_EQUAL_INT16(230, l.w[W_FOOTER].y);
-    TEST_ASSERT_EQUAL_INT16(8, l.w[W_FOOTER].h);
-    TEST_ASSERT_EQUAL_UINT8(1, l.w[W_FOOTER].font);
-    TEST_ASSERT_EQUAL_INT16(120, l.w[W_STATUS].x);       // right edge 230, font 2 bottom at 238
+    TEST_ASSERT_EQUAL_INT16(134, l.w[W_VRAM_VALUE].y);      // right edge 230
+    TEST_ASSERT_EQUAL_INT16(140, l.w[W_VRAM_VALUE].x);
+    TEST_ASSERT_EQUAL_INT16(164, l.w[W_VRAM_BAR].y);
+    TEST_ASSERT_EQUAL_UINT8(0, l.w[W_VRAM_BAR].font);
+    TEST_ASSERT_EQUAL_INT16(160, l.w[W_TEMP].x);             // right edge 230, pad 70
+    TEST_ASSERT_EQUAL_INT16(6, l.w[W_TEMP].y);
+    TEST_ASSERT_EQUAL_INT16(70, l.w[W_TEMP].w);
+    TEST_ASSERT_EQUAL_UINT8(4, l.w[W_TEMP].font);
+    TEST_ASSERT_EQUAL_INT16(10, l.w[W_RAM_DETAIL].x);
+    TEST_ASSERT_EQUAL_INT16(182, l.w[W_RAM_DETAIL].y);
+    TEST_ASSERT_EQUAL_INT16(220, l.w[W_RAM_DETAIL].w);
+    TEST_ASSERT_EQUAL_INT16(16, l.w[W_RAM_DETAIL].h);
+    TEST_ASSERT_EQUAL_UINT8(2, l.w[W_RAM_DETAIL].font);
+    TEST_ASSERT_EQUAL_INT16(202, l.w[W_VRAM_DETAIL].y);
+    TEST_ASSERT_EQUAL_UINT8(2, l.w[W_VRAM_DETAIL].font);
+    TEST_ASSERT_EQUAL_INT16(120, l.w[W_STATUS].x);           // right edge 230, font 2 bottom at 238
     TEST_ASSERT_EQUAL_INT16(222, l.w[W_STATUS].y);
+    TEST_ASSERT_EQUAL_INT16(110, l.w[W_STATUS].w);
     TEST_ASSERT_EQUAL_INT16(16, l.w[W_STATUS].h);
     TEST_ASSERT_EQUAL_UINT8(2, l.w[W_STATUS].font);
     TEST_ASSERT_EQUAL_UINT16(0xFFFF, l.text);
@@ -81,8 +91,9 @@ void test_layout_parses_good_file() {
     TEST_ASSERT_TRUE(parseLayout(GOOD, l));
     TEST_ASSERT_EQUAL_INT16(140, l.w[W_CPU_VALUE].x);
     TEST_ASSERT_EQUAL_INT16(26, l.w[W_CPU_VALUE].h);
+    TEST_ASSERT_EQUAL_INT16(160, l.w[W_TEMP].x);
     TEST_ASSERT_EQUAL_UINT8(2, l.w[W_STATUS].font);
-    TEST_ASSERT_TRUE(l.w[W_FOOTER].visible);
+    TEST_ASSERT_TRUE(l.w[W_STATUS].visible);
     TEST_ASSERT_EQUAL_UINT16(65535, l.text);
     TEST_ASSERT_EQUAL_UINT16(33808, l.muted);
     TEST_ASSERT_EQUAL_UINT16(8452, l.track);
@@ -90,13 +101,40 @@ void test_layout_parses_good_file() {
 
 void test_layout_rejects_bad_json() {
     Layout l = sentinel();
-    TEST_ASSERT_FALSE(parseLayout("{\"v\":1,", l));
+    TEST_ASSERT_FALSE(parseLayout("{\"v\":2,", l));
     expectSentinel(l);
 }
 
 void test_layout_rejects_missing_widget() {
     Layout l = sentinel();
     const char* json =
+        "{\"v\":2,\"c\":[65535,33808,2016,65504,63488,8452],\"w\":{"
+        "\"cpu_value\":[140,38,90,26,4,1],"
+        "\"cpu_bar\":[10,68,220,10,0,1],"
+        "\"ram_value\":[140,86,90,26,4,1],"
+        "\"ram_bar\":[10,116,220,10,0,1],"
+        "\"vram_value\":[140,134,90,26,4,1],"
+        "\"vram_bar\":[10,164,220,10,0,1],"
+        "\"temp\":[160,6,70,26,4,1],"
+        "\"ram_detail\":[10,182,220,16,2,1],"
+        "\"vram_detail\":[10,202,220,16,2,1]}}";      // status missing
+    TEST_ASSERT_FALSE(parseLayout(json, l));
+    expectSentinel(l);
+}
+
+void test_layout_rejects_wrong_version() {
+    Layout l = sentinel();
+    char json[1024];
+    snprintf(json, sizeof(json), "%s", GOOD);
+    char* v = strstr(json, "\"v\":2");
+    v[4] = '3';
+    TEST_ASSERT_FALSE(parseLayout(json, l));
+    expectSentinel(l);
+}
+
+void test_layout_rejects_v1() {
+    Layout l = sentinel();
+    const char* v1 =
         "{\"v\":1,\"c\":[65535,33808,2016,65504,63488,8452],\"w\":{"
         "\"cpu_value\":[140,38,90,26,4,1],"
         "\"cpu_bar\":[10,68,220,10,0,1],"
@@ -104,17 +142,17 @@ void test_layout_rejects_missing_widget() {
         "\"ram_bar\":[10,116,220,10,0,1],"
         "\"power\":[12,164,108,26,4,1],"
         "\"temp\":[134,164,96,26,4,1],"
-        "\"footer\":[120,228,110,12,1,1]}}";
-    TEST_ASSERT_FALSE(parseLayout(json, l));
+        "\"footer\":[120,228,110,12,1,1],"
+        "\"status\":[120,226,110,14,2,1]}}";
+    TEST_ASSERT_FALSE(parseLayout(v1, l));
     expectSentinel(l);
 }
 
-void test_layout_rejects_wrong_version() {
+void test_layout_rejects_power_key() {
     Layout l = sentinel();
-    char json[512];
-    snprintf(json, sizeof(json), "%s", GOOD);
-    char* v = strstr(json, "\"v\":1");
-    v[4] = '2';
+    char json[1024];
+    replaceOnce(json, sizeof(json), GOOD, "\"status\":",
+                "\"power\":[12,164,108,26,4,1],\"status\":");   // old key next to the 10 v2 keys
     TEST_ASSERT_FALSE(parseLayout(json, l));
     expectSentinel(l);
 }
@@ -122,15 +160,17 @@ void test_layout_rejects_wrong_version() {
 void test_layout_clamps_rects() {
     Layout l;
     const char* json =
-        "{\"v\":1,\"c\":[1,2,3,4,5,6],\"w\":{"
+        "{\"v\":2,\"c\":[1,2,3,4,5,6],\"w\":{"
         "\"cpu_value\":[-5,-3,500,0,4,1],"
         "\"cpu_bar\":[300,239,50,50,0,1],"
         "\"ram_value\":[140,86,90,26,4,1],"
         "\"ram_bar\":[10,116,220,10,0,1],"
-        "\"power\":[12,164,108,26,4,1],"
-        "\"temp\":[134,164,96,26,4,1],"
-        "\"footer\":[120,228,110,12,1,1],"
-        "\"status\":[120,226,110,14,2,1]}}";
+        "\"vram_value\":[140,134,90,26,4,1],"
+        "\"vram_bar\":[10,164,220,10,0,1],"
+        "\"temp\":[160,6,70,26,4,1],"
+        "\"ram_detail\":[10,182,220,16,2,1],"
+        "\"vram_detail\":[10,202,220,16,2,1],"
+        "\"status\":[120,222,110,16,2,1]}}";
     TEST_ASSERT_TRUE(parseLayout(json, l));
     TEST_ASSERT_EQUAL_INT16(0, l.w[W_CPU_VALUE].x);
     TEST_ASSERT_EQUAL_INT16(0, l.w[W_CPU_VALUE].y);
@@ -144,25 +184,21 @@ void test_layout_clamps_rects() {
 
 void test_layout_rejects_bad_font() {
     Layout l = sentinel();
-    const char* json =
-        "{\"v\":1,\"c\":[1,2,3,4,5,6],\"w\":{"
-        "\"cpu_value\":[140,38,90,26,7,1],"
-        "\"cpu_bar\":[10,68,220,10,0,1],"
-        "\"ram_value\":[140,86,90,26,4,1],"
-        "\"ram_bar\":[10,116,220,10,0,1],"
-        "\"power\":[12,164,108,26,4,1],"
-        "\"temp\":[134,164,96,26,4,1],"
-        "\"footer\":[120,228,110,12,1,1],"
-        "\"status\":[120,226,110,14,2,1]}}";
-    TEST_ASSERT_FALSE(parseLayout(json, l));              // font 7 is not allowed
+    char json[1024];
+    replaceOnce(json, sizeof(json), GOOD, "\"cpu_value\":[140,38,90,26,4,1]",
+                "\"cpu_value\":[140,38,90,26,7,1]");       // font 7 is not allowed
+    TEST_ASSERT_FALSE(parseLayout(json, l));
     expectSentinel(l);
 }
 
 void test_layout_bars_need_font_0_and_only_bars_may_use_it() {
     Layout l = sentinel();
-    char json[512];
+    char json[1024];
     replaceOnce(json, sizeof(json), GOOD, "\"cpu_bar\":[10,68,220,10,0,1]",
                 "\"cpu_bar\":[10,68,220,10,2,1]");        // bar with font 2
+    TEST_ASSERT_FALSE(parseLayout(json, l));
+    replaceOnce(json, sizeof(json), GOOD, "\"vram_bar\":[10,164,220,10,0,1]",
+                "\"vram_bar\":[10,164,220,10,4,1]");      // vram bar with font 4
     TEST_ASSERT_FALSE(parseLayout(json, l));
     replaceOnce(json, sizeof(json), GOOD, "\"cpu_value\":[140,38,90,26,4,1]",
                 "\"cpu_value\":[140,38,90,26,0,1]");      // value with font 0
@@ -172,9 +208,9 @@ void test_layout_bars_need_font_0_and_only_bars_may_use_it() {
 
 void test_layout_rejects_bad_visible_color_key_and_fraction() {
     Layout l = sentinel();
-    char json[512];
-    replaceOnce(json, sizeof(json), GOOD, "\"status\":[120,226,110,14,2,1]",
-                "\"status\":[120,226,110,14,2,2]");       // visible must be 0 or 1
+    char json[1024];
+    replaceOnce(json, sizeof(json), GOOD, "\"status\":[120,222,110,16,2,1]",
+                "\"status\":[120,222,110,16,2,2]");       // visible must be 0 or 1
     TEST_ASSERT_FALSE(parseLayout(json, l));
 
     replaceOnce(json, sizeof(json), GOOD, "65535,33808", "65536,33808");  // colour out of range
@@ -207,44 +243,52 @@ static Screen base() {
 
 void test_changed_widgets_only_flags_changes() {
     Screen a = base();
-    TEST_ASSERT_EQUAL_HEX8(0x00, changedWidgets(a, a));
+    TEST_ASSERT_EQUAL_HEX16(0x0000, changedWidgets(a, a));
 
     Screen b = base();
     b.cpu = 13;
-    TEST_ASSERT_EQUAL_HEX8((1 << W_CPU_VALUE) | (1 << W_CPU_BAR), changedWidgets(a, b));
+    TEST_ASSERT_EQUAL_HEX16((1 << W_CPU_VALUE) | (1 << W_CPU_BAR), changedWidgets(a, b));
 
     b = base();
     b.ram = 35;
-    TEST_ASSERT_EQUAL_HEX8((1 << W_RAM_VALUE) | (1 << W_RAM_BAR), changedWidgets(a, b));
-
-    b = base();
-    b.vram = 41;                                           // the W_POWER slot draws VRAM
-    TEST_ASSERT_EQUAL_HEX8(1 << W_POWER, changedWidgets(a, b));
+    TEST_ASSERT_EQUAL_HEX16((1 << W_RAM_VALUE) | (1 << W_RAM_BAR), changedWidgets(a, b));
 
     b = base();
     b.temp = 49;
-    TEST_ASSERT_EQUAL_HEX8(1 << W_TEMP, changedWidgets(a, b));
+    TEST_ASSERT_EQUAL_HEX16(1 << W_TEMP, changedWidgets(a, b));
 
     b = base();
     b.ramUsedMb = 2661;
-    TEST_ASSERT_EQUAL_HEX8(1 << W_FOOTER, changedWidgets(a, b));
+    TEST_ASSERT_EQUAL_HEX16(1 << W_RAM_DETAIL, changedWidgets(a, b));
 
     b = base();
     b.ramTotalMb = 7821;
-    TEST_ASSERT_EQUAL_HEX8(1 << W_FOOTER, changedWidgets(a, b));
-
-    b = base();
-    b.wifiDown = true;
-    TEST_ASSERT_EQUAL_HEX8((1 << W_FOOTER) | (1 << W_STATUS), changedWidgets(a, b));
+    TEST_ASSERT_EQUAL_HEX16(1 << W_RAM_DETAIL, changedWidgets(a, b));
 
     b = base();
     b.stale = true;
-    TEST_ASSERT_EQUAL_HEX8(0xFF, changedWidgets(a, b));
+    TEST_ASSERT_EQUAL_HEX16(0x03FF, changedWidgets(a, b));  // all ten widgets
 
     Screen staleA = base(), staleB = base();
     staleA.stale = staleB.stale = true;
     staleB.cpu = 13;                                       // stale on both sides: only the value changed
-    TEST_ASSERT_EQUAL_HEX8((1 << W_CPU_VALUE) | (1 << W_CPU_BAR), changedWidgets(staleA, staleB));
+    TEST_ASSERT_EQUAL_HEX16((1 << W_CPU_VALUE) | (1 << W_CPU_BAR), changedWidgets(staleA, staleB));
+}
+
+void test_changed_widgets_high_bits() {
+    Screen a = base();
+
+    Screen b = base();
+    b.wifiDown = true;
+    TEST_ASSERT_EQUAL_HEX16((1 << W_RAM_DETAIL) | (1 << W_VRAM_DETAIL) | (1 << W_STATUS), changedWidgets(a, b));
+
+    b = base();
+    b.vramUsedMb = 4001;
+    TEST_ASSERT_EQUAL_HEX16(1 << W_VRAM_DETAIL, changedWidgets(a, b));
+
+    b = base();
+    b.vram = 41;
+    TEST_ASSERT_EQUAL_HEX16((1 << W_VRAM_VALUE) | (1 << W_VRAM_BAR), changedWidgets(a, b));
 }
 
 static uint8_t anim[4200];
@@ -336,12 +380,15 @@ int main() {
     RUN_TEST(test_layout_rejects_bad_json);
     RUN_TEST(test_layout_rejects_missing_widget);
     RUN_TEST(test_layout_rejects_wrong_version);
+    RUN_TEST(test_layout_rejects_v1);
+    RUN_TEST(test_layout_rejects_power_key);
     RUN_TEST(test_layout_clamps_rects);
     RUN_TEST(test_layout_rejects_bad_font);
     RUN_TEST(test_layout_bars_need_font_0_and_only_bars_may_use_it);
     RUN_TEST(test_layout_rejects_bad_visible_color_key_and_fraction);
     RUN_TEST(test_level_color_uses_layout);
     RUN_TEST(test_changed_widgets_only_flags_changes);
+    RUN_TEST(test_changed_widgets_high_bits);
     RUN_TEST(test_valid_anim_accepts_v2_and_rejects_limits);
     RUN_TEST(test_design_skipped_after_crash_reset);
     return UNITY_END();

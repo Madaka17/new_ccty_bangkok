@@ -34,10 +34,27 @@ Otherwise, or when LittleFS fails to mount, the built-in look is drawn. A missin
 
 After a boot caused by a crash or watchdog (reset reasons 1, 2 or 3) the stored design is skipped for
 that boot, so a design that crashes the display cannot put it in a boot loop. The next normal restart,
-or a new upload, loads the design again. The footer is muted while the stale values show.
+or a new upload, loads the design again. The RAM and VRAM detail lines are muted while the stale values show.
 
-The layout key `power` (widget `W_POWER`) now draws VRAM, as `VRAM 86%` (or `VRAM --%`). The key is
-unchanged, so layouts stored before 1.4.0 still load.
+The layout file is version 2, `{"v":2,"c":[...],"w":{...}}`. Its `w` object has exactly the ten PC
+widgets, in the same order as `WidgetId` in `layout.h`:
+
+| Key | Font | Draws |
+|---|---|---|
+| `cpu_value` | 4 | `12%` |
+| `cpu_bar` | 0 (bar) | CPU level bar |
+| `ram_value` | 4 | `41%` |
+| `ram_bar` | 0 (bar) | RAM level bar |
+| `vram_value` | 4 | `86%`, or `--%` when there is no VRAM reading |
+| `vram_bar` | 0 (bar) | VRAM level bar, empty when there is no VRAM reading |
+| `temp` | 4 | `55 C`, or `-- C` |
+| `ram_detail` | 2 | `RAM 13.1/31.9 GB` (muted) |
+| `vram_detail` | 2 | `VRAM 8.6/10.0 GB`, or `VRAM --` when the VRAM total is 0 (muted) |
+| `status` | 2 | `PC offline` or `No WiFi` (critical), only when the values are stale |
+
+Every key must be present and no other key is allowed. A version 1 layout (the 1.4.0 keys, including
+`power`) is rejected, so the built-in look is drawn until a version 2 layout is uploaded. Upload
+the layout again after flashing 1.5.0.
 
 ## PC service
 
