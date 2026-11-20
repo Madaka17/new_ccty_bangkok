@@ -156,6 +156,29 @@ def summary_line(result: RunResult) -> str:
     return f"collect: {result.files_scanned} files scanned, {result.new_rows} new rows"
 
 
+LOG_NAME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.(\d+)\.log$")
+
+
+def log_file_key(path: Path) -> tuple:
+    """Sort key for a log file: its date, then its rotation number as a number.
+
+    Plain string order puts "2026-11-20.10.log" before "2026-11-20.9.log", so the
+    number is compared as an integer. Names that do not match sort by name.
+    """
+    match = LOG_NAME_RE.match(Path(path).name)
+    if match:
+        return (match.group(1), int(match.group(2)))
+    return (Path(path).name, 0)
+
+
+def list_log_files(log_root: Path) -> list[Path]:
+    """Every log file under log_root/YYYY-MM/, oldest first. [] when the folder is missing."""
+    root = Path(log_root)
+    if not root.is_dir():
+        return []
+    return sorted(root.glob("*/*.log"), key=log_file_key)
+
+
 def job_label(messages: list) -> str:
     """Return a short job name taken from the first system message."""
     system = next((m for m in messages
@@ -186,8 +209,7 @@ def run(log_root: Path, db_path: Path) -> RunResult:
         stored = {path: (offset, lines) for path, offset, lines in
                   con.execute("SELECT path, offset, lines FROM files").fetchall()}
 
-        files = sorted(Path(log_root).glob("*/*.log")) if Path(log_root).is_dir() else []
-        for path in files:
+        for path in list_log_files(log_root):
             result.files_scanned += 1
             key = str(path)
             offset, lines = stored.get(key, (0, 0))

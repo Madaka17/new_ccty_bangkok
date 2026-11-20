@@ -401,5 +401,24 @@ class ReviewFixTests(CollectTestBase):
         self.assertEqual(len(self.rows()), 2)
 
 
+class LogOrderTests(CollectTestBase):
+    """Log files are ordered by date, then by rotation number as a number."""
+
+    def test_rotation_numbers_sort_as_numbers_not_text(self):
+        for name in ["2026-11-20.9.log", "2026-11-20.10.log", "2026-11-19.1.log"]:
+            self.write_log(name, "")
+        names = [p.name for p in collect.list_log_files(self.root)]
+        self.assertEqual(names, ["2026-11-19.1.log", "2026-11-20.9.log", "2026-11-20.10.log"])
+
+    def test_pending_request_in_rotation_9_is_answered_by_rotation_10(self):
+        # Under plain string order, .10 was read before .9, so the answer found no request.
+        self.write_log("2026-11-20.9.log", request_block("m1", FLOOD_SYSTEM))
+        self.write_log("2026-11-20.10.log", prediction_block("m1", ts="2026-11-20 21:44:00"))
+        self.assertEqual(self.run_collect().new_rows, 1)
+
+    def test_missing_folder_gives_no_files(self):
+        self.assertEqual(collect.list_log_files(self.root / "absent"), [])
+
+
 if __name__ == "__main__":
     unittest.main()

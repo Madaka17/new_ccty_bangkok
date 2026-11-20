@@ -73,6 +73,6 @@ $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($ShortcutPath)
 $shortcut.TargetPath = $RunBat
 $shortcut.WorkingDirectory = $ScriptDir
-$shortcut.Description = 'Collect Bionic usage and open the report'
+$shortcut.Description = 'Open the live Bionic usage page (collects usage in the background)'
 $shortcut.Save()
 Write-Output "Created Desktop shortcut '$ShortcutName'."
