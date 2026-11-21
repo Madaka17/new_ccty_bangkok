@@ -116,6 +116,11 @@ export default function CityStatusStrip({ summary, bkkFlow, trafficAt, incidents
   // Rain and water in Bangkok (lib/cityChecks.js: what counts, and what is only named as ปริมณฑล)
   const wc = waterCheck(water, flood);
   const { flooding } = wc;
+  // The flooded-road count comes from the BMA sensors (flood) once they have loaded, so the check is as old as the
+  // older of the two sources: a stalled sensor feed must not hide behind a fresh water summary
+  const waterAt = water?.updated_at && flood?.updated_at
+    ? Math.min(water.updated_at, flood.updated_at)
+    : water?.updated_at || flood?.updated_at;
 
   // Flood reports: people on Traffy Fondue in the last 6 h who say the water is there now. Aid requests for a past
   // flood and drain complaints are left out (the server's report_kind). Flooded roads from traffic news are not
@@ -140,8 +145,8 @@ export default function CityStatusStrip({ summary, bkkFlow, trafficAt, incidents
   // Roads first (what a trip needs), then water, then the weather and the air
   const items = [
     { id: 'traffic', q: 'รถติดไหม', a: trafficStatus, say: `รถ${level.label}`, tone: trafficTone, known: flow != null, at: trafficAt, limit: FRESH_LIMIT.traffic, go: () => onNavigate('map') },
-    { id: 'incident', q: 'มีเหตุบนถนนไหม', a: inc.status, say: inc.total ? inc.status : 'ไม่มีอุบัติเหตุ', tone: inc.tone, known: inc.known, at: incidents?.updated, limit: FRESH_LIMIT.incident, go: () => (onIncidents ? onIncidents() : onNavigate('dashboard')) },
-    { id: 'water', q: 'ฝนและน้ำ', a: wc.status, say: wc.status, tone: wc.tone, known: wc.known, at: water?.updated_at || flood?.updated_at, limit: FRESH_LIMIT.water, go: () => onNavigate('water') },
+    { id: 'incident', q: 'มีเหตุบนถนนไหม', a: inc.status, say: inc.total ? inc.status : 'ไม่มีอุบัติเหตุ', tone: inc.tone, known: inc.known, at: incidents?.longdo_updated || incidents?.updated, limit: FRESH_LIMIT.incident, go: () => (onIncidents ? onIncidents() : onNavigate('dashboard')) },
+    { id: 'water', q: 'ฝนและน้ำ', a: wc.status, say: wc.status, tone: wc.tone, known: wc.known, at: waterAt, limit: FRESH_LIMIT.water, go: () => onNavigate('water') },
     { id: 'report', q: 'มีคนแจ้งว่าน้ำท่วมไหม', sub: 'ใน 6 ชม.', a: repStatus, say: `คนแจ้งว่าน้ำท่วม ${repStatus}`, note: repNote, tone: repTone, known: citizen != null, at: traffy?.updated_at, limit: FRESH_LIMIT.report, go: () => onNavigate('water') },
     { id: 'weather', q: weather?.mine ? 'อากาศตรงนี้' : 'อากาศ กทม.', a: weatherStatus, say: weatherStatus, tone: weather?.tone || 'neutral', known: !!weather, at: weather?.updated_at, limit: FRESH_LIMIT.weather, go: () => onNavigate('water') },
     { id: 'air', q: 'ฝุ่น PM2.5', a: pm == null ? airStatus : `${pm} · ${bkkAverage(air?.items).label}`, say: `ฝุ่น PM2.5 ${pm ?? ''} ${airStatus}`, tone: airTone, known: pm != null, at: air?.source_ts || air?.updated_at, limit: FRESH_LIMIT.air, go: () => onNavigate('air') },

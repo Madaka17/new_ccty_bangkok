@@ -14,8 +14,10 @@ import { freshness } from './freshness.js';
 
 export const FLOOD_ROADS_SEVERE = 10;   // flooded roads (BMA sensors, flood + slight) from which the answer is red
 
-// The checks a trip depends on; old weather or dust does not stop the answer
-export const TRIP_CHECKS = ['traffic', 'incident', 'water', 'report'];
+// The checks a trip depends on; old weather or dust does not stop the answer. People's flood reports are left out
+// too: they can only ever make the answer yellow, and their row already says when the update failed, so a Traffy
+// outage does not turn the whole city's answer into "ข้อมูลอาจไม่ล่าสุด".
+export const TRIP_CHECKS = ['traffic', 'incident', 'water'];
 
 export const VERDICT_LABEL = {
   green: 'ออกได้',
@@ -47,7 +49,11 @@ export function cityVerdict({ items, trafficTone, flooding = 0, avoid = [], now 
       tone: 'neutral',
       label: 'ข้อมูลอาจไม่ล่าสุด',
       headline: 'ตรวจเองก่อนออก ข้อมูลบางเรื่องไม่ได้อัปเดต',
-      detail: [...care.map((i) => i.say), oldList].join(' · '),
+      detail: [
+        ...care.map((i) => i.say),
+        oldList,
+        ...(pending.length ? [`ยังไม่มีข้อมูล: ${pending.map((i) => i.q).join(', ')}`] : []),
+      ].join(' · '),
       care, calm, pending, old,
     };
   } else if (care.length) {

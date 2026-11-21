@@ -108,6 +108,22 @@ describe('cityVerdict', () => {
     expect(v.detail).toContain('ข้อมูลเก่า: ฝนและน้ำ');
   });
 
+  test('old flood reports alone do not change the answer (their row says the update failed)', () => {
+    const items = allFine();
+    items[3] = check('คนแจ้งน้ำท่วม', 'green', true, { id: 'report', ...aged(99999, 1800) });
+    const v = cityVerdict({ items, trafficTone: 'green', now: NOW });
+    expect(v.tone).toBe('green');
+  });
+
+  test('old and still-loading checks are both said', () => {
+    const items = allFine();
+    items[0] = check('รถติดไหม', 'green', true, { id: 'traffic', ...aged(2000, 900) });
+    items[5] = check('ฝุ่น', 'neutral', false);
+    const v = cityVerdict({ items, trafficTone: 'green', now: NOW });
+    expect(v.tone).toBe('neutral');
+    expect(v.detail).toContain('ยังไม่มีข้อมูล: ฝุ่น');
+  });
+
   test('fresh data stays green', () => {
     const items = allFine();
     items[0] = check('รถติดไหม', 'green', true, { id: 'traffic', ...aged(60, 900) });
