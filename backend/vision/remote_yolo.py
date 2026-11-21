@@ -18,7 +18,7 @@ import time
 import cv2
 import requests
 
-from backend.core.instance import BASE_DIR
+from backend.core.instance import BASE_DIR, alternate_model_rel
 from backend.vision.yolo_switch import NOT_ALLOWED, YoloOff, yolo_allowed
 
 TIMEOUT = (1, 10)        # connect, read seconds
@@ -138,7 +138,7 @@ def weights_available(path, get=requests.get, clock=time.monotonic):
         if weights is None:
             return True
         cached = _weights_cache[url] = (clock(), weights)
-    return rel in cached[1]
+    return rel in cached[1] or alternate_model_rel(rel) in cached[1]
 
 
 def is_remote(model):
