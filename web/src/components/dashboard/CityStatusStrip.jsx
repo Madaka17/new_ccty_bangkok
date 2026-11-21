@@ -147,7 +147,7 @@ export default function CityStatusStrip({ summary, bkkFlow, trafficAt, incidents
     { id: 'air', q: 'ฝุ่น PM2.5', a: pm == null ? airStatus : `${pm} · ${bkkAverage(air?.items).label}`, say: `ฝุ่น PM2.5 ${pm ?? ''} ${airStatus}`, tone: airTone, known: pm != null, at: air?.source_ts || air?.updated_at, limit: FRESH_LIMIT.air, go: () => onNavigate('air') },
   ];
   // The summary: one answer word and one sentence, made from the six answers (rules, no AI: lib/cityVerdict.js)
-  const { care, calm, pending, ...verdict } = cityVerdict({ items, trafficTone, flooding, avoid: avoid || [] });
+  const { care, calm, pending, old: _old, ...verdict } = cityVerdict({ items, trafficTone, flooding, avoid: avoid || [] });
   const { headline, detail } = verdict;
 
   // Phones read the checks as one list, the ones that need care first; wide screens keep the fixed pipeline order
