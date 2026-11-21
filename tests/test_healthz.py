@@ -1,9 +1,10 @@
 """GET /healthz: the public, minimal health check for outside uptime monitors.
 
 The router is imported with a stub backend.services (the real one loads YOLO and starts camera threads)."""
-import builtins
 import importlib
 import sys
+import tempfile
+import threading
 import time
 import types
 from datetime import datetime
@@ -44,7 +45,17 @@ def system(monkeypatch, tmp_path):
     monkeypatch.delenv("BMA_FETCH", raising=False)
     module = importlib.import_module("backend.api.system")
     monkeypatch.setattr(module, "SERVER_START", time.time() - 10_000)
-    return module
+    module._healthz_cache.clear()          # the 20 s result cache must not leak between tests
+    yield module
+    module._healthz_cache.clear()
+
+
+class _Clock:
+    def __init__(self, now):
+        self.now = now
+
+    def __call__(self):
+        return self.now
 
 
 def _client(module, scan_age_s, guard=False):
@@ -64,14 +75,10 @@ def test_ok_when_scan_fresh_and_disk_writable(system):
 
 
 def test_503_when_disk_write_raises(system, monkeypatch):
-    real_open = builtins.open
+    def read_only(*args, **kwargs):
+        raise OSError(30, "Read-only file system")
 
-    def read_only_open(file, *args, **kwargs):
-        if str(file).endswith(".healthz"):
-            raise OSError(30, "Read-only file system")
-        return real_open(file, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "open", read_only_open)
+    monkeypatch.setattr(system.tempfile, "mkstemp", read_only)
     r = _client(system, scan_age_s=60).get("/healthz")
     assert r.status_code == 503
     assert r.json() == {"ok": False, "scan": True, "disk": False}
@@ -104,3 +111,48 @@ def test_outside_request_passes_guard_and_gets_no_session(system):
 def test_response_has_only_the_three_keys(system):
     body = _client(system, scan_age_s=60).get("/healthz").json()
     assert set(body) == {"ok", "scan", "disk"}
+
+
+def test_head_returns_200(system):
+    # UptimeRobot's free monitor sends HEAD
+    r = _client(system, scan_age_s=60).head("/healthz")
+    assert r.status_code == 200
+
+
+def test_no_probe_files_left_in_data_dir(system, tmp_path):
+    _client(system, scan_age_s=60).get("/healthz")
+    assert [p.name for p in tmp_path.iterdir() if p.name.startswith(".healthz")] == []
+
+
+def test_ten_concurrent_calls_all_200_when_healthy(system):
+    client = _client(system, scan_age_s=60)
+    barrier = threading.Barrier(10)
+    codes = []
+
+    def probe():
+        barrier.wait()
+        codes.append(client.get("/healthz").status_code)
+
+    threads = [threading.Thread(target=probe) for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+    assert codes == [200] * 10
+
+
+def test_result_cached_for_20_seconds_then_refreshed(system, monkeypatch):
+    clock = _Clock(1000.0)
+    monkeypatch.setattr(system, "_monotonic", clock)
+    writes = []
+    real_disk_ok = system._disk_ok
+    monkeypatch.setattr(system, "_disk_ok", lambda: (writes.append(1), real_disk_ok())[1])
+    client = _client(system, scan_age_s=60)
+    assert client.get("/healthz").status_code == 200
+    system.bma_scanner = FakeScanner(3600)     # stale now, but inside the window
+    clock.now = 1019.0
+    assert client.get("/healthz").status_code == 200
+    assert len(writes) == 1
+    clock.now = 1020.5                         # window over: fresh check, scan is stale
+    assert client.get("/healthz").status_code == 503
+    assert len(writes) == 2

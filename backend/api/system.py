@@ -3,6 +3,8 @@ Health, the web UI shell and the files served next to it.
 """
 import os
 import shutil
+import tempfile
+import threading
 import time
 from datetime import datetime
 
@@ -34,25 +36,46 @@ def _scan_ok(now) -> bool:
 
 
 def _disk_ok() -> bool:
-    """Write and delete a tiny file in the data directory. False on any OSError, e.g. a read-only filesystem."""
-    path = os.path.join(os.getenv("BMA_DATA_DIR", DATA_DIR), ".healthz")
+    """Write a tiny uniquely named file in the data directory, then remove it. False only when the create or the
+    write fails, e.g. a read-only filesystem. A unique name keeps concurrent probes from clashing."""
     try:
-        with open(path, "w", encoding="ascii") as f:
-            f.write(str(time.time()))
-        os.remove(path)
-        return True
+        fd, path = tempfile.mkstemp(prefix=".healthz-", dir=os.getenv("BMA_DATA_DIR", DATA_DIR))
     except OSError:
         return False
+    try:
+        try:
+            os.write(fd, str(time.time()).encode("ascii"))
+            ok = True
+        finally:
+            os.close(fd)
+    except OSError:
+        ok = False
+    try:
+        os.unlink(path)
+    except OSError:
+        pass   # the probe file is only a probe: a failed delete does not make the disk unhealthy
+    return ok
 
 
-@router.get("/healthz")
+HEALTHZ_TTL = 20                 # seconds: a flood of probes costs one scan check and one disk write per window
+_monotonic = time.monotonic      # its own name so tests can drive the clock
+_healthz_lock = threading.Lock()
+_healthz_cache = {}              # {"at": monotonic time, "body": dict, "status": int}
+
+
+@router.api_route("/healthz", methods=["GET", "HEAD"])
 def healthz():
-    """Public, minimal health check for outside uptime monitors. Only three keys, nothing about the machine."""
-    scan = _scan_ok(time.time()) if flag_on(os.environ, "BMA_FETCH") else None   # BMA_FETCH=0: never scans here
-    disk = _disk_ok()
-    ok = disk and scan is not False
-    return JSONResponse({"ok": ok, "scan": scan, "disk": disk}, status_code=200 if ok else 503,
-                        headers={"Cache-Control": "no-store"})
+    """Public, minimal health check for outside uptime monitors. Only three keys, nothing about the machine.
+    The result is cached for HEALTHZ_TTL seconds, so no outside caller can make it write to the disk on every call."""
+    with _healthz_lock:
+        now = _monotonic()
+        if not _healthz_cache or now - _healthz_cache["at"] >= HEALTHZ_TTL:
+            scan = _scan_ok(time.time()) if flag_on(os.environ, "BMA_FETCH") else None   # BMA_FETCH=0: never scans here
+            disk = _disk_ok()
+            ok = disk and scan is not False
+            _healthz_cache.update(at=now, body={"ok": ok, "scan": scan, "disk": disk}, status=200 if ok else 503)
+        return JSONResponse(_healthz_cache["body"], status_code=_healthz_cache["status"],
+                            headers={"Cache-Control": "no-store"})
 
 
 @router.get("/api/health")
