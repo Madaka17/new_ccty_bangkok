@@ -83,8 +83,8 @@ export default function RecentIncidentsTable({ incidents, onOpen }) {
                         <span className="font-medium text-[var(--c-ink)]">{r.title || 'เหตุบนถนน'}</span>
                       </button>
                     </td>
-                    <td className="py-2 pr-3"><KindChip kind={r.kind} /></td>
-                    <td className="py-2 pr-3 text-[var(--c-muted)]">{SOURCE[r.source] || ''}</td>
+                    <td className="whitespace-nowrap py-2 pr-3"><KindChip kind={r.kind} /></td>
+                    <td className="whitespace-nowrap py-2 pr-3 text-[var(--c-muted)]">{SOURCE[r.source] || ''}</td>
                     <td className="num whitespace-nowrap py-2 text-[var(--c-muted)]">{timeText(r.at)}</td>
                   </tr>
                 ))}
