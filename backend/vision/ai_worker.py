@@ -100,12 +100,14 @@ class ModelPool:
     def resolve(self, rel_path):
         """Absolute path of a .pt file inside root, else ValueError. "x.pt" also finds weights/x.pt and
         the reverse, so a client on either side of the move to weights/ still gets its model."""
-        full = self._contained(rel_path)
-        if os.path.isfile(full):
-            return full
-        other = self._contained(alternate_model_rel(rel_path.replace("\\", "/")))
-        if os.path.isfile(other):
-            return other
+        rel = rel_path.replace("\\", "/") if isinstance(rel_path, str) else rel_path
+        bare = rel[len("weights/"):] if isinstance(rel, str) and rel.startswith("weights/") else rel
+        # A plain file name: weights/ wins over a stale copy in the root, whichever spelling was sent
+        tries = ["weights/" + bare, bare] if isinstance(bare, str) and "/" not in bare else [rel, alternate_model_rel(rel)]
+        paths = [self._contained(t) for t in tries]
+        for full in paths:
+            if os.path.isfile(full):
+                return full
         raise ValueError("model file not found")
 
     def get(self, rel_path):

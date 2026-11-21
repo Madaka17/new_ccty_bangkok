@@ -103,7 +103,7 @@ def main():
         model = YOLO(last[-1])
         results = model.train(resume=True)
     else:
-        model = YOLO(os.path.join(BASE_DIR, args.model))
+        model = YOLO(model_path(args.model))
         results = model.train(
             data=data_yaml,
             epochs=args.epochs,

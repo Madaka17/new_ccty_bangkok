@@ -295,3 +295,13 @@ def test_weights_alias_does_not_duplicate_root_file(tmp_path):
     (tmp_path / "a.pt").write_bytes(b"w")
     pool = ModelPool(str(tmp_path), Factory())
     assert pool.weights().count("a.pt") == 1
+
+
+def test_resolve_prefers_weights_when_both_exist(tmp_path):
+    (tmp_path / "weights").mkdir()
+    (tmp_path / "weights" / "a.pt").write_bytes(b"w")
+    (tmp_path / "a.pt").write_bytes(b"r")        # stale copy left in the root
+    pool = ModelPool(str(tmp_path), Factory())
+    want = os.path.realpath(str(tmp_path / "weights" / "a.pt"))
+    assert pool.resolve("a.pt") == want
+    assert pool.resolve("weights/a.pt") == want
