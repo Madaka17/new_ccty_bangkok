@@ -22,7 +22,7 @@ from backend.bma.bma_session import BmaSession
 from backend.core.env_flags import flag_on
 
 from backend.vision.yolo_switch import YoloOff
-from backend.core.instance import BASE_DIR  # project root
+from backend.core.instance import BASE_DIR, model_path  # project root
 from backend.core.instance import thai_font
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 from backend.core.log import get_logger
@@ -173,7 +173,9 @@ class BmaScanner:
             return self.detector.detect_boxes(img)
         from ultralytics import YOLO
         if not hasattr(self, '_local_model'):
-            m_path = 'yolo26x.pt' if os.path.exists(os.path.join(BASE_DIR, 'yolo26x.pt')) else 'yolo26m.pt'
+            m_path = model_path('yolo26x.pt')
+            if not os.path.exists(m_path):
+                m_path = 'yolo26m.pt'   # stock name: ultralytics downloads it
             self._local_model = YOLO(m_path)
         r = self._local_model(img, conf=0.08, classes=[0, 1, 2, 3, 5, 7], imgsz=960, verbose=False)[0]
         return [(int(c), float(cf), int(x1), int(y1), int(x2), int(y2))

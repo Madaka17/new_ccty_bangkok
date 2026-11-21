@@ -5,10 +5,10 @@ opposite of what its camera normally sees at that spot" (see wrongway_service.py
     python train_wrongway_det.py                       # yolo26x.pt, 60 epochs, 640 px, batch 8
     python train_wrongway_det.py --model yolo26m.pt --epochs 80
     python train_wrongway_det.py --resume              # continue an interrupted run from its last.pt
-    python train_wrongway_det.py --model ../../wrongway_det.pt --name yolo26x_r2 --epochs 30 --lr0 0.002
+    python train_wrongway_det.py --model ../../weights/wrongway_det.pt --name yolo26x_r2 --epochs 30 --lr0 0.002
                                                        # stage 2 after more collection rounds
 
-Output: local/runs/wrongway_det/<name>/weights/best.pt copied to wrongway_det.pt in the project root.
+Output: local/runs/wrongway_det/<name>/weights/best.pt copied to weights/wrongway_det.pt.
 Classes: car_toward car_away car_left car_right moto_toward moto_away moto_left moto_right.
 fliplr is 0 on purpose: a mirror swaps left/right, the dataset already carries mirrored twins.
 """
@@ -16,6 +16,7 @@ import argparse
 import os
 import shutil
 import sys
+from model_files import model_out, model_path  # weights/ (see model_files.py)
 
 sys.stdout.reconfigure(line_buffering=True, encoding='utf-8')
 
@@ -38,7 +39,7 @@ def write_status(**fields):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--model', default=os.path.join(BASE_DIR, 'yolo26x.pt'))
+    ap.add_argument('--model', default=model_path('yolo26x.pt'))
     ap.add_argument('--epochs', type=int, default=60)
     ap.add_argument('--imgsz', type=int, default=640)
     ap.add_argument('--batch', type=int, default=8, help='8 fits a 10 GB card with the server stopped; use 4 while it runs')
@@ -46,7 +47,7 @@ def main():
     ap.add_argument('--resume', action='store_true', help='continue from runs/wrongway_det/<name>/weights/last.pt')
     ap.add_argument('--lr0', type=float, default=None, help='initial LR; stage-2 fine-tunes use a smaller one (e.g. 0.002)')
     ap.add_argument('--patience', type=int, default=25, help='epochs without improvement before stopping (0 to disable)')
-    ap.add_argument('--out', default=os.path.join(BASE_DIR, 'wrongway_det.pt'))
+    ap.add_argument('--out', default=model_out('wrongway_det.pt'))
     args = ap.parse_args()
     if not os.path.exists(DATA_YAML):
         sys.exit(f'[wrongway-det] {DATA_YAML} missing; run collect_wrongway_dataset.py first')

@@ -1,7 +1,7 @@
 """Score a helmet detector on the clean and the degraded (CCTV-like) val sets.
 
-    python eval_helmet_det.py ..\..\helmet_det.pt
-    python eval_helmet_det.py ..\..\helmet_det_blur.pt --data blur
+    python eval_helmet_det.py ..\..\weights\helmet_det.pt
+    python eval_helmet_det.py ..\..\weights\helmet_det_blur.pt --data blur
 """
 import argparse
 import os

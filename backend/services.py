@@ -16,7 +16,7 @@ from backend.agents.traffy_history import TraffyHistory
 from backend.bma.bma_events import bma_feed
 from backend.bma.bma_service import BmaScanner, bma_fetch_enabled
 from backend.bma import bma_best_time
-from backend.core.instance import BASE_DIR, DATA_DIR
+from backend.core.instance import BASE_DIR, DATA_DIR, model_path
 from backend.core.news_feed import news_feed
 from backend.core.telemetry_service import telemetry
 from backend.traffic import analytics_service, area_roads, rsc_service
@@ -65,10 +65,10 @@ SAFE_ID = re.compile(r"[A-Za-z0-9_.-]{1,80}")
 # Paths
 # Stock COCO yolo26x by default. AI_MODEL=yolo26x_bkk.pt (or any .pt) in .env / env switches weights;
 # the fine-tuned file is no longer picked up just because it exists (the first run missed motorcycles).
-MODEL_PATH = os.path.join(BASE_DIR, os.getenv("AI_MODEL", "yolo26x.pt"))
+MODEL_PATH = model_path(os.getenv("AI_MODEL", "yolo26x.pt"))
 if not os.path.exists(MODEL_PATH):
     get_logger("AI").info(f"{MODEL_PATH} not found, falling back to yolo26x.pt")
-    MODEL_PATH = os.path.join(BASE_DIR, "yolo26x.pt")
+    MODEL_PATH = model_path("yolo26x.pt")
 CAMERAS_FILE = os.path.join(BASE_DIR, "config", "cameras_bkk.json")
 # React UI (<instance>/dist, built by launch\build_web.bat). Without a build the API still runs and "/" says how to build it.
 # Each instance serves its own build, so building the test server's UI leaves the live UI alone. WEB_DIST: another build folder.

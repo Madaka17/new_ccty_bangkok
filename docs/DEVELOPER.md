@@ -221,7 +221,7 @@ API_SESSION=1
 ├── web/  (src/ = ซอร์ส React)    ← 🌐 หน้าเว็บ (build ลง instances\<ชื่อ>\dist)
 ├── tests/                        ← pytest
 ├── requirements.txt, .env        ← config (.env ห้าม commit)
-├── yolo26x.pt (+ yolo26l/m), *_bkk.pt, helmet_*.pt, wrongway_*.pt ← 🌐 โมเดล ใช้ร่วมทั้งสองเซิร์ฟเวอร์ (gitignore, ต้องคัดลอกเอง)
+├── weights/            ← 🌐 โมเดล yolo26x.pt (+ yolo26l/m), *_bkk.pt, helmet_*.pt, wrongway_*.pt ใช้ร่วมทั้งสองเซิร์ฟเวอร์ (gitignore, ต้องคัดลอกเอง; ไฟล์เก่าที่ root ยังหาเจอ)
 │
 └── local/                                            ← 💻 ใช้ในเครื่องเท่านั้น
     ├── pipeline/   สคริปต์เก็บภาพ/label/เทรน + .bat/.sh ทั้งหมด (pipeline.bat, collect.bat, status.bat, watch_training.bat ...)
@@ -230,7 +230,7 @@ API_SESSION=1
     └── archive/    ของเก่า/สำรอง
 ```
 
-- ไฟล์ `.bat` ใน `local/pipeline/` ดับเบิลคลิกได้เหมือนเดิม (สคริปต์ `cd` กลับไป root เอง) ผลลัพธ์โมเดล `*_bkk.pt` / `helmet_cls.pt` ยังถูกเขียนลง root ให้เซิร์ฟเวอร์หยิบใช้
+- ไฟล์ `.bat` ใน `local/pipeline/` ดับเบิลคลิกได้เหมือนเดิม (สคริปต์ `cd` กลับไป root เอง) ผลลัพธ์โมเดล `*_bkk.pt` / `helmet_cls.pt` ถูกเขียนลง `weights/` ให้เซิร์ฟเวอร์หยิบใช้
 - เซิร์ฟเวอร์ส่งให้ผู้ใช้เฉพาะหน้าเว็บใน `instances\<ชื่อ>\dist` ไม่ได้เปิดให้เข้าถึงไฟล์ทั้งโฟลเดอร์โปรเจกต์
 
 ---

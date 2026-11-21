@@ -18,6 +18,26 @@ import os
 import sys
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root
+MODELS_DIR = os.path.join(BASE_DIR, "weights")  # YOLO .pt files (git-ignored)
+
+
+def model_path(name, base_dir=BASE_DIR):
+    """Full path of a weights file: weights/<name> when it exists, else <root>/<name> when that exists
+    (files from before the move), else weights/<name>. An absolute name is returned unchanged."""
+    if os.path.isabs(name):
+        return name
+    in_weights = os.path.join(base_dir, "weights", name)
+    if os.path.isfile(in_weights):
+        return in_weights
+    in_root = os.path.join(base_dir, name)
+    return in_root if os.path.isfile(in_root) else in_weights
+
+
+def alternate_model_rel(rel):
+    """The other spelling of a root-relative weights path: "x.pt" <-> "weights/x.pt"."""
+    return rel[len("weights/"):] if rel.startswith("weights/") else "weights/" + rel
+
+
 PRODUCTION_DIR = os.path.join(BASE_DIR, "instances", "production")
 PORT = int(os.getenv("PORT", "8000"))
 DATA_DIR = os.path.abspath(os.getenv("INSTANCE_DIR") or PRODUCTION_DIR)

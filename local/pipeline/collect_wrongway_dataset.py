@@ -44,6 +44,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import cv2
 import numpy as np
+from model_files import model_path  # weights/ (see model_files.py)
 
 sys.stdout.reconfigure(line_buffering=True, encoding='utf-8')
 
@@ -448,7 +449,7 @@ def main():
     ap.add_argument('--hls-frames', type=int, default=24, help='frames per HLS burst (video: ByteTrack, dense sampling)')
     ap.add_argument('--hls-interval', type=float, default=0.2, help='seconds between sampled HLS frames')
     ap.add_argument('--cams', default='', help='comma-separated camera ids to restrict to')
-    ap.add_argument('--model', default=os.path.join(BASE_DIR, 'yolo26x.pt'))
+    ap.add_argument('--model', default=model_path('yolo26x.pt'))
     ap.add_argument('--imgsz', type=int, default=832, help='tracking resolution (352 px frames are upscaled)')
     ap.add_argument('--conf', type=float, default=0.3)
     ap.add_argument('--min-h', type=int, default=12, help='px: smaller boxes do not count towards keeping a frame')

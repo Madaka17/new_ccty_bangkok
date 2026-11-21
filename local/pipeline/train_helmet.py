@@ -3,7 +3,7 @@
     python train_helmet.py                      # yolo11n-cls, 40 epochs, 160 px
     python train_helmet.py --model yolo11s-cls.pt --epochs 60
 
-Output: runs/helmet/<name>/weights/best.pt copied to helmet_cls.pt. violation_service.py loads
+Output: runs/helmet/<name>/weights/best.pt copied to weights/helmet_cls.pt. violation_service.py loads
 helmet_cls.pt automatically and then classifies every rider crop locally (no API call per rider);
 the vision API is only used to double-check a "no helmet" verdict when HELMET_CONFIRM_API=1.
 
@@ -15,6 +15,7 @@ import glob
 import os
 import shutil
 import sys
+from model_files import model_out  # weights/ (see model_files.py)
 
 sys.stdout.reconfigure(line_buffering=True, encoding='utf-8')
 
@@ -66,7 +67,7 @@ def main():
     best = os.path.join(str(results.save_dir), 'weights', 'best.pt')
     if not os.path.exists(best):
         sys.exit(f'[helmet] no best.pt in {results.save_dir}')
-    out = os.path.join(BASE_DIR, 'helmet_cls.pt')
+    out = model_out('helmet_cls.pt')
     shutil.copy(best, out)
     top1 = getattr(results, 'top1', None)
     print(f'[helmet] done -> {out}' + (f' (val top-1 {top1:.3f})' if top1 else ''))

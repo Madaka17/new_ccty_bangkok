@@ -31,6 +31,7 @@ os.environ["OPENCV_FFMPEG_LOGLEVEL"] = "-8"
 os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
 
 import cv2
+from model_files import model_path  # weights/ (see model_files.py)
 
 LOCAL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # local/ (dataset, runs, logs)
 BASE_DIR = os.path.dirname(LOCAL_DIR)  # project root (server, models, cameras, .env)
@@ -170,7 +171,7 @@ def main():
     ap.add_argument('--until', help='HH:MM local time to stop at (overrides --rounds when reached first)')
     ap.add_argument('--conf', type=float, default=None, help='raise every class floor to this (default: per-class CLASS_CONF)')
     ap.add_argument('--no-tiles', action='store_true', help='label from the full frame only (faster, misses small motorcycles)')
-    ap.add_argument('--model', default=os.path.join(BASE_DIR, 'yolo26x.pt'))
+    ap.add_argument('--model', default=model_path('yolo26x.pt'))
     args = ap.parse_args()
     stop_at = None
     if args.until:

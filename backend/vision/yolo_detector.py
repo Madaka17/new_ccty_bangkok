@@ -16,7 +16,7 @@ from PIL import Image, ImageDraw, ImageFont
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
 
-from backend.core.instance import thai_font
+from backend.core.instance import model_path as resolve_model_path, thai_font
 from backend.vision.remote_yolo import is_remote, load_yolo
 from backend.vision.yolo_switch import YoloOff
 from backend.vision.vehicle_tracker import (CLASS_CONFIG, DEFAULT_CLASS, LEVEL_TEXT, PERSON_CLASS, VehicleTracker,
@@ -32,7 +32,9 @@ SURE_CONF = 0.5   # on the picture, a box below this shows no percentage and a t
 
 
 class VehicleDetectorYOLO11x:
-    def __init__(self, model_path='yolo26x.pt', target_fps=10.0, conf_threshold=0.15, vehicle_log=None, load_models=True):
+    def __init__(self, model_path=None, target_fps=10.0, conf_threshold=0.15, vehicle_log=None, load_models=True):
+        if model_path is None:
+            model_path = resolve_model_path('yolo26x.pt')
         self.target_fps = target_fps
         self.conf_threshold = conf_threshold
         self.frame_interval = 1.0 / target_fps  # 0.10s for 10 FPS

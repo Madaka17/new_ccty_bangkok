@@ -40,7 +40,7 @@ import numpy as np
 from backend.core import local_llm
 from backend.core.hourly_budget import HourlyBudget
 from backend.core.instance import DEFAULT_BMA_DATA_DIR
-from backend.core.instance import BASE_DIR  # project root
+from backend.core.instance import model_path  # weights/ first, then the project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 from backend.vision.remote_yolo import is_remote, load_yolo, weights_available
 from backend.vision.yolo_switch import YoloOff
@@ -52,12 +52,8 @@ log = get_logger("WrongWay")
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "wrongway")
 FIELD_DIR = os.path.join(DATA_DIR, "cache", "heading")
 ARCHIVE_DIR = os.getenv("WRONGWAY_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", DEFAULT_BMA_DATA_DIR), "wrongway"))
-DET_PATH = os.getenv("WRONGWAY_DET", os.path.join(BASE_DIR, "wrongway_det.pt"))
-if not os.path.isabs(DET_PATH):
-    DET_PATH = os.path.join(BASE_DIR, DET_PATH)
-CLS_PATH = os.getenv("WRONGWAY_CLS", os.path.join(BASE_DIR, "wrongway_cls.pt"))
-if not os.path.isabs(CLS_PATH):
-    CLS_PATH = os.path.join(BASE_DIR, CLS_PATH)
+DET_PATH = model_path(os.getenv("WRONGWAY_DET", "wrongway_det.pt"))
+CLS_PATH = model_path(os.getenv("WRONGWAY_CLS", "wrongway_cls.pt"))
 AGENT_MODEL = os.getenv("WRONGWAY_AGENT_MODEL", os.getenv("GEMINI_VISION_MODEL", "gemini-3.1-flash-lite"))
 FALLBACK_MODEL = os.getenv("GEMINI_VISION_FALLBACK", "gemini-3.1-flash-lite")
 AGENT_TIMEOUT_MS = 40000

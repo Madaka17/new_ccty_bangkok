@@ -1,4 +1,5 @@
 """AI worker (:8100): serves YOLO on the PC's GPU to the Raspberry Pi."""
+import os
 import json
 
 import cv2
@@ -254,3 +255,53 @@ def test_gpu_jobs_stay_on_a_fixed_set_of_threads(root):
         assert predict(c).status_code == 200
     assert len(seen) == 3 * GPU_THREADS + 3
     assert len({id(t) for t in seen}) <= GPU_THREADS
+
+
+# ---- weights moved from the project root to weights/: both spellings keep working
+
+def test_resolve_root_name_finds_weights_file(tmp_path):
+    (tmp_path / "weights").mkdir()
+    (tmp_path / "weights" / "a.pt").write_bytes(b"w")
+    pool = ModelPool(str(tmp_path), Factory())
+    assert pool.resolve("a.pt") == os.path.realpath(str(tmp_path / "weights" / "a.pt"))
+
+
+def test_resolve_weights_name_finds_root_file(tmp_path):
+    (tmp_path / "a.pt").write_bytes(b"w")
+    pool = ModelPool(str(tmp_path), Factory())
+    assert pool.resolve("weights/a.pt") == os.path.realpath(str(tmp_path / "a.pt"))
+
+
+def test_resolve_alternate_still_contained(tmp_path):
+    proj = tmp_path / "proj"
+    (proj / "weights").mkdir(parents=True)
+    (tmp_path / "x.pt").write_bytes(b"w")      # outside the root
+    (proj / "x.pt").write_bytes(b"w")
+    pool = ModelPool(str(proj / "weights"), Factory())
+    with pytest.raises(ValueError):
+        pool.resolve("../x.pt")
+
+
+def test_weights_lists_alias(tmp_path):
+    (tmp_path / "weights").mkdir()
+    (tmp_path / "weights" / "a.pt").write_bytes(b"w")
+    pool = ModelPool(str(tmp_path), Factory())
+    assert {"weights/a.pt", "a.pt"} <= set(pool.weights())
+
+
+def test_weights_alias_does_not_duplicate_root_file(tmp_path):
+    (tmp_path / "weights").mkdir()
+    (tmp_path / "weights" / "a.pt").write_bytes(b"w")
+    (tmp_path / "a.pt").write_bytes(b"w")
+    pool = ModelPool(str(tmp_path), Factory())
+    assert pool.weights().count("a.pt") == 1
+
+
+def test_resolve_prefers_weights_when_both_exist(tmp_path):
+    (tmp_path / "weights").mkdir()
+    (tmp_path / "weights" / "a.pt").write_bytes(b"w")
+    (tmp_path / "a.pt").write_bytes(b"r")        # stale copy left in the root
+    pool = ModelPool(str(tmp_path), Factory())
+    want = os.path.realpath(str(tmp_path / "weights" / "a.pt"))
+    assert pool.resolve("a.pt") == want
+    assert pool.resolve("weights/a.pt") == want

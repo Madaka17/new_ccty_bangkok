@@ -177,7 +177,7 @@ def get_training_info():
     run_dirs = sorted(glob.glob(os.path.join(LOCAL_DIR, 'runs', 'train', 'bkk*')), key=os.path.getmtime)
     if not run_dirs:
         # Check if completed weights exist
-        bkk_weights = glob.glob(os.path.join(BASE_DIR, '*_bkk.pt'))
+        bkk_weights = glob.glob(os.path.join(BASE_DIR, 'weights', '*_bkk.pt')) + glob.glob(os.path.join(BASE_DIR, '*_bkk.pt'))
         return {'status': 'idle', 'weights': [os.path.basename(w) for w in bkk_weights]}
 
     latest_run = run_dirs[-1]
@@ -408,7 +408,7 @@ def render_dashboard(is_watch=False, interval=1):
     elif training.get('status') == 'starting':
         lines.append(f"  สถานะ:           🚀 กำลังเตรียมข้อมูลและเริ่มต้นรอบเทรน ({training.get('run_name')})...")
     else:
-        bkk_models = [os.path.basename(p) for p in glob.glob(os.path.join(BASE_DIR, '*_bkk.pt'))]
+        bkk_models = [os.path.basename(p) for p in glob.glob(os.path.join(BASE_DIR, 'weights', '*_bkk.pt')) + glob.glob(os.path.join(BASE_DIR, '*_bkk.pt'))]
         if bkk_models:
             lines.append(f"  โมเดลที่เทรนแล้ว: {', '.join(bkk_models)} (Fine-tuned พร้อมใช้งาน)")
         else:

@@ -21,6 +21,7 @@ import cv2
 import numpy as np
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from backend.core.instance import alternate_model_rel
 from backend.core.log import get_logger
 
 log = get_logger("AI worker")
@@ -85,8 +86,8 @@ class ModelPool:
         self.models = {}   # normcase(full path) -> {"name", "model", "lock", "used"}
         self._weights = None   # (time, list)
 
-    def resolve(self, rel_path):
-        """Absolute path of a .pt file inside root, else ValueError."""
+    def _contained(self, rel_path):
+        """Absolute path of rel_path inside root (it may not exist), else ValueError."""
         if not isinstance(rel_path, str) or not rel_path.endswith(".pt"):
             raise ValueError("model must be a .pt file")
         if os.path.isabs(rel_path) or rel_path.startswith(("/", "\\")) or ":" in rel_path:
@@ -94,9 +95,20 @@ class ModelPool:
         full = os.path.realpath(os.path.join(self.root, rel_path))
         if os.path.commonpath([full, self.root]) != self.root:
             raise ValueError("model path is outside the project")
-        if not os.path.isfile(full):
-            raise ValueError("model file not found")
         return full
+
+    def resolve(self, rel_path):
+        """Absolute path of a .pt file inside root, else ValueError. "x.pt" also finds weights/x.pt and
+        the reverse, so a client on either side of the move to weights/ still gets its model."""
+        rel = rel_path.replace("\\", "/") if isinstance(rel_path, str) else rel_path
+        bare = rel[len("weights/"):] if isinstance(rel, str) and rel.startswith("weights/") else rel
+        # A plain file name: weights/ wins over a stale copy in the root, whichever spelling was sent
+        tries = ["weights/" + bare, bare] if isinstance(bare, str) and "/" not in bare else [rel, alternate_model_rel(rel)]
+        paths = [self._contained(t) for t in tries]
+        for full in paths:
+            if os.path.isfile(full):
+                return full
+        raise ValueError("model file not found")
 
     def get(self, rel_path):
         """(model, its lock). Loads the model when needed. Keyed by the resolved file, so two spellings
@@ -142,7 +154,10 @@ class ModelPool:
             for f in filenames:
                 if f.endswith(".pt"):
                     out.append(f if rel_dir == "." else f"{rel_dir}/{f}".replace(os.sep, "/"))
-        self._weights = (self.clock(), sorted(out))
+        # Bare alias for each weights/<name>.pt, so a client that still asks for the root name sees it
+        out += [f[len("weights/"):] for f in out if f.startswith("weights/") and f.count("/") == 1
+                and f[len("weights/"):] not in out]
+        self._weights = (self.clock(), sorted(set(out)))
         return list(self._weights[1])
 
     def loaded(self):

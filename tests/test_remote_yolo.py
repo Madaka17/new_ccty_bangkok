@@ -202,3 +202,24 @@ def test_weights_available_true_when_worker_unreachable(monkeypatch):
     monkeypatch.setenv("AI_WORKER_URL", "http://pc:8100")
     remote_yolo._weights_cache.clear()
     assert weights_available(os.path.join(BASE_DIR, "helmet_cls.pt"), get=FakeGet(error=ConnectionError())) is True
+
+
+def test_weights_available_alternate(monkeypatch):
+    # The worker moved its files to weights/; the Pi still asks for the root spelling (or the reverse).
+    monkeypatch.setenv("AI_WORKER_URL", "http://pc:8100")
+    remote_yolo._weights_cache.clear()
+    get = FakeGet(Reply(200, {"ok": True, "loaded": [], "weights": ["weights/a.pt", "b.pt"]}))
+    assert weights_available(os.path.join(BASE_DIR, "a.pt"), get=get) is True
+    assert weights_available(os.path.join(BASE_DIR, "weights", "b.pt"), get=get) is True
+
+
+def test_load_yolo_sends_the_spelling_the_worker_lists(monkeypatch):
+    # New Pi (resolves to weights/x.pt, file absent locally) talking to a worker that still has x.pt in its root.
+    monkeypatch.setenv("AI_WORKER_URL", "http://pc:8100")
+    remote_yolo._weights_cache.clear()
+    get = FakeGet(Reply(200, {"ok": True, "loaded": [], "weights": ["yolo26x.pt"]}))
+    model = load_yolo(os.path.join(BASE_DIR, "weights", "yolo26x.pt"), get=get)
+    assert model.rel_path == "yolo26x.pt"
+    remote_yolo._weights_cache.clear()
+    get = FakeGet(Reply(200, {"ok": True, "loaded": [], "weights": ["weights/yolo26x.pt"]}))
+    assert load_yolo(os.path.join(BASE_DIR, "weights", "yolo26x.pt"), get=get).rel_path == "weights/yolo26x.pt"

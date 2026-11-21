@@ -133,7 +133,7 @@ export default function HelmetPage({ isActive, onToast }) {
 
       {agentOff && (
         <StatusBanner tone="yellow" label="AI ตรวจซ้ำยังไม่พร้อม (สำหรับผู้ดูแลระบบ)">
-          ตั้ง <code>GEMINI_API_KEY</code> (หรือ <code>ANTHROPIC_API_KEY</code>) ใน .env หรือวางโมเดล <code>helmet_det.pt</code> ที่ root แล้วรีสตาร์ต server
+          ตั้ง <code>GEMINI_API_KEY</code> (หรือ <code>ANTHROPIC_API_KEY</code>) ใน .env หรือวางโมเดล <code>helmet_det.pt</code> ในโฟลเดอร์ <code>weights</code> แล้วรีสตาร์ต server
         </StatusBanner>
       )}
       {status && !status.archive_ok && (

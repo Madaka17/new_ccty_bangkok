@@ -18,7 +18,7 @@ import time
 import cv2
 import requests
 
-from backend.core.instance import BASE_DIR
+from backend.core.instance import BASE_DIR, alternate_model_rel
 from backend.vision.yolo_switch import NOT_ALLOWED, YoloOff, yolo_allowed
 
 TIMEOUT = (1, 10)        # connect, read seconds
@@ -102,12 +102,16 @@ class RemoteYolo:
                        probs=None if probs is None else torch.tensor(probs, dtype=torch.float32))
 
 
-def load_yolo(path, local_factory=None):
+def load_yolo(path, local_factory=None, get=requests.get):
     """The model for a weights file: remote when AI_WORKER_URL is set, else a local ultralytics YOLO
-    (local_factory, when given, builds the local one)."""
+    (local_factory, when given, builds the local one). Remote: sends the spelling ("x.pt" or "weights/x.pt")
+    that the worker lists, so this side and the worker can move to weights/ at different times."""
     url = worker_url()
     if url:
         rel = os.path.relpath(os.path.abspath(path), BASE_DIR).replace(os.sep, "/")
+        listed = _worker_weights(url, get, time.monotonic)
+        if listed is not None and rel not in listed and alternate_model_rel(rel) in listed:
+            rel = alternate_model_rel(rel)
         return RemoteYolo(rel, url, os.getenv("AI_WORKER_TOKEN", ""))
     if not yolo_allowed():
         raise YoloOff(NOT_ALLOWED)
@@ -128,6 +132,14 @@ def weights_available(path, get=requests.get, clock=time.monotonic):
     if url is None:
         return os.path.exists(path)
     rel = os.path.relpath(os.path.abspath(path), BASE_DIR).replace(os.sep, "/")
+    listed = _worker_weights(url, get, clock)
+    if listed is None:
+        return True
+    return rel in listed or alternate_model_rel(rel) in listed
+
+
+def _worker_weights(url, get, clock):
+    """Set of weights the worker lists (cached WEIGHTS_CACHE_S), or None when it cannot be asked."""
     cached = _weights_cache.get(url)
     if cached is None or clock() - cached[0] > WEIGHTS_CACHE_S:
         try:
@@ -136,9 +148,9 @@ def weights_available(path, get=requests.get, clock=time.monotonic):
         except Exception:  # noqa: BLE001 - worker down or old: decide later
             weights = None
         if weights is None:
-            return True
+            return None
         cached = _weights_cache[url] = (clock(), weights)
-    return rel in cached[1]
+    return cached[1]
 
 
 def is_remote(model):

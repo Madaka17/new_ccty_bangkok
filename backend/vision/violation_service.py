@@ -38,7 +38,7 @@ import numpy as np
 from backend.core import local_llm
 from backend.core.hourly_budget import HourlyBudget
 from backend.core.instance import DEFAULT_BMA_DATA_DIR
-from backend.core.instance import BASE_DIR  # project root
+from backend.core.instance import model_path  # weights/ first, then the project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 from backend.vision.frame_utils import safe_id
 from backend.vision.remote_yolo import is_remote, load_yolo, weights_available
@@ -72,7 +72,7 @@ CROP_MARGIN = 0.35
 # Local classifier from train_helmet.py. When present every rider crop is classified on the GPU
 # (no API cooldown); the vision API is then only a second opinion on "no helmet" if
 # HELMET_CONFIRM_API=1. Without the file, the API path above is used as before.
-HELMET_CLS_PATH = os.getenv("HELMET_CLS", os.path.join(BASE_DIR, "helmet_cls.pt"))
+HELMET_CLS_PATH = model_path(os.getenv("HELMET_CLS", "helmet_cls.pt"))
 HELMET_CLS_MIN_PROB = 0.8
 HELMET_CONFIRM_API = os.getenv("HELMET_CONFIRM_API", "0") == "1"
 
