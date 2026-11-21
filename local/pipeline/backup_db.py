@@ -31,6 +31,8 @@ except ImportError:
 
 # the production server's database (BACKUP_DB: another one, e.g. a test copy)
 DB = os.getenv('BACKUP_DB') or os.path.join(BASE_DIR, 'instances', 'production', 'vehicle_counts.db')
+# the production security-event log (BACKUP_SECURITY_DB overrides; skipped when the file is missing)
+SECURITY_DB = os.getenv('BACKUP_SECURITY_DB') or os.path.join(BASE_DIR, 'instances', 'production', 'security_events.db')
 DATA_DIR = os.getenv('BMA_DATA_DIR', r'D:\Data')
 BACKUP_DIR = os.getenv('BACKUP_DIR', os.path.join(DATA_DIR, 'backup'))
 # table -> epoch column. The no-helmet log, violations and incidents are kept forever (evidence).
@@ -54,24 +56,52 @@ def prune(keep_days):
     print(f'[backup] VACUUM {before / 2**20:.1f} MB -> {os.path.getsize(DB) / 2**20:.1f} MB')
 
 
+def _copy_db(src_path, dst_path):
+    src = dst = None
+    try:
+        src = sqlite3.connect(src_path, timeout=30)
+        dst = sqlite3.connect(dst_path)
+        with dst:
+            src.backup(dst)
+    finally:
+        if dst is not None:
+            dst.close()
+        if src is not None:
+            src.close()
+
+
+def _remove_tree(path):
+    if os.path.isdir(path):
+        shutil.rmtree(path, ignore_errors=True)
+
+
 def backup(keep_backups):
     stamp = datetime.now().strftime('%Y-%m-%d_%H%M')
     out_dir = os.path.join(BACKUP_DIR, stamp)
-    os.makedirs(out_dir, exist_ok=True)
-    src = sqlite3.connect(DB, timeout=30)
-    dst = sqlite3.connect(os.path.join(out_dir, 'vehicle_counts.db'))
-    with dst:
-        src.backup(dst)
-    dst.close()
-    src.close()
-    for name in ('helmet/helmet.csv', 'violations/violations.csv', 'roads_index.csv', 'summary_daily.csv'):
-        p = os.path.join(DATA_DIR, name)
-        if os.path.exists(p):
-            shutil.copy2(p, os.path.join(out_dir, os.path.basename(p)))
-    for cfg in ('.env', 'config/cameras_bma.json', 'config/cameras_bkk.json'):
-        p = os.path.join(BASE_DIR, cfg)
-        if os.path.exists(p):
-            shutil.copy2(p, os.path.join(out_dir, os.path.basename(cfg)))
+    # written under .tmp-<stamp> and renamed at the end, so a half-written folder never looks complete
+    tmp_dir = os.path.join(BACKUP_DIR, f'.tmp-{stamp}')
+    _remove_tree(tmp_dir)
+    os.makedirs(tmp_dir, exist_ok=True)
+    try:
+        _copy_db(DB, os.path.join(tmp_dir, 'vehicle_counts.db'))
+        if os.path.exists(SECURITY_DB):
+            try:
+                _copy_db(SECURITY_DB, os.path.join(tmp_dir, 'security_events.db'))
+            except Exception as e:
+                print(f'[backup] security_events.db FAILED: {e}')
+        for name in ('helmet/helmet.csv', 'violations/violations.csv', 'roads_index.csv', 'summary_daily.csv'):
+            p = os.path.join(DATA_DIR, name)
+            if os.path.exists(p):
+                shutil.copy2(p, os.path.join(tmp_dir, os.path.basename(p)))
+        for cfg in ('.env', 'config/cameras_bma.json', 'config/cameras_bkk.json'):
+            p = os.path.join(BASE_DIR, cfg)
+            if os.path.exists(p):
+                shutil.copy2(p, os.path.join(tmp_dir, os.path.basename(cfg)))
+        _remove_tree(out_dir)
+        os.rename(tmp_dir, out_dir)
+    except BaseException:
+        _remove_tree(tmp_dir)
+        raise
     print(f'[backup] written {out_dir}')
     old = sorted(glob.glob(os.path.join(BACKUP_DIR, '20*')))[:-keep_backups]
     for d in old:
