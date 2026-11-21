@@ -6,7 +6,13 @@ import { bmaSiteDown } from './bma/BmaSiteNotice.jsx';
 import { trackView } from '../lib/telemetry.js';
 import { Button } from './dashboard/ui.jsx';
 import { PageHeader, Tabs } from './dashboard/primitives.jsx';
-import { fmtDateTime, fmtNum } from './dashboard/format.js';
+import { fmtDateTime } from './dashboard/format.js';
+import { toCsv } from '../lib/overviewData.js';
+import TimeRangeToolbar from './dashboard/overview/TimeRangeToolbar.jsx';
+import VehicleBarCard from './dashboard/overview/VehicleBarCard.jsx';
+import KpiCards from './dashboard/overview/KpiCards.jsx';
+import BmaLineCard from './dashboard/overview/BmaLineCard.jsx';
+import RecentIncidentsTable from './dashboard/overview/RecentIncidentsTable.jsx';
 import { PAGE_TITLES } from './Sidebar.jsx';
 import FlowOverview from './dashboard/FlowOverview.jsx';
 import IncidentPanel from './dashboard/IncidentPanel.jsx';
@@ -48,6 +54,9 @@ export default function DashboardPage({ isActive, incidents, onAskText, onOpenRo
   // Road-flood sensor counts (BMA drainage), for the flooded-road figure on the city status strip
   const [flood, setFlood] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  // time range for the vehicle and BMA cards; the vehicle rows are kept for the CSV download
+  const [range, setRange] = useState('24h');
+  const vehicleRowsRef = useRef([]);
   // wide screens show the news card beside the roads at once; phones only once the details are open
   const [isWide, setIsWide] = useState(() => window.matchMedia?.('(min-width: 1024px)').matches ?? true);
   useEffect(() => {
@@ -202,33 +211,66 @@ export default function DashboardPage({ isActive, incidents, onAskText, onOpenRo
     el.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'start' });
   }, [jump, section]);
 
+  // CSV of the vehicle bars for the range on screen (Thai column names, BOM so Excel reads Thai)
+  const downloadVehicleCsv = () => {
+    const csv = toCsv(vehicleRowsRef.current, [
+      { key: 'label', label: 'ช่วงเวลา' },
+      { key: 'cars', label: 'รถยนต์' },
+      { key: 'motorcycles', label: 'มอเตอร์ไซค์' },
+    ]);
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bkk-vehicles-${range}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
+
   return (
     <div className="flex flex-col gap-4">
       {/* wide screens: the page header; phones: the top bar already names the page, so only the time and my
           district sit above the answer. The page refreshes itself every minute. */}
       <div className="hidden md:block">
-        <PageHeader
-          title={PAGE_TITLES.dashboard}
-          description={activeSummary ? `ข้อมูลล่าสุด ${fmtDateTime(activeSummary.updated_at)}` : 'กำลังโหลดข้อมูล...'}
-          actions={
-            <div className="flex flex-wrap items-center gap-2">
-              <DistrictButton district={myDistrict} onNavigate={onNavigate} className="h-9" />
-              <Button size="sm" onClick={load} loading={refreshing} className="h-9">
-                รีเฟรช
-              </Button>
-              <span className="inline-flex items-center gap-2 h-9 px-3 rounded-md border border-[var(--c-border)] text-xs text-[var(--c-muted)]" title="จำนวนคนที่เปิดเว็บอยู่ตอนนี้">
-                <span aria-hidden="true" className="live-dot w-2 h-2 rounded-full bg-[var(--ok-ring)]" />
-                คนดูอยู่ตอนนี้
-                <span className="num text-sm font-semibold text-[var(--c-ink)]">{onlineCount != null ? fmtNum(onlineCount) : '–'}</span>
-              </span>
-            </div>
-          }
-        />
+        <PageHeader title={PAGE_TITLES.dashboard} description={activeSummary ? `ข้อมูลล่าสุด ${fmtDateTime(activeSummary.updated_at)}` : 'กำลังโหลดข้อมูล...'} />
       </div>
       <div className="md:hidden flex items-center justify-between gap-3">
         <h1 className="sr-only">{PAGE_TITLES.dashboard}</h1>
         <p className="text-xs text-[var(--c-muted)]">{activeSummary ? `ข้อมูลล่าสุด ${fmtDateTime(activeSummary.updated_at)}` : 'กำลังโหลดข้อมูล...'}</p>
         <DistrictButton district={myDistrict} onNavigate={onNavigate} className="min-h-11" />
+      </div>
+
+      <TimeRangeToolbar
+        range={range}
+        onRange={setRange}
+        onDownload={downloadVehicleCsv}
+        extra={
+          <>
+            <div className="hidden md:block">
+              <DistrictButton district={myDistrict} onNavigate={onNavigate} className="h-10" />
+            </div>
+            <Button size="md" onClick={load} loading={refreshing} className="min-h-10">
+              รีเฟรช
+            </Button>
+          </>
+        }
+      />
+
+      <VehicleBarCard range={range} onRows={(rows) => { vehicleRowsRef.current = rows; }} />
+
+      <KpiCards
+        bkkFlow={bkkFlow}
+        incidentCount={incidentCount}
+        floodCount={flood ? (flood.counts?.flood || 0) + (flood.counts?.slight || 0) : null}
+        online={onlineCount}
+        onNavigate={onNavigate}
+        onIncidents={openIncidents}
+      />
+
+      <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4">
+        <BmaLineCard hourly={bma?.hourly_trends} />
+        <RecentIncidentsTable incidents={incidents} onOpen={openIncidents} />
       </div>
 
       {summaryError && activeSummary && !activeSummary.is_bma && (
