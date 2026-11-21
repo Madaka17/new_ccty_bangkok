@@ -4,10 +4,10 @@
     python train_helmet_det.py                       # yolo26x.pt, 80 epochs, 640 px, batch 8
     python train_helmet_det.py --model yolo26m.pt --epochs 100
     python train_helmet_det.py --resume                  # continue an interrupted run from its last.pt
-    python train_helmet_det.py --model ../../helmet_det.pt --data blur --name yolo26x_blur --epochs 40
+    python train_helmet_det.py --model ../../weights/helmet_det.pt --data blur --name yolo26x_blur --epochs 40
                                                          # stage 2: fine-tune on CCTV-like degraded images
 
-Output: local/runs/helmet_det/<name>/weights/best.pt copied to helmet_det.pt in the project root.
+Output: local/runs/helmet_det/<name>/weights/best.pt copied to weights/helmet_det.pt.
 Classes: 0 helmet, 1 no_helmet. Boxes are rider heads, so run it on the rider crop (or the full
 frame at high res) and count class 1 hits.
 """
@@ -15,6 +15,7 @@ import argparse
 import os
 import shutil
 import sys
+from model_files import model_out, model_path  # weights/ (see model_files.py)
 
 sys.stdout.reconfigure(line_buffering=True, encoding='utf-8')
 
@@ -26,7 +27,7 @@ DATASETS = {'clean': os.path.join(LOCAL_DIR, 'dataset_helmet_det', 'data.yaml'),
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--model', default=os.path.join(BASE_DIR, 'yolo26x.pt'))
+    ap.add_argument('--model', default=model_path('yolo26x.pt'))
     ap.add_argument('--epochs', type=int, default=80)
     ap.add_argument('--imgsz', type=int, default=640)
     ap.add_argument('--batch', type=int, default=8)
@@ -74,7 +75,7 @@ def main():
     best = os.path.join(str(results.save_dir), 'weights', 'best.pt')
     if not os.path.exists(best):
         sys.exit(f'[helmet-det] no best.pt in {results.save_dir}')
-    out = os.path.join(BASE_DIR, 'helmet_det.pt' if args.data == 'clean' else 'helmet_det_blur.pt')
+    out = model_out('helmet_det.pt' if args.data == 'clean' else 'helmet_det_blur.pt')
     shutil.copy(best, out)
     m = getattr(results, 'box', None)
     extra = f' (mAP50 {m.map50:.3f}, mAP50-95 {m.map:.3f})' if m is not None else ''

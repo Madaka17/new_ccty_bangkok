@@ -34,3 +34,17 @@ def test_alternate_rel():
     assert alternate_model_rel("a.pt") == "weights/a.pt"
     assert alternate_model_rel("weights/a.pt") == "a.pt"
     assert alternate_model_rel("runs/x/best.pt") == "weights/runs/x/best.pt"
+
+
+def test_env_bare_name(monkeypatch):
+    # Production .env has HELMET_DET=helmet_det_blur.pt: a bare name is looked up like any other model.
+    import importlib
+
+    from backend.vision import helmet_service
+    monkeypatch.setenv("HELMET_DET", "helmet_det_blur.pt")
+    try:
+        importlib.reload(helmet_service)
+        assert helmet_service.LOCAL_DET_PATH == model_path("helmet_det_blur.pt")
+    finally:
+        monkeypatch.delenv("HELMET_DET")
+        importlib.reload(helmet_service)

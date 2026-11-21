@@ -21,6 +21,7 @@ import shutil
 import sys
 
 import cv2
+from model_files import model_path  # weights/ (see model_files.py)
 
 LOCAL = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT = os.path.dirname(LOCAL)
@@ -31,8 +32,8 @@ CLASSES = {'heading': {'front': 'toward', 'rear': 'away'},        # the class na
            'helmet': {'helmet': 'helmet', 'no_helmet': 'no_helmet'}}
 QWEN_SURE = 0.6
 EVIDENCE_CENTRE = (1 + 2 * 0.15) / (1 + 2 * 0.5)      # 15% margin inside a 50%-margin crop
-OLD = {'heading': os.path.join(ROOT, 'wrongway_cls.pt'),
-       'helmet': os.path.join(ROOT, os.getenv('HELMET_DET', 'helmet_det_blur.pt'))}
+OLD = {'heading': model_path('wrongway_cls.pt'),
+       'helmet': model_path(os.getenv('HELMET_DET', 'helmet_det_blur.pt'))}
 
 
 def _read(name):

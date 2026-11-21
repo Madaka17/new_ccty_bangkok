@@ -36,7 +36,7 @@ from backend.core import local_llm
 from backend.core.hourly_budget import HourlyBudget
 
 from backend.core.instance import DEFAULT_BMA_DATA_DIR
-from backend.core.instance import BASE_DIR  # project root
+from backend.core.instance import model_path  # weights/ first, then the project root
 from backend.core.instance import DATA_DIR   # cache / db root: instances/production, or instances/test for the test server
 from backend.vision.remote_yolo import is_remote, load_yolo, weights_available
 from backend.vision.yolo_switch import YoloOff
@@ -47,9 +47,7 @@ from backend.core.log import get_logger
 log = get_logger("Helmet")
 CACHE_DIR = os.path.join(DATA_DIR, "cache", "helmet")
 ARCHIVE_DIR = os.getenv("HELMET_ARCHIVE_DIR", os.path.join(os.getenv("BMA_DATA_DIR", DEFAULT_BMA_DATA_DIR), "helmet"))
-LOCAL_DET_PATH = os.getenv("HELMET_DET", os.path.join(BASE_DIR, "helmet_det.pt"))
-if not os.path.isabs(LOCAL_DET_PATH):
-    LOCAL_DET_PATH = os.path.join(BASE_DIR, LOCAL_DET_PATH)
+LOCAL_DET_PATH = model_path(os.getenv("HELMET_DET", "helmet_det.pt"))
 # Fast non-thinking model on purpose: a 300-px crop needs no reasoning, and the thinking models
 # (gemini-3.6-flash) take 15-40 s per call and hit 504 under load. Falls back to GEMINI_VISION_MODEL.
 HELMET_MODEL = os.getenv("HELMET_AGENT_MODEL", os.getenv("GEMINI_VISION_MODEL", "gemini-3.1-flash-lite"))

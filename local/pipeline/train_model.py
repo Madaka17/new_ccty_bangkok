@@ -16,6 +16,7 @@ import glob
 import os
 import shutil
 import sys
+from model_files import model_out, model_path  # weights/ (see model_files.py)
 
 sys.stdout.reconfigure(line_buffering=True, encoding='utf-8')
 
@@ -57,7 +58,7 @@ def write_boosted_yaml(repeat):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--model', default='yolo26x.pt', help='starting weights')
+    ap.add_argument('--model', default=model_path('yolo26x.pt'), help='starting weights')
     ap.add_argument('--epochs', type=int, default=100)
     ap.add_argument('--imgsz', type=int, default=960)
     ap.add_argument('--batch', type=int, default=-1, help='-1 = pick the largest batch that fits the GPU')
@@ -126,7 +127,7 @@ def main():
     best = os.path.join(save_dir, 'weights', 'best.pt')
     if not os.path.exists(best):
         sys.exit(f'[train] no best.pt in {save_dir}')
-    out = os.path.join(BASE_DIR, os.path.splitext(args.model)[0] + '_bkk.pt')
+    out = model_out(os.path.splitext(os.path.basename(args.model))[0] + '_bkk.pt')
     shutil.copy(best, out)
     metrics = getattr(results, 'results_dict', {}) or {}
     print(f"[train] done. mAP50={metrics.get('metrics/mAP50(B)', float('nan')):.3f} "

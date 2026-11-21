@@ -10,18 +10,19 @@ every train crop with the first model and moves the ones it rejects with >= --cl
 local/dataset_wrongway_cls/rejected/, then trains a second model on what is left.
 Small crops and a small model: this runs next to the live server (about 1-2 GB of GPU memory).
 
-Result: local/runs/wrongway_cls/<name>/weights/best.pt, copied to ../../wrongway_cls.pt.
+Result: local/runs/wrongway_cls/<name>/weights/best.pt, copied to ../../weights/wrongway_cls.pt.
 """
 import argparse
 import os
 import shutil
 
 from ultralytics import YOLO
+from model_files import model_out  # weights/ (see model_files.py)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, 'dataset_wrongway_cls')
 RUNS = os.path.join(ROOT, 'runs', 'wrongway_cls')
-OUT = os.path.join(os.path.dirname(ROOT), 'wrongway_cls.pt')
+OUT = model_out('wrongway_cls.pt')
 
 
 def train(model, name, args):

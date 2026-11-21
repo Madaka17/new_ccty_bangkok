@@ -160,7 +160,7 @@ export default function WrongWayPage({ isActive, onToast }) {
 
       {noModel && (
         <StatusBanner tone="yellow" label="AI ดูทิศทางรถยังไม่พร้อม (สำหรับผู้ดูแลระบบ)">
-          ไม่พบ <code>wrongway_det.pt</code> ที่ root — รัน <code>local\pipeline\wrongway_pipeline.bat</code> (เก็บภาพทั้งวัน + เทรน) แล้วรีสตาร์ต server
+          ไม่พบ <code>wrongway_det.pt</code> ในโฟลเดอร์ <code>weights</code> — รัน <code>local\pipeline\wrongway_pipeline.bat</code> (เก็บภาพทั้งวัน + เทรน) แล้วรีสตาร์ต server
         </StatusBanner>
       )}
       {!noModel && agentOff && (
