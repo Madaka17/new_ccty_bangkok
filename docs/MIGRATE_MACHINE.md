@@ -418,6 +418,7 @@ test :8001, Bionic และการ build เว็บ ถ้าคอมป�
 - `db\<วันเวลา>\` มีไฟล์ `vehicle_counts.db` และ `security_events.db` เก็บไว้ 14 ชุดล่าสุด โฟลเดอร์ที่มีไฟล์ `.complete` คือใช้ได้แล้ว
 - `db\.bad-<ชื่อ>\` คือสำเนาที่ตรวจแล้วเสียหาย ไม่ต้องลบทิ้งเอง ดูก่อนว่าเกิดอะไร
 - `files\data_smartstreet\` และ `files\user_reports\` คือไฟล์ล่าสุดของ helmet, violations, wrongway และ user_reports (ทับของเก่า)
+- ไฟล์ `.env` ไม่ถูกคัดลอกลงคอม (มีความลับ และ Pi เก็บสำเนาของตัวเองอยู่แล้ว)
 - ดูผลล่าสุดได้ที่ `D:\BKK-Backup\pi\pull.log` และ `last_ok.txt`
 
 ติดตั้งงาน (ไม่ต้องใช้สิทธิ์ admin, รันซ้ำได้):

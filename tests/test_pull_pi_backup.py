@@ -208,9 +208,7 @@ def test_prune_leaves_bad_folders_alone(tmp_path):
 
 def test_files_remote_cmd_filters_missing_dirs_and_ignores_failed_reads():
     cmd = pull.files_remote_cmd("/mnt/ssd/data_smartstreet", ["helmet", "violations", "wrongway"])
-    assert cmd.startswith("cd /mnt/ssd/data_smartstreet && ")
-    assert "ls -d helmet violations wrongway" in cmd
-    assert "--ignore-failed-read" in cmd
+    assert cmd == "cd /mnt/ssd/data_smartstreet && tar cf - --ignore-failed-read helmet violations wrongway"
     assert '"' not in cmd
 
 
@@ -222,3 +220,126 @@ def test_files_step_extracts_into_destination(tmp_path):
     assert ok is True
     assert (files / "data_smartstreet" / "helmet" / "a.csv").read_bytes() == b"1"
     assert (files / "data_smartstreet" / "violations" / "b.csv").read_bytes() == b"2"
+
+
+# ---- review fixes ----
+
+def test_ssh_args_keep_connection_alive():
+    args = pull.build_ssh_args({"PI_HOST": "h", "PI_KEY": "k"}, "x")
+    assert "ServerAliveInterval=30" in args
+    assert "ServerAliveCountMax=4" in args
+
+
+def test_subprocess_kwargs_no_stdin_and_no_console_window():
+    import os
+    import subprocess
+    kw = pull.subprocess_kwargs()
+    assert kw["stdin"] is subprocess.DEVNULL
+    if os.name == "nt":
+        assert kw["creationflags"] == subprocess.CREATE_NO_WINDOW
+    else:
+        assert "creationflags" not in kw
+
+
+def test_tar_rc_status():
+    assert pull.tar_rc_status(0) == "ok"
+    assert pull.tar_rc_status(1) == "warn"
+    assert pull.tar_rc_status(2) == "fail"
+
+
+def test_parse_latest_ignores_tmp_folders():
+    out = "/mnt/x/.tmp-2026-11-22_0330\n/mnt/x/2026-11-21_0333\n"
+    assert pull.parse_latest(out) == "2026-11-21_0333"
+
+
+def test_db_step_skips_env_and_logs_it(tmp_path):
+    root = tmp_path / "db"
+    logs = []
+    payload = make_tar([
+        ("2026-11-21_0333/vehicle_counts.db", good_db_bytes(tmp_path)),
+        ("2026-11-21_0333/.env", b"SECRET=1"),
+    ])
+    ok = pull.run_db_step(root, "2026-11-21_0333", fake_opener(payload), logs.append)
+    assert ok is True
+    assert not (root / "2026-11-21_0333" / ".env").exists()
+    assert any(".env" in m and "skipped" in m for m in logs)
+
+
+def test_db_step_fails_when_security_db_is_corrupt(tmp_path):
+    root = tmp_path / "db"
+    payload = make_tar([
+        ("2026-11-21_0333/vehicle_counts.db", good_db_bytes(tmp_path)),
+        ("2026-11-21_0333/security_events.db", b"garbage" * 1000),
+    ])
+    ok = pull.run_db_step(root, "2026-11-21_0333", fake_opener(payload), lambda m: None)
+    assert ok is False
+    assert (root / ".bad-2026-11-21_0333" / "security_events.db").exists()
+
+
+def test_extract_skips_unsafe_member_when_asked(tmp_path):
+    dest = tmp_path / "out"
+    seen = []
+    data = make_tar([("helmet/a.csv", b"1"), ("../evil", b"x")])
+    pull.extract_tar(io.BytesIO(data), dest, on_unsafe=seen.append)
+    assert (dest / "helmet" / "a.csv").read_bytes() == b"1"
+    assert not (tmp_path / "evil").exists()
+    assert seen == ["../evil"]
+
+
+def test_extract_writes_via_part_then_replaces(tmp_path):
+    dest = tmp_path / "out"
+    pull.extract_tar(io.BytesIO(make_tar([("helmet/a.csv", b"new")])), dest)
+    assert (dest / "helmet" / "a.csv").read_bytes() == b"new"
+    assert list(dest.rglob("*.part")) == []
+
+
+def test_existing_names_keeps_only_dirs_that_exist():
+    assert pull.existing_names(["helmet", "violations", "wrongway"], "helmet\nwrongway\n") == ["helmet", "wrongway"]
+    assert pull.existing_names(["helmet"], "") == []
+
+
+def test_files_step_with_no_dirs_skips_without_calling_tar(tmp_path):
+    def must_not_run(cmd):
+        raise AssertionError("tar must not run when no dir exists")
+    logs = []
+    assert pull.run_files_step(tmp_path / "f", "/x", [], must_not_run, logs.append) is True
+    assert any("skipped" in m for m in logs)
+
+
+def test_files_step_unsafe_member_logged_rest_written(tmp_path):
+    files = tmp_path / "files"
+    payload = make_tar([("../x", b"evil"), ("helmet/a.csv", b"1")])
+    logs = []
+    pull.run_files_step(files / "data_smartstreet", "/x", ["helmet"], fake_opener(payload), logs.append)
+    assert (files / "data_smartstreet" / "helmet" / "a.csv").read_bytes() == b"1"
+    assert not (files / "x").exists()
+    assert any("unsafe" in m for m in logs)
+
+
+def test_prune_keep_is_clamped_to_one(tmp_path):
+    root = tmp_path / "db"
+    _complete(root, "2026-11-20_0330")
+    _complete(root, "2026-11-21_0330")
+    removed = pull.prune_db(root, keep=0, log=lambda m: None)
+    assert removed == ["2026-11-20_0330"]
+    assert [p.name for p in root.iterdir()] == ["2026-11-21_0330"]
+
+
+def test_prune_keeps_newest_three_bad_folders(tmp_path):
+    root = tmp_path / "db"
+    _complete(root, "2026-11-21_0330")
+    names = ["2026-11-14_0330", "2026-11-15_0330", "2026-11-16_0330", "2026-11-17_0330", "2026-11-18_0330"]
+    for n in names:
+        (root / f".bad-{n}").mkdir(parents=True)
+    pull.prune_db(root, keep=14, log=lambda m: None)
+    left = sorted(p.name for p in root.iterdir() if p.name.startswith(".bad-"))
+    assert left == [f".bad-{n}" for n in names[-3:]]
+
+
+def test_main_startup_error_written_to_localappdata(tmp_path):
+    blocker = tmp_path / "not_a_dir"
+    blocker.write_text("x")
+    local = tmp_path / "local"
+    rc = pull.main({"PULL_DEST": str(blocker), "LOCALAPPDATA": str(local)})
+    assert rc == 1
+    assert (local / "bkk_pull_pi_backup_error.log").read_text(encoding="utf-8").strip() != ""

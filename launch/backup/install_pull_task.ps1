@@ -3,7 +3,8 @@
 #
 #   powershell -ExecutionPolicy Bypass -File E:\new_ccty_bangkok\launch\backup\install_pull_task.ps1
 #
-# StartWhenAvailable: if the PC was off or asleep at 04:30, the task runs at the next chance after logon.
+# The task only runs while the user is logged on (LogonType Interactive). If the PC was off, asleep or logged
+# out at 04:30, it catches up at the next logon (StartWhenAvailable). WakeToRun wakes a sleeping PC for it.
 # Remove it with: Unregister-ScheduledTask -TaskName 'BKK StreetSmart pull Pi backup' -Confirm:$false
 
 $ErrorActionPreference = 'Stop'
@@ -21,6 +22,7 @@ $action = New-ScheduledTaskAction -Execute $Python -Argument ('"' + $Script + '"
 $trigger = New-ScheduledTaskTrigger -Daily -At 04:30
 $settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
+    -WakeToRun `
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries `
     -ExecutionTimeLimit (New-TimeSpan -Hours 2)
