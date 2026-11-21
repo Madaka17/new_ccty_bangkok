@@ -317,6 +317,8 @@ def _set_session(response, request):
 def _is_page(path):
     """The page itself: "/", an .html file or an app route. Its request reaches the server on every load
     (no-cache), even when the answer is a 304, so the session cookie rides on it."""
+    if path == "/healthz":          # a monitor's probe, not a page: no session cookie
+        return False
     last = path.rsplit("/", 1)[-1]
     return path == "/" or last.endswith(".html") or "." not in last
 

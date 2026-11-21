@@ -10,10 +10,49 @@ from fastapi import APIRouter
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from backend.core.instance import DATA_DIR, IS_STAGE, PORT
+from backend.core.env_flags import flag_on
 from backend.vision.yolo_switch import gpu_memory
 from backend.services import bma_scanner, CAMERAS_FILE, detector, helmet, INDEX_HTML, SERVER_START, WEB_BUILT, WEB_DIST, wrongway
 
 router = APIRouter()
+
+
+def _scan_state(now):
+    """(scan status dict, age in seconds or None, fresh?) for the BMA scanner. Fresh = last cycle under 15 min,
+    or a fresh process still in its first-cycle grace period (the first cycle over 574 cameras takes minutes)."""
+    scan = bma_scanner.get_status()
+    # bma_service stores last_scan_time as "%Y-%m-%d %H:%M:%S" text (the UI shows it as is)
+    last_scan = scan.get("last_scan_time")
+    last_scan = datetime.strptime(last_scan, "%Y-%m-%d %H:%M:%S").timestamp() if last_scan else 0
+    scan_age = int(now - last_scan) if last_scan else None
+    scan_ok = (scan_age is not None and scan_age < 15 * 60) or (not last_scan and now - SERVER_START < 20 * 60)
+    return scan, scan_age, scan_ok
+
+
+def _scan_ok(now) -> bool:
+    return _scan_state(now)[2]
+
+
+def _disk_ok() -> bool:
+    """Write and delete a tiny file in the data directory. False on any OSError, e.g. a read-only filesystem."""
+    path = os.path.join(os.getenv("BMA_DATA_DIR", DATA_DIR), ".healthz")
+    try:
+        with open(path, "w", encoding="ascii") as f:
+            f.write(str(time.time()))
+        os.remove(path)
+        return True
+    except OSError:
+        return False
+
+
+@router.get("/healthz")
+def healthz():
+    """Public, minimal health check for outside uptime monitors. Only three keys, nothing about the machine."""
+    scan = _scan_ok(time.time()) if flag_on(os.environ, "BMA_FETCH") else None   # BMA_FETCH=0: never scans here
+    disk = _disk_ok()
+    ok = disk and scan is not False
+    return JSONResponse({"ok": ok, "scan": scan, "disk": disk}, status_code=200 if ok else 503,
+                        headers={"Cache-Control": "no-store"})
 
 
 @router.get("/api/health")
@@ -21,13 +60,7 @@ def health():
     """One call for a watchdog: 200 + ok=true when the scanner ran recently and the detector answers.
     Returns 503 when the BMA scan is stale (> 3 cycles) so an external monitor can restart the server."""
     now = time.time()
-    scan = bma_scanner.get_status()
-    # bma_service stores last_scan_time as "%Y-%m-%d %H:%M:%S" text (the UI shows it as is)
-    last_scan = scan.get("last_scan_time")
-    last_scan = datetime.strptime(last_scan, "%Y-%m-%d %H:%M:%S").timestamp() if last_scan else 0
-    scan_age = int(now - last_scan) if last_scan else None
-    # Fresh process: the first cycle over 574 cameras takes a few minutes, so give it a grace period
-    scan_ok = (scan_age is not None and scan_age < 15 * 60) or (not last_scan and now - SERVER_START < 20 * 60)
+    scan, scan_age, scan_ok = _scan_state(now)
     gpu = None
     mem = gpu_memory()      # nvidia-smi until torch has its own CUDA context: no context made for a health poll
     if mem:
