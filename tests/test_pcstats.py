@@ -91,7 +91,9 @@ def test_gpu_query_hides_console():
         return SimpleNamespace(returncode=0, stdout="1, 2, 3\n")
 
     assert read_gpu(run=fake) == "1, 2, 3\n"
-    assert seen["creationflags"] == subprocess.CREATE_NO_WINDOW
+    assert seen["creationflags"] == pcstats.CREATE_NO_WINDOW
+    if sys.platform == "win32":
+        assert pcstats.CREATE_NO_WINDOW == subprocess.CREATE_NO_WINDOW
     assert seen["timeout"] == 3
 
 

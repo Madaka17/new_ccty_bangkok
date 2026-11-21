@@ -19,6 +19,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MAX_AGE_S = 5.0
 MB = 1024 * 1024
+# Windows-only flag; 0 elsewhere so the module still imports and tests run on Linux CI.
+CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 NVIDIA_SMI_CMD = [
     "nvidia-smi",
     "--query-gpu=memory.used,memory.total,temperature.gpu",
@@ -126,7 +128,7 @@ def read_gpu(run=subprocess.run) -> str | None:
             capture_output=True,
             text=True,
             timeout=3,
-            creationflags=subprocess.CREATE_NO_WINDOW,  # no console flash under pythonw
+            creationflags=CREATE_NO_WINDOW,  # no console flash under pythonw
         )
     except (OSError, subprocess.SubprocessError):
         return None
