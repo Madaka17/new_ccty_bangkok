@@ -45,11 +45,13 @@ def ago(ts):
 
 
 # name, model caller (local_llm usage), endpoint, data time, AI time, error fields, data max age, AI max age
+# AI max ages follow the paid-gateway intervals set on 2026-11-21 (flood, road, guidance every 30 min, Traffy every 60):
+# about two rounds, so one slow round does not raise a warning.
 AGENTS = [
     ("Bangkok flood report", "backend.agents.flood_agent", "/api/flood/agent",
-     "report.generated_at", "report.generated_at", ("error",), 15 * M, 30 * M),
+     "report.generated_at", "report.generated_at", ("error",), 60 * M, 60 * M),
     ("Bangkok road water", "backend.water.flood_service", "/api/flood/analysis",
-     "feed_time", "updated_at", (), 30 * M, 30 * M),
+     "feed_time", "updated_at", (), 30 * M, 60 * M),
     ("Road flood risk", "backend.traffic.road_service", "/api/roads/risk",
      "updated_at", "analysis.updated_at", ("error",), 15 * M, 60 * M),
     ("Bangkok districts (50)", "backend.water.bkk_districts", "/api/flood/bkk-districts",
@@ -61,9 +63,9 @@ AGENTS = [
     ("Northern water route", "backend.water.north_route", "/api/water/north/route",
      "updated_at", "ai.generated_at", ("error", "ai_error"), 70 * M, 4 * H),
     ("Traffy flood reports", "backend.agents.traffy_agent", "/api/traffy/analysis",
-     "generated_at", "generated_at", ("error",), 30 * M, 30 * M),
+     "generated_at", "generated_at", ("error",), 2 * H, 2 * H),
     ("Traffic guidance", "backend.traffic.guidance_service", "/api/traffic/guidance",
-     "traffic_updated_at", "updated_at", (), 15 * M, 30 * M),
+     "traffic_updated_at", "updated_at", (), 15 * M, 60 * M),
     ("Accident risk (riskbkk)", "backend.agents.riskbkk_agent", "/api/riskbkk/analysis",
      "generated_at", "generated_at", ("error",), 26 * H, 26 * H),
     ("Flood cameras (vision)", "backend.vision.flood_cam_service", "/api/flood/cameras",
