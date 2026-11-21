@@ -3,10 +3,10 @@ import { ROAD_LEVEL } from './format.js';
 // The five most jammed roads now (Longdo, /api/traffic/summary "congested"), each with how long the jam is,
 // and a level pill.
 const LEVEL = {
-  red: { label: 'ติดมาก', bars: 3, tone: 'tone-red' },
-  yellow: { label: 'ติดปานกลาง', bars: 2, tone: 'tone-yellow' },
-  green: { label: 'โล่ง', bars: 1, tone: 'tone-green' },
-  neutral: { label: 'ไม่มีข้อมูล', bars: 0, tone: 'tone-neutral' },
+  red: { label: 'ติดมาก', tone: 'tone-red' },
+  yellow: { label: 'ติดปานกลาง', tone: 'tone-yellow' },
+  green: { label: 'โล่ง', tone: 'tone-green' },
+  neutral: { label: 'ไม่มีข้อมูล', tone: 'tone-neutral' },
 };
 
 export default function AvoidRoadsCard({ summary, onNavigate }) {
@@ -37,13 +37,7 @@ export default function AvoidRoadsCard({ summary, onNavigate }) {
                   <span className="block text-sm text-[var(--c-muted)]">{r.red_km ? `ติดยาว ${r.red_km} กม. จาก ${r.length_km} กม.` : `ช่วงที่มีข้อมูล ${r.length_km} กม.`}</span>
                 </span>
                 <span className="inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-1 text-sm font-semibold bg-[var(--t-tint)] text-[var(--t-text)]">
-                  {/* a rising 3-step meter (like signal bars): unfilled steps stay faintly visible, so 2 of 3
-                      reads as a level and not as a pause sign */}
-                  <span aria-hidden="true" className="inline-flex items-end gap-[3px] h-3.5">
-                    {['h-1.5', 'h-2.5', 'h-3.5'].map((h, k) => (
-                      <span key={k} className={`w-1 ${h} rounded-[1px] ${k < lv.bars ? 'bg-[var(--t-ring)]' : 'bg-current opacity-25'}`} />
-                    ))}
-                  </span>
+                  <span aria-hidden="true" className="w-2 h-2 rounded-full bg-[var(--t-ring)]" />
                   {lv.label}
                 </span>
               </li>
