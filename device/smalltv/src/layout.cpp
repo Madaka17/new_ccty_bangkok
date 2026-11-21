@@ -10,10 +10,12 @@ void defaultLayout(Layout& out) {
     out.w[W_CPU_BAR] = {10, 68, 220, 10, 0, true};
     out.w[W_RAM_VALUE] = {140, 86, 90, 26, 4, true};
     out.w[W_RAM_BAR] = {10, 116, 220, 10, 0, true};
-    out.w[W_POWER] = {12, 164, 108, 26, 4, true};
-    out.w[W_TEMP] = {134, 164, 96, 26, 4, true};
-    out.w[W_FOOTER] = {120, 230, 110, 8, 1, true};   // drawn bottom-aligned at y 238: font 1 is 8 px tall
-    out.w[W_STATUS] = {120, 222, 110, 16, 2, true};  // font 2 is 16 px tall
+    out.w[W_VRAM_VALUE] = {140, 134, 90, 26, 4, true};
+    out.w[W_VRAM_BAR] = {10, 164, 220, 10, 0, true};
+    out.w[W_TEMP] = {160, 6, 70, 26, 4, true};
+    out.w[W_RAM_DETAIL] = {10, 182, 220, 16, 2, true};   // font 2 is 16 px tall
+    out.w[W_VRAM_DETAIL] = {10, 202, 220, 16, 2, true};
+    out.w[W_STATUS] = {120, 222, 110, 16, 2, true};
     out.text = 0xFFFF;
     out.muted = 0x8410;
     out.ok = 0x07E0;
@@ -23,9 +25,10 @@ void defaultLayout(Layout& out) {
 }
 
 static const char* const WIDGET_KEYS[W_COUNT] = {
-    "cpu_value", "cpu_bar", "ram_value", "ram_bar", "power", "temp", "footer", "status"};
+    "cpu_value", "cpu_bar", "ram_value", "ram_bar", "vram_value", "vram_bar",
+    "temp", "ram_detail", "vram_detail", "status"};
 
-static bool isBar(int id) { return id == W_CPU_BAR || id == W_RAM_BAR; }
+static bool isBar(int id) { return id == W_CPU_BAR || id == W_RAM_BAR || id == W_VRAM_BAR; }
 
 static bool parseColor(JsonVariantConst v, uint16_t& out) {
     if (!v.is<int>()) return false;
@@ -60,7 +63,7 @@ static bool parseRect(JsonVariantConst v, bool bar, Rect& out) {
 bool parseLayout(const char* json, Layout& out) {
     JsonDocument doc;
     if (deserializeJson(doc, json)) return false;
-    if (!doc["v"].is<int>() || doc["v"].as<int>() != 1) return false;
+    if (!doc["v"].is<int>() || doc["v"].as<int>() != 2) return false;
 
     JsonArrayConst colors = doc["c"].as<JsonArrayConst>();
     if (colors.size() != 6) return false;
@@ -98,22 +101,24 @@ uint16_t levelColorOf(const Layout& l, float pct) {
     return l.critical;
 }
 
-uint8_t changedWidgets(const Screen& a, const Screen& b) {
+uint16_t changedWidgets(const Screen& a, const Screen& b) {
     const bool stale = a.stale != b.stale;
     const bool wifi = a.wifiDown != b.wifiDown;
     const bool cpu = a.cpu != b.cpu || stale;
     const bool ram = a.ram != b.ram || stale;
-    const bool power = a.watts10 != b.watts10 || stale;
+    const bool vram = a.vram != b.vram || stale;
     const bool temp = a.temp != b.temp || stale;
-    const bool footer = a.ramUsedMb != b.ramUsedMb || a.ramTotalMb != b.ramTotalMb || stale || wifi;
+    const bool ramDetail = a.ramUsedMb != b.ramUsedMb || a.ramTotalMb != b.ramTotalMb || stale || wifi;
+    const bool vramDetail = a.vramUsedMb != b.vramUsedMb || a.vramTotalMb != b.vramTotalMb || stale || wifi;
     const bool status = stale || wifi;
 
-    uint8_t bits = 0;
+    uint16_t bits = 0;
     if (cpu) bits |= (1u << W_CPU_VALUE) | (1u << W_CPU_BAR);
     if (ram) bits |= (1u << W_RAM_VALUE) | (1u << W_RAM_BAR);
-    if (power) bits |= 1u << W_POWER;
+    if (vram) bits |= (1u << W_VRAM_VALUE) | (1u << W_VRAM_BAR);
     if (temp) bits |= 1u << W_TEMP;
-    if (footer) bits |= 1u << W_FOOTER;
+    if (ramDetail) bits |= 1u << W_RAM_DETAIL;
+    if (vramDetail) bits |= 1u << W_VRAM_DETAIL;
     if (status) bits |= 1u << W_STATUS;
     return bits;
 }

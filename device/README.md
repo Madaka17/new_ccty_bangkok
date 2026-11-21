@@ -1,20 +1,18 @@
-# Desk display: Raspberry Pi stats on the GeekMagic SmallTV Ultra
+# Desk display: PC stats on the GeekMagic SmallTV Ultra
 
-The SmallTV Ultra (ESP8266, 240x240 ST7789V screen) on the desk shows the Raspberry Pi 4's
-CPU %, RAM %, power draw and temperature. It runs our own firmware, not the GeekMagic one.
+The SmallTV Ultra (ESP8266, 240x240 ST7789V screen) on the desk shows the PC's CPU %, RAM %,
+VRAM % and GPU temperature. It runs our own firmware, not the GeekMagic one.
 
 | Part | Where | What it does |
 |---|---|---|
-| `pistats/pistats.py` | Pi, `/mnt/ssd/device/pistats/`, systemd unit `pistats` | Samples `/proc` and `/sys` every second and serves JSON at `http://192.168.1.109:9101/stats` |
-| `smalltv/` | SmallTV at `192.168.1.111` | Polls that JSON every 2 s and draws it. `/` shows status, `/update` takes a new firmware |
+| `pcstats/pcstats.py` | PC, `C:\Users\user\Tools\pcstats\`, Task Scheduler task `PCStats`, firewall rule `PC stats 9101 (SmallTV)` (see PC service below) | Serves the JSON at `http://192.168.1.188:9101/stats` (CPU, RAM, VRAM, GPU temp) |
+| `pistats/pistats.py` | Pi, `/mnt/ssd/device/pistats/`, systemd unit `pistats` | Still exists for the Pi, but the display no longer reads it |
+| `smalltv/` | SmallTV at `192.168.1.111` | Polls the PC JSON every 2 s and draws it. `/` shows status, `/update` takes a new firmware |
 
-The power value is an **estimate** (the screen shows `~`). The Pi 4 has no power sensor, so
-`watts = 2.7 + 3.7 * cpu / 100 + 1.0` (idle, CPU load, USB SSD). A USB power meter is needed for a real reading.
-
-When the screen gets no good answer for 10 s, the values turn grey and `Pi offline` shows in red.
+When the screen gets no good answer for 10 s, the values turn grey and `PC offline` shows in red.
 They come back by themselves when the service answers again.
 
-## Stored design (firmware 1.3.0)
+## Stored design (firmware 1.3.0 and later)
 
 Screen Studio can upload a design. Without one, the screen shows the built-in look above.
 
@@ -36,7 +34,97 @@ Otherwise, or when LittleFS fails to mount, the built-in look is drawn. A missin
 
 After a boot caused by a crash or watchdog (reset reasons 1, 2 or 3) the stored design is skipped for
 that boot, so a design that crashes the display cannot put it in a boot loop. The next normal restart,
-or a new upload, loads the design again. The footer is muted while the stale values show.
+or a new upload, loads the design again. The RAM and VRAM detail lines are muted while the stale values show.
+
+The layout file is version 2, `{"v":2,"c":[...],"w":{...}}`. Its `w` object has exactly the ten PC
+widgets, in the same order as `WidgetId` in `layout.h`:
+
+| Key | Font | Draws |
+|---|---|---|
+| `cpu_value` | 4 | `12%` |
+| `cpu_bar` | 0 (bar) | CPU level bar |
+| `ram_value` | 4 | `41%` |
+| `ram_bar` | 0 (bar) | RAM level bar |
+| `vram_value` | 4 | `86%`, or `--%` when there is no VRAM reading |
+| `vram_bar` | 0 (bar) | VRAM level bar, empty when there is no VRAM reading |
+| `temp` | 4 | `55 C`, or `-- C` |
+| `ram_detail` | 2 | `RAM 13.1/31.9 GB` (muted) |
+| `vram_detail` | 2 | `VRAM 8.6/10.0 GB`, or `VRAM --` when the VRAM total is 0 (muted) |
+| `status` | 2 | `PC offline` or `No WiFi` (critical), only when the values are stale |
+
+Every key must be present and no other key is allowed. A version 1 layout (the 1.4.0 keys, including
+`power`) is rejected, so the built-in look is drawn until a version 2 layout is uploaded. Upload
+the layout again after flashing 1.5.0.
+
+## PC service
+
+`device/pcstats/pcstats.py` runs on the PC and serves the stats JSON on port 9101. It uses only the
+Python standard library. It is installed as `C:\Users\user\Tools\pcstats\pcstats.py`.
+
+Task Scheduler runs it through the task `PCStats`:
+
+- Trigger: at logon of the user.
+- Action: `C:\Users\user\AppData\Local\Programs\Python\Python314\pythonw.exe "C:\Users\user\Tools\pcstats\pcstats.py"`
+- Restart: 3 times, every 1 minute.
+- Time limit: none.
+
+After a power cut, the service does not start until someone logs on. Until then the display shows `PC offline`.
+
+### Update or redeploy
+
+From the repo root, in PowerShell:
+
+```powershell
+Copy-Item device\pcstats\pcstats.py C:\Users\user\Tools\pcstats\pcstats.py -Force
+Stop-ScheduledTask PCStats; Get-CimInstance Win32_Process -Filter "Name='pythonw.exe'" | Where-Object CommandLine -match 'pcstats' | ForEach-Object { Stop-Process -Id $_.ProcessId }
+Start-ScheduledTask PCStats
+curl.exe -s http://127.0.0.1:9101/stats
+```
+
+The last line should print the JSON.
+
+### Firewall
+
+Run once, in an admin PowerShell. The rule lets only the display reach port 9101:
+
+```powershell
+New-NetFirewallRule -DisplayName "PC stats 9101 (SmallTV)" -Direction Inbound -Protocol TCP -LocalPort 9101 -RemoteAddress 192.168.1.111 -Action Allow -Profile Any
+```
+
+### PC address
+
+The PC address is `192.168.1.188`. It comes from DHCP, so it can change. The address appears in:
+
+- `smalltv/src/config.h`, the default `STATS_URL`.
+- The URL stored on the display.
+
+The firewall rule does not hold the PC address. Its `RemoteAddress` is the display (`192.168.1.111`).
+
+Reserve `192.168.1.188` for the PC in the router, so it does not change. If it does change, point the
+display at the new address:
+
+```powershell
+curl.exe "http://192.168.1.111/set?url=http://NEW_IP:9101/stats"
+```
+
+### After flashing 1.4.0 on a display that ran 1.3.0
+
+Two things from the old setup can still be on the display:
+
+1. The stored stats URL may still point at the Pi. Set it to the PC:
+
+   ```powershell
+   curl.exe "http://192.168.1.111/set?url=http://192.168.1.188:9101/stats"
+   ```
+
+2. An old Screen Studio design has the Pi labels baked into its base image. Remove the stored design
+   so the built-in look shows:
+
+   ```powershell
+   curl.exe -X POST http://192.168.1.111/design/reset
+   ```
+
+Tests (on the PC): `.venv\Scripts\python -m pytest tests/test_pcstats.py`
 
 ## Pi service
 
@@ -79,7 +167,8 @@ Settings are in `smalltv/src/config.h` (default stats URL, poll interval, backli
 The stats URL can also be changed without a new build, and the change survives restarts:
 `http://192.168.1.111/set?url=http://HOST:9101/stats` (`url=default` goes back to the built-in one).
 
-The screen redraws only when a shown value changes. A temperature the Pi cannot read shows as `-- C`.
+The screen redraws only when a shown value changes. A GPU temperature the PC cannot read shows as `-- C`,
+and a VRAM value it cannot read shows as `--%`.
 Display pins are in `smalltv/platformio.ini`: SPI CLK GPIO14, MOSI GPIO13, DC GPIO0, RST GPIO2,
 no CS, backlight PWM GPIO5 (inverted), SPI mode 3, colour inversion on, BGR.
 
@@ -93,11 +182,11 @@ router rejects the saved password. Join it with a phone, open `192.168.4.1` and 
 After 5 minutes without setup it restarts and tries again.
 
 When WiFi drops later, the screen greys out and shows `No WiFi`. The firmware asks for a reconnect
-every 30 s and restarts after 5 minutes without WiFi. `Pi offline` means WiFi is fine but the Pi
+every 30 s and restarts after 5 minutes without WiFi. `PC offline` means WiFi is fine but the PC
 service does not answer (or answers 503 because its sampler stalled).
 
-A Pi that is off or unreachable blocks each poll for at most about 1.5 s (checked 2026-11-02 by
-dropping the Pi's replies to the display for 30 s).
+A PC that is off or unreachable blocks each poll for at most about 1.5 s (the timing was checked
+2026-11-02 on the Pi, by dropping its replies to the display for 30 s).
 
 `/update` has no password, like the stock firmware: anyone on the home LAN can flash the display.
 

@@ -1,5 +1,5 @@
-// SmallTV Ultra desk display: shows the Raspberry Pi's CPU, RAM, estimated power and temperature.
-// Polls the Pi stats service (STATS_URL) every POLL_MS and keeps /update for WiFi firmware updates.
+// SmallTV Ultra desk display: shows the PC's CPU, RAM, VRAM and GPU temperature.
+// Polls the PC stats service (STATS_URL) every POLL_MS and keeps /update for WiFi firmware updates.
 // A design uploaded to /design/* (kept in LittleFS) replaces the built-in look; device/README.md has the rules.
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
@@ -24,7 +24,7 @@ TFT_eSPI tft;
 ESP8266WebServer server(80);
 ESP8266HTTPUpdateServer updater;
 
-Stats stats = {0, 0, 0, 0, 0, 0};
+Stats stats = {0, 0, 0, 0, 0, 0, 0, 0};
 bool haveStats = false;
 uint32_t lastOkMs = 0;
 uint32_t lastPollMs = 0;
@@ -63,7 +63,7 @@ static void splash(const char* line1, const char* line2) {
     tft.fillScreen(TFT_BLACK);
     tft.setTextDatum(TC_DATUM);
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.drawString("BKK Pi Monitor", 120, 60, 4);
+    tft.drawString("BKK PC Monitor", 120, 60, 4);
     tft.setTextColor(GREY, TFT_BLACK);
     tft.drawString("fw " FW_VERSION, 120, 92, 2);
     tft.setTextColor(TFT_CYAN, TFT_BLACK);
@@ -75,19 +75,19 @@ static void drawFrame() {
     tft.fillScreen(TFT_BLACK);
     tft.setTextDatum(TL_DATUM);
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.drawString("Raspberry Pi", 10, 6, 4);
+    tft.drawString("PC", 10, 6, 4);
     tft.setTextColor(GREY, TFT_BLACK);
     tft.drawString("CPU", 10, 44, 2);
     tft.drawString("RAM", 10, 92, 2);
-    tft.drawString("PWR", 10, 142, 2);
-    tft.drawString("TEMP", 130, 142, 2);
+    tft.drawString("VRAM", 10, 140, 2);
     tft.setTextDatum(BL_DATUM);
     tft.drawString(WiFi.localIP().toString(), 10, 238, 1);
 }
 
+// A NaN value (no reading) keeps the bar grey, like a stale one.
 static void drawBar(int y, float pct, bool stale) {
     int w = barWidth(pct, BAR_W);
-    tft.fillRect(BAR_X, y, w, BAR_H, stale ? GREY : levelColor(pct));
+    tft.fillRect(BAR_X, y, w, BAR_H, stale || isnan(pct) ? GREY : levelColor(pct));
     tft.fillRect(BAR_X + w, y, BAR_W - w, BAR_H, DIM);
 }
 
@@ -99,6 +99,21 @@ static void drawValue(const String& text, int x, int y, int font, int pad, uint1
     tft.setTextPadding(0);
 }
 
+// Left-aligned text at (x, y), padded to pad pixels so the old text is covered.
+static void drawLeft(const String& text, int x, int y, int font, int pad, uint16_t color) {
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextColor(color, TFT_BLACK);
+    tft.setTextPadding(pad);
+    tft.drawString(text, x, y, font);
+    tft.setTextPadding(0);
+}
+
+// MB as GB with one decimal, in integers (the ESP8266 printf has no float). 1024 MB = "1.0".
+static String gbText(int mb) {
+    const int tenths = (mb * 10 + 512) / 1024;
+    return String(tenths / 10) + "." + String(tenths % 10);
+}
+
 // ---- stored design: /base.rgb (240x240 RGB565, big-endian), /layout.json, /anim.bin
 
 static const uint32_t PANEL_PX = 240;
@@ -106,7 +121,7 @@ static const uint32_t BASE_BYTES = PANEL_PX * PANEL_PX * 2;
 static const uint32_t LAYOUT_MAX = 2048;
 static const uint32_t ANIM_HEADER = 48;
 static const uint32_t ANIM_MAX = ANIM_HEADER + 4096;  // v2 header plus at most 4096 cells
-static const uint8_t ALL_WIDGETS = (1u << W_COUNT) - 1;
+static const uint16_t ALL_WIDGETS = (1u << W_COUNT) - 1;
 static const char* const BASE_PATH = "/base.rgb";
 static const char* const LAYOUT_PATH = "/layout.json";
 static const char* const ANIM_PATH = "/anim.bin";
@@ -135,7 +150,7 @@ static void pushBaseRows(File& base, int x, int y, int w, int h) {
 
 static void drawDesignBar(const Rect& r, float pct, bool stale) {
     const int w = barWidth(pct, r.w);
-    tft.fillRect(r.x, r.y, w, r.h, stale ? layout.muted : levelColorOf(layout, pct));
+    tft.fillRect(r.x, r.y, w, r.h, stale || isnan(pct) ? layout.muted : levelColorOf(layout, pct));
     tft.fillRect(r.x + w, r.y, r.w - w, r.h, layout.track);
 }
 
@@ -146,6 +161,7 @@ static void drawDesignText(const Rect& r, const String& text, uint16_t color) {
     tft.drawString(text, r.x + r.w, r.y, r.font);
 }
 
+// Draws one design widget. The detail lines are muted while stale; the base restore clears the old text.
 static void drawDesignWidget(int id, const Rect& r, const Screen& now) {
     const uint16_t value = now.stale ? layout.muted : layout.text;
     tft.setViewport(r.x, r.y, r.w, r.h, false);
@@ -154,20 +170,23 @@ static void drawDesignWidget(int id, const Rect& r, const Screen& now) {
         case W_CPU_BAR: drawDesignBar(r, stats.cpu, now.stale); break;
         case W_RAM_VALUE: drawDesignText(r, String(now.ram) + "%", value); break;
         case W_RAM_BAR: drawDesignBar(r, stats.ram, now.stale); break;
-        case W_POWER: {
-            char text[24];
-            snprintf(text, sizeof(text), "~%d.%d W", now.watts10 / 10, now.watts10 % 10);
-            drawDesignText(r, text, value);
+        case W_VRAM_VALUE:
+            drawDesignText(r, now.vram == SCREEN_NONE ? String("--%") : String(now.vram) + "%", value);
             break;
-        }
+        case W_VRAM_BAR: drawDesignBar(r, stats.vram, now.stale); break;  // NaN gives an empty bar
         case W_TEMP:
-            drawDesignText(r, now.temp == SCREEN_NO_TEMP ? String("-- C") : String(now.temp) + " C", value);
+            drawDesignText(r, now.temp == SCREEN_NONE ? String("-- C") : String(now.temp) + " C", value);
             break;
-        case W_FOOTER:  // muted while stale; the base restore clears the old text
-            drawDesignText(r, String(now.ramUsedMb) + "/" + String(now.ramTotalMb) + " MB", layout.muted);
+        case W_RAM_DETAIL:
+            drawDesignText(r, "RAM " + gbText(now.ramUsedMb) + "/" + gbText(now.ramTotalMb) + " GB", layout.muted);
+            break;
+        case W_VRAM_DETAIL:
+            drawDesignText(r, now.vramTotalMb == 0 ? String("VRAM --")
+                                                   : "VRAM " + gbText(now.vramUsedMb) + "/" + gbText(now.vramTotalMb) + " GB",
+                           layout.muted);
             break;
         case W_STATUS:
-            if (now.stale) drawDesignText(r, now.wifiDown ? "No WiFi" : "Pi offline", layout.critical);
+            if (now.stale) drawDesignText(r, now.wifiDown ? "No WiFi" : "PC offline", layout.critical);
             break;
     }
     tft.resetViewport();
@@ -177,7 +196,7 @@ static void drawDesignWidget(int id, const Rect& r, const Screen& now) {
 // streams the whole base image first.
 static void drawDesign(const Screen& now) {
     const bool full = !shownValid;
-    const uint8_t bits = full ? ALL_WIDGETS : changedWidgets(shown, now);
+    const uint16_t bits = full ? ALL_WIDGETS : changedWidgets(shown, now);
     shown = now;
     shownValid = true;
     if (!bits) return;
@@ -207,22 +226,26 @@ static void drawStats(bool stale, bool wifiDown) {
     shown = now;
     shownValid = true;
     uint16_t fg = stale ? GREY : TFT_WHITE;
-    drawValue(String((int)(stats.cpu + 0.5f)) + "%", 230, 38, 4, 90, fg);
+    drawValue(String(now.cpu) + "%", 230, 38, 4, 90, fg);
     drawBar(68, stats.cpu, stale);
-    drawValue(String((int)(stats.ram + 0.5f)) + "%", 230, 86, 4, 90, fg);
+    drawValue(String(now.ram) + "%", 230, 86, 4, 90, fg);
     drawBar(116, stats.ram, stale);
-    drawValue("~" + String(stats.watts, 1) + " W", 120, 164, 4, 108, fg);
-    drawValue(isnan(stats.tempC) ? String("-- C") : String((int)(stats.tempC + 0.5f)) + " C", 230, 164, 4, 96, fg);
-    tft.setTextDatum(BR_DATUM);
-    tft.setTextPadding(110);
+    drawValue(now.vram == SCREEN_NONE ? String("--%") : String(now.vram) + "%", 230, 134, 4, 90, fg);
+    drawBar(164, stats.vram, stale);
+    drawValue(now.temp == SCREEN_NONE ? String("GPU -- C") : "GPU " + String(now.temp) + " C", 230, 6, 4, 130, fg);
+    drawLeft("RAM " + gbText(now.ramUsedMb) + "/" + gbText(now.ramTotalMb) + " GB", 10, 182, 2, 220, GREY);
+    drawLeft(now.vramTotalMb == 0 ? String("VRAM --")
+                                  : "VRAM " + gbText(now.vramUsedMb) + "/" + gbText(now.vramTotalMb) + " GB",
+             10, 202, 2, 220, GREY);
+    // The status slot is cleared first, so an old "PC offline" never stays behind.
+    tft.fillRect(120, 222, 110, 16, TFT_BLACK);
     if (stale) {
+        tft.setTextDatum(BR_DATUM);
+        tft.setTextPadding(110);
         tft.setTextColor(TFT_RED, TFT_BLACK);
-        tft.drawString(wifiDown ? "No WiFi" : "Pi offline", 230, 238, 2);
-    } else {
-        tft.setTextColor(GREY, TFT_BLACK);
-        tft.drawString(String(stats.ramUsedMb) + "/" + String(stats.ramTotalMb) + " MB", 230, 238, 1);
+        tft.drawString(wifiDown ? "No WiFi" : "PC offline", 230, 238, 2);
+        tft.setTextPadding(0);
     }
-    tft.setTextPadding(0);
 }
 
 static void poll() {
@@ -265,7 +288,7 @@ static void handleSet() {
 }
 
 static void handleRoot() {
-    String text = "SmallTV Pi monitor fw " FW_VERSION "\n";
+    String text = "SmallTV PC monitor fw " FW_VERSION "\n";
     text += "stats url: " + String(statsUrl) + "\n";
     text += "wifi: " + WiFi.SSID() + " rssi " + String(WiFi.RSSI()) + " dBm\n";
     text += "last fetch: " + lastResult + "\n";
