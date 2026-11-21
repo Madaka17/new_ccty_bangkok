@@ -281,9 +281,10 @@ export default function App() {
  const sidebarProps = { page, onNavigate: navigate, aiActive, liveCount: activeCams.length, weatherPref: weather.pref, onWeatherPref: weather.setPref, weatherScene: weather.scene, weatherBlocked: weather.blocked };
 
   return (
-    <div className="min-h-full lg:grid lg:grid-cols-[232px_1fr]">
+    <div className="min-h-full app-backdrop lg:p-4">
+    <div className="min-h-full lg:min-h-[calc(100vh-2rem)] lg:grid lg:grid-cols-[248px_1fr] lg:rounded-[22px] lg:bg-[var(--c-ground)] lg:border lg:border-[var(--c-border)] lg:shadow-[var(--c-card-shadow)] lg:overflow-clip">
       {/* Desktop sidebar */}
-      <aside className="hidden lg:block sticky top-0 h-screen">
+      <aside className="hidden lg:block sticky top-4 h-[calc(100vh-2rem)]">
         <Sidebar {...sidebarProps} />
       </aside>
 
@@ -419,7 +420,7 @@ export default function App() {
                 <iframe
                   src="/enviro/"
                   title="ENVIRO Seismic Command"
-                  className="w-full h-[calc(100dvh-17rem)] lg:h-[calc(100vh-11rem)] border-0 bg-transparent"
+                  className="w-full h-[calc(100dvh-17rem)] lg:h-[calc(100vh-13rem)] border-0 bg-transparent"
                 />
               </>
             )}
@@ -456,6 +457,7 @@ export default function App() {
           )}
         </AnimatePresence>
       </div>
+    </div>
     </div>
   );
 }
