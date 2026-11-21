@@ -68,29 +68,36 @@
    take care, none = no data yet, --c-yours = what belongs to the viewer (my district, my route).
    --c-here marks the page you are on. Light keeps the same grammar on a white / zinc ground. */
 :root {
-  --c-ground: #f7f7f8;
+  --c-backdrop: linear-gradient(135deg, #eef3fb 0%, #f3effa 55%, #fbeff5 100%);
+  --c-ground: #f6f8fc;
   --c-surface: #ffffff;
-  --c-raised: #f1f1f3;
-  --c-border: #e4e4e7;
-  --c-border-strong: #d4d4d8;
-  --c-ink: #18181b;
-  --c-muted: #52525b;
+  --c-raised: #f1f4f9;
+  --c-border: #e7ebf2;
+  --c-border-strong: #d5dbe6;
+  --c-ink: #1e2433;
+  --c-muted: #5b6475;
   --c-line: #18181b;
-  --c-here: #c2410c;
-  --c-here-tint: #fff1e6;
-  --c-here-text: #9a3412;
-  --c-primary: #c2410c;
-  --c-primary-fill: #f97316;
-  --c-primary-hover: #ea580c;
-  --c-primary-tint: #fff1e6;
-  --c-on-primary: #0f0f10;
+  --c-here: #0a72b5;
+  --c-here-tint: #e3f3fd;
+  --c-here-text: #0a72b5;
+  --c-primary: #0a72b5;
+  --c-primary-fill: #0b7bc0;
+  --c-primary-hover: #0a6aa6;
+  --c-primary-tint: #e3f3fd;
+  --c-on-primary: #ffffff;
   --c-sel-bg: var(--c-primary-fill);
   --c-sel-text: var(--c-on-primary);
   --c-wave: #d4d4d8;
   --c-yours: #8250df;
   --c-yours-tint: #fbefff;
-  --c-glow: 0 6px 16px -8px rgba(234, 88, 12, 0.45);
+  --c-glow: 0 8px 18px -8px rgba(11, 123, 192, 0.45);
   --c-shadow: 0 1px 0 rgba(24, 24, 27, 0.04);
+  --c-card-shadow: 0 1px 2px rgba(30, 36, 51, 0.04), 0 6px 20px -10px rgba(30, 36, 51, 0.12);
+  --c-series-a: #8b5cf6;
+  --c-series-b: #ec4899;
+  --c-chip-up-bg: #dcfce7;
+  --c-chip-up-text: #15803d;
+  --c-radius-card: 16px;
 
   --ok-ring: #1a7f37;   --ok-fill: var(--c-surface);   --ok-text: #1a7f37;   --ok-tint: #dafbe1;
   --watch-ring: #ca8a04; --watch-fill: #fef9c3;        --watch-text: #854d0e; --watch-tint: #fef9c3;
@@ -98,6 +105,13 @@
   --none-ring: #a1a1aa; --none-fill: var(--c-surface); --none-text: #52525b; --none-tint: #f4f4f5;
 }
 .dark {
+  --c-backdrop: var(--c-ground);
+  --c-card-shadow: none;
+  --c-series-a: #a78bfa;
+  --c-series-b: #f472b6;
+  --c-chip-up-bg: rgba(86, 211, 100, 0.12);
+  --c-chip-up-text: #56d364;
+  --c-radius-card: 12px;
   --c-ground: #0f0f10;
   --c-surface: #18181b;
   --c-raised: #222226;
@@ -168,11 +182,19 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
+/* Light: the pastel backdrop behind the framed dashboard (dark keeps the flat orange-console ground) */
+:root:not(.dark) body { background: var(--c-backdrop); background-attachment: fixed; }
+.app-backdrop { background: var(--c-backdrop); }
+/* Dashboard card: white tile, 1px seam, soft shadow in light; dark stays flat (the shadow token is none) */
+.dash-card { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--c-radius-card); box-shadow: var(--c-card-shadow); }
 
 h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.005em; }
 /* Panels: flat, a 1px seam, small corners; no shadow, no glass */
 .rounded-xl.border, .rounded-2xl.border { border-radius: 12px; }
 .rounded-xl.border.bg-white, .rounded-2xl.border.bg-white, .glass, .glass-strong { box-shadow: none; }
+/* Light: cards site-wide get the soft look (14px corners, card shadow); these come after the Panels rules so they win */
+:root:not(.dark) .rounded-xl.border, :root:not(.dark) .rounded-2xl.border { border-radius: 14px; }
+:root:not(.dark) .rounded-xl.border.bg-white, :root:not(.dark) .rounded-2xl.border.bg-white { box-shadow: var(--c-card-shadow); }
 ::selection { background: color-mix(in srgb, var(--c-primary) 30%, transparent); color: var(--c-ink); }
 /* Figures and times read in the mono face, columns line up */
 .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }

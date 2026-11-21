@@ -16,6 +16,7 @@ import { useActiveCameras, useFavorites } from './lib/store.js';
 import { trackView, startHeartbeat } from './lib/telemetry.js';
 import WeatherFx, { WeatherBadge, WeatherOverlay, skyClass } from './components/fx/WeatherFx.jsx';
 import useWeatherScene from './lib/useWeatherScene.js';
+import { readMyDistrict } from './lib/district.js';
 
 // Every page but the dashboard (the first page) loads when it is first opened: the maps (maplibre-gl),
 // the live video (hls.js) and the camera AI pages stay out of the first download
@@ -91,6 +92,7 @@ export default function App() {
  const [camStatus, setCamStatus] = useState({}); // camid -> latest AI measurement (level, rate, ...)
  const scrollVisible = useScrollDirection();
  const alertCount = useAlertPopupCount();
+ const [myDistrict, setMyDistrict] = useState(readMyDistrict);   // the saved district, shown in the top bar chip
  // Every camera (ours, iTIC, BMA) for the live camera page; the other pages keep ours only
  const [allCameras, setAllCameras] = useState(null);
  const [allFailed, setAllFailed] = useState(false);   // then the page shows ours only
@@ -118,6 +120,9 @@ export default function App() {
  dead.forEach((id) => remove(id));
     }
   }, [allCameras, active, remove]);
+
+  // Re-read the saved district on every page change, so a pick on the district page shows at once
+ useEffect(() => setMyDistrict(readMyDistrict()), [page]);
 
   // Visitor telemetry: one view per page, heartbeat while open
  useEffect(() => {
@@ -278,12 +283,13 @@ export default function App() {
  const openFloodReport = useCallback(() => navigate('report'), [navigate]);
 
  const weather = useWeatherScene();
- const sidebarProps = { page, onNavigate: navigate, aiActive, liveCount: activeCams.length, weatherPref: weather.pref, onWeatherPref: weather.setPref, weatherScene: weather.scene, weatherBlocked: weather.blocked };
+ const sidebarProps = { page, onNavigate: navigate, onReport: openFloodReport, alertCount, aiActive, liveCount: activeCams.length, weatherPref: weather.pref, onWeatherPref: weather.setPref, weatherScene: weather.scene, weatherBlocked: weather.blocked };
 
   return (
-    <div className="min-h-full lg:grid lg:grid-cols-[232px_1fr]">
+    <div className="min-h-full app-backdrop lg:p-4">
+    <div className="min-h-full lg:min-h-[calc(100vh-2rem)] lg:grid lg:grid-cols-[248px_1fr] lg:rounded-[22px] lg:bg-[var(--c-ground)] lg:border lg:border-[var(--c-border)] lg:shadow-[var(--c-card-shadow)] lg:overflow-clip">
       {/* Desktop sidebar */}
-      <aside className="hidden lg:block sticky top-0 h-screen">
+      <aside className="hidden lg:block sticky top-4 h-[calc(100vh-2rem)]">
         <Sidebar {...sidebarProps} />
       </aside>
 
@@ -308,6 +314,18 @@ export default function App() {
           </button>
         )}
         <WeatherBadge scene={weather.scene} />
+        <button
+          type="button"
+          onClick={() => navigate('alerts')}
+          aria-label="ประกาศเตือน"
+          title="ประกาศเตือน"
+          className="cursor-pointer relative shrink-0 w-11 h-11 rounded-xl grid place-items-center text-[var(--c-ink)] hover:bg-[var(--c-raised)]"
+        >
+          <NavIcon name="alerts" className="w-5 h-5" />
+          {alertCount > 0 && (
+            <span aria-hidden="true" className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-[var(--act-ring)] ring-2 ring-[var(--c-surface)]" />
+          )}
+        </button>
         <ThemeToggle />
       </div>
       {menuOpen && (
@@ -326,7 +344,7 @@ export default function App() {
 
       {/* Earthquake scrolls inside its frame, so on desktop the page itself must fit the screen */}
       <div className={`min-h-full flex flex-col lg:pt-0 pt-4 pb-24 min-w-0 ${page === 'enviro' ? 'lg:pb-4' : ''}`}>
-        <TopBar onNavigate={navigate} liveCount={activeCams.length} weatherScene={weather.scene} />
+        <TopBar onNavigate={navigate} liveCount={activeCams.length} weatherScene={weather.scene} alertCount={alertCount} district={myDistrict} />
         <main className="flex-1 px-4 sm:px-6 min-w-0 lg:pt-4">
           {/* One width and one spacing rule for every page */}
           <motion.div
@@ -419,7 +437,7 @@ export default function App() {
                 <iframe
                   src="/enviro/"
                   title="ENVIRO Seismic Command"
-                  className="w-full h-[calc(100dvh-17rem)] lg:h-[calc(100vh-11rem)] border-0 bg-transparent"
+                  className="w-full h-[calc(100dvh-17rem)] lg:h-[calc(100vh-13rem)] border-0 bg-transparent"
                 />
               </>
             )}
@@ -456,6 +474,7 @@ export default function App() {
           )}
         </AnimatePresence>
       </div>
+    </div>
     </div>
   );
 }
