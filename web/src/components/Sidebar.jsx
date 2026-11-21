@@ -103,9 +103,9 @@ export default function Sidebar({ page, onNavigate, aiActive, liveCount = 0, ale
                     const on = page === item.id;
                     const badge = badges[item.id];
                     const pillClass = on
-                      ? 'bg-white/25 text-[var(--c-on-primary)]'
+                      ? 'bg-[var(--c-surface)] text-[var(--c-primary)]'
                       : badge?.tone === 'alert'
-                        ? 'bg-[var(--c-series-b)] text-white'
+                        ? 'bg-[var(--act-fill)] text-white dark:text-[#0f0f10]'
                         : 'bg-[var(--c-raised)] text-[var(--c-ink)]';
                     return (
                       <li key={item.id}>

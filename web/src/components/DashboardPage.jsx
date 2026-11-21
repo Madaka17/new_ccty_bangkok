@@ -54,9 +54,10 @@ export default function DashboardPage({ isActive, incidents, onAskText, onOpenRo
   // Road-flood sensor counts (BMA drainage), for the flooded-road figure on the city status strip
   const [flood, setFlood] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-  // time range for the vehicle and BMA cards; the vehicle rows are kept for the CSV download
+  // time range drives only the vehicle bar card; its rows are kept for the CSV download
   const [range, setRange] = useState('24h');
   const vehicleRowsRef = useRef([]);
+  const [hasRows, setHasRows] = useState(false);
   // wide screens show the news card beside the roads at once; phones only once the details are open
   const [isWide, setIsWide] = useState(() => window.matchMedia?.('(min-width: 1024px)').matches ?? true);
   useEffect(() => {
@@ -213,6 +214,7 @@ export default function DashboardPage({ isActive, incidents, onAskText, onOpenRo
 
   // CSV of the vehicle bars for the range on screen (Thai column names, BOM so Excel reads Thai)
   const downloadVehicleCsv = () => {
+    if (!vehicleRowsRef.current.length) return;
     const csv = toCsv(vehicleRowsRef.current, [
       { key: 'label', label: 'ช่วงเวลา' },
       { key: 'cars', label: 'รถยนต์' },
@@ -225,7 +227,7 @@ export default function DashboardPage({ isActive, incidents, onAskText, onOpenRo
     document.body.appendChild(a);
     a.click();
     a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   return (
@@ -245,19 +247,26 @@ export default function DashboardPage({ isActive, incidents, onAskText, onOpenRo
         range={range}
         onRange={setRange}
         onDownload={downloadVehicleCsv}
+        downloadDisabled={!hasRows}
         extra={
           <>
             <div className="hidden md:block">
-              <DistrictButton district={myDistrict} onNavigate={onNavigate} className="h-10" />
+              <DistrictButton district={myDistrict} onNavigate={onNavigate} className="h-11" />
             </div>
-            <Button size="md" onClick={load} loading={refreshing} className="min-h-10">
+            <Button size="md" onClick={load} loading={refreshing} className="min-h-11">
               รีเฟรช
             </Button>
           </>
         }
       />
 
-      <VehicleBarCard range={range} onRows={(rows) => { vehicleRowsRef.current = rows; }} />
+      <VehicleBarCard
+        range={range}
+        onRows={(rows) => {
+          vehicleRowsRef.current = rows;
+          setHasRows(rows.length > 0);
+        }}
+      />
 
       <KpiCards
         bkkFlow={bkkFlow}

@@ -42,3 +42,40 @@ describe('VehicleBars', () => {
     expect(html).not.toMatch(/#[0-9a-fA-F]{6}/);
   });
 });
+
+describe('VehicleBars sizing', () => {
+  test('draws at the measured width, 240 units tall, 1 unit per CSS px', () => {
+    const html = renderToStaticMarkup(<VehicleBars rows={rows} width={360} />);
+    expect(html).toContain('viewBox="0 0 360 240"');
+    expect(html).toContain('height="240"');
+    expect(html).toContain('width="100%"');
+  });
+
+  test('axis labels are 12 px', () => {
+    const html = renderToStaticMarkup(<VehicleBars rows={rows} />);
+    expect(html).not.toContain('font-size="11"');
+    expect(html).toContain('font-size="12"');
+  });
+
+  test('narrow charts (under 480 px) thin the x labels harder', () => {
+    const many = Array.from({ length: 24 }, (_, i) => ({ key: `k${i}`, label: `${i} น.`, cars: 1, motorcycles: 1 }));
+    const narrow = renderToStaticMarkup(<VehicleBars rows={many} width={360} />);
+    const wide = renderToStaticMarkup(<VehicleBars rows={many} width={640} />);
+    // thinLabels(24, 6) = 4 gives labels at 0,4,...,20 = six; thinLabels(24, 12) = 2 gives twelve
+    expect(narrow.match(/text-anchor="middle"/g)).toHaveLength(6);
+    expect(wide.match(/text-anchor="middle"/g)).toHaveLength(12);
+  });
+
+  test('bars keep width 6 when they fit and shrink (min 2) when there are too many buckets', () => {
+    const few = renderToStaticMarkup(<VehicleBars rows={rows} width={640} />);
+    expect(few).toMatch(/<rect x="[^"]*" y="[^"]*" width="6"[^>]*fill="var\(--c-series-a\)"/);
+    const many = Array.from({ length: 100 }, (_, i) => ({ key: `k${i}`, label: `${i} น.`, cars: 5, motorcycles: 5 }));
+    const html = renderToStaticMarkup(<VehicleBars rows={many} width={640} />);
+    const widths = [...html.matchAll(/<rect x="[^"]*" y="[^"]*" width="([^"]+)"[^>]*fill="var\(--c-series-[ab]\)"/g)].map((m) => Number(m[1]));
+    expect(widths).toHaveLength(200);
+    for (const w of widths) {
+      expect(w).toBeGreaterThanOrEqual(2);
+      expect(w).toBeLessThan(6);
+    }
+  });
+});

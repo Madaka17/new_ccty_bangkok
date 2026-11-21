@@ -34,6 +34,10 @@ describe('KpiCards', () => {
     expect(html).toContain('รอข้อมูล');
   });
 
+  test('traffic score has no /100 suffix', () => {
+    expect(render({ bkkFlow: 80 })).not.toContain('/100');
+  });
+
   test('tiles are buttons and use tokens, not raw colours', () => {
     const html = render();
     expect(html.match(/<button/g)).toHaveLength(4);

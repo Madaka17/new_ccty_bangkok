@@ -1,4 +1,24 @@
-// Small pieces shared by the overview cards: empty block, series legend, hover tooltip.
+import { useEffect, useState } from 'react';
+
+// Small pieces shared by the overview cards: empty block, series legend, hover tooltip, chart width.
+
+// Width in CSS px of the element behind ref, kept current with a ResizeObserver. 640 until it is measured.
+export function useChartWidth(ref) {
+  const [width, setWidth] = useState(640);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const apply = (w) => {
+      if (w > 0) setWidth(Math.round(w));
+    };
+    apply(el.clientWidth);
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver((entries) => apply(entries[0]?.contentRect?.width ?? 0));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return width;
+}
 
 export function EmptyBlock({ text, className = 'h-56' }) {
   return (

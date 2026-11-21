@@ -38,4 +38,18 @@ describe('RecentIncidentsTable', () => {
     // each row shows its title in the table and again in the phone list: six rows, two views
     expect(html.match(/เหตุ\d/g)).toHaveLength(12);
   });
+
+  test('a row with no time says so instead of a relative time', () => {
+    const html = renderToStaticMarkup(
+      <RecentIncidentsTable incidents={{ camera: [{ id: 'x', title: 'ไม่มีเวลา', kind: 'accident' }], longdo: [] }} onOpen={() => {}} />,
+    );
+    expect(html).toContain('ไม่ทราบเวลา');
+    expect(html).not.toContain('ยังไม่ได้วัด');
+  });
+
+  test('sort headers and row buttons meet the 44px touch target', () => {
+    const html = renderToStaticMarkup(<RecentIncidentsTable incidents={incidents} onOpen={() => {}} />);
+    expect(html).not.toContain('min-h-10');
+    expect(html).toContain('min-h-11');
+  });
 });

@@ -13,7 +13,7 @@ describe('DashboardPage overview cards', () => {
     const html = renderToStaticMarkup(
       <DashboardPage isActive={false} incidents={{ camera: [], longdo: [] }} onNavigate={() => {}} />,
     );
-    expect(html).toContain('role="tablist"');
+    expect(html).toContain('role="group"');
     expect(html).toContain('ดาวน์โหลด');
     expect(html).toContain('รถที่ผ่านกล้อง AI');
     expect(html).toContain('คะแนนจราจร กทม.');

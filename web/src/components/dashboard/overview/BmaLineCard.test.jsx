@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import BmaLineCard from './BmaLineCard.jsx';
 
 const hourly = [
@@ -28,5 +28,28 @@ describe('BmaLineCard', () => {
   test('never prints NaN', () => {
     const html = renderToStaticMarkup(<BmaLineCard hourly={[{ hour: 'bad', cars: 1 }]} />);
     expect(html).not.toContain('NaN');
+  });
+});
+
+describe('BmaLineCard sizing and latest hour', () => {
+  test('draws the two-line chart 200 units tall at 1 unit per CSS px', () => {
+    const html = renderToStaticMarkup(<BmaLineCard hourly={hourly} />);
+    expect(html).toContain('viewBox="0 0 640 200"');
+    expect(html).toContain('height="200"');
+    expect(html).toContain('width="100%"');
+  });
+
+  test('the big number uses the last complete hour while the current hour is still running', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 21, 10, 30));
+    try {
+      const html = renderToStaticMarkup(<BmaLineCard hourly={hourly} />);
+      // 10:00 is still running, so 09:00 is the number: (200 + 50) / 4 = 62.5 per camera
+      expect(html).toContain('62.5');
+      expect(html).toContain('ล่าสุด 09 น.');
+      expect(html).not.toContain('>130<');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

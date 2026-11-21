@@ -1,11 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { bmaHourlyLines, thinLabels } from '../../../lib/overviewData.js';
 import { fmtNum } from '../format.js';
 import { linePath, niceMax } from './chartMath.js';
-import { ChartTip, EmptyBlock, SeriesLegend, TipRow } from './ChartParts.jsx';
+import { ChartTip, EmptyBlock, SeriesLegend, TipRow, useChartWidth } from './ChartParts.jsx';
 
-const W = 640;
-const H = 220;
+const H = 200;
 const PAD = { l: 36, r: 12, t: 12, b: 26 };
 const SERIES = [
   { label: 'รถยนต์', token: 'var(--c-series-a)' },
@@ -13,8 +12,10 @@ const SERIES = [
 ];
 
 // Per-camera averages per hour as two smooth lines, with a crosshair on hover or touch.
-function BmaLines({ rows }) {
+function BmaLines({ rows, width = 640 }) {
   const [hover, setHover] = useState(null);
+  // one SVG unit is one CSS px: the viewBox is the measured width
+  const W = width;
   const n = rows.length;
   const top = niceMax(Math.max(...rows.flatMap((r) => [r.cars, r.motorcycles])));
   const plotW = W - PAD.l - PAD.r;
@@ -23,7 +24,7 @@ function BmaLines({ rows }) {
   const yOf = (v) => PAD.t + plotH * (1 - v / top);
   const carPts = rows.map((r, i) => ({ x: xOf(i), y: yOf(r.cars) }));
   const motorPts = rows.map((r, i) => ({ x: xOf(i), y: yOf(r.motorcycles) }));
-  const step = thinLabels(n, 12);
+  const step = thinLabels(n, W < 480 ? 6 : 12);
   const ticks = [0, 1, 2, 3, 4].map((k) => Math.round((top * k) / 4));
   const hovered = hover != null ? rows[hover] : null;
 
@@ -38,7 +39,9 @@ function BmaLines({ rows }) {
     <div className="relative">
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        className="w-full h-auto select-none"
+        width="100%"
+        height={H}
+        className="block select-none"
         role="img"
         aria-label={`กราฟรถเฉลี่ยต่อกล้องรายชั่วโมง ${n} ช่วงเวลา`}
         onPointerMove={onMove}
@@ -47,7 +50,7 @@ function BmaLines({ rows }) {
         {ticks.map((v, k) => (
           <g key={k}>
             <line x1={PAD.l} x2={W - PAD.r} y1={yOf(v)} y2={yOf(v)} stroke="var(--c-border)" strokeWidth="1" />
-            <text x={PAD.l - 6} y={yOf(v) + 4} textAnchor="end" fontSize="11" fill="var(--c-muted)">
+            <text x={PAD.l - 6} y={yOf(v) + 4} textAnchor="end" fontSize="12" fill="var(--c-muted)">
               {fmtNum(v)}
             </text>
           </g>
@@ -56,7 +59,7 @@ function BmaLines({ rows }) {
         <path d={linePath(motorPts)} fill="none" stroke="var(--c-series-b)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
         {rows.map((r, i) =>
           i % step === 0 ? (
-            <text key={r.hour ?? r.t} x={xOf(i)} y={H - 8} textAnchor="middle" fontSize="11" fill="var(--c-muted)">
+            <text key={r.hour ?? r.t} x={xOf(i)} y={H - 8} textAnchor="middle" fontSize="12" fill="var(--c-muted)">
               {r.label}
             </text>
           ) : null,
@@ -102,7 +105,13 @@ function BmaLines({ rows }) {
 // City-wide average per camera per hour, from the BMA hourly trends.
 export default function BmaLineCard({ hourly }) {
   const lines = useMemo(() => bmaHourlyLines(hourly), [hourly]);
-  const latest = lines[lines.length - 1];
+  const boxRef = useRef(null);
+  const width = useChartWidth(boxRef);
+  // The big number is the last hour that has finished: the hour still running is only partly counted
+  const now = new Date();
+  const thisHourStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours()).getTime() / 1000;
+  const last = lines[lines.length - 1];
+  const latest = lines.length >= 2 && last.t >= thisHourStart ? lines[lines.length - 2] : last;
 
   return (
     <section aria-labelledby="bma-line-title" className="dash-card p-5">
@@ -122,8 +131,8 @@ export default function BmaLineCard({ hourly }) {
         </div>
         <SeriesLegend items={SERIES} />
       </div>
-      <div className="mt-4">
-        {lines.length ? <BmaLines rows={lines} /> : <EmptyBlock text="ยังไม่มีข้อมูลรายชั่วโมงของ กทม." />}
+      <div className="mt-4" ref={boxRef}>
+        {lines.length ? <BmaLines rows={lines} width={width} /> : <EmptyBlock text="ยังไม่มีข้อมูลรายชั่วโมงของ กทม." />}
       </div>
     </section>
   );

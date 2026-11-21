@@ -9,6 +9,7 @@ const KIND = {
 };
 const SOURCE = { camera: 'กล้อง AI', longdo: 'ข่าวจราจร' };
 const MAX_ROWS = 6;
+const timeText = (at) => (at == null ? 'ไม่ทราบเวลา' : agoText(at));
 
 function Thumb({ image }) {
   if (image) {
@@ -36,8 +37,9 @@ function KindChip({ kind }) {
 // The recent incidents, camera and news merged. Time and kind can be sorted; each row opens the incidents tab.
 export default function RecentIncidentsTable({ incidents, onOpen }) {
   const [sort, setSort] = useState({ key: 'at', dir: 'desc' });
-  const base = useMemo(() => incidentRows(incidents).slice(0, MAX_ROWS), [incidents]);
-  const rows = useMemo(() => sortRows(base, sort.key, sort.dir), [base, sort]);
+  const all = useMemo(() => incidentRows(incidents), [incidents]);
+  // sort the whole list first, then take the top rows, so the sort chooses which rows show
+  const rows = useMemo(() => sortRows(all, sort.key, sort.dir).slice(0, MAX_ROWS), [all, sort]);
 
   const toggle = (key) =>
     setSort((s) => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' }));
@@ -60,13 +62,13 @@ export default function RecentIncidentsTable({ incidents, onOpen }) {
                 <tr className="text-left text-xs text-[var(--c-muted)]">
                   <th scope="col" className="pb-2 font-medium">เหตุ</th>
                   <th scope="col" aria-sort={ariaSort('kind')} className="pb-2 font-medium">
-                    <button type="button" onClick={() => toggle('kind')} className="inline-flex min-h-10 items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--c-primary)]">
+                    <button type="button" onClick={() => toggle('kind')} className="inline-flex min-h-11 items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--c-primary)]">
                       ประเภท <span aria-hidden="true">{arrow('kind')}</span>
                     </button>
                   </th>
                   <th scope="col" className="pb-2 font-medium">แหล่ง</th>
                   <th scope="col" aria-sort={ariaSort('at')} className="pb-2 font-medium">
-                    <button type="button" onClick={() => toggle('at')} className="inline-flex min-h-10 items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--c-primary)]">
+                    <button type="button" onClick={() => toggle('at')} className="inline-flex min-h-11 items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--c-primary)]">
                       เวลา <span aria-hidden="true">{arrow('at')}</span>
                     </button>
                   </th>
@@ -83,7 +85,7 @@ export default function RecentIncidentsTable({ incidents, onOpen }) {
                     </td>
                     <td className="py-2 pr-3"><KindChip kind={r.kind} /></td>
                     <td className="py-2 pr-3 text-[var(--c-muted)]">{SOURCE[r.source] || ''}</td>
-                    <td className="num whitespace-nowrap py-2 text-[var(--c-muted)]">{agoText(r.at)}</td>
+                    <td className="num whitespace-nowrap py-2 text-[var(--c-muted)]">{timeText(r.at)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -98,7 +100,7 @@ export default function RecentIncidentsTable({ incidents, onOpen }) {
                       <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--c-muted)]">
                         <KindChip kind={r.kind} />
                         <span>{SOURCE[r.source] || ''}</span>
-                        <span className="num">{agoText(r.at)}</span>
+                        <span className="num">{timeText(r.at)}</span>
                       </span>
                     </span>
                   </button>

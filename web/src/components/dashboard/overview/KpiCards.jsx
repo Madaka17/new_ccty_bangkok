@@ -21,7 +21,6 @@ export default function KpiCards({ bkkFlow, incidentCount, floodCount, online, o
       id: 'traffic',
       label: 'คะแนนจราจร กทม.',
       value: bkkFlow != null ? fmtNum(bkkFlow) : '–',
-      suffix: bkkFlow != null ? '/100' : '',
       chip: flow.label,
       chipKey: flow.key,
       onClick: () => onNavigate?.('map'),
@@ -30,7 +29,6 @@ export default function KpiCards({ bkkFlow, incidentCount, floodCount, online, o
       id: 'incidents',
       label: 'อุบัติเหตุและรถเสีย',
       value: incidentCount != null ? fmtNum(incidentCount) : '–',
-      suffix: '',
       chip: 'ตอนนี้',
       chipKey: 'neutral',
       onClick: () => onIncidents?.(),
@@ -39,7 +37,6 @@ export default function KpiCards({ bkkFlow, incidentCount, floodCount, online, o
       id: 'flood',
       label: 'ถนนน้ำท่วม',
       value: hasFlood ? fmtNum(floodCount) : '–',
-      suffix: '',
       chip: floodChip.label,
       chipKey: floodChip.key,
       onClick: () => onNavigate?.('water'),
@@ -48,7 +45,6 @@ export default function KpiCards({ bkkFlow, incidentCount, floodCount, online, o
       id: 'visitors',
       label: 'คนดูอยู่ตอนนี้',
       value: online != null ? fmtNum(online) : '–',
-      suffix: '',
       chip: 'สด',
       chipKey: 'green',
       onClick: () => onNavigate?.('visitors'),
@@ -67,7 +63,6 @@ export default function KpiCards({ bkkFlow, incidentCount, floodCount, online, o
           <span className="text-xs text-[var(--c-muted)]">{t.label}</span>
           <span className="flex items-end gap-1.5">
             <span className="num text-[28px] font-bold leading-9 text-[var(--c-ink)]">{t.value}</span>
-            {t.suffix && <span className="pb-1 text-xs text-[var(--c-muted)]">{t.suffix}</span>}
           </span>
           <span className={`w-fit rounded-full px-2.5 py-0.5 text-xs font-medium ${chipClass(t.chipKey)}`}>{t.chip}</span>
         </button>
