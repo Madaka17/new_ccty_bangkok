@@ -3,6 +3,8 @@ Health, the web UI shell and the files served next to it.
 """
 import os
 import shutil
+import tempfile
+import threading
 import time
 from datetime import datetime
 
@@ -10,10 +12,70 @@ from fastapi import APIRouter
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from backend.core.instance import DATA_DIR, IS_STAGE, PORT
+from backend.core.env_flags import flag_on
 from backend.vision.yolo_switch import gpu_memory
 from backend.services import bma_scanner, CAMERAS_FILE, detector, helmet, INDEX_HTML, SERVER_START, WEB_BUILT, WEB_DIST, wrongway
 
 router = APIRouter()
+
+
+def _scan_state(now):
+    """(scan status dict, age in seconds or None, fresh?) for the BMA scanner. Fresh = last cycle under 15 min,
+    or a fresh process still in its first-cycle grace period (the first cycle over 574 cameras takes minutes)."""
+    scan = bma_scanner.get_status()
+    # bma_service stores last_scan_time as "%Y-%m-%d %H:%M:%S" text (the UI shows it as is)
+    last_scan = scan.get("last_scan_time")
+    last_scan = datetime.strptime(last_scan, "%Y-%m-%d %H:%M:%S").timestamp() if last_scan else 0
+    scan_age = int(now - last_scan) if last_scan else None
+    scan_ok = (scan_age is not None and scan_age < 15 * 60) or (not last_scan and now - SERVER_START < 20 * 60)
+    return scan, scan_age, scan_ok
+
+
+def _scan_ok(now) -> bool:
+    return _scan_state(now)[2]
+
+
+def _disk_ok() -> bool:
+    """Write a tiny uniquely named file in the data directory, then remove it. False only when the create or the
+    write fails, e.g. a read-only filesystem. A unique name keeps concurrent probes from clashing."""
+    try:
+        fd, path = tempfile.mkstemp(prefix=".healthz-", dir=os.getenv("BMA_DATA_DIR", DATA_DIR))
+    except OSError:
+        return False
+    try:
+        try:
+            os.write(fd, str(time.time()).encode("ascii"))
+            ok = True
+        finally:
+            os.close(fd)
+    except OSError:
+        ok = False
+    try:
+        os.unlink(path)
+    except OSError:
+        pass   # the probe file is only a probe: a failed delete does not make the disk unhealthy
+    return ok
+
+
+HEALTHZ_TTL = 20                 # seconds: a flood of probes costs one scan check and one disk write per window
+_monotonic = time.monotonic      # its own name so tests can drive the clock
+_healthz_lock = threading.Lock()
+_healthz_cache = {}              # {"at": monotonic time, "body": dict, "status": int}
+
+
+@router.api_route("/healthz", methods=["GET", "HEAD"])
+def healthz():
+    """Public, minimal health check for outside uptime monitors. Only three keys, nothing about the machine.
+    The result is cached for HEALTHZ_TTL seconds, so no outside caller can make it write to the disk on every call."""
+    with _healthz_lock:
+        now = _monotonic()
+        if not _healthz_cache or now - _healthz_cache["at"] >= HEALTHZ_TTL:
+            scan = _scan_ok(time.time()) if flag_on(os.environ, "BMA_FETCH") else None   # BMA_FETCH=0: never scans here
+            disk = _disk_ok()
+            ok = disk and scan is not False
+            _healthz_cache.update(at=now, body={"ok": ok, "scan": scan, "disk": disk}, status=200 if ok else 503)
+        return JSONResponse(_healthz_cache["body"], status_code=_healthz_cache["status"],
+                            headers={"Cache-Control": "no-store"})
 
 
 @router.get("/api/health")
@@ -21,13 +83,7 @@ def health():
     """One call for a watchdog: 200 + ok=true when the scanner ran recently and the detector answers.
     Returns 503 when the BMA scan is stale (> 3 cycles) so an external monitor can restart the server."""
     now = time.time()
-    scan = bma_scanner.get_status()
-    # bma_service stores last_scan_time as "%Y-%m-%d %H:%M:%S" text (the UI shows it as is)
-    last_scan = scan.get("last_scan_time")
-    last_scan = datetime.strptime(last_scan, "%Y-%m-%d %H:%M:%S").timestamp() if last_scan else 0
-    scan_age = int(now - last_scan) if last_scan else None
-    # Fresh process: the first cycle over 574 cameras takes a few minutes, so give it a grace period
-    scan_ok = (scan_age is not None and scan_age < 15 * 60) or (not last_scan and now - SERVER_START < 20 * 60)
+    scan, scan_age, scan_ok = _scan_state(now)
     gpu = None
     mem = gpu_memory()      # nvidia-smi until torch has its own CUDA context: no context made for a health poll
     if mem:
