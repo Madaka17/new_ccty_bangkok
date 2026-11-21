@@ -31,6 +31,8 @@ except ImportError:
 
 # the production server's database (BACKUP_DB: another one, e.g. a test copy)
 DB = os.getenv('BACKUP_DB') or os.path.join(BASE_DIR, 'instances', 'production', 'vehicle_counts.db')
+# the production security-event log (BACKUP_SECURITY_DB overrides; skipped when the file is missing)
+SECURITY_DB = os.getenv('BACKUP_SECURITY_DB') or os.path.join(BASE_DIR, 'instances', 'production', 'security_events.db')
 DATA_DIR = os.getenv('BMA_DATA_DIR', r'D:\Data')
 BACKUP_DIR = os.getenv('BACKUP_DIR', os.path.join(DATA_DIR, 'backup'))
 # table -> epoch column. The no-helmet log, violations and incidents are kept forever (evidence).
@@ -64,6 +66,13 @@ def backup(keep_backups):
         src.backup(dst)
     dst.close()
     src.close()
+    if os.path.exists(SECURITY_DB):
+        src = sqlite3.connect(SECURITY_DB, timeout=30)
+        dst = sqlite3.connect(os.path.join(out_dir, 'security_events.db'))
+        with dst:
+            src.backup(dst)
+        dst.close()
+        src.close()
     for name in ('helmet/helmet.csv', 'violations/violations.csv', 'roads_index.csv', 'summary_daily.csv'):
         p = os.path.join(DATA_DIR, name)
         if os.path.exists(p):

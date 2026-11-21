@@ -37,3 +37,29 @@ def test_old_backups_removed(monkeypatch, tmp_path):
     mod = load(monkeypatch, db, tmp_path / "backup")
     mod.backup(keep_backups=2)
     assert len(os.listdir(tmp_path / "backup")) == 2
+
+
+def test_security_events_db_backed_up(monkeypatch, tmp_path):
+    db = tmp_path / "counts.db"
+    sqlite3.connect(db).close()
+    sec = tmp_path / "security_events.db"
+    with sqlite3.connect(sec) as c:
+        c.execute("CREATE TABLE ev (x)")
+        c.execute("INSERT INTO ev VALUES (7)")
+    monkeypatch.setenv("BACKUP_SECURITY_DB", str(sec))
+    mod = load(monkeypatch, db, tmp_path / "backup")
+    assert mod.SECURITY_DB == str(sec)
+    mod.backup(keep_backups=2)
+    (folder,) = os.listdir(tmp_path / "backup")
+    with sqlite3.connect(tmp_path / "backup" / folder / "security_events.db") as c:
+        assert c.execute("SELECT x FROM ev").fetchone() == (7,)
+
+
+def test_security_events_db_missing_is_skipped_silently(monkeypatch, tmp_path):
+    db = tmp_path / "counts.db"
+    sqlite3.connect(db).close()
+    monkeypatch.setenv("BACKUP_SECURITY_DB", str(tmp_path / "nope.db"))
+    mod = load(monkeypatch, db, tmp_path / "backup")
+    mod.backup(keep_backups=2)
+    (folder,) = os.listdir(tmp_path / "backup")
+    assert "security_events.db" not in os.listdir(tmp_path / "backup" / folder)

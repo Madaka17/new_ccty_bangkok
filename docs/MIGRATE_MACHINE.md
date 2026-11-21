@@ -409,3 +409,25 @@ test :8001, Bionic และการ build เว็บ ถ้าคอมป�
 
 ข้อมูลที่ Pi เขียนหลังสลับเครื่อง (DB, สถิติ, รูปหลักฐาน) จะไม่อยู่บนคอม ถ้าต้องการให้คัดลอกกลับก่อนข้อ 3
 โดยใช้คำสั่งเดียวกับ 9.6 แต่สลับต้นทางกับปลายทาง และใช้ sqlite backup กับไฟล์ DB
+
+### 9.8 สำรองข้อมูล Pi ออกนอก SSD (คอม)
+
+สำเนาของ Pi วางอยู่บน SSD เดียวกับข้อมูลสด ถ้า SSD เสียก็หายพร้อมกัน จึงมีงานบนคอมดึงสำเนามาเก็บไว้ที่ `D:\BKK-Backup\pi`
+ทุกวัน 04:30 (งานชื่อ `BKK StreetSmart pull Pi backup`, สคริปต์ `local\pipeline\pull_pi_backup.py`)
+
+- `db\<วันเวลา>\` มีไฟล์ `vehicle_counts.db` และ `security_events.db` เก็บไว้ 14 ชุดล่าสุด โฟลเดอร์ที่มีไฟล์ `.complete` คือใช้ได้แล้ว
+- `db\.bad-<ชื่อ>\` คือสำเนาที่ตรวจแล้วเสียหาย ไม่ต้องลบทิ้งเอง ดูก่อนว่าเกิดอะไร
+- `files\data_smartstreet\` และ `files\user_reports\` คือไฟล์ล่าสุดของ helmet, violations, wrongway และ user_reports (ทับของเก่า)
+- ดูผลล่าสุดได้ที่ `D:\BKK-Backup\pi\pull.log` และ `last_ok.txt`
+
+ติดตั้งงาน (ไม่ต้องใช้สิทธิ์ admin, รันซ้ำได้):
+
+```
+powershell -ExecutionPolicy Bypass -File E:\new_ccty_bangkok\launch\backup\install_pull_task.ps1
+```
+
+กู้คืนบนเครื่องปลายทาง:
+
+1. หยุดเซอร์วิสก่อน แล้วคัดลอก `vehicle_counts.db` และ `security_events.db` จากโฟลเดอร์ชุดที่ต้องการ ไปไว้ใน `instances\production\` (หรือ `instances/production/` บน Pi)
+2. เปิดเซอร์วิสกลับ เช่น `sudo systemctl start bkk-production` บน Pi หรือ `launch\production\start.bat` บนคอม
+3. ตรวจว่าหน้าเว็บและข้อมูลกลับมาปกติ
