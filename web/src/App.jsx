@@ -79,6 +79,15 @@ export default function App() {
  const [favorites, toggleFav] = useFavorites();
  const { active, toggle, remove, clear, addMany } = useActiveCameras();
  const [menuOpen, setMenuOpen] = useState(false);
+ // The phone menu is a modal: Escape closes it, like the dimmed area and its ✕ button
+ useEffect(() => {
+   if (!menuOpen) return undefined;
+   const onKey = (e) => {
+     if (e.key === 'Escape') setMenuOpen(false);
+   };
+   window.addEventListener('keydown', onKey);
+   return () => window.removeEventListener('keydown', onKey);
+ }, [menuOpen]);
  const [page, setPage] = useState(pageFromHash);
  const [filter, setFilter] = useState('all');
  const [query, setQuery] = useState('');
