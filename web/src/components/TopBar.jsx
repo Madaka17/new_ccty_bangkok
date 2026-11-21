@@ -131,7 +131,7 @@ export default function TopBar({ onNavigate, liveCount = 0, weatherScene, alertC
             {district ? district.charAt(0) : <SkylineMark />}
           </span>
           <span className="min-w-0 text-left">
-            <span className="block text-sm font-semibold text-[var(--c-ink)] truncate max-w-[10rem]">{district || 'เลือกเขตของฉัน'}</span>
+            <span className="block text-sm font-semibold text-[var(--c-ink)] truncate max-w-[10rem]">{district || 'เลือกเขต'}</span>
             <span className="block text-xs text-[var(--c-muted)]">เขตของฉัน</span>
           </span>
         </button>

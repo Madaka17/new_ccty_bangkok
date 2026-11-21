@@ -212,7 +212,7 @@ export default function DashboardPage({ isActive, incidents, onAskText, onOpenRo
           description={activeSummary ? `ข้อมูลล่าสุด ${fmtDateTime(activeSummary.updated_at)}` : 'กำลังโหลดข้อมูล...'}
           actions={
             <div className="flex flex-wrap items-center gap-2">
-              <DistrictButton district={myDistrict} onNavigate={onNavigate} className="h-9" />
+              <DistrictButton district={myDistrict} onNavigate={onNavigate} className="h-9 lg:hidden" />
               <Button size="sm" onClick={load} loading={refreshing} className="h-9">
                 รีเฟรช
               </Button>

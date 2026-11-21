@@ -72,7 +72,7 @@ export default function Sidebar({ page, onNavigate, aiActive, liveCount = 0, ale
         )}
       </div>
 
-      <nav aria-label="หน้าหลัก" className="flex-1 overflow-y-auto px-3 py-3 scroll-soft">
+      <nav aria-label="หน้าหลัก" className="flex-1 overflow-y-auto px-3 pt-3 pb-8 scroll-soft [mask-image:linear-gradient(to_bottom,black_calc(100%-2.5rem),transparent)]">
         {NAV_GROUPS.map((group, gi) => {
           const holdsPage = group.items.some((item) => item.id === page);
           const open = holdsPage || !closed.includes(group.label);
