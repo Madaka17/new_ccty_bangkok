@@ -195,14 +195,6 @@ export default function TraffyAnalysisCard({ isActive }) {
           </div>
         )}
 
-        {r.actions?.length > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-slate-700 mb-1">สำหรับเจ้าหน้าที่</p>
-            <ul className="list-disc pl-5 space-y-0.5 text-[13px] text-slate-700">
-              {r.actions.map((a, i) => <li key={i}>{a}</li>)}
-            </ul>
-          </div>
-        )}
       </div>
     </Card>
   );

@@ -190,18 +190,14 @@ export default function TrafficGuidanceCard({ province = '', amphoe = '' }) {
                   </div>
                 </div>
 
-                {/* 5. Advice for drivers; an incident (if any) replaces the line for traffic officers; both clamp so cards stay even */}
+                {/* 5. Advice for drivers; an incident line shows only when there is an incident (no officer advice on public cards) */}
                 <div className="rounded-lg bg-white dark:bg-slate-900 border border-cream-200 p-3 text-sm flex flex-col gap-1.5">
                   <p className="text-ink-900 line-clamp-3 min-h-[3.75rem]" title={c.action}>
                     <span className="font-semibold text-blue-600 dark:text-blue-400">แนะนำ: </span>{c.action}
                   </p>
-                  {incident ? (
+                  {incident && (
                     <p className="text-[13px] text-red-700 dark:text-red-300 line-clamp-2 min-h-[2.5rem] pt-1.5 border-t border-cream-200" title={incident.title}>
                       <span className="font-semibold">เหตุตอนนี้: </span>{incident.title}
-                    </p>
-                  ) : (
-                    <p className="text-[13px] text-ink-600 line-clamp-2 min-h-[2.5rem] pt-1.5 border-t border-cream-200" title={c.signal}>
-                      <span className="font-semibold">สำหรับเจ้าหน้าที่: </span>{c.signal}
                     </p>
                   )}
                 </div>

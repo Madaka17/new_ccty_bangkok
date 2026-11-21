@@ -15,6 +15,7 @@ populated.
 """
 import json
 import os
+import re
 import threading
 import time
 
@@ -82,6 +83,53 @@ CORRIDORS = [
 
 FREE_FLOW = 75      # alternative counts as "recommended" from this flow score
 LEVEL_TH = {"free": "คล่องตัว", "moderate": "ชะลอตัว", "congested": "ติดขัด", "incident": "มีเหตุบนถนน"}
+# The home card shows this many alternatives (web/src/components/dashboard/TrafficGuidanceCard.jsx MAX_ALTS);
+# keep the two in step. The AI and the template may only name roads within this shown set.
+SHOWN_ALTS = 3
+
+_CAM_CODE = re.compile(r"^[A-Z0-9]+(?:-[A-Z0-9]+)+\s+")
+
+
+def plain_cam_title(title):
+    """Camera title without its BMA/iTIC code: "TF-RW-04 ใต้ด่วนเพชร" -> "ใต้ด่วนเพชร"."""
+    title = (title or "").strip()
+    rest = _CAM_CODE.sub("", title, count=1).strip()
+    return rest or title
+
+
+_ROAD_PREFIXES = ("ทางพิเศษ", "ทางยกระดับ", "ทางคู่ขนาน", "ทางด่วน")
+
+
+def _road_core(name):
+    core = name[len("ถนน"):] if name.startswith("ถนน") else name
+    return core.split(" (")[0].strip()
+
+
+def _road_keys(name):
+    """Ways the AI may write a road: the full name, the core, and the core without an expressway prefix
+    ("ทางพิเศษศรีรัช" is often written "ศรีรัช" or "ทางด่วนศรีรัช")."""
+    core = _road_core(name)
+    keys = {name.strip(), core}
+    for p in _ROAD_PREFIXES:
+        if core.startswith(p) and len(core) - len(p) >= 3:
+            keys.add(core[len(p):].strip())
+    return {k for k in keys if k}
+
+
+def ai_action_ok(action, item):
+    """False when the AI action names a bypass road the card does not show as green.
+    Longer names are matched and blanked out first, so "ทางพิเศษฉลองรัช (รามอินทรา-อาจณรงค์)" does not also
+    count as ถนนรามอินทรา."""
+    shown_ok = {a["name"] for a in item["alternatives"][:SHOWN_ALTS] if a["recommended"]}
+    keys = sorted(((k, a["name"]) for a in item["alternatives"] for k in _road_keys(a["name"])),
+                  key=lambda kv: -len(kv[0]))
+    text = action or ""
+    for key, name in keys:
+        if key in text:
+            if name not in shown_ok:
+                return False
+            text = text.replace(key, " ")
+    return True
 
 
 def merge_spots(spots):
@@ -173,10 +221,10 @@ class GuidanceService:
                 for sp in r.get("hotspots", []):
                     cam = self._camera_near(sp["lat"], sp["lon"], bma_cams, itic_cams)
                     if cam:
-                        label = cam["title"]
+                        label = plain_cam_title(cam["title"])
                     else:
                         far = self._camera_near(sp["lat"], sp["lon"], bma_cams, itic_cams, max_km=1.5)
-                        label = f"ใกล้ {far['title']}" if far else r["name"]
+                        label = f"ใกล้ {plain_cam_title(far['title'])}" if far else r["name"]
                     spots.append({"road": r["name"], "km": sp["km"], "lat": sp["lat"], "lon": sp["lon"],
                                   "label": label, "camera": cam})
             spots = merge_spots(spots)[:3]
@@ -223,8 +271,9 @@ class GuidanceService:
     # ------------------------------------------------------------------ text
     @staticmethod
     def _template_text(it):
-        rec = [a for a in it["alternatives"] if a["recommended"]]
-        slow = [a for a in it["alternatives"] if not a["recommended"]]
+        shown = it["alternatives"][:SHOWN_ALTS]
+        rec = [a for a in shown if a["recommended"]]
+        slow = [a for a in shown if not a["recommended"]]
         if it["status"] == "free":
             action = "รถคล่อง ใช้เส้นทางนี้ได้ตามปกติ"
             if slow:
@@ -234,8 +283,8 @@ class GuidanceService:
             parts = []
             if rec:
                 parts.append("เลี่ยงไปใช้" + " หรือ".join(a["name"] for a in rec[:2]) + " ที่รถคล่องกว่า")
-            elif it["alternatives"]:
-                parts.append(f"ทางเลี่ยงก็ชะลอตัวเหมือนกัน ที่ดีที่สุดคือ{it['alternatives'][0]['name']}")
+            elif shown:
+                parts.append(f"ทางเลี่ยงก็ชะลอตัวเหมือนกัน ที่ดีที่สุดคือ{shown[0]['name']}")
             action = " · ".join(parts) or "ยังไม่มีข้อมูลรถติดของเส้นนี้"
         heavy = [s for s in it["hotspots"] if (s.get("camera") or {}).get("level") == "heavy"]
         if it["incidents"]:
@@ -246,7 +295,7 @@ class GuidanceService:
             signal = "ควรตั้งไฟเขียวให้ต่อกันตามถนนหลัก และห้ามจอดริมซ้ายตรงจุดที่รถติด"
         else:
             signal = "ใช้จังหวะไฟจราจรตามปกติ"
-        bypass = " หรือ ".join(a["name"] for a in rec[:2]) if rec else (it["alternatives"][0]["name"] if it["alternatives"] else "-")
+        bypass = " หรือ ".join(a["name"] for a in rec[:2]) if rec else (shown[0]["name"] if shown else "-")
         return {"action": action, "signal": signal, "bypass": bypass, "ai": False}
 
     def _ai_refresh(self, items):
@@ -261,7 +310,8 @@ class GuidanceService:
         facts = [{"id": i["id"], "name": i["name"], "status": i["status_label"], "flow": i["flow"], "red_km": i["red_km"],
                   "hotspots": [{"where": s["label"], "red_km": s["km"],
                                 "camera_vehicles": (s.get("camera") or {}).get("total")} for s in i["hotspots"]],
-                  "alternatives": [{"name": a["name"], "flow": a["flow"], "free": a["recommended"]} for a in i["alternatives"]],
+                  "alternatives": [{"name": a["name"], "flow": a["flow"], "free": a["recommended"]}
+                                   for a in i["alternatives"][:SHOWN_ALTS]],
                   "incidents": [x["title"] for x in i["incidents"]]} for i in items]
         prompt = (
             "คุณคือเจ้าหน้าที่ศูนย์ควบคุมจราจรกรุงเทพฯ ข้างล่างคือข้อมูลสดของถนนสายหลัก (flow 0-100 ยิ่งสูงรถยิ่งคล่อง, "
@@ -301,12 +351,18 @@ class GuidanceService:
     def refresh(self):
         items = self.build()
         self._ai_refresh(items)
+        dropped = 0
         for it in items:
             t = self._ai_text.get(it["id"])
             if t:
+                if not ai_action_ok(t["action"], it):
+                    dropped += 1
+                    continue
                 it["action"], it["ai"] = t["action"], True
                 if t["signal"]:
                     it["signal"] = t["signal"]
+        if dropped:
+            log.info(f"dropped {dropped} AI tips that named roads the card does not show")
         with self.lock:
             self.items = items
             self.updated_at = int(time.time())
