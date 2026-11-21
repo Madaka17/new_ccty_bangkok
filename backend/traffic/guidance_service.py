@@ -97,18 +97,38 @@ def plain_cam_title(title):
     return rest or title
 
 
+_ROAD_PREFIXES = ("ทางพิเศษ", "ทางยกระดับ", "ทางคู่ขนาน", "ทางด่วน")
+
+
 def _road_core(name):
     core = name[len("ถนน"):] if name.startswith("ถนน") else name
     return core.split(" (")[0].strip()
 
 
+def _road_keys(name):
+    """Ways the AI may write a road: the full name, the core, and the core without an expressway prefix
+    ("ทางพิเศษศรีรัช" is often written "ศรีรัช" or "ทางด่วนศรีรัช")."""
+    core = _road_core(name)
+    keys = {name.strip(), core}
+    for p in _ROAD_PREFIXES:
+        if core.startswith(p) and len(core) - len(p) >= 3:
+            keys.add(core[len(p):].strip())
+    return {k for k in keys if k}
+
+
 def ai_action_ok(action, item):
-    """False when the AI action names a bypass road the card does not show as green."""
-    shown_ok = {_road_core(a["name"]) for a in item["alternatives"][:SHOWN_ALTS] if a["recommended"]}
-    for a in item["alternatives"]:
-        core = _road_core(a["name"])
-        if core and core in action and core not in shown_ok:
-            return False
+    """False when the AI action names a bypass road the card does not show as green.
+    Longer names are matched and blanked out first, so "ทางพิเศษฉลองรัช (รามอินทรา-อาจณรงค์)" does not also
+    count as ถนนรามอินทรา."""
+    shown_ok = {a["name"] for a in item["alternatives"][:SHOWN_ALTS] if a["recommended"]}
+    keys = sorted(((k, a["name"]) for a in item["alternatives"] for k in _road_keys(a["name"])),
+                  key=lambda kv: -len(kv[0]))
+    text = action or ""
+    for key, name in keys:
+        if key in text:
+            if name not in shown_ok:
+                return False
+            text = text.replace(key, " ")
     return True
 
 

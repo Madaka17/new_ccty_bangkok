@@ -58,3 +58,31 @@ def test_template_never_names_hidden_road():
     assert "ถนนประเสริฐมนูกิจ" not in text["bypass"]
     assert "ถนนประดิษฐ์มนูธรรม" not in text["action"]
     assert "ถนนประดิษฐ์มนูธรรม" not in text["bypass"]
+
+
+def _latphrao_item():
+    return {"alternatives": [
+        {"name": "ทางพิเศษฉลองรัช (รามอินทรา-อาจณรงค์)", "recommended": True},
+        {"name": "ถนนรัชดาภิเษก", "recommended": True},
+        {"name": "ถนนวิภาวดีรังสิต", "recommended": True},
+        {"name": "ถนนรามอินทรา", "recommended": False},
+        {"name": "ทางพิเศษศรีรัช", "recommended": True},
+    ]}
+
+
+def test_full_expressway_name_does_not_count_as_hidden_road_inside_it():
+    from backend.traffic.guidance_service import ai_action_ok
+    assert ai_action_ok("เลี่ยงไปใช้ทางพิเศษฉลองรัช (รามอินทรา-อาจณรงค์) ที่รถคล่อง", _latphrao_item())
+
+
+def test_expressway_written_without_prefix_is_caught():
+    from backend.traffic.guidance_service import ai_action_ok
+    assert not ai_action_ok("ขึ้นทางด่วนศรีรัชแทน", _latphrao_item())
+    assert ai_action_ok("ใช้ฉลองรัชแทน", _latphrao_item())
+
+
+def test_fewer_alternatives_than_shown():
+    from backend.traffic.guidance_service import ai_action_ok
+    item = {"alternatives": [{"name": "ถนนพระราม 3", "recommended": True}]}
+    assert ai_action_ok("ใช้ถนนพระราม 3", item)
+    assert ai_action_ok("รถคล่อง ใช้เส้นทางนี้ได้ตามปกติ", {"alternatives": []})
