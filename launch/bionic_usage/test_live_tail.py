@@ -101,6 +101,27 @@ class InFlightTests(TrackerTestBase):
         self.tracker.poll()
         self.assertEqual([f["model"] for f in self.flights()], ["m1"])
 
+    def test_answer_for_the_loaded_model_finishes_a_request_asked_for_another_model(self):
+        # Bionic answers a request for an unloaded model with the loaded one.
+        self.write(request_block("unsloth/qwen3.8-27b-nvfp4", FLOOD_SYSTEM, ts="2026-11-20 21:43:52")
+                   + prediction_block("unsloth/qwen3.5-4b", ts="2026-11-20 21:43:55"))
+        self.tracker.poll()
+        self.assertEqual(self.flights(), [])
+
+    def test_error_for_a_model_not_asked_for_finishes_the_oldest_request(self):
+        self.write(request_block("m1", FLOOD_SYSTEM, ts="2026-11-20 21:43:40")
+                   + request_block("m2", FLOOD_SYSTEM, ts="2026-11-20 21:43:41")
+                   + error_line("m3", ts="2026-11-20 21:43:42"))
+        self.tracker.poll()
+        self.assertEqual([f["model"] for f in self.flights()], ["m2"])
+
+    def test_answer_for_own_model_still_finishes_its_own_request_first(self):
+        self.write(request_block("m1", FLOOD_SYSTEM, ts="2026-11-20 21:43:40")
+                   + request_block("m2", FLOOD_SYSTEM, ts="2026-11-20 21:43:41")
+                   + prediction_block("m2", ts="2026-11-20 21:43:42"))
+        self.tracker.poll()
+        self.assertEqual([f["model"] for f in self.flights()], ["m1"])
+
     def test_stale_request_older_than_an_hour_is_dropped(self):
         self.write(request_block("m1", FLOOD_SYSTEM, ts="2026-11-20 21:43:52"))
         self.tracker.poll()

@@ -221,17 +221,13 @@ class LiveTracker:
 
         if text.startswith("[") and collect.PREDICTION_RE.search(text):
             model = collect.PREDICTION_RE.search(text).group(1)
-            queue = self._queues.get(model)
-            if queue:
-                queue.popleft()
+            self._pop_for(model)
             self._skip_body = True
             return
 
         error = collect.ERROR_RE.search(text)
         if error:
-            queue = self._queues.get(error.group(1))
-            if queue:
-                queue.popleft()
+            self._pop_for(error.group(1))
             return
 
         progress = PROGRESS_RE.search(text)
@@ -239,6 +235,24 @@ class LiveTracker:
             queue = self._queues.get(progress.group(1))
             if queue:
                 queue[0].percent = float(progress.group(2))
+
+    def _pop_for(self, model: str) -> None:
+        """Finish the request that a log line for `model` answers.
+
+        Bionic answers a request for a model that is not loaded with the model
+        that IS loaded, so the log may name a model with no queue. Then the
+        oldest request across all queues is the one that finished.
+        """
+        queue = self._queues.get(model)
+        if queue:
+            queue.popleft()
+            return
+        oldest = None
+        for other in self._queues.values():
+            if other and (oldest is None or other[0].started_ts < oldest[0].started_ts):
+                oldest = other
+        if oldest is not None:
+            oldest.popleft()
 
     def _finish_request_block(self) -> None:
         """Close a request body: parse it and queue the request."""
