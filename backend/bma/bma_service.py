@@ -672,4 +672,3 @@ class BmaScanner:
                 return jpeg_bytes, stats
             return raw, None
         return raw, None
-

@@ -271,7 +271,6 @@ def simulate_quake():
             conn.close()
             return jsonify({"error": "unknown_level"}), 400
         d = DEMO_EPICENTER_NEAR_REFERENCE
-        sim = current_app.config["SIMULATOR"]
         conn.close()
         return _simulate_from_params(
             lat=d["lat"], lng=d["lng"], place=d["place"], fault=d["fault"], region=d["region"],

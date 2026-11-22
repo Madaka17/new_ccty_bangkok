@@ -560,5 +560,3 @@ def province_weather_context(ex, named):
         except Exception as e:  # noqa: BLE001 - MET Norway down: the Bangkok forecast still goes in
             log.info(f"weather for {prov} unavailable: {str(e)[:120]}")
     return lines
-
-
