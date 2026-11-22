@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import secrets
 from datetime import datetime, timezone
 from werkzeug.security import generate_password_hash
 
@@ -164,12 +165,16 @@ ROLES = [
     ("partner", 11, "อ่านอย่างเดียวผ่าน API: ข้อมูลสาธารณะเท่านั้น"),
 ]
 
+# Demo accounts. Passwords are never stored in code: seed() uses ENVIRO_SEED_PASSWORD (min 12 chars)
+# when set, otherwise a random password per account, written to data/initial_passwords.txt.
 DEMO_USERS = [
-    ("admin.wanchana", "enviro2026", "admin", "Wanchana (Admin)"),
-    ("operator.suda", "enviro2026", "operator", "Suda (Operator)"),
-    ("auditor.kritt", "enviro2026", "auditor", "Kritt (Auditor)"),
-    ("partner.api", "enviro2026", "partner", "External Partner"),
+    ("admin.wanchana", "admin", "Wanchana (Admin)"),
+    ("operator.suda", "operator", "Suda (Operator)"),
+    ("auditor.kritt", "auditor", "Kritt (Auditor)"),
+    ("partner.api", "partner", "External Partner"),
 ]
+SEED_PASSWORD_MIN_LENGTH = 12
+INITIAL_PASSWORDS_FILE = "initial_passwords.txt"
 
 # Real physical hardware node(s) -- see server/routes/nodes.py and
 # firmware/prototype_node/prototype_node.ino. `api_key` here is a DEMO
@@ -306,11 +311,32 @@ def seed(conn):
         "INSERT OR IGNORE INTO backups(ts,size_bytes,path) VALUES (?,?,?)",
         (ts, 214_000_000_000 // 1000, "seed"),
     )
-    for username, password, role, display in DEMO_USERS:
-        conn.execute(
+    raw_seed = os.environ.get("ENVIRO_SEED_PASSWORD", "")
+    shared_seed = raw_seed if len(raw_seed) >= SEED_PASSWORD_MIN_LENGTH else None
+    if raw_seed and shared_seed is None:
+        # Never print the value itself, only that it was rejected.
+        print(
+            f"ENVIRO: ENVIRO_SEED_PASSWORD is shorter than {SEED_PASSWORD_MIN_LENGTH} characters, "
+            "so it was ignored and random passwords were generated."
+        )
+    issued = []
+    for username, role, display in DEMO_USERS:
+        password = shared_seed or secrets.token_urlsafe(12)
+        cur = conn.execute(
             "INSERT OR IGNORE INTO users(username,password_hash,role,display_name) VALUES (?,?,?,?)",
             (username, generate_password_hash(password), role, display),
         )
+        if cur.rowcount == 1:
+            issued.append((username, password))
+    if issued:
+        data_dir = os.path.join(BASE_DIR, "data")
+        os.makedirs(data_dir, exist_ok=True)
+        path = os.path.join(data_dir, INITIAL_PASSWORDS_FILE)
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as f:
+            for username, password in issued:
+                f.write(f"{username}\t{password}\n")
+        print(f"ENVIRO: created new accounts; their initial passwords are in {path}")
     seed_real_nodes(conn)
     conn.execute(
         "INSERT INTO audit_log(ts, username, action) VALUES (?, 'system', 'เริ่มต้นระบบและสร้างฐานข้อมูลครั้งแรก')",

@@ -6,3 +6,4 @@ data/pb2002_boundaries.json
 __pycache__/
 *.pyc
 data/accounts.txt
+data/initial_passwords.txt
