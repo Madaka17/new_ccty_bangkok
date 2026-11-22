@@ -18,6 +18,10 @@ log = get_logger("Telemetry")
 DB_PATH = os.path.join(DATA_DIR, "cache", "telemetry.db")
 BKK_TZ = timezone(timedelta(hours=7))
 
+KEEP_DAYS = int(os.getenv("TELEMETRY_KEEP_DAYS", "400"))   # page-view rows older than this are purged
+PURGE_EVERY = 3600       # seconds between purges (checked on each view)
+SESSION_KEEP = 86400     # session rows only matter for "online now"; older ones are dropped
+
 ONLINE_WINDOW = 90       # seconds since last heartbeat to count as "online now"
 # A heartbeat can only be stamped with the clock of the machine that received it. When that clock
 # is wrong (or is corrected afterwards) a session ends up stamped in the future and would then sit
@@ -47,11 +51,36 @@ class Telemetry:
         self.conn.execute("CREATE TABLE IF NOT EXISTS views (ts INTEGER NOT NULL, sid TEXT NOT NULL, view TEXT NOT NULL)")
         self.conn.execute("CREATE INDEX IF NOT EXISTS views_ts ON views (ts)")
         self.conn.execute("CREATE TABLE IF NOT EXISTS sessions (sid TEXT PRIMARY KEY, last_ts INTEGER NOT NULL, view TEXT)")
-        self.conn.commit()
+        # One row per visitor (sid) with the first time it was seen. Kept apart from `views` so the
+        # visitor totals survive when old page-view rows are purged.
+        self.conn.execute("CREATE TABLE IF NOT EXISTS visitors (sid TEXT PRIMARY KEY, first_ts INTEGER NOT NULL)")
+        with self.lock:
+            if self.conn.execute("SELECT COUNT(*) FROM visitors").fetchone()[0] == 0:
+                self.conn.execute("INSERT OR IGNORE INTO visitors SELECT sid, MIN(ts) FROM views GROUP BY sid")
+            self.conn.commit()
+        self._last_purge = None
+        self._purge_old(int(time.time()))
 
     @staticmethod
     def _ok(sid, view):
         return isinstance(sid, str) and 8 <= len(sid) <= 64 and isinstance(view, str) and 0 < len(view) <= 40
+
+    def _purge_old(self, now):
+        """Drop page views older than KEEP_DAYS and sessions older than a day. Runs at most once per PURGE_EVERY."""
+        self._last_purge = now
+        with self.lock:
+            nv = self.conn.execute("DELETE FROM views WHERE ts < ?", (now - KEEP_DAYS * 86400,)).rowcount
+            ns = self.conn.execute("DELETE FROM sessions WHERE last_ts < ?", (now - SESSION_KEEP,)).rowcount
+            self.conn.commit()
+        if nv or ns:
+            log.info(f"purged {nv} old view row(s) and {ns} stale session(s)")
+
+    def _maybe_purge(self, now):
+        if self._last_purge is None or now - self._last_purge >= PURGE_EVERY:
+            try:
+                self._purge_old(now)
+            except sqlite3.Error as e:   # housekeeping only: never fail the page view that triggered it
+                log.warning(f"purge failed: {e}")
 
     def view(self, sid, view):
         if not self._ok(sid, view):
@@ -59,13 +88,16 @@ class Telemetry:
         now = int(time.time())
         with self.lock:
             self.conn.execute("INSERT INTO views VALUES (?, ?, ?)", (now, sid, view))
+            self.conn.execute("INSERT OR IGNORE INTO visitors VALUES (?, ?)", (sid, now))
             self.conn.execute("INSERT INTO sessions VALUES (?, ?, ?) ON CONFLICT(sid) DO UPDATE SET last_ts=excluded.last_ts, view=excluded.view",
                               (sid, now, view))
             self.conn.commit()
+        self._maybe_purge(now)
         return True
 
     def heartbeat(self, sid, view):
-        if not self._ok(sid, view or "-"):
+        view = view or "-"
+        if not self._ok(sid, view):
             return False
         now = int(time.time())
         with self.lock:
@@ -115,8 +147,8 @@ class Telemetry:
             dau_prev_now = q("SELECT COUNT(DISTINCT sid) FROM views WHERE ts >= ? AND ts <= ?", (day_start - 86400, now - 86400)).fetchone()[0]
             views_today = q("SELECT COUNT(*) FROM views WHERE ts BETWEEN ? AND ?", (day_start, hi)).fetchone()[0]
             # Everyone since counting began: one id per browser, as for the users of a day
-            visitors_total = q("SELECT COUNT(DISTINCT sid) FROM views WHERE ts <= ?", (hi,)).fetchone()[0]
-            counting_since = q("SELECT MIN(ts) FROM views WHERE ts <= ?", (hi,)).fetchone()[0]
+            visitors_total = q("SELECT COUNT(*) FROM visitors WHERE first_ts <= ?", (hi,)).fetchone()[0]
+            counting_since = q("SELECT MIN(first_ts) FROM visitors WHERE first_ts <= ?", (hi,)).fetchone()[0]
             by_view = q("SELECT view, COUNT(*) FROM views WHERE ts BETWEEN ? AND ? GROUP BY view ORDER BY 2 DESC", (day_start, hi)).fetchall()
             week_rows = q("SELECT ts FROM views WHERE ts BETWEEN ? AND ?", (week_start, hi)).fetchall()
             daily = q("SELECT ts, sid FROM views WHERE ts BETWEEN ? AND ?", (week_start, hi)).fetchall()
