@@ -96,12 +96,6 @@ export async function fetchAIStats() {
   return fetchJson('/api/ai/stats', 'stats');
 }
 
-// { range: '24h'|'7d'|'30d' } or { date: 'YYYY-MM-DD' } (hourly for that day)
-export async function fetchAIHistory({ range = '24h', date } = {}) {
-  const params = date ? `date=${date}` : `range=${range}`;
-  return fetchJson(`/api/ai/history?${params}`, 'history');
-}
-
 export function setAIFps(fps) {
   return fetch(`/api/ai/set_fps?fps=${fps}`, { method: 'POST' });
 }
@@ -141,18 +135,6 @@ export async function deleteAIAccuracy(id) {
   return fetchJson(`/api/ai/accuracy/${id}`, 'accuracy', { method: 'DELETE' });
 }
 
-export async function fetchViolations({ hours = 24, camid, kind, limit = 30 } = {}) {
-  const q = new URLSearchParams({ hours, limit });
-  if (camid) q.set('camid', camid);
-  if (kind) q.set('kind', kind);
-  return fetchJson(`/api/ai/violations?${q}`, 'violations failed');
-}
-
-export async function fetchViolationStatus(camid) {
-  const q = camid ? `?camid=${encodeURIComponent(camid)}` : '';
-  return fetchJson(`/api/ai/violations/status${q}`, 'violation status failed');
-}
-
 export async function fetchIncidents() {
   return fetchJson('/api/incidents', 'incidents');
 }
@@ -160,18 +142,6 @@ export async function fetchIncidents() {
 // Camera incidents from the last `hours`, including ones already cleared
 export async function fetchIncidentHistory(hours = 24) {
   return (await fetchJson(`/api/incidents/history?hours=${hours}`, 'incident_history')).items || [];
-}
-
-export async function fetchCountCameras() {
-  return fetchJson('/api/count/cameras', 'count');
-}
-
-export async function setCountCameras(camids) {
-  return fetchJson('/api/count/cameras', 'count', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ camids }),
-  });
 }
 
 export async function fetchSurveyRanking() {
@@ -232,28 +202,6 @@ export async function runRiskAnalysis() {
   return res.json();
 }
 
-export async function fetchRscSummary() {
-  return fetchJson('/api/rsc/summary', 'rsc summary failed');
-}
-
-export async function fetchRscCameraRisk({ limit, district } = {}) {
-  const q = new URLSearchParams();
-  if (limit) q.set('limit', limit);
-  if (district) q.set('district', district);
-  return fetchJson(`/api/rsc/camera_risk?${q}`, 'rsc risk failed');
-}
-
-export async function fetchRscPoints(camid, radius) {
-  const q = new URLSearchParams({ camid });
-  if (radius) q.set('radius', radius);
-  return fetchJson(`/api/rsc/points?${q}`, 'rsc points failed');
-}
-
-export async function triggerRscRebuild() {
-  const res = await fetch('/api/rsc/rebuild', { method: 'POST' });
-  return res.json();
-}
-
 // ---------------------------------------------------------------- Flooding: sensors, feeds, reports, car parks, provinces
 
 // Road flooding: BMA drainage sensors (weather.bangkok.go.th), depth over the road in cm
@@ -267,10 +215,6 @@ export async function fetchFloodStations({ status = null, district = null, kind 
   if (district) params.set('district', district);
   if (kind) params.set('kind', kind);
   return fetchJson(`/api/flood/stations?${params}`, 'flood_stations');
-}
-
-export async function fetchFloodAnalysis() {
-  return fetchJson('/api/flood/analysis', 'flood_analysis');
 }
 
 // One plain-Thai notice per flooded Bangkok road, advice from the depth rule table (flood_service.notices)
@@ -421,11 +365,6 @@ export async function fetchAirForecast() {
 }
 
 // ---------------------------------------------------------------- เขตของฉัน (district page)
-
-// { districts: [50 names without เขต] }
-export async function fetchDistricts() {
-  return fetchJson('/api/district/list', 'district_list');
-}
 
 // One district at a glance (null sections = no data there). A 404 throws, as for any unknown name.
 export async function fetchDistrict(name) {

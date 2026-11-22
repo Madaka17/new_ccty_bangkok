@@ -10,13 +10,6 @@ export const STATUS = {
 
 // Longdo road level text (Thai) -> status key
 export const ROAD_LEVEL = { โล่ง: 'green', ปานกลาง: 'yellow', ติดขัด: 'red' };
-// Camera AI level -> status key + label
-export const AI_LEVEL = {
-  free: { key: 'green', label: 'คล่องตัว' },
-  moderate: { key: 'yellow', label: 'ชะลอตัว' },
-  heavy: { key: 'red', label: 'ติดขัด' },
-};
-
 export function flowLevel(flow) {
   if (flow == null) return { key: 'neutral', label: 'รอข้อมูล', hint: 'กำลังโหลดข้อมูลรถติด' };
   if (flow >= 75) return { key: 'green', label: 'คล่องตัว', hint: 'รถวิ่งได้ดี เดินทางได้ตามปกติ' };

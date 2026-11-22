@@ -2,8 +2,6 @@ import { useEffect, useState, useCallback } from 'react';
 
 const FAV_KEY = 'bkk_cctv_favs';
 const ACTIVE_KEY = 'bkk_cctv_active_slots';
-const NAME_KEY = 'bkk_cctv_user_name';
-const DEFAULT_NAME = 'เพื่อนบ้าน';
 
 function readJSON(key, fallback) {
   try {
@@ -47,32 +45,6 @@ export function useActiveCameras() {
     setList((prev) => [...prev.filter((x) => !ids.includes(x)), ...ids].slice(-9));
   }, []);
   return { active: list, toggle, remove, clear, addMany };
-}
-
-export function useUserName() {
-  const [name, setName] = useState(() => {
-    try {
-      return localStorage.getItem(NAME_KEY) || DEFAULT_NAME;
-    } catch {
-      return DEFAULT_NAME;
-    }
-  });
-  const save = useCallback((n) => {
-    const v = (n || '').trim() || DEFAULT_NAME;
-    setName(v);
-    try {
-      localStorage.setItem(NAME_KEY, v);
-    } catch {}
-  }, []);
-  return [name, save];
-}
-
-
-export function greetingByHour(d = new Date()) {
-  const h = d.getHours();
-  if (h < 12) return 'สวัสดีตอนเช้า';
-  if (h < 17) return 'สวัสดีตอนบ่าย';
-  return 'สวัสดีตอนเย็น';
 }
 
 export function distanceKm(a, b) {
