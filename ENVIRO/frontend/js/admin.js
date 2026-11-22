@@ -7,16 +7,27 @@ function renderAuditRows(rows){
   return rows.map(a=>`<tr><td class="tabular" style="color:var(--ink-muted);">${new Date(a.ts).toLocaleString('th-TH')}</td><td class="strong tabular">${a.username}</td><td>${a.action}</td></tr>`).join('');
 }
 
+// Accounts, the audit trail and the backup file path are staff-only on the server (403 for the guest),
+// so the guest view skips those reads and shows a short note in their place instead.
+const STAFF_ROLES = ['admin', 'operator', 'auditor'];
+const STAFF_ONLY_ROW = '<tr><td colspan="3" style="color:var(--ink-muted);">ดูได้เฉพาะเจ้าหน้าที่ที่เข้าสู่ระบบ</td></tr>';
+function isStaffUser(){ return !!(AUTH && STAFF_ROLES.includes(AUTH.role)); }
+
 async function refreshAuditLog(){
+  if(!isStaffUser()) return;
   const rows = await api('/api/admin/audit-log?limit=8');
   const el = document.querySelector('#auditTable tbody');
   if(el) el.innerHTML = renderAuditRows(rows);
 }
 
 async function renderAdmin(){
+  const staff = isStaffUser();
   const [services, roles, audit, backup, levels, epi, tg] = await Promise.all([
-    api('/api/admin/services'), api('/api/admin/roles'), api('/api/admin/audit-log?limit=8'),
-    api('/api/admin/backup'), api('/api/levels'), api('/api/admin/epicenter-options'),
+    api('/api/admin/services'),
+    staff ? api('/api/admin/roles') : Promise.resolve([]),
+    staff ? api('/api/admin/audit-log?limit=8') : Promise.resolve([]),
+    staff ? api('/api/admin/backup') : Promise.resolve(null),
+    api('/api/levels'), api('/api/admin/epicenter-options'),
     api('/api/admin/telegram').catch(()=>({bot_token_masked:'',has_token:false,chat_id:'',enabled:false})),
   ]);
 
@@ -32,7 +43,7 @@ async function renderAdmin(){
     </div>`;
   }).join('');
 
-  const roleRows = roles.map(r=>`<tr><td class="strong">${r.role}</td><td class="tabular">${r.users_count}</td><td style="white-space:normal;">${r.permissions}</td></tr>`).join('');
+  const roleRows = staff ? roles.map(r=>`<tr><td class="strong">${r.role}</td><td class="tabular">${r.users_count}</td><td style="white-space:normal;">${r.permissions}</td></tr>`).join('') : STAFF_ONLY_ROW;
   const levelOptions = levels.map(l=>`<option value="${l.lv}">ระดับ ${l.lv} — ${l.name}</option>`).join('');
   const regionOptions = ['ภาคเหนือตอนบน','ภาคตะวันตก','ภาคใต้ฝั่งอันดามัน','ทั่วประเทศ (สาธิต)'].map(r=>`<option>${r}</option>`).join('');
 
@@ -48,11 +59,11 @@ async function renderAdmin(){
       </div>
       <div class="col-5" style="display:flex;flex-direction:column;gap:14px;">
         <div class="panel">
-          <div class="panel-head"><h3>การสำรองข้อมูล (Backup)</h3><span class="badge good"><span class="dot" style="background:currentColor;"></span>${backup?'สำเร็จ':'ยังไม่เคยสำรอง'}</span></div>
+          <div class="panel-head"><h3>การสำรองข้อมูล (Backup)</h3><span class="badge good"><span class="dot" style="background:currentColor;"></span>${!staff?'เฉพาะเจ้าหน้าที่':backup?'สำเร็จ':'ยังไม่เคยสำรอง'}</span></div>
           <table class="data-table">
             <tr><td>สำรองล่าสุด</td><td class="strong" id="backupTs">${backup? new Date(backup.ts).toLocaleString('th-TH') : '—'}</td></tr>
             <tr><td>ขนาดไฟล์</td><td class="strong tabular" id="backupSize">${backup? (backup.size_bytes/1024).toFixed(0)+' KB' : '—'}</td></tr>
-            <tr><td>ที่อยู่ไฟล์</td><td class="strong tabular" style="font-size:14px;" id="backupPath">${backup? backup.path.split('/').pop() : '—'}</td></tr>
+            <tr><td>ที่อยู่ไฟล์</td><td class="strong tabular" style="font-size:14px;" id="backupPath">${backup? backup.path.split(/[\\/]/).pop() : '—'}</td></tr>
             <tr><td>นโยบายเก็บรักษา</td><td class="strong">รายวัน 30 ชุด / รายเดือน 12 ชุด</td></tr>
           </table>
           <button class="btn primary" id="runBackupBtn" data-requires-admin style="align-self:flex-start;">สำรองข้อมูลตอนนี้</button>
@@ -67,7 +78,7 @@ async function renderAdmin(){
       <div class="panel col-7">
         <div class="panel-head"><h3>บันทึกการตรวจสอบ (Audit Log)</h3><span class="hint">ล่าสุด 8 รายการ</span></div>
         <div class="scroll-x">
-          <table class="data-table" id="auditTable"><thead><tr><th>เวลา</th><th>ผู้ใช้</th><th>เหตุการณ์</th></tr></thead><tbody>${renderAuditRows(audit)}</tbody></table>
+          <table class="data-table" id="auditTable"><thead><tr><th>เวลา</th><th>ผู้ใช้</th><th>เหตุการณ์</th></tr></thead><tbody>${staff ? renderAuditRows(audit) : STAFF_ONLY_ROW}</tbody></table>
         </div>
       </div>
       <div class="panel col-5">
@@ -122,7 +133,7 @@ async function renderAdmin(){
       const res = await api('/api/admin/backup/run', {method:'POST'});
       document.getElementById('backupTs').textContent = new Date(res.ts).toLocaleString('th-TH');
       document.getElementById('backupSize').textContent = (res.size_bytes/1024).toFixed(0)+' KB';
-      document.getElementById('backupPath').textContent = res.path.split('/').pop();
+      document.getElementById('backupPath').textContent = res.path.split(/[\\/]/).pop();
       await refreshAuditLog();
       showToast('สำรองข้อมูลสำเร็จ', `บันทึกไฟล์จริงขนาด ${(res.size_bytes/1024).toFixed(0)} KB ลงดิสก์แล้ว`);
     }catch(e){ showToast('สำรองข้อมูลไม่สำเร็จ', e.message, false); }

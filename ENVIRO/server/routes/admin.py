@@ -51,8 +51,9 @@ def services():
     return jsonify(out)
 
 
+# Staff-only: account counts per role and the internal permission model.
 @bp.get("/roles")
-@auth.require_auth
+@auth.require_role("admin", "operator", "auditor")
 def roles():
     conn = dbmod.get_conn()
     rows = conn.execute("SELECT * FROM roles").fetchall()
@@ -60,8 +61,9 @@ def roles():
     return jsonify([dict(r) for r in rows])
 
 
+# Staff-only: usernames and what they did.
 @bp.get("/audit-log")
-@auth.require_auth
+@auth.require_role("admin", "operator", "auditor")
 def audit_log():
     limit = min(int(request.args.get("limit", 25)), 200)
     conn = dbmod.get_conn()
@@ -70,8 +72,9 @@ def audit_log():
     return jsonify([dict(r) for r in rows])
 
 
+# Staff-only: the full server disk path of the backup file.
 @bp.get("/backup")
-@auth.require_auth
+@auth.require_role("admin", "operator", "auditor")
 def backup_status():
     conn = dbmod.get_conn()
     row = conn.execute("SELECT * FROM backups ORDER BY id DESC LIMIT 1").fetchone()
