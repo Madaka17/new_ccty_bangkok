@@ -11,8 +11,9 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from backend.bma import bma_best_time as best_time
+from backend.bma.bma_live import LiveCache, StreamSlots
 from backend.bma.bma_service import RAW_DIR as BMA_RAW_DIR
-from backend.core import stale_stamp
+from backend.core import access_guard, stale_stamp
 from backend.core.response_cache import cached_json
 from backend.core.instance import DATA_DIR
 from backend.services import bma_scanner, SAFE_ID
@@ -21,6 +22,42 @@ from backend.core.log import get_logger
 log = get_logger("Live Snapshot Error")
 
 router = APIRouter()
+
+# One BMA fetch + YOLO run per camera per LIVE_TTL, shared by every viewer (stream, snapshot, analysis).
+LIVE_TTL = float(os.getenv("BMA_LIVE_TTL", "3"))
+_live = LiveCache(LIVE_TTL)
+
+# Open MJPEG streams: total, and per client IP.
+STREAM_MAX = int(os.getenv("BMA_STREAM_MAX", "6"))
+STREAM_PER_IP = int(os.getenv("BMA_STREAM_PER_IP", "2"))
+STREAM_MAX_SECONDS = float(os.getenv("BMA_STREAM_MAX_SECONDS", "300"))
+_slots = StreamSlots(STREAM_MAX, STREAM_PER_IP)
+
+
+def _live_frame(camid, annotate):
+    """(jpeg, stats) for a camera's live frame, shared through _live. (None, None) when BMA gave nothing."""
+    result = _live.get((str(camid), bool(annotate)),
+                       lambda: bma_scanner.get_live_snapshot(camid, annotate=annotate))
+    return result if result is not None else (None, None)
+
+
+def _known(camid):
+    return any(str(c.get("camid")) == str(camid) for c in bma_scanner.cameras)
+
+
+class _SlotStreamingResponse(StreamingResponse):
+    """Frees the stream slot when the response ends: done, cancelled, or the client gone before the first frame
+    (a BackgroundTask is skipped when send raises ClientDisconnect, so it cannot be relied on)."""
+
+    def __init__(self, release, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._release = release
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self._release()
 
 
 # BMA Traffic & YOLO Vehicle Counting Endpoints
@@ -59,10 +96,10 @@ def get_bma_scan_status():
 async def get_bma_snapshot(camid: str, live: bool = False, annotate: bool = True):
     """Returns annotated or raw snapshot for a BMA camera. If live=True, fetches latest real-time frame."""
     loop = asyncio.get_running_loop()
-    if live:
+    if live and _known(camid):   # unknown ids would only fill the shared live cache
         try:
             jpeg_bytes, stats = await loop.run_in_executor(
-                None, lambda: bma_scanner.get_live_snapshot(camid, annotate=annotate)
+                None, lambda: _live_frame(camid, annotate)
             )
             if jpeg_bytes:
                 return Response(
@@ -88,6 +125,9 @@ async def get_bma_snapshot(camid: str, live: bool = False, annotate: bool = True
         # tile of the camera wall, and BMA answers such a burst with 429 for everyone, the scanner included.
         return Response(status_code=404)
 
+    if not _known(camid):
+        # Only the scanner's cameras: an unknown id would load the BMA home page and grow the session's cookie jars.
+        return Response(status_code=404)
     try:
         raw = await loop.run_in_executor(None, lambda: bma_scanner.session.fetch_snapshot(str(camid), timeout=4.0))
         if raw:
@@ -97,54 +137,56 @@ async def get_bma_snapshot(camid: str, live: bool = False, annotate: bool = True
     return Response(status_code=404)
 
 @router.get("/api/bma/stream/{camid}")
-async def stream_bma_camera(camid: str, fps: float = 2.0):
+async def stream_bma_camera(camid: str, request: Request, fps: float = 2.0):
     """Live MJPEG video stream with real-time YOLO detection overlay for any BMA camera."""
-    async def _stream():
-        cam = next((c for c in bma_scanner.cameras if str(c.get('camid')) == str(camid)), None)
-        if not cam:
-            return
-        
-        # 1. Immediately yield cached snapshot so client never experiences a black screen!
-        cache_file = os.path.join(DATA_DIR, "cache", "bma_snapshots", f"{camid}.jpg")
-        last_frame = None
-        if os.path.exists(cache_file):
-            try:
-                last_frame = stale_stamp.stamp_file(cache_file)
-                if last_frame:
-                    yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + last_frame + b'\r\n')
-            except Exception:
-                pass
+    if not _known(camid):
+        return Response(status_code=404)
+    # The slot is freed in the generator's finally, and again when the response ends however it ends (release is idempotent).
+    release = _slots.acquire(access_guard.client_ip(request))
+    if release is None:
+        return JSONResponse({"error": "too many live streams"}, status_code=429)
 
-        interval = 1.0 / max(0.5, min(5.0, fps))
-        loop = asyncio.get_running_loop()
-        while True:
-            t0 = time.time()
-            try:
-                raw = await loop.run_in_executor(None, lambda: bma_scanner.session.fetch_snapshot(str(camid), timeout=7.0))
-                if raw:
-                    jpeg_bytes, _ = await loop.run_in_executor(None, lambda: bma_scanner.process_image_and_detect(cam, raw))
+    async def _stream():
+        try:
+            # 1. Immediately yield cached snapshot so client never experiences a black screen!
+            cache_file = os.path.join(DATA_DIR, "cache", "bma_snapshots", f"{camid}.jpg")
+            last_frame = None
+            if os.path.exists(cache_file):
+                try:
+                    last_frame = stale_stamp.stamp_file(cache_file)
+                    if last_frame:
+                        yield (b'--frame\r\n'
+                               b'Content-Type: image/jpeg\r\n\r\n' + last_frame + b'\r\n')
+                except Exception:
+                    pass
+
+            interval = 1.0 / max(0.5, min(5.0, fps))
+            loop = asyncio.get_running_loop()
+            deadline = time.time() + STREAM_MAX_SECONDS
+            while time.time() < deadline:
+                t0 = time.time()
+                try:
+                    jpeg_bytes, _ = await loop.run_in_executor(None, lambda: _live_frame(camid, True))
                     if jpeg_bytes:
                         last_frame = jpeg_bytes
                         yield (b'--frame\r\n'
                                b'Content-Type: image/jpeg\r\n\r\n' + jpeg_bytes + b'\r\n')
-                elif last_frame:
-                    # Keep yielding last frame to prevent stream connection from stalling
-                    yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + last_frame + b'\r\n')
-            except (asyncio.CancelledError, GeneratorExit):
-                break
-            except Exception:
-                pass
-            
-            elapsed = time.time() - t0
-            sleep_time = max(0.5, interval - elapsed)
-            await asyncio.sleep(sleep_time)
+                    elif last_frame:
+                        # Keep yielding last frame to prevent stream connection from stalling
+                        yield (b'--frame\r\n'
+                               b'Content-Type: image/jpeg\r\n\r\n' + last_frame + b'\r\n')
+                except (asyncio.CancelledError, GeneratorExit):
+                    break
+                except Exception:
+                    pass
 
-    return StreamingResponse(
-        _stream(),
-        media_type="multipart/x-mixed-replace; boundary=frame"
-    )
+                elapsed = time.time() - t0
+                sleep_time = max(0.5, interval - elapsed)
+                await asyncio.sleep(sleep_time)
+        finally:
+            release()
+
+    return _SlotStreamingResponse(release, _stream(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 @router.get("/api/bma/live_analysis/{camid}")
 async def get_bma_live_analysis(camid: str):
@@ -152,7 +194,7 @@ async def get_bma_live_analysis(camid: str):
     loop = asyncio.get_running_loop()
     try:
         jpeg_bytes, stats = await loop.run_in_executor(
-            None, lambda: bma_scanner.get_live_snapshot(camid, annotate=True)
+            None, lambda: _live_frame(camid, True)
         )
         if stats:
             return {
