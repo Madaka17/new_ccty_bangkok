@@ -283,11 +283,6 @@ def patrol_context(helmet, wrongway, violations):
     return lines
 
 
-def analytics_context(a):
-    """Dashboard analytics: congestion index + causes, density tiers, flood 1-6 h outlook, accident black spots."""
-    return analytics_traffic(a) + analytics_flood(a) + analytics_accidents(a)
-
-
 def analytics_traffic(a):
     lines = []
     t = (a or {}).get("traffic") or {}
