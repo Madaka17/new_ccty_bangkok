@@ -378,17 +378,6 @@ class VehicleDetectorYOLO11x:
             self.thread.start()
             log.info(f"Started detection thread for {self.current_cam_info.get('title', stream_url)}")
 
-    def stop_stream(self):
-        with self.lock:
-            self.is_running = False
-            if self.stop_event:
-                self.stop_event.set()
-            thread = self.thread
-            self.thread = None
-            self.latest_stats['active'] = False
-        if thread and thread.is_alive():
-            thread.join(timeout=2.0)
-
     def _process_loop(self, stream_url, cam_info, stop_event):
         log_ai_worker.info(f"Processing stream at target {self.target_fps} FPS...")
         cap = None

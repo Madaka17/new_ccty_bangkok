@@ -567,9 +567,3 @@ def province_weather_context(ex, named):
     return lines
 
 
-def site_context(question, ex):
-    """Every other data set shown on the website, so the bot never says 'no data' for something on screen."""
-    return (air_context(ex.get("air"), question, forecast=ex.get("air_forecast")) + guidance_context(ex.get("guidance"), question)
-            + road_flood_context(ex.get("road_risk"), ex.get("flood_report"), question)
-            + patrol_context(ex.get("helmet"), ex.get("wrongway"), ex.get("violations"))
-            + analytics_context(ex.get("analytics")))

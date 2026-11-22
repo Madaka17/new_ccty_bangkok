@@ -205,12 +205,6 @@ class BmaScanner:
             self.thread.start()
             return {"status": "started", "total_cameras": self.total_cameras}
 
-    def stop_scan(self):
-        with self.lock:
-            self.stop_event.set()
-            self.is_scanning = False
-            return {"status": "stopped"}
-
     def yolo_enabled(self):
         return bool(self.detector is None or getattr(self.detector, "models_loaded", lambda: True)())
 
@@ -679,22 +673,3 @@ class BmaScanner:
             return raw, None
         return raw, None
 
-    def generate_live_mjpeg(self, camid: str, fps: float = 2.0):
-        """Continuous live stream of a BMA camera with YOLO detection overlay."""
-        cam = next((c for c in self.cameras if str(c.get('camid')) == str(camid)), None)
-        if not cam:
-            return
-        
-        interval = 1.0 / max(0.5, min(5.0, fps))
-        while True:
-            t0 = time.time()
-            raw = self.session.fetch_snapshot(str(camid), timeout=4.0)
-            if raw:
-                jpeg_bytes, _ = self.process_image_and_detect(cam, raw)
-                if jpeg_bytes:
-                    yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + jpeg_bytes + b'\r\n')
-            
-            elapsed = time.time() - t0
-            if elapsed < interval:
-                time.sleep(interval - elapsed)
