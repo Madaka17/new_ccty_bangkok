@@ -3,7 +3,6 @@ Floods: road sensors, flood cameras, reports from the public, flood car parks, t
 forecasts, Bangkok districts and the national map.
 """
 import asyncio
-import json
 import time
 
 from fastapi import APIRouter, Body, HTTPException, Query, Request
@@ -71,17 +70,7 @@ def user_reports_recent(hours: float = Query(None, gt=0, le=48)):
 @router.post("/api/flood/user-reports")
 async def user_reports_create(request: Request):
     """Own flood report: {province, district, lat, lng, depth, note?, photo? (data: URL)}. Size/rate limited."""
-    body = bytearray()
-    async for chunk in request.stream():   # counted here too: a chunked upload has no content-length to check
-        body += chunk
-        if len(body) > access_guard.USER_REPORT_MAX_BODY:
-            raise HTTPException(413, "รูปใหญ่เกินไป")
-    try:
-        data = json.loads(body)
-    except ValueError:
-        raise HTTPException(400, "ข้อมูลไม่ถูกต้อง") from None
-    if not isinstance(data, dict):
-        raise HTTPException(400, "ข้อมูลไม่ถูกต้อง")
+    data = await access_guard.read_json_body(request, access_guard.USER_REPORT_MAX_BODY, "รูปใหญ่เกินไป", "ข้อมูลไม่ถูกต้อง")
     try:
         return await asyncio.get_running_loop().run_in_executor(None, user_reports.create, data)
     except ValueError as e:

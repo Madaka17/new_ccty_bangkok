@@ -1,10 +1,12 @@
 """
 The traffic assistant (/api/chat): every live source it may cite, and the flood-aware router.
 """
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from backend.agents import chat_service
+from backend.core import access_guard
 from backend.bma.bma_events import bma_feed
 from backend.services import bkk_districts, bma_scanner, detector, flood_agent, flood_router, guidance, helmet, incidents, national_forecast, north_route, province_flood, violations, wrongway
 from backend.traffic import analytics_service, rsc_service
@@ -32,7 +34,12 @@ def _user_location(v):
     return {"lat": lat, "lng": lng} if 5.5 <= lat <= 20.5 and 97.3 <= lng <= 105.7 else None
 
 @router.post("/api/chat")
-def chat_endpoint(payload: dict = Body(...)):
+async def chat_endpoint(request: Request):
+    limit = None if access_guard.is_trusted(request) else access_guard.CHAT_MAX_BODY
+    payload = await access_guard.read_json_body(request, limit, "message too long")
+    return await run_in_threadpool(_chat, payload)
+
+def _chat(payload: dict):
     messages = payload.get("messages") or []
     messages = [m for m in messages if isinstance(m, dict) and m.get("role") in ("user", "assistant")
                 and isinstance(m.get("content"), str)]

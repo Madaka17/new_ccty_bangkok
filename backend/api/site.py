@@ -4,10 +4,12 @@ Visitor telemetry and the operator team's Web Push alerts.
 import json
 
 from fastapi import APIRouter, Body, Query, Request
+from starlette.concurrency import run_in_threadpool
 
 from backend.api.system import health
 from backend.api.traffic import road_events
 from backend.bma.bma_events import bma_feed
+from backend.core import access_guard
 from backend.core.alert_service import AlertService
 from backend.core.instance import DATA_DIR
 from backend.core.response_cache import cached_json
@@ -32,12 +34,14 @@ def telemetry_stats():
     return {"ready": True, **telemetry.stats()}
 
 @router.post("/api/telemetry/view")
-def telemetry_view(payload: dict = Body(...)):
-    return {"ok": telemetry.view(payload.get("sid"), payload.get("view"))}
+async def telemetry_view(request: Request):
+    payload = await access_guard.read_json_body(request, access_guard.TELEMETRY_MAX_BODY)
+    return {"ok": await run_in_threadpool(telemetry.view, payload.get("sid"), payload.get("view"))}
 
 @router.post("/api/telemetry/heartbeat")
-def telemetry_heartbeat(payload: dict = Body(...)):
-    return {"ok": telemetry.heartbeat(payload.get("sid"), payload.get("view"))}
+async def telemetry_heartbeat(request: Request):
+    payload = await access_guard.read_json_body(request, access_guard.TELEMETRY_MAX_BODY)
+    return {"ok": await run_in_threadpool(telemetry.heartbeat, payload.get("sid"), payload.get("view"))}
 
 # POSTs here are operator-only through access_guard, so only the team can subscribe or send a test.
 alerts = AlertService(DATA_DIR, {
