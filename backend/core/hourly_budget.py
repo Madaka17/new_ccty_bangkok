@@ -25,3 +25,15 @@ class HourlyBudget:
         now = time.time() if now is None else now
         with self._lock:
             self._ts.append(now)
+
+    def try_spend(self, now=None):
+        """Reserve one slot if the window has room. Check and record happen under one lock,
+        so concurrent callers can never all pass a check that only one of them should."""
+        now = time.time() if now is None else now
+        with self._lock:
+            while self._ts and now - self._ts[0] >= self.window_s:
+                self._ts.popleft()
+            if len(self._ts) < self.limit:
+                self._ts.append(now)
+                return True
+            return False

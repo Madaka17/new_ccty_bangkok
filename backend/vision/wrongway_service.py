@@ -539,13 +539,14 @@ class WrongWayPatrol:
             self.last_check = int(now)
             return
         provider = self.provider()
-        if not provider or (agent == "auto" and not self._budget_ok(now)):
+        if not provider or (agent == "auto" and not (self._budget_ok(now) and self._budget.try_spend(now))):
             reason = self._agent_reason(now) if provider else "ไม่มี AI ตรวจซ้ำ"
             self._update(wid, verdict="pending", note=f"{local_note} · รอ AI ตรวจซ้ำ ({reason})")
             return
         jpeg = cv2.imencode(".jpg", marked if boxed is None else boxed, [cv2.IMWRITE_JPEG_QUALITY, 90])[1].tobytes()
         context = f"Camera: {cam.get('title') or camid}, Bangkok."
-        self._budget.spend(now)
+        if agent != "auto":
+            self._budget.spend(now)   # operator-forced (reanalyse): recorded whatever the cap says
         try:
             text = self._ask(jpeg, context)
         except Exception as e:  # noqa: BLE001

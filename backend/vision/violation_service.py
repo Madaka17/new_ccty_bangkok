@@ -427,8 +427,9 @@ class ViolationMonitor:
         if not self._helmet_budget_ok(camid, now):
             return
         if self.helmet_cls is None:
+            if not self._helmet_budget.try_spend(now):
+                return   # cap used up by a parallel check: no API call
             self._helmet_last[camid] = now
-            self._helmet_budget.spend(now)
         h, w = frame.shape[:2]
         x1, y1, x2, y2 = box
         mx, my = int((x2 - x1) * CROP_MARGIN), int((y2 - y1) * CROP_MARGIN)
@@ -460,9 +461,12 @@ class ViolationMonitor:
             p = float(probs.top1conf)
             if names[top] != "no_helmet" or p < HELMET_CLS_MIN_PROB:
                 return
-            if HELMET_CONFIRM_API and self.vision and getattr(self.vision, "client", None)                     and now - self._helmet_last.get(camid, 0) >= HELMET_COOLDOWN:
+            # Confirmed by the API when it is on, off cooldown and within the hourly budget; otherwise the local
+            # classifier's verdict is logged as it is (the same as during the cooldown).
+            if (HELMET_CONFIRM_API and self.vision and getattr(self.vision, "client", None)
+                    and now - self._helmet_last.get(camid, 0) >= HELMET_COOLDOWN
+                    and self._helmet_budget.try_spend(now)):
                 self._helmet_last[camid] = now
-                self._helmet_budget.spend(now)
                 jpeg = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 90])[1].tobytes()
                 threading.Thread(target=self._helmet_verdict, args=(camid, title, tid, jpeg, crop), daemon=True).start()
                 return

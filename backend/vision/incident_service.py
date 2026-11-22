@@ -161,7 +161,8 @@ class IncidentManager:
 
     def _confirm(self, camid, title, cand, jpeg, st):
         try:
-            self._budget.spend()
+            if not self._budget.try_spend():
+                return   # cap used up by a parallel check: nothing is asked; finally clears 'checking'
             verdict = self._ask_vision(jpeg, title, cand)
             log.info(f"{title}: {cand.get('kind', 'stopped')} {cand['stopped_s']}s, "
                   f"persons {cand['persons_near']} -> {verdict}")

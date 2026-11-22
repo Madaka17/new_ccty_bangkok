@@ -336,14 +336,15 @@ class HelmetPatrol:
         if agent == "auto" and self._switched_off:
             return      # YOLO off: the row stays pending, no cloud call until it is switched on again
         provider = self.provider()
-        if not provider or (agent == "auto" and not self._budget_ok(now)):
+        if not provider or (agent == "auto" and not (self._budget_ok(now) and self._budget.try_spend(now))):
             reason = self._agent_reason(now) if provider else "ไม่มี AI ตรวจซ้ำ"
             self._settle_without_agent(hid, camid, cam, crop, marked, local, reason, provider or "none")
             return
         jpeg = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 90])[1].tobytes()
         hint = f" A local detector suspects no helmet ({local[1]:.0%})." if local else ""
         context = f"Camera: {cam.get('title') or camid}, Bangkok. One motorcycle crop from a 352x288 CCTV frame.{hint}"
-        self._budget.spend(now)
+        if agent != "auto":
+            self._budget.spend(now)   # operator-forced (reanalyse): recorded whatever the cap says
         try:
             text = self._ask(jpeg, context)
         except Exception as e:  # noqa: BLE001
