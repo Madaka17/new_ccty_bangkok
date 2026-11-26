@@ -227,6 +227,17 @@ def test_js100_keeps_recent_flood_items_in_the_area():
     # sewage and vacant land are not flood water unless standing water (ขัง) is named
     ("น้ำเสียจากส้วมไหลล้นระเบียงในอาคาร ระดับน้ำสูง", "other"),
     ("ที่ดินรกร้างมีหญ้าขึ้นรก ระดับน้ำสูงขึ้น", "other"),
+    ("หมาจรจัดเห่าเสียงดังหน้าซอย", "other"),
+    # live floods that share words with the cases above: stay water
+    ("น้ำท่วมถนน รถผ่านไม่ได้", "water"),
+    ("ระดับน้ำสูง เข้าบ้านแล้ว", "water"),
+    ("ท่วมถนน ระบายน้ำไม่ทัน แจ้งหมายเลข 1555", "water"),
+    ("ท่วมถนน ไฟดับ", "water"),
+    ("น้ำท่วมตลอดซอย ตอนนี้", "water"),
+    ("น้ำท่วมตลอดซอย", "water"),
+    ("น้ำท่วมตลอดแนวถนน", "water"),
+    ("น้ำท่วมบ้าน น้ำเสียไหลย้อน", "water"),
+    ("น้ำท่วมที่ดินรกร้าง", "water"),
     # real reports from the audit (shortened): standing water stays water
     ("น้ำขังที่ท่อ", "water"),
     ("น้ำท่วมขังหน้าหมู่บ้าน", "water"),

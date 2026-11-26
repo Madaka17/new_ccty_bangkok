@@ -61,7 +61,8 @@ TOPIC_URL = {"flood": "/#water", "zone": "/#water", "incident": "/#dashboard", "
 CHECK_SECONDS = 60
 BKK_TZ = timezone(timedelta(hours=7))
 # An item must be missing from its feed this long before it counts as cleared. Longdo/BMA feeds drop items for a
-# while and bring them back, so a short gap must not re-alert the same incident.
+# while and bring them back: within this window an incident with the same title, or a flood, air or closure alert
+# that cleared and came back, does not re-alert. A higher level (escalation) still alerts at once.
 CLEAR_SECONDS = 3 * 60 * 60
 FLOOD_CM = 20.0
 CLOSED_CM = 60.0
