@@ -161,23 +161,34 @@ def parse_large(rows):
             continue
         if dam["id"] not in newest or x["dam_date"] > newest[dam["id"]]["dam_date"]:
             newest[dam["id"]] = x
-    out, names = [], set()
-    for x in sorted(newest.values(), key=lambda x: x["dam_date"], reverse=True):
+    out = []
+    # newest first; on the same date the larger storage first, so the kept twin is the better reading
+    for x in sorted(newest.values(), key=lambda x: (x["dam_date"], _num(x.get("dam_storage")) or 0), reverse=True):
         dam = x["dam"]
-        if _th(dam.get("dam_name")) in names:   # a few dams are listed twice, under two ids: keep the newest
-            continue
-        names.add(_th(dam.get("dam_name")))
         normal = _num(dam.get("normal_storage")) or _num(dam.get("max_storage"))
         storage = _num(x.get("dam_storage"))
-        if not normal or storage is None:
+        if not normal or not storage:   # no reading; 0 is a run-of-river dam, which stores nothing to report
             continue
-        out.append({"id": dam["id"], "name": _th(dam.get("dam_name")), "province": _province(x),
-                    "basin": _th((x.get("basin") or {}).get("basin_name")),
-                    "lat": _num(dam.get("dam_lat")), "lng": _num(dam.get("dam_long")), "date": x["dam_date"],
-                    "storage": storage, "normal": normal, "max": _num(dam.get("max_storage")),
-                    "pct": round(100 * storage / normal, 1),
-                    "inflow": _num(x.get("dam_inflow")), "released": _num(x.get("dam_released"))})
+        row = {"id": dam["id"], "name": _th(dam.get("dam_name")), "province": _province(x),
+               "basin": _th((x.get("basin") or {}).get("basin_name")),
+               "lat": _num(dam.get("dam_lat")), "lng": _num(dam.get("dam_long")), "date": x["dam_date"],
+               "storage": storage, "normal": normal, "max": _num(dam.get("max_storage")),
+               "pct": round(100 * storage / normal, 1),
+               "inflow": _num(x.get("dam_inflow")), "released": _num(x.get("dam_released"))}
+        # a few dams are listed twice, under two ids and names: the first (newest) one wins
+        if any(_same_dam(row, kept) for kept in out):
+            continue
+        out.append(row)
     return out
+
+
+def _same_dam(a, b):
+    """Two dam rows are one dam when their names match or their positions are within 0.01 degrees."""
+    if a["name"] == b["name"]:
+        return True
+    if None in (a["lat"], a["lng"], b["lat"], b["lng"]):
+        return False
+    return abs(a["lat"] - b["lat"]) <= 0.01 and abs(a["lng"] - b["lng"]) <= 0.01
 
 
 def parse_medium(rows, today=None):

@@ -34,6 +34,18 @@ const render = (generatedAt) => {
   return renderToStaticMarkup(<NationalWaterSection isActive />);
 };
 
+describe('NationalWaterSection wording', () => {
+  it('says "normal storage" (ระดับเก็บกักปกติ), never "normal capacity", and "full" means reaching it', () => {
+    const html = render(Math.floor(Date.now() / 1000) - 21 * 24 * HOURS);
+    expect(html).toContain('น้ำถึงระดับเก็บกักปกติแล้ว');
+    expect(html).toContain('เส้นดำ = ระดับเก็บกักปกติ');
+    expect(html).toContain('อีก 7 วันน้ำเกินระดับเก็บกักปกติ');
+    expect(html).toContain('/ ระดับเก็บกักปกติ');
+    expect(html).not.toContain('ความจุปกติ');
+    expect(html).not.toContain('/ ความจุ ');
+  });
+});
+
 describe('NationalWaterSection stale AI text', () => {
   it('hides the AI outlook, per-dam notes and the AI time when the AI result is 3 weeks old', () => {
     const html = render(Math.floor(Date.now() / 1000) - 21 * 24 * HOURS);

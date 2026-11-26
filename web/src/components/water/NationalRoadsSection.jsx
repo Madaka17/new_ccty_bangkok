@@ -127,7 +127,7 @@ export default function NationalRoadsSection({ isActive }) {
                     <span className="text-xs text-slate-500">{r.province}</span>
                     {r.ai && <Badge tone={ch.tone} dot>{ch.label}</Badge>}
                   </div>
-                  <p className="text-xs text-slate-600">ใกล้{r.near} ({r.near_kind === 'dam' ? `อีก 7 วันน้ำเกินความจุ ${mcm(r.over_mcm)} ล้าน ลบ.ม.` : bankText(r.below_cm)})</p>
+                  <p className="text-xs text-slate-600">ใกล้{r.near} ({r.near_kind === 'dam' ? `อีก 7 วันน้ำเกินระดับเก็บกักปกติ ${mcm(r.over_mcm)} ล้าน ลบ.ม.` : bankText(r.below_cm)})</p>
                   {r.ai?.note && <p className="text-[13px] text-slate-800 leading-6">{r.ai.note}</p>}
                 </li>
               );

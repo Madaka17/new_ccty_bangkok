@@ -12,6 +12,7 @@ Refreshed every 10 minutes. Each source keeps its last good snapshot, so one fee
 blanks the other.
 """
 import json
+import math
 import threading
 import time
 import urllib.request
@@ -25,6 +26,7 @@ AIR4THAI_URL = "https://air4thai.pcd.go.th/services/getNewAQI_JSON.php"
 AIR4THAI_HOURLY = "https://air4thai.pcd.go.th/forweb/getHistoryData.php"
 REFRESH_SECONDS = 600
 MAX_AGE_H = 6  # a station whose last reading is older than this is offline; drop it
+BMA_TWIN_M = 300  # a PCD station this close to a BMA station is the same site (Air4Thai relays it)
 BBOX = (13.3, 100.1, 14.3, 101.1)  # min lat, min lon, max lat, max lon
 BKK_TZ = timezone(timedelta(hours=7))
 
@@ -135,7 +137,20 @@ def _load_airbkk(now):
     return items
 
 
-def _load_air4thai(now, skip_bma):
+def _metres(lat1, lon1, lat2, lon2):
+    """Great-circle distance in metres between two points."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = p2 - p1, math.radians(lon2 - lon1)
+    h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * 6371000 * math.asin(math.sqrt(h))
+
+
+def _is_bma_twin(lat, lon, bma_items):
+    """True when a PCD station sits within BMA_TWIN_M of a BMA station: the same site, counted once."""
+    return any(_metres(lat, lon, b["lat"], b["lng"]) <= BMA_TWIN_M for b in bma_items or [])
+
+
+def _load_air4thai(now, skip_bma, bma_items=None):
     data = _get(AIR4THAI_URL)
     stations = []
     for s in data.get("stations") or []:
@@ -146,6 +161,8 @@ def _load_air4thai(now, skip_bma):
         except (KeyError, TypeError, ValueError):
             continue
         if BBOX[0] <= lat <= BBOX[2] and BBOX[1] <= lon <= BBOX[3]:
+            if skip_bma and _is_bma_twin(lat, lon, bma_items):
+                continue
             stations.append((s, lat, lon))
     if not stations:
         return []
@@ -168,14 +185,18 @@ def _load_air4thai(now, skip_bma):
         last = s.get("AQILast") or {}
         pm24 = _num((last.get("PM25") or {}).get("value"))
         hr = hourly.get(s["stationID"])
+        extra = {"pm25_24h": pm24}
         if hr:
-            pm25, pm10, ts = _num(hr.get("PM25")), _num(hr.get("PM10")), _parse_local(hr.get("DATETIMEDATA"))
+            hr_pm25, pm10, ts = _num(hr.get("PM25")), _num(hr.get("PM10")), _parse_local(hr.get("DATETIMEDATA"))
+            # one metric on the 24 h scale: the 24 h mean when there is one; the hourly value stays as an extra
+            pm25 = pm24 if pm24 is not None else hr_pm25
+            extra.update({"pm25_1h": hr_pm25, "pm25_1h_ts": ts})
         else:
             pm25, pm10 = pm24, _num((last.get("PM10") or {}).get("value"))
             ts = _parse_local(f"{last.get('date')} {last.get('time')}")
         area = (s.get("areaTH") or "").split(",")
         it = _item("pcd", s.get("stationID"), s.get("nameTH"), area[0], area[-1], lat, lon, pm25, pm10, ts, now,
-                   {"pm25_24h": pm24})
+                   extra)
         if it:
             items.append(it)
     return items
@@ -204,7 +225,8 @@ class AirService:
         except Exception as e:
             errors.append(f"AirBKK: {e}")
         try:
-            by_source["pcd"] = _load_air4thai(now, skip_bma=bool(by_source.get("bma")))
+            by_source["pcd"] = _load_air4thai(now, skip_bma=bool(by_source.get("bma")),
+                                              bma_items=by_source.get("bma"))
         except Exception as e:
             errors.append(f"Air4Thai: {e}")
 
