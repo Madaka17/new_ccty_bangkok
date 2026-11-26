@@ -7,7 +7,7 @@
   /* Console look (Oct 2026): one compact looped Thai face for all text (heads keep it readable for everyone),
      a monospaced face for figures and times only */
   --font-sans: "Noto Sans Thai Looped", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Noto Sans Thai Looped", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", "Noto Serif Thai", ui-serif, Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", monospace;
 
   /* Readability: Thai glyphs run small, so every size step is one notch larger than
@@ -22,13 +22,13 @@
   /* Legacy token names mapped onto the neutral system: cream/ink = zinc, sage = emerald,
      lavender = blue (accent), apricot = red, gold = amber. Keeps older pages on one palette. */
   --color-cream: #ffffff;
-  --color-cream-100: #f4f4f5;
-  --color-cream-200: #e4e4e7;
-  --color-cream-300: #d4d4d8;
+  --color-cream-100: #f3efe3;
+  --color-cream-200: #e6e0cf;
+  --color-cream-300: #d3ccb8;
 
-  --color-ink-900: #18181b;
-  --color-ink-600: #52525b;
-  --color-ink-400: #a1a1aa;
+  --color-ink-900: #052812;
+  --color-ink-600: #4f6657;
+  --color-ink-400: #a3ab9f;
 
   --color-sage-50: #ecfdf5;
   --color-sage-100: #d1fae5;
@@ -68,36 +68,36 @@
    take care, none = no data yet, --c-yours = what belongs to the viewer (my district, my route).
    --c-here marks the page you are on. Light keeps the same grammar on a white / zinc ground. */
 :root {
-  --c-backdrop: linear-gradient(135deg, #eef3fb 0%, #f3effa 55%, #fbeff5 100%);
-  --c-ground: #f6f8fc;
+  --c-backdrop: #fffaf0;
+  --c-ground: #fffaf0;
   --c-surface: #ffffff;
-  --c-raised: #f1f4f9;
-  --c-border: #e7ebf2;
-  --c-border-strong: #d5dbe6;
-  --c-ink: #1e2433;
-  --c-muted: #5b6475;
-  --c-line: #18181b;
-  --c-here: #0a72b5;
-  --c-here-tint: #e3f3fd;
-  --c-here-text: #0a72b5;
-  --c-primary: #0a72b5;
-  --c-primary-fill: #0b7bc0;
-  --c-primary-hover: #0a6aa6;
-  --c-primary-tint: #e3f3fd;
+  --c-raised: #f6f1e4;
+  --c-border: #e8e1cf;
+  --c-border-strong: #b4bfb8;
+  --c-ink: #052812;
+  --c-muted: #5d7365;
+  --c-line: #052812;
+  --c-here: #24582a;
+  --c-here-tint: #e6eae7;
+  --c-here-text: #24582a;
+  --c-primary: #24582a;
+  --c-primary-fill: #24582a;
+  --c-primary-hover: #1c4521;
+  --c-primary-tint: #e6eae7;
   --c-on-primary: #ffffff;
   --c-sel-bg: var(--c-primary-fill);
   --c-sel-text: var(--c-on-primary);
-  --c-wave: #d4d4d8;
+  --c-wave: #d3ccb8;
   --c-yours: #8250df;
   --c-yours-tint: #fbefff;
-  --c-glow: 0 8px 18px -8px rgba(11, 123, 192, 0.45);
-  --c-shadow: 0 1px 0 rgba(24, 24, 27, 0.04);
-  --c-card-shadow: 0 1px 2px rgba(30, 36, 51, 0.04), 0 6px 20px -10px rgba(30, 36, 51, 0.12);
+  --c-glow: 0 8px 18px -10px rgba(36, 88, 42, 0.45);
+  --c-shadow: 0 1px 0 rgba(5, 40, 18, 0.04);
+  --c-card-shadow: 0 1px 2px rgba(5, 40, 18, 0.04), 0 8px 24px -14px rgba(5, 40, 18, 0.16);
   --c-series-a: #8b5cf6;
   --c-series-b: #ec4899;
   --c-chip-up-bg: #dcfce7;
   --c-chip-up-text: #15803d;
-  --c-radius-card: 16px;
+  --c-radius-card: 14px;
 
   --ok-ring: #1a7f37;   --ok-fill: var(--c-surface);   --ok-text: #1a7f37;   --ok-tint: #dafbe1;
   --watch-ring: #ca8a04; --watch-fill: #fef9c3;        --watch-text: #854d0e; --watch-tint: #fef9c3;
@@ -111,35 +111,35 @@
   --c-series-b: #f472b6;
   --c-chip-up-bg: rgba(86, 211, 100, 0.12);
   --c-chip-up-text: #56d364;
-  --c-radius-card: 12px;
-  --c-ground: #0f0f10;
-  --c-surface: #18181b;
-  --c-raised: #222226;
-  --c-border: #2a2a2f;
-  --c-border-strong: #3a3a40;
-  --c-ink: #f4f4f5;
-  --c-muted: #a1a1aa;
-  --c-line: #f4f4f5;
-  --c-here: #fb923c;
-  --c-here-tint: rgba(249, 115, 22, 0.14);
-  --c-here-text: #fb923c;
-  --c-primary: #fb923c;
-  --c-primary-fill: #f97316;
-  --c-primary-hover: #ea580c;
-  --c-primary-tint: rgba(249, 115, 22, 0.14);
-  --c-on-primary: #0f0f10;
+  --c-radius-card: 14px;
+  --c-ground: #0b1a10;
+  --c-surface: #11241a;
+  --c-raised: #183022;
+  --c-border: #22392b;
+  --c-border-strong: #33503e;
+  --c-ink: #f6f1e4;
+  --c-muted: #b4bfb8;
+  --c-line: #f6f1e4;
+  --c-here: #9fd3a6;
+  --c-here-tint: rgba(125, 190, 135, 0.16);
+  --c-here-text: #9fd3a6;
+  --c-primary: #9fd3a6;
+  --c-primary-fill: #7dbe87;
+  --c-primary-hover: #93cc9b;
+  --c-primary-tint: rgba(125, 190, 135, 0.16);
+  --c-on-primary: #052812;
   --c-sel-bg: var(--c-primary-fill);
   --c-sel-text: var(--c-on-primary);
-  --c-wave: #3a3a40;
+  --c-wave: #33503e;
   --c-yours: #c678dd;
   --c-yours-tint: rgba(198, 120, 221, 0.14);
-  --c-glow: 0 8px 22px -8px rgba(249, 115, 22, 0.55);
+  --c-glow: 0 8px 22px -10px rgba(125, 190, 135, 0.5);
   --c-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
 
   --ok-ring: #56d364;   --ok-text: #56d364;   --ok-tint: rgba(86, 211, 100, 0.12);
   --watch-ring: #facc15; --watch-fill: rgba(250, 204, 21, 0.25); --watch-text: #facc15; --watch-tint: rgba(250, 204, 21, 0.12);
   --act-ring: #f85149;  --act-fill: #f85149;  --act-text: #ff7b72;  --act-tint: rgba(248, 81, 73, 0.12);
-  --none-ring: #6e7681; --none-text: #8b949e; --none-tint: #222226;
+  --none-ring: #6e7681; --none-text: #8b949e; --none-tint: #183022;
 }
 /* A status colour set on one element, read by its children as --t-* */
 .tone-green { --t-ring: var(--ok-ring); --t-fill: var(--ok-fill); --t-text: var(--ok-text); --t-tint: var(--ok-tint); --t-band: #1a7f37; --t-on: #ffffff; }
@@ -150,16 +150,16 @@
 /* Light: Tailwind's slate is moved onto the console zinc neutrals, so every page follows the look without
    editing its classes. Dark remaps the same names further down. */
 :root:not(.dark) {
-  --color-slate-50: #fafafa;
-  --color-slate-100: #f4f4f5;
-  --color-slate-200: #e4e4e7;
-  --color-slate-300: #d4d4d8;
-  --color-slate-400: #a1a1aa;
-  --color-slate-500: #71717a;
-  --color-slate-600: #52525b;
-  --color-slate-700: #3f3f46;
-  --color-slate-800: #27272a;
-  --color-slate-900: #18181b;
+  --color-slate-50: #fbf8ef;
+  --color-slate-100: #f3efe3;
+  --color-slate-200: #e6e0cf;
+  --color-slate-300: #d3ccb8;
+  --color-slate-400: #a3ab9f;
+  --color-slate-500: #5d7365;
+  --color-slate-600: #4f6657;
+  --color-slate-700: #34503d;
+  --color-slate-800: #1d3a26;
+  --color-slate-900: #052812;
 }
 :root {
   --color-blue-50: #ddf4ff;
@@ -183,12 +183,15 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 /* Light: the pastel backdrop behind the framed dashboard (dark keeps the flat orange-console ground) */
-:root:not(.dark) body { background: var(--c-backdrop); background-attachment: fixed; }
+:root:not(.dark) body { background: var(--c-backdrop); }
 .app-backdrop { background: var(--c-backdrop); }
 /* Dashboard card: white tile, 1px seam, soft shadow in light; dark stays flat (the shadow token is none) */
 .dash-card { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--c-radius-card); box-shadow: var(--c-card-shadow); }
 
-h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.005em; }
+h1, h2 { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.01em; }
+h3 { font-family: var(--font-sans); }
+/* Serif display face for a heading or figure that should read as a title */
+.font-serif-display { font-family: var(--font-display); }
 /* Panels: flat, a 1px seam, small corners; no shadow, no glass */
 .rounded-xl.border, .rounded-2xl.border { border-radius: 12px; }
 .rounded-xl.border.bg-white, .rounded-2xl.border.bg-white, .glass, .glass-strong { box-shadow: none; }
@@ -268,10 +271,10 @@ input, textarea { caret-color: var(--c-primary); }
    per utility because the same token (slate-900) is a dark surface in one place and dark text in another. */
 .dark {
   color-scheme: dark;
-  --color-slate-50: #222226;
-  --color-slate-100: #27272a;
-  --color-slate-200: #2a2a2f;
-  --color-slate-300: #3a3a40;
+  --color-slate-50: #183022;
+  --color-slate-100: #1f3a29;
+  --color-slate-200: #22392b;
+  --color-slate-300: #33503e;
   --color-emerald-50: #0f2a19;
   --color-emerald-100: #12361f;
   --color-emerald-200: #174a2a;
@@ -284,11 +287,11 @@ input, textarea { caret-color: var(--c-primary); }
   --color-blue-50: #11233f;
   --color-blue-100: #142d52;
   --color-blue-200: #1a3a6b;
-  --color-cream: #18181b;
-  --color-cream-100: #222226;
-  --color-cream-200: #2a2a2f;
-  --color-ink-900: #f4f4f5;
-  --color-ink-600: #a1a1aa;
+  --color-cream: #11241a;
+  --color-cream-100: #183022;
+  --color-cream-200: #22392b;
+  --color-ink-900: #f6f1e4;
+  --color-ink-600: #b4bfb8;
   --color-sage-50: #0f2a19;
   --color-sage-100: #12361f;
   --color-sage-200: #174a2a;
@@ -305,21 +308,21 @@ input, textarea { caret-color: var(--c-primary); }
 .dark body { background: var(--c-ground); color: var(--c-ink); }
 .dark .glass, .dark .glass-strong { border-color: var(--c-border); }
 .dark .text-slate-900, .dark .text-slate-800 { color: var(--c-ink); }
-.dark .text-slate-700 { color: #d4d4d8; }
-.dark .text-slate-600 { color: #a1a1aa; }
-.dark .text-slate-500 { color: #a1a1aa; }
+.dark .text-slate-700 { color: #ddd6c4; }
+.dark .text-slate-600 { color: #b4bfb8; }
+.dark .text-slate-500 { color: #b4bfb8; }
 .dark .text-emerald-700, .dark .text-emerald-800, .dark .text-emerald-900 { color: #56d364; }
 .dark .text-amber-700, .dark .text-amber-800, .dark .text-amber-900 { color: #facc15; }
 .dark .text-red-700, .dark .text-red-800, .dark .text-red-900 { color: #ff7b72; }
 .dark .text-blue-700, .dark .text-blue-800, .dark .text-blue-900 { color: #79c0ff; }
-.dark .hover\:text-slate-900:hover { color: #ffffff; }
-.dark .hover\:bg-slate-50:hover, .dark .hover\:bg-slate-100:hover { background-color: #27272a; }
+.dark .hover\:text-slate-900:hover { color: #fffaf0; }
+.dark .hover\:bg-slate-50:hover, .dark .hover\:bg-slate-100:hover { background-color: #1f3a29; }
 .dark .hover\:bg-white:hover { background-color: var(--c-raised); }
 .dark .bg-slate-900\/80 { background-color: rgba(0, 0, 0, 0.8); }
 .dark .bg-slate-900\/60, .dark .bg-slate-900\/50 { background-color: rgba(0, 0, 0, 0.7); }
 .dark .scroll-soft::-webkit-scrollbar-thumb { background: var(--c-border-strong); }
 .dark .maplibregl-popup-content { background: var(--c-surface); color: var(--c-ink); border-color: var(--c-border); }
-.dark svg text { fill: #a1a1aa; }
+.dark svg text { fill: #b4bfb8; }
 
 /* Camera AI & Analysis view switch (CameraAiPage.jsx) */
 .seg-tray { background: var(--c-ground); border: 1px solid var(--c-border); }
