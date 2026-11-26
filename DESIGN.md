@@ -52,7 +52,7 @@ typography:
     fontSize: "26px"
     fontWeight: 500
     lineHeight: "36px"
-    letterSpacing: "-0.005em"
+    letterSpacing: "-0.01em"
   answer:
     fontFamily: "Noto Sans Thai Looped, ui-sans-serif, system-ui, sans-serif"
     fontSize: "1.125rem"
@@ -78,7 +78,8 @@ typography:
 rounded:
   control: "6px"
   md: "6px"
-  panel: "12px"
+  panel-dark: "12px"
+  panel-light: "14px"
   pill: "999px"
 spacing:
   xs: "8px"
@@ -90,7 +91,7 @@ components:
   status-panel:
     backgroundColor: "{colors.surface-dark}"
     textColor: "{colors.ink-dark}"
-    rounded: "{rounded.panel}"
+    rounded: "{rounded.panel-dark}"
     padding: "20px 24px"
   check-card:
     backgroundColor: "{colors.raised-dark}"
@@ -212,7 +213,7 @@ Flat by default. Depth is one tonal step (surface to raised) plus 1px seams; dar
 
 ## Shapes
 
-Small, quiet corners: panels 12px, controls and cards 6px, avatars/badges and scrollbar thumbs fully round. Borders are 1px. The signature silhouettes are the state glyphs, drawn in a 20px box: a ringed tick (fine), a ring half-filled on the right (watch), a filled warning triangle (act), a dashed ring (no data). A seam between two pipeline stages is solid when both have data and dashed while one waits.
+Small, quiet corners: panels 12px dark, 14px light, controls and cards 6px, avatars/badges and scrollbar thumbs fully round. Borders are 1px. The signature silhouettes are the state glyphs, drawn in a 20px box: a ringed tick (fine), a ring half-filled on the right (watch), a filled warning triangle (act), a dashed ring (no data). A seam between two pipeline stages is solid when both have data and dashed while one waits.
 
 ## Components
 
@@ -224,7 +225,7 @@ Small, quiet corners: panels 12px, controls and cards 6px, avatars/badges and sc
 - **Focus:** a 2px action outline with 2px offset on every focusable element.
 
 ### Cards / Containers
-- **Panel:** surface background, 1px seam, 12px corners, no shadow in dark; light panels take one soft card shadow (`--c-card-shadow`).
+- **Panel:** surface background, 1px seam, 12px corners in dark and 14px in light, no shadow in dark; light panels take one soft card shadow (`--c-card-shadow`).
 - **Check card (wide):** raised background, 1px seam, 6px corners, 12px by 14px padding; hover borders in the tone's ring colour; contents are glyph, question (muted), answer (tone text, bold), tone word.
 - **Check row (phone):** 56px minimum, glyph, question, right-aligned answer, chevron; hover raises.
 

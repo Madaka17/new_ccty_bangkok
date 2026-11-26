@@ -19,8 +19,9 @@
   --text-base: 1.0625rem;
   --text-base--line-height: 1.6rem;
 
-  /* Legacy token names kept for older pages: cream = the earthy cream ground, ink = forest-black text, sage = emerald,
-     lavender = blue (accent), apricot = red, gold = amber. Keeps older pages on one palette. */
+  /* Legacy token names kept for older pages: cream = white surface (#ffffff; only cream-100 and up are the earthy cream ground),
+     ink = forest-black text, sage = emerald, lavender = blue (accent), apricot = red, gold = amber.
+     Keeps older pages on one palette. */
   --color-cream: #ffffff;
   --color-cream-100: #f3efe3;
   --color-cream-200: #e6e0cf;
