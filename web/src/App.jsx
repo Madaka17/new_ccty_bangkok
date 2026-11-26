@@ -352,7 +352,7 @@ export default function App() {
       {page !== 'dashboard' && <EmergencyButton />}
 
       {/* Earthquake scrolls inside its frame, so on desktop the page itself must fit the screen */}
-      <div className={`min-h-full flex flex-col lg:pt-0 pt-4 pb-24 min-w-0 ${page === 'enviro' ? 'lg:pb-4' : ''}`}>
+      <div className={`min-h-full flex flex-col lg:pt-0 pt-4 pb-24 min-w-0 ${page === 'enviro' ? 'lg:pb-4' : 'lg:pb-36'}`}>
         <TopBar onNavigate={navigate} liveCount={activeCams.length} weatherScene={weather.scene} alertCount={alertCount} district={myDistrict} />
         <main className="flex-1 px-4 sm:px-6 min-w-0 lg:pt-4">
           {/* One width and one spacing rule for every page */}

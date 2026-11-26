@@ -152,7 +152,7 @@ export default function ReportFloodPage({ isActive, onNavigate }) {
       />
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-4 items-start">
         <Card className="p-0 overflow-hidden">
-          <div className="relative h-[46vh] min-h-[320px] lg:h-[calc(100vh-17rem)]">
+          <div className="relative h-[38vh] min-h-[260px] lg:h-[calc(100vh-17rem)]">
             {/* inline position: maplibre-gl.css sets .maplibregl-map { position: relative } over a class */}
             <div ref={mapEl} style={{ position: 'absolute', inset: 0 }} aria-label="แผนที่สำหรับปักหมุดจุดน้ำท่วม" />
             <span className="absolute top-2.5 left-1/2 -translate-x-1/2 rounded-full bg-white border border-slate-200 px-3 py-1 text-[11px] text-slate-700 shadow-sm pointer-events-none whitespace-nowrap">
@@ -175,7 +175,7 @@ export default function ReportFloodPage({ isActive, onNavigate }) {
           {(geoError || rough) && <p role="status" className="px-4 py-2 text-xs text-amber-800 bg-amber-50 border-t border-amber-200">{geoError || rough}</p>}
         </Card>
 
-        <div ref={sideRef} className="flex flex-col gap-3 scroll-mt-20">
+        <div ref={sideRef} className="flex flex-col gap-3 scroll-mt-20 lg:sticky lg:top-20 self-start">
           {sent ? (
             <Card className="p-4">
               <p role="status" className={`text-base font-semibold ${sent.status === 'published' ? 'text-emerald-700' : 'text-slate-900'}`}>{sent.message}</p>

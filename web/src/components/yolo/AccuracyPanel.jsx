@@ -107,9 +107,14 @@ export default function AccuracyPanel({ active, stats, camTitle, onToast }) {
   const chartMax = Math.max(1, ...chartRows.flatMap((r) => [r.manual_count, r.ai_count]));
 
   return (
-    <Card className="p-5">
+    <details className="group">
+      <summary className="cursor-pointer select-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-50 list-none flex items-center justify-between gap-3">
+        ลองนับรถเทียบกับ AI
+        <span aria-hidden="true" className="text-xs font-normal text-slate-500 group-open:hidden">กดเพื่อเปิด</span>
+      </summary>
+    <Card className="p-5 mt-3">
       <SectionHeader
-        title="AI นับแม่นแค่ไหน: ลองนับเทียบด้วยตา"
+        title="ลองนับรถเทียบกับ AI"
         description="กด “เริ่มนับใหม่” แล้วนับรถที่ผ่านกล้องด้วยตาไปพร้อมกับ AI นับเสร็จกรอกตัวเลข ระบบจะบอกว่า AI นับต่างไปกี่คันและแม่นกี่ %"
         action={
           summary ? (
@@ -129,7 +134,11 @@ export default function AccuracyPanel({ active, stats, camTitle, onToast }) {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs text-slate-600">AI นับได้ (ตั้งแต่เริ่มนับ) · {camTitle || stats?.title || 'ยังไม่ได้เลือกกล้อง'}</p>
-              <p className="text-3xl font-semibold tabular-nums text-amber-700 leading-9">{fmtNum(aiNow)} <span className="text-sm font-normal text-slate-500">คัน</span></p>
+              {stats?.passed_since ? (
+                <p className="text-3xl font-semibold tabular-nums text-amber-700 leading-9">{fmtNum(aiNow)} <span className="text-sm font-normal text-slate-500">คัน</span></p>
+              ) : (
+                <p className="text-lg font-semibold text-slate-600 leading-9">ยังไม่ได้เริ่มนับ</p>
+              )}
               <p className="text-[11px] text-slate-500 mt-0.5">
                 รถยนต์ {fmtNum(stats?.passed_cars ?? 0)} · มอเตอร์ไซค์ {fmtNum(stats?.passed_motorcycles ?? 0)} · บรรทุก {fmtNum(stats?.passed_trucks ?? 0)}
                 {stats?.passed_since ? <> · เวลา <Elapsed since={stats.passed_since} /></> : null}
@@ -154,10 +163,11 @@ export default function AccuracyPanel({ active, stats, camTitle, onToast }) {
                 className="mt-1 w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-[var(--c-primary)]"
               />
             </label>
-            <Button variant="primary" onClick={save} loading={saving} disabled={preview == null || !stats?.active}>
+            <Button variant="primary" onClick={save} loading={saving} disabled={preview == null || !stats?.active || !stats?.passed_since}>
               บันทึกผลเทียบ
             </Button>
           </div>
+          {!stats?.passed_since && <p className="text-xs text-slate-500">กด "เริ่มนับใหม่" ก่อน</p>}
           <input
             type="text"
             value={note}
@@ -278,5 +288,6 @@ export default function AccuracyPanel({ active, stats, camTitle, onToast }) {
         </table>
       </div>
     </Card>
+    </details>
   );
 }

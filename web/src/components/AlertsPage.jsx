@@ -7,6 +7,7 @@ import { fmtDateTime } from './dashboard/format.js';
 import { PAGE_TITLES } from './Sidebar.jsx';
 import NationwideAlertsCard from './NationwideAlertsCard.jsx';
 import { leftOutNote, waterNow } from '../lib/floodReports.js';
+import { subscriberSentence } from '../lib/alertText.js';
 
 const POLL_MS = 30000;
 const REPORTS_SHOWN = 3;   // per district, until the district is expanded
@@ -205,7 +206,7 @@ export default function AlertsPage({ isActive, onToast }) {
             <p className="text-sm font-semibold text-slate-900">เครื่องนี้</p>
             <p className="text-xs text-slate-600 mt-0.5">
               {sub ? 'รับแจ้งเตือนอยู่' : 'ยังไม่ได้รับแจ้งเตือน'}
-              {status && ` · มีเครื่องรับแจ้งเตือน ${status.subscribers} เครื่อง`}
+              {subscriberSentence(status)}
               {status?.last_check && ` · ตรวจล่าสุด ${fmtDateTime(status.last_check)}`}
             </p>
           </div>

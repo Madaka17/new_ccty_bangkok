@@ -7,7 +7,7 @@ import { fmtNum } from './dashboard/format.js';
 const PRIORITY_TONE = { เร่งด่วน: 'red', สูง: 'yellow', ปานกลาง: 'neutral', เฝ้าระวัง: 'yellow' };
 
 // ---------------------------------------------------------------- hourly bars chart
-function Bars({ values, highlight }) {
+export function Bars({ values, highlight }) {
   if (!values?.length) return null;
   const max = Math.max(1, ...values);
   return (
@@ -17,7 +17,7 @@ function Bars({ values, highlight }) {
           const isHigh = highlight?.has(i);
           const pct = Math.max(4, (v / max) * 100);
           return (
-            <div key={i} className="flex-1 flex flex-col justify-end items-center group relative" title={`${String(i).padStart(2, '0')}:00 · ${v} คน`}>
+            <div key={i} className="flex-1 h-full flex flex-col justify-end items-center group relative" title={`${String(i).padStart(2, '0')}:00 · ${v} คน`}>
               <span className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-6 text-[10px] font-semibold tabular-nums text-slate-700 bg-white px-1 rounded shadow-xs border border-slate-200 pointer-events-none z-10 whitespace-nowrap">
                 {v} คน
               </span>
