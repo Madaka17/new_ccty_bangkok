@@ -9,6 +9,10 @@ import { damLater, fullText, mcm, sum, useFloodForecast } from './forecastData.j
 
 const SHOW = 12;
 
+// The AI text is only shown while it is this fresh; older text would contradict the live numbers beside it
+export const AI_FRESH_SECONDS = 12 * 3600;
+const aiFresh = (ai) => Boolean(ai?.generated_at) && Date.now() / 1000 - ai.generated_at < AI_FRESH_SECONDS;
+
 // Storage bar: today's storage and, lighter, where it will be in 7 days; the black line is the normal storage
 function DamBar({ now, later }) {
   const scale = 130;
@@ -61,7 +65,8 @@ export default function NationalWaterSection({ isActive }) {
   const dams = data.dams;
   const fullNow = dams.filter((d) => d.full_day === 0).length;
   const fullSoon = dams.filter((d) => d.full_day > 0).length;
-  const ai = data.ai?.water;
+  const aiOk = aiFresh(data.ai);
+  const ai = aiOk ? data.ai?.water : undefined;
   const shown = all ? dams : dams.slice(0, SHOW);
 
   return (
@@ -81,7 +86,7 @@ export default function NationalWaterSection({ isActive }) {
         <SectionHeader
           id="dams-title"
           title="น้ำในเขื่อนใหญ่ วันนี้และอีก 7 วัน"
-          description={`อัปเดต ${fmtDateTime(data.updated_at)} (${agoText(data.updated_at)})${data.ai?.generated_at ? ` · AI วิเคราะห์เมื่อ ${fmtDateTime(data.ai.generated_at)}` : ''}`}
+          description={`อัปเดต ${fmtDateTime(data.updated_at)} (${agoText(data.updated_at)})${aiOk ? ` · AI วิเคราะห์เมื่อ ${fmtDateTime(data.ai.generated_at)}` : ''}`}
         />
         <p className="text-xs text-slate-500">ตัวเลขเป็นล้าน ลบ.ม. · แถบเข้ม = วันนี้ · แถบจาง = อีก 7 วัน · เส้นดำ = ความจุปกติ</p>
         <ul className="divide-y divide-slate-100">
