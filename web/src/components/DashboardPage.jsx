@@ -5,9 +5,9 @@ import { readMyDistrict } from '../lib/district.js';
 import { bmaSiteDown } from './bma/BmaSiteNotice.jsx';
 import { trackView } from '../lib/telemetry.js';
 import { Button } from './dashboard/ui.jsx';
-import { PageHeader, Tabs } from './dashboard/primitives.jsx';
+import { Tabs } from './dashboard/primitives.jsx';
+import HeroBanner from './dashboard/HeroBanner.jsx';
 import { fmtDateTime, fmtNum } from './dashboard/format.js';
-import { PAGE_TITLES } from './Sidebar.jsx';
 import FlowOverview from './dashboard/FlowOverview.jsx';
 import IncidentPanel from './dashboard/IncidentPanel.jsx';
 import EventsPanel from './dashboard/EventsPanel.jsx';
@@ -202,32 +202,38 @@ export default function DashboardPage({ isActive, incidents, onAskText, onOpenRo
     el.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'start' });
   }, [jump, section]);
 
+  const updatedLine = activeSummary ? `ข้อมูลล่าสุด ${fmtDateTime(activeSummary.updated_at)}` : 'กำลังโหลดข้อมูล...';
+  // The hero's primary button brings the city status strip into view and focuses it (reduced motion: no smooth scroll)
+  const statusRef = useRef(null);
+  const focusStatus = () => {
+    const el = statusRef.current;
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'start' });
+  };
+
   return (
     <div className="flex flex-col gap-4">
-      {/* wide screens: the page header; phones: the top bar already names the page, so only the time and my
-          district sit above the answer. The page refreshes itself every minute. */}
-      <div className="hidden md:block">
-        <PageHeader
-          title={PAGE_TITLES.dashboard}
-          description={activeSummary ? `ข้อมูลล่าสุด ${fmtDateTime(activeSummary.updated_at)}` : 'กำลังโหลดข้อมูล...'}
-          actions={
-            <div className="flex flex-wrap items-center gap-2">
-              <DistrictButton district={myDistrict} onNavigate={onNavigate} className="h-9 lg:hidden" />
-              <Button size="sm" onClick={load} loading={refreshing} className="h-9">
-                รีเฟรช
-              </Button>
-              <span className="inline-flex items-center gap-2 h-9 px-3 rounded-md border border-[var(--c-border)] text-xs text-[var(--c-muted)]" title="จำนวนคนที่เปิดเว็บอยู่ตอนนี้">
-                <span aria-hidden="true" className="live-dot w-2 h-2 rounded-full bg-[var(--ok-ring)]" />
-                คนดูอยู่ตอนนี้
-                <span className="num text-sm font-semibold text-[var(--c-ink)]">{onlineCount != null ? fmtNum(onlineCount) : '–'}</span>
-              </span>
-            </div>
-          }
-        />
+      {/* The photo hero carries the page's only h1. Under it: wide screens get the time, the actions (district,
+          refresh, online count); phones get the time and my district. The page refreshes itself every minute. */}
+      <HeroBanner onPrimary={focusStatus} />
+      <div className="hidden md:flex flex-wrap items-end justify-between gap-3">
+        <p className="text-sm text-slate-600">{updatedLine}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <DistrictButton district={myDistrict} onNavigate={onNavigate} className="h-9 lg:hidden" />
+          <Button size="sm" onClick={load} loading={refreshing} className="h-9">
+            รีเฟรช
+          </Button>
+          <span className="inline-flex items-center gap-2 h-9 px-3 rounded-md border border-[var(--c-border)] text-xs text-[var(--c-muted)]" title="จำนวนคนที่เปิดเว็บอยู่ตอนนี้">
+            <span aria-hidden="true" className="live-dot w-2 h-2 rounded-full bg-[var(--ok-ring)]" />
+            คนดูอยู่ตอนนี้
+            <span className="num text-sm font-semibold text-[var(--c-ink)]">{onlineCount != null ? fmtNum(onlineCount) : '–'}</span>
+          </span>
+        </div>
       </div>
       <div className="md:hidden flex items-center justify-between gap-3">
-        <h1 className="sr-only">{PAGE_TITLES.dashboard}</h1>
-        <p className="text-xs text-[var(--c-muted)]">{activeSummary ? `ข้อมูลล่าสุด ${fmtDateTime(activeSummary.updated_at)}` : 'กำลังโหลดข้อมูล...'}</p>
+        <p className="text-xs text-[var(--c-muted)]">{updatedLine}</p>
         <DistrictButton district={myDistrict} onNavigate={onNavigate} className="min-h-11" />
       </div>
 
@@ -238,19 +244,21 @@ export default function DashboardPage({ isActive, incidents, onAskText, onOpenRo
       )}
 
 
-      <CityStatusStrip
-        summary={activeSummary}
-        bkkFlow={bkkFlow}
-        trafficAt={bkkFlow != null ? areas?.updated_at : activeSummary?.updated_at}
-        incidents={incidents}
-        flood={flood}
-        avoid={avoid}
-        onNavigate={onNavigate}
-        onIncidents={openIncidents}
-        onAskText={onAskText}
-        isActive={isActive}
-        emergency={<EmergencyButton inline />}
-      />
+      <div id="city-status" ref={statusRef} tabIndex={-1} className="focus:outline-none">
+        <CityStatusStrip
+          summary={activeSummary}
+          bkkFlow={bkkFlow}
+          trafficAt={bkkFlow != null ? areas?.updated_at : activeSummary?.updated_at}
+          incidents={incidents}
+          flood={flood}
+          avoid={avoid}
+          onNavigate={onNavigate}
+          onIncidents={openIncidents}
+          onAskText={onAskText}
+          isActive={isActive}
+          emergency={<EmergencyButton inline />}
+        />
+      </div>
 
       {/* roads to avoid on the left, the country's flood and accident news beside them on wide screens. There the two
           cards are one height: the roads card sets it and the news list scrolls inside the news card. On phones the

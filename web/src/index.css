@@ -19,7 +19,7 @@
   --text-base: 1.0625rem;
   --text-base--line-height: 1.6rem;
 
-  /* Legacy token names mapped onto the neutral system: cream/ink = zinc, sage = emerald,
+  /* Legacy token names kept for older pages: cream = the earthy cream ground, ink = forest-black text, sage = emerald,
      lavender = blue (accent), apricot = red, gold = amber. Keeps older pages on one palette. */
   --color-cream: #ffffff;
   --color-cream-100: #f3efe3;
@@ -63,10 +63,10 @@
 }
 
 /* ---------------------------------------------------------------- console look (light and dark)
-   Dark first: a near-black zinc ground, panels split by 1px seams and one step of elevation, no glass.
-   Colour carries state only: --c-primary = action and "running" (orange), ok / watch / act = fine / keep an eye on it /
+   Dark first: a deep forest-black ground, panels split by 1px seams and one step of elevation, no glass.
+   Colour carries state only: --c-primary = action and "running" (forest green in light, sage in dark), ok / watch / act = fine / keep an eye on it /
    take care, none = no data yet, --c-yours = what belongs to the viewer (my district, my route).
-   --c-here marks the page you are on. Light keeps the same grammar on a white / zinc ground. */
+   --c-here marks the page you are on. Light keeps the same grammar on a cream / white ground. */
 :root {
   --c-backdrop: #fffaf0;
   --c-ground: #fffaf0;
@@ -147,7 +147,7 @@
 .tone-red { --t-ring: var(--act-ring); --t-fill: var(--act-fill); --t-text: var(--act-text); --t-tint: var(--act-tint); --t-band: #cf222e; --t-on: #ffffff; }
 .tone-neutral { --t-ring: var(--none-ring); --t-fill: var(--none-fill); --t-text: var(--none-text); --t-tint: var(--none-tint); --t-band: #52525b; --t-on: #ffffff; }
 
-/* Light: Tailwind's slate is moved onto the console zinc neutrals, so every page follows the look without
+/* Light: Tailwind's slate is moved onto the earthy cream and forest neutrals, so every page follows the look without
    editing its classes. Dark remaps the same names further down. */
 :root:not(.dark) {
   --color-slate-50: #fbf8ef;
@@ -182,7 +182,7 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
-/* Light: the pastel backdrop behind the framed dashboard (dark keeps the flat orange-console ground) */
+/* Light: the cream backdrop behind the framed dashboard (dark keeps the flat forest-console ground) */
 :root:not(.dark) body { background: var(--c-backdrop); }
 .app-backdrop { background: var(--c-backdrop); }
 /* Dashboard card: white tile, 1px seam, soft shadow in light; dark stays flat (the shadow token is none) */
@@ -192,6 +192,8 @@ h1, h2 { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.
 h3 { font-family: var(--font-sans); }
 /* Serif display face for a heading or figure that should read as a title */
 .font-serif-display { font-family: var(--font-display); }
+/* Photo hero scrim: deepens toward the bottom so the white title and subtitle stay readable on any photo */
+.hero-overlay { background: linear-gradient(180deg, rgba(5, 40, 18, 0.35) 0%, rgba(5, 40, 18, 0.55) 60%, rgba(5, 40, 18, 0.75) 100%); }
 /* Panels: flat, a 1px seam, small corners; no shadow, no glass */
 .rounded-xl.border, .rounded-2xl.border { border-radius: 12px; }
 .rounded-xl.border.bg-white, .rounded-2xl.border.bg-white, .glass, .glass-strong { box-shadow: none; }
