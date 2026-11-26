@@ -32,6 +32,16 @@ describe('HeroBanner', () => {
     expect(btn[0]).toContain('border-white/80');
   });
 
+  it('reveals the title, subtitle and button one after another (indexes 0, 1, 2)', () => {
+    expect(html).toMatch(/<h1[^>]*class="rv[^"]*"[^>]*--i:0/);
+    expect(html).toMatch(/<p class="rv[^"]*"[^>]*--i:1/);
+    expect(html).toMatch(/<button[^>]*class="rv[^"]*"[^>]*--i:2/);
+  });
+
+  it('marks the photo for the slow settle-in zoom', () => {
+    expect(html).toContain('hero-img-settle');
+  });
+
   it('credits the photo with a new-tab CC BY link', () => {
     expect(html).toContain('https://commons.wikimedia.org/wiki/File:Benjakitti_Forest_Park_(I).jpg');
     expect(html).toContain('ภาพ: Supanut Arunoprayote (CC BY 4.0)');

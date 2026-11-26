@@ -20,6 +20,7 @@ import NewsCard from './dashboard/NewsCard.jsx';
 import AvoidRoadsCard from './dashboard/AvoidRoadsCard.jsx';
 import BMAEventFeed from './water/BMAEventFeed.jsx';
 import EmergencyButton from './EmergencyButton.jsx';
+import Reveal from './fx/Reveal.jsx';
 
 const POLL_MS = 60000;
 const MORE_KEY = 'home-details-open';
@@ -264,13 +265,17 @@ export default function DashboardPage({ isActive, incidents, onAskText, onOpenRo
           cards are one height: the roads card sets it and the news list scrolls inside the news card. On phones the
           news waits in the details. */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-4">
-        <AvoidRoadsCard summary={summary} onNavigate={onNavigate} />
-        <div className={`relative min-w-0 lg:min-h-[28rem] ${more ? '' : 'hidden lg:block'}`}>
+        <Reveal index={0} className="h-full min-w-0">
+          <AvoidRoadsCard summary={summary} onNavigate={onNavigate} />
+        </Reveal>
+        <Reveal index={1} className={`relative min-w-0 lg:min-h-[28rem] ${more ? '' : 'hidden lg:block'}`}>
           <NewsCard isActive={isActive && (more || isWide)} />
-        </div>
+        </Reveal>
       </div>
 
-      <button
+      <Reveal
+        as="button"
+        index={0}
         type="button"
         onClick={toggleMore}
         aria-expanded={more}
@@ -286,7 +291,7 @@ export default function DashboardPage({ isActive, incidents, onAskText, onOpenRo
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-4 h-4 shrink-0 text-[var(--c-muted)] transition-transform duration-200 ${more ? 'rotate-180' : ''}`} aria-hidden="true">
           <path d="M4 6l4 4 4-4" />
         </svg>
-      </button>
+      </Reveal>
 
       {more && (
         <div id="home-details" className="panel-open flex flex-col gap-4">
@@ -299,26 +304,28 @@ export default function DashboardPage({ isActive, incidents, onAskText, onOpenRo
 
         {section === 'overview' && (
           <>
-            <BestTimeCard isActive={isActive} />
-            <FlowOverview summary={activeSummary} areas={areas} error={summaryError} onRetry={load} retrying={refreshing} onArea={setRoadArea} />
-            <TrafficGuidanceCard province={roadArea?.province} amphoe={roadArea?.amphoe} />
+            <Reveal index={0} className="min-w-0"><BestTimeCard isActive={isActive} /></Reveal>
+            <Reveal index={1} className="min-w-0"><FlowOverview summary={activeSummary} areas={areas} error={summaryError} onRetry={load} retrying={refreshing} onArea={setRoadArea} /></Reveal>
+            <Reveal index={2} className="min-w-0"><TrafficGuidanceCard province={roadArea?.province} amphoe={roadArea?.amphoe} /></Reveal>
           </>
         )}
         {/* The road-colour shares (Longdo lines) sit with the per-road views: on the overview they read as a second,
             different traffic score next to the one above */}
         {section === 'road-risk' && (
           <>
-            <DensityPanel d={density} onOpenRoad={onOpenRoad} showShare={false} />
-            <RoadRiskPanel isActive={isActive && section === 'road-risk'} onOpenRoad={onOpenRoad} />
+            <Reveal index={0} className="min-w-0"><DensityPanel d={density} onOpenRoad={onOpenRoad} showShare={false} /></Reveal>
+            <Reveal index={1} className="min-w-0"><RoadRiskPanel isActive={isActive && section === 'road-risk'} onOpenRoad={onOpenRoad} /></Reveal>
           </>
         )}
         {section === 'incidents' && (
-          <div ref={incidentsRef} tabIndex={-1} aria-label="รายการอุบัติเหตุและรถเสีย" className="scroll-mt-20 outline-none">
-            <IncidentPanel incidents={incidents} onOpenAI={onOpenAI} onNavigate={onNavigate} />
-          </div>
+          <Reveal index={0} className="min-w-0">
+            <div ref={incidentsRef} tabIndex={-1} aria-label="รายการอุบัติเหตุและรถเสีย" className="scroll-mt-20 outline-none">
+              <IncidentPanel incidents={incidents} onOpenAI={onOpenAI} onNavigate={onNavigate} />
+            </div>
+          </Reveal>
         )}
-        {section === 'events' && <EventsPanel isActive={isActive && section === 'events'} onNavigate={onNavigate} />}
-        {section === 'bma-reports' && <BMAEventFeed isActive={isActive && section === 'bma-reports'} onToast={onToast} />}
+        {section === 'events' && <Reveal index={0} className="min-w-0"><EventsPanel isActive={isActive && section === 'events'} onNavigate={onNavigate} /></Reveal>}
+        {section === 'bma-reports' && <Reveal index={0} className="min-w-0"><BMAEventFeed isActive={isActive && section === 'bma-reports'} onToast={onToast} /></Reveal>}
         </div>
       )}
     </div>

@@ -408,3 +408,27 @@ input, textarea { caret-color: var(--c-primary); }
   .wfx-layer { display: none; }
   .wfx-overlay, .wfx-overlay * { animation: none !important; display: none; }
 }
+
+/* ---- scroll reveal (src/components/fx/Reveal.jsx, src/lib/useReveal.js) ----
+   Hidden only when html.rv-ready is set (an IntersectionObserver exists), so content is never stuck hidden.
+   Each element that shows gets a delay of its index (--i) x 90 ms, so a row rises one box after another. */
+html.rv-ready .rv:not(.in) { opacity: 0; transform: translateY(28px); }
+.rv {
+  transition-property: opacity, transform, background-color, border-color, color;
+  transition-duration: 0.7s;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+.rv.in { transition-delay: calc(var(--i, 0) * 90ms); }
+.rv.in:hover, .rv.in:focus-visible { transition-delay: 0s; }
+
+/* hero photo: a slow settle from a slight zoom on mount */
+html.rv-ready .hero-img-settle:not(.in) { transform: scale(1.08); }
+.hero-img-settle { transition: transform 1.6s cubic-bezier(0.22, 1, 0.36, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .rv, .hero-img-settle {
+    transition: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

@@ -7,6 +7,7 @@ import { bkkAverage } from '../../lib/air.js';
 import { cityVerdict } from '../../lib/cityVerdict.js';
 import { incidentCheck, waterCheck, waterReportCount } from '../../lib/cityChecks.js';
 import { freshness, FRESH_LIMIT } from '../../lib/freshness.js';
+import Reveal from '../fx/Reveal.jsx';
 
 // One glance, six answers: traffic / weather where the viewer is / rain-water / flood reports / dust / incidents.
 // Shown as a status panel on top (verdict + one plain sentence + ask AI), then on a wide screen the six checks as
@@ -185,7 +186,7 @@ export default function CityStatusStrip({ summary, bkkFlow, trafficAt, incidents
             const md = idx % 3 !== 2;
             const xl = idx < items.length - 1;
             return (
-              <li key={i.id} className={`tone-${i.tone} relative flex flex-col`}>
+              <Reveal as="li" index={idx} key={i.id} className={`tone-${i.tone} relative flex flex-col`}>
                 <button
                   type="button"
                   onClick={i.go}
@@ -213,7 +214,7 @@ export default function CityStatusStrip({ summary, bkkFlow, trafficAt, incidents
                     {solid && <span className="seam-fill block -mt-px h-px bg-[var(--c-muted)]" style={{ animationDelay: `${idx * 70}ms` }} />}
                   </span>
                 )}
-              </li>
+              </Reveal>
             );
           })}
         </ol>
@@ -226,10 +227,10 @@ export default function CityStatusStrip({ summary, bkkFlow, trafficAt, incidents
           <p className="text-xs text-[var(--c-muted)]">{counts}</p>
         </div>
         <ul className="divide-y divide-[var(--c-border)]">
-          {ranked.map((i) => {
+          {ranked.map((i, idx) => {
             const big = care.includes(i);
             return (
-              <li key={i.id}>
+              <Reveal as="li" index={idx} key={i.id}>
                 <button type="button" onClick={i.go} className={`tone-${i.tone} cursor-pointer w-full min-h-14 px-4 py-2.5 flex items-center gap-3 text-left hover:bg-[var(--c-raised)]`}>
                   <StateGlyph tone={i.tone} known={i.known} className="w-5 h-5 shrink-0" />
                   <span className="flex-1 min-w-0 text-[15px] text-[var(--c-muted)]">
@@ -246,7 +247,7 @@ export default function CityStatusStrip({ summary, bkkFlow, trafficAt, incidents
                   </svg>
                 </button>
                 {i.id === 'weather' && showLocate && <div className="px-4 pb-2 -mt-1">{locateHint}</div>}
-              </li>
+              </Reveal>
             );
           })}
         </ul>
@@ -296,7 +297,7 @@ function LocateHint({ onAsk, denied }) {
 // plain sentence, the detail, and on wide screens a box to ask AI about a road (phones get it under the checks)
 function CityHero({ verdict, headline, detail, onAskText, emergency }) {
   return (
-    <section aria-labelledby="city-verdict" className={`tone-${verdict.tone} rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]`}>
+    <Reveal as="section" index={0} aria-labelledby="city-verdict" className={`tone-${verdict.tone} rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]`}>
       <div className="px-5 sm:px-6 pt-5 pb-5 flex flex-col gap-2">
         {/* the emergency button drops under the answer when a narrow phone has no room beside it */}
         <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
@@ -318,7 +319,7 @@ function CityHero({ verdict, headline, detail, onAskText, emergency }) {
           </div>
         )}
       </div>
-    </section>
+    </Reveal>
   );
 }
 

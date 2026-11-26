@@ -19,3 +19,23 @@ describe('CityStatusStrip state marks', () => {
     expect(html).toContain('<circle cx="10" cy="10" r="4.5" stroke="currentColor" stroke-width="1.5"');
   });
 });
+
+describe('CityStatusStrip scroll reveal', () => {
+  const html = render();
+
+  it('reveals the verdict panel at index 0', () => {
+    expect(html).toMatch(/<section[^>]*class="rv [^"]*tone-[^"]*"[^>]*--i:0[^>]*aria-labelledby="city-verdict"|<section[^>]*--i:0[^>]*aria-labelledby="city-verdict"/);
+  });
+
+  it('gives each check item its position index in the wide pipeline and the phone list', () => {
+    for (let n = 0; n < 6; n++) {
+      const items = html.match(new RegExp(`<li class="rv [^"]*"[^>]*--i:${n}`, 'g')) || [];
+      expect(items.length, `index ${n}`).toBe(2);
+    }
+  });
+
+  it('keeps the list items as children of their list', () => {
+    expect(html).toMatch(/<ol[^>]*>(<li class="rv)/);
+    expect(html).toMatch(/<ul[^>]*>(<li class="rv)/);
+  });
+});
