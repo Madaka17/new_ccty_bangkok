@@ -37,6 +37,7 @@ export function cityVerdict({ items, trafficTone, flooding = 0, avoid = [], now 
 
   let tone;
   let headline;
+  let namesCare = false;   // the headline already names every care item
   if (flooding >= FLOOD_ROADS_SEVERE || trafficTone === 'red') {
     tone = 'red';
     headline = flooding >= FLOOD_ROADS_SEVERE
@@ -62,7 +63,8 @@ export function cityVerdict({ items, trafficTone, flooding = 0, avoid = [], now 
       ? floodLine
       : trafficTone === 'yellow'
         ? (avoidText ? `รถชะลอตัว เผื่อเวลา และเลี่ยง${avoidText}` : 'รถชะลอตัว เผื่อเวลาเดินทาง')
-        : trafficTone === 'green' ? `รถคล่องตัว แต่มี ${care.length} เรื่องต้องระวัง` : `มี ${care.length} เรื่องต้องระวัง`;
+        : `ระวัง: ${care.map((i) => i.say).join(' · ')}`;
+    namesCare = flooding <= 0 && trafficTone !== 'yellow';
   } else if (pending.length) {
     return {
       tone: 'neutral',
@@ -76,10 +78,11 @@ export function cityVerdict({ items, trafficTone, flooding = 0, avoid = [], now 
     headline = 'ทุกเรื่องปกติ เดินทางได้ตามปกติ';
   }
 
+  // The detail adds only what the headline does not already say (a green answer has no care items to add)
   const detail = [
-    ...care.map((i) => i.say),
-    ...(care.length && calm.length && !pending.length ? ['เรื่องอื่นปกติ'] : []),
+    care.length && trafficTone === 'green' && !headline.startsWith('รถ') ? 'รถคล่องตัว' : null,
+    ...(namesCare ? [] : care.map((i) => i.say)),
     ...(pending.length ? [`ยังไม่มีข้อมูล: ${pending.map((i) => i.q).join(', ')}`] : []),
-  ].join(' · ');
+  ].filter(Boolean).join(' · ');
   return { tone, label: VERDICT_LABEL[tone], headline, detail, care, calm, pending, old: [] };
 }

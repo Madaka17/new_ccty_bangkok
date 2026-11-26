@@ -10,7 +10,8 @@ const WATCH_RANK = { green: 0, yellow: 1, orange: 2, red: 3 };
 
 // Rain and water in Bangkok. Flooded roads come from the BMA drainage sensors (`flood`, ~250 stations); ThaiWater
 // relays only about 107 of them, so it is the fallback. River gauges and rain stations cover Bangkok and the
-// provinces around it: only Bangkok's own count toward the tone, the rest are named as ปริมณฑล.
+// provinces around it: Bangkok's own always decide the tone; the provinces around only make the row yellow (watch,
+// never red) when Bangkok has no overflow of its own, and are named as รอบ กทม.
 // The rain-watch zones (green / yellow / orange / red, the worst one leads) also carry tomorrow's storm.
 export function waterCheck(water, flood) {
   const roads = water?.flood_roads;
@@ -48,7 +49,8 @@ export function waterCheck(water, flood) {
     tone = 'yellow';
     status = worst.storm_at ? `ฝนฟ้าคะนอง ${worst.storm_at}` : `เฝ้าระวังฝน ${worst.name}`;
   } else if (nearOverflow > 0) {
-    status = `กทม. ปกติ · ปริมณฑลน้ำล้นตลิ่ง ${nearOverflow} จุด`;
+    tone = 'yellow';
+    status = `รอบ กทม. น้ำล้นตลิ่ง ${nearOverflow} จุด`;
   }
   return { tone, status, flooding, bkkOverflow, nearOverflow, heavyRain, watch, known: true };
 }

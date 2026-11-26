@@ -24,7 +24,19 @@ describe('cityVerdict', () => {
     const v = cityVerdict({ items, trafficTone: 'green' });
     expect(v.tone).toBe('yellow');
     expect(v.label).toBe('ออกได้ แต่ระวัง');
-    expect(v.headline).toBe('รถคล่องตัว แต่มี 1 เรื่องต้องระวัง');
+    expect(v.headline).toBe('ระวัง: คนแจ้งน้ำท่วม red');
+    expect(v.detail).toBe('รถคล่องตัว');
+  });
+
+  test('traffic green, incident and flood reports yellow: the headline names both, the detail only adds the traffic', () => {
+    const items = allFine();
+    items[1] = { ...check('อุบัติเหตุ', 'yellow', true, { id: 'incident' }), say: 'อุบัติเหตุ 5' };
+    items[3] = { ...check('คนแจ้งน้ำท่วม', 'yellow', true, { id: 'report' }), say: 'คนแจ้งว่าน้ำท่วม 9 เรื่อง' };
+    const v = cityVerdict({ items, trafficTone: 'green' });
+    expect(v.tone).toBe('yellow');
+    expect(v.headline).toBe('ระวัง: อุบัติเหตุ 5 · คนแจ้งว่าน้ำท่วม 9 เรื่อง');
+    expect(v.detail).toBe('รถคล่องตัว');
+    expect(v.detail).not.toContain('เรื่องอื่นปกติ');
   });
 
   test('heavy traffic city-wide: wait if you can, naming the roads to avoid', () => {
@@ -60,7 +72,7 @@ describe('cityVerdict', () => {
     items[5] = check('ฝุ่น', 'neutral', false, { id: 'air' });
     const v = cityVerdict({ items, trafficTone: 'green' });
     expect(v.tone).toBe('yellow');
-    expect(v.detail).toBe('อุบัติเหตุ yellow · ยังไม่มีข้อมูล: ฝุ่น');
+    expect(v.detail).toBe('รถคล่องตัว · ยังไม่มีข้อมูล: ฝุ่น');
   });
 
   test('nothing loaded yet', () => {

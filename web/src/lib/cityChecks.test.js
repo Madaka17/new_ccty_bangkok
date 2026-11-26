@@ -6,11 +6,15 @@ const zone = (name, watch, storm_at = null) => ({ name, watch, storm_at });
 const noFlood = { counts: { flood: 0, slight: 0 } };
 
 describe('waterCheck', () => {
-  test('river overflow outside Bangkok does not make Bangkok yellow, but is named', () => {
+  test('river overflow outside Bangkok makes the row yellow (watch), named as around Bangkok', () => {
     const w = { river: [gauge('นครปฐม', 'overflow'), gauge('สมุทรปราการ', 'overflow'), gauge('กรุงเทพมหานคร', 'high')], weather: [] };
     const c = waterCheck(w, noFlood);
-    expect(c.tone).toBe('green');
-    expect(c.status).toBe('กทม. ปกติ · ปริมณฑลน้ำล้นตลิ่ง 2 จุด');
+    expect(c).toMatchObject({ tone: 'yellow', status: 'รอบ กทม. น้ำล้นตลิ่ง 2 จุด' });
+  });
+
+  test('Bangkok overflow still wins over the provinces around', () => {
+    const w = { river: [gauge('นครปฐม', 'overflow'), gauge('กรุงเทพมหานคร', 'overflow')], weather: [] };
+    expect(waterCheck(w, noFlood)).toMatchObject({ tone: 'yellow', status: 'น้ำล้นตลิ่ง 1 จุด' });
   });
 
   test('Bangkok overflow counts', () => {

@@ -20,11 +20,23 @@ describe('CityStatusStrip state marks', () => {
   });
 });
 
+describe('CityStatusStrip colour key', () => {
+  it('names the four states with the same words as the answer', () => {
+    const html = render();
+    expect(html).toContain('ระวังมาก');
+    expect(html).toContain('รอข้อมูล');
+    expect(html).not.toContain('เฝ้าดู');
+    expect(html).not.toContain('ควรระวัง');
+  });
+});
+
 describe('CityStatusStrip scroll reveal', () => {
   const html = render();
 
-  it('reveals the verdict panel at index 0', () => {
-    expect(html).toMatch(/<section[^>]*class="rv [^"]*tone-[^"]*"[^>]*--i:0[^>]*aria-labelledby="city-verdict"|<section[^>]*--i:0[^>]*aria-labelledby="city-verdict"/);
+  it('shows the verdict panel at once, without a reveal animation', () => {
+    expect(html).toMatch(/<section[^>]*aria-labelledby="city-verdict"/);
+    expect(html).not.toMatch(/class="rv [^"]*"[^>]*aria-labelledby="city-verdict"/);
+    expect(html).not.toMatch(/--i:0[^>]*aria-labelledby="city-verdict"/);
   });
 
   it('gives each check item its position index in the wide pipeline and the phone list', () => {

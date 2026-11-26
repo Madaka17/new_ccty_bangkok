@@ -17,7 +17,7 @@ import Reveal from '../fx/Reveal.jsx';
 // `known` = the answer has data. An answer without data is never counted as fine: the summary says the data is
 // not all in yet instead of "ออกได้", while a danger already known is shown at once (rules in lib/cityVerdict.js).
 
-const TONE_LABEL = { green: 'ปกติ', yellow: 'เฝ้าดู', red: 'ควรระวัง', neutral: 'รอข้อมูล' };
+const TONE_LABEL = { green: 'ปกติ', yellow: 'ระวัง', red: 'ระวังมาก', neutral: 'รอข้อมูล' };   // same words as the answer
 
 export default function CityStatusStrip({ summary, bkkFlow, trafficAt, incidents, flood, avoid, onNavigate, onIncidents, onAskText, isActive, emergency }) {
   const [water, setWater] = useState(null);
@@ -158,11 +158,6 @@ export default function CityStatusStrip({ summary, bkkFlow, trafficAt, incidents
 
   // Phones read the checks as one list, the ones that need care first; wide screens keep the fixed pipeline order
   const ranked = [...care, ...calm, ...pending];
-  const counts = [
-    care.length ? `ระวัง ${care.length}` : null,
-    calm.length ? `ปกติ ${calm.length}` : null,
-    pending.length ? `รอข้อมูล ${pending.length}` : null,
-  ].filter(Boolean).join(' · ');
 
   return (
     <>
@@ -175,7 +170,7 @@ export default function CityStatusStrip({ summary, bkkFlow, trafficAt, incidents
         <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-1.5 min-h-12 border-b border-[var(--c-border)]">
           <h2 id="city-now" className="panel-label">เช็กก่อนออก 6 เรื่อง</h2>
           <div className="flex items-center gap-3">
-            <p className="text-xs text-[var(--c-muted)]">{counts} · แตะเพื่อดูรายละเอียด</p>
+            <p className="text-xs text-[var(--c-muted)]"><ColourKey /> · แตะเพื่อดูรายละเอียด</p>
             {showLocate && locateHint}
           </div>
         </div>
@@ -224,7 +219,7 @@ export default function CityStatusStrip({ summary, bkkFlow, trafficAt, incidents
       <section aria-labelledby="city-now-m" className="md:hidden rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] overflow-hidden">
         <div className="flex items-baseline justify-between gap-2 px-4 py-2.5 border-b border-[var(--c-border)]">
           <h2 id="city-now-m" className="panel-label">เช็กก่อนออก 6 เรื่อง</h2>
-          <p className="text-xs text-[var(--c-muted)]">{counts}</p>
+          <p className="text-xs text-[var(--c-muted)]"><ColourKey /></p>
         </div>
         <ul className="divide-y divide-[var(--c-border)]">
           {ranked.map((i, idx) => {
@@ -283,6 +278,20 @@ function StateGlyph({ tone, known, className = '' }) {
   );
 }
 
+// The four states as a colour key: each dot is the check's own glyph, with its word beside it
+function ColourKey() {
+  return (
+    <span className="inline-flex flex-wrap items-center gap-x-2.5 gap-y-1">
+      {['green', 'yellow', 'red', 'neutral'].map((t) => (
+        <span key={t} className={`tone-${t} inline-flex items-center gap-1`}>
+          <StateGlyph tone={t} known={t !== 'neutral'} className="w-3 h-3 shrink-0" />
+          {TONE_LABEL[t]}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 // Under the weather answer, when it is Bangkok's and not the viewer's: asks for the position on tap
 function LocateHint({ onAsk, denied }) {
   if (denied) return <p className="self-start min-h-11 flex items-center text-xs text-[var(--c-muted)]">เปิดสิทธิ์ตำแหน่งในเบราว์เซอร์ก่อน</p>;
@@ -297,7 +306,7 @@ function LocateHint({ onAsk, denied }) {
 // plain sentence, the detail, and on wide screens a box to ask AI about a road (phones get it under the checks)
 function CityHero({ verdict, headline, detail, onAskText, emergency }) {
   return (
-    <Reveal as="section" index={0} aria-labelledby="city-verdict" className={`tone-${verdict.tone} rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]`}>
+    <section aria-labelledby="city-verdict" className={`tone-${verdict.tone} rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]`}>
       <div className="px-5 sm:px-6 pt-5 pb-5 flex flex-col gap-2">
         {/* the emergency button drops under the answer when a narrow phone has no room beside it */}
         <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
@@ -319,7 +328,7 @@ function CityHero({ verdict, headline, detail, onAskText, emergency }) {
           </div>
         )}
       </div>
-    </Reveal>
+    </section>
   );
 }
 
