@@ -60,7 +60,7 @@ export default function ReportFloodForm({ pin, locating, onUseMyLocation, onPinC
     setPhotoBusy(true);
     setError('');
     try { setPhoto(await shrinkPhoto(file)); setPhotoName(file.name); }
-    catch (e) { setPhotoName(''); setError(e.message.includes('เลือก') ? e.message : 'เปิดรูปนี้ไม่ได้ กรุณาเลือกรูป JPEG, PNG หรือ WebP'); }
+    catch (e) { setPhoto(null); setPhotoName(''); setError(e.message.includes('เลือก') ? e.message : 'เปิดรูปนี้ไม่ได้ กรุณาเลือกรูป JPEG, PNG หรือ WebP'); }
     finally { setPhotoBusy(false); }
   };
 
