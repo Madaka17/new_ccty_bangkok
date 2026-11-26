@@ -108,25 +108,22 @@ export default function AccuracyPanel({ active, stats, camTitle, onToast }) {
 
   return (
     <details className="group">
-      <summary className="cursor-pointer select-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-50 list-none flex items-center justify-between gap-3">
+      <summary className="cursor-pointer select-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-50 list-none [&::-webkit-details-marker]:hidden flex items-center justify-between gap-3">
         ลองนับรถเทียบกับ AI
         <span aria-hidden="true" className="text-xs font-normal text-slate-500 group-open:hidden">กดเพื่อเปิด</span>
       </summary>
     <Card className="p-5 mt-3">
-      <SectionHeader
-        title="ลองนับรถเทียบกับ AI"
-        description="กด “เริ่มนับใหม่” แล้วนับรถที่ผ่านกล้องด้วยตาไปพร้อมกับ AI นับเสร็จกรอกตัวเลข ระบบจะบอกว่า AI นับต่างไปกี่คันและแม่นกี่ %"
-        action={
-          summary ? (
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <p className="min-w-0 text-[13px] text-slate-600 leading-5">{"กด “เริ่มนับใหม่” แล้วนับรถที่ผ่านกล้องด้วยตาไปพร้อมกับ AI นับเสร็จกรอกตัวเลข ระบบจะบอกว่า AI นับต่างไปกี่คันและแม่นกี่ %"}</p>
+        <div className="shrink-0 max-w-full">{summary ? (
             <div className="flex items-center gap-2">
               <Badge tone="neutral">ต่างเฉลี่ย {fmtNum(summary.mae)} คัน</Badge>
               <Badge tone={accTone(summary.mean_accuracy_pct)} dot>
                 แม่นเฉลี่ย {fmtAcc(summary.mean_accuracy_pct)}
               </Badge>
             </div>
-          ) : null
-        }
-      />
+          ) : null}</div>
+      </div>
 
       {/* Live counter + entry form */}
       <div className="mt-4 grid grid-cols-1 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] gap-4">

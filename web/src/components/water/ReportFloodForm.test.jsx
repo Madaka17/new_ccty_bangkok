@@ -21,3 +21,10 @@ describe('ReportFloodForm photo picker', () => {
     expect(html).not.toContain('Choose File');
   });
 });
+
+describe('ReportFloodForm focus ring', () => {
+  const html = renderToStaticMarkup(<ReportFloodForm pin={null} locating={false} onUseMyLocation={() => {}} onPinChange={() => {}} onAreaChange={() => {}} onSent={() => {}} />);
+  it('puts the file input directly before its label so peer-focus-visible works', () => {
+    expect(html).toMatch(/<input[^>]*id="report-photo"[^>]*\/>\s*<label[^>]*for="report-photo"/);
+  });
+});

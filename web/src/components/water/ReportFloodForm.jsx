@@ -60,7 +60,7 @@ export default function ReportFloodForm({ pin, locating, onUseMyLocation, onPinC
     setPhotoBusy(true);
     setError('');
     try { setPhoto(await shrinkPhoto(file)); setPhotoName(file.name); }
-    catch (e) { setError(e.message.includes('เลือก') ? e.message : 'เปิดรูปนี้ไม่ได้ กรุณาเลือกรูป JPEG, PNG หรือ WebP'); }
+    catch (e) { setPhotoName(''); setError(e.message.includes('เลือก') ? e.message : 'เปิดรูปนี้ไม่ได้ กรุณาเลือกรูป JPEG, PNG หรือ WebP'); }
     finally { setPhotoBusy(false); }
   };
 
@@ -143,8 +143,8 @@ export default function ReportFloodForm({ pin, locating, onUseMyLocation, onPinC
         <div>
           <label htmlFor="report-photo" className="font-medium text-slate-700">รูปน้ำท่วม (ไม่บังคับ)</label>
           {/* The native input shows English "Choose File"; it stays in the tab order, the label is the visible button */}
-          <input id="report-photo" type="file" accept="image/*" disabled={photoBusy} onChange={pickPhoto} className="peer sr-only" />
           <div className="mt-2 flex min-w-0 flex-wrap items-center gap-3">
+            <input id="report-photo" type="file" accept="image/*" disabled={photoBusy} onChange={pickPhoto} className="peer sr-only" />
             <label htmlFor="report-photo" className={`inline-flex h-10 shrink-0 cursor-pointer items-center rounded-full border border-slate-300 bg-white px-4 text-sm font-medium text-slate-800 hover:bg-slate-50 peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--c-primary)] peer-focus-visible:ring-offset-2 ${photoBusy ? 'pointer-events-none opacity-60' : ''}`}>เลือกรูป</label>
             <span className="min-w-0 truncate text-sm text-slate-600">{photoName || 'ยังไม่ได้เลือกรูป'}</span>
           </div>

@@ -25,3 +25,13 @@ describe('AccuracyPanel without a started count', () => {
     expect(html).not.toContain('AI นับแม่นแค่ไหน');
   });
 });
+
+describe('AccuracyPanel title', () => {
+  const html = renderToStaticMarkup(<AccuracyPanel active={false} stats={{ ...base, passed_since: null }} />);
+  it('shows the title once, in the toggle', () => {
+    expect(html.split('ลองนับรถเทียบกับ AI').length - 1).toBe(1);
+  });
+  it('hides the Safari disclosure marker', () => {
+    expect(html).toContain('[&amp;::-webkit-details-marker]:hidden');
+  });
+});
