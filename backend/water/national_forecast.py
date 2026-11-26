@@ -182,11 +182,17 @@ def parse_large(rows):
     return out
 
 
+def _has_position(row):
+    """True when the row has a real position: missing or 0/0 placeholders do not count."""
+    lat, lng = row.get("lat"), row.get("lng")
+    return lat is not None and lng is not None and (lat, lng) != (0, 0)
+
+
 def _same_dam(a, b):
     """Two dam rows are one dam when their names match or their positions are within 0.01 degrees."""
     if a["name"] == b["name"]:
         return True
-    if None in (a["lat"], a["lng"], b["lat"], b["lng"]):
+    if not all(_has_position(x) for x in (a, b)):
         return False
     return abs(a["lat"] - b["lat"]) <= 0.01 and abs(a["lng"] - b["lng"]) <= 0.01
 

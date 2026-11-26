@@ -59,3 +59,16 @@ def test_same_dam_by_position_or_name():
     assert _same_dam(a, {"name": "แม่งัดสมบูรณ์ชล", "lat": 18.0200, "lng": 98.0000}) is False
     assert _same_dam(a, {"name": "แม่งัดสมบูรณ์ชล", "lat": 18.0050, "lng": 98.0050}) is True
     assert _same_dam(a, {"name": "แม่งัด", "lat": None, "lng": None}) is True
+
+
+def test_two_different_dams_at_zero_coordinates_are_both_kept():
+    from backend.water.national_forecast import _same_dam as same
+    a = {"name": "ภูมิพล", "lat": 0, "lng": 0}
+    b = {"name": "สิริกิติ์", "lat": 0, "lng": 0}
+    assert same(a, b) is False
+    rows = [
+        dam_row(1, "ภูมิพล", "2026-11-26", 500.0, 0, 0),
+        dam_row(2, "สิริกิติ์", "2026-11-26", 600.0, 0, 0),
+    ]
+    out = parse_large(rows)
+    assert sorted(d["name"] for d in out) == ["ภูมิพล", "สิริกิติ์"]

@@ -261,3 +261,14 @@ def test_traffy_water_status_keeps_water_now_reports_only():
     st = feed.water_status()
     assert [i["id"] for i in st["items"]] == ["a", "c"] and st["total"] == 2
     assert feed.status()["total"] == 3   # the full list is unchanged
+
+
+@pytest.mark.parametrize("text,kind", [
+    ("น้ำท่วมตลอดทั้งคืน", "water"),
+    ("น้ำท่วมตลอดทั้งวัน", "water"),
+    ("ถนนท่วมตลอดทาง", "water"),
+    ("แจ้งหมายเลข 1555 ท่อตัน", "other"),
+    ("ป้ายรถเมล์ชำรุด น้ำท่วมตลอด", "recurring"),
+])
+def test_all_night_and_along_road_floods_are_live_water(text, kind):
+    assert flood_feeds.report_kind(text) == kind
