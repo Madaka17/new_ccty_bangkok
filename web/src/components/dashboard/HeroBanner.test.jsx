@@ -38,6 +38,22 @@ describe('HeroBanner', () => {
     expect(html).toMatch(/<button[^>]*class="rv[^"]*"[^>]*--i:2/);
   });
 
+  it('is a thin 112px banner on phones and keeps 300/360px from sm up', () => {
+    expect(html).toContain('h-[112px]');
+    expect(html).toContain('sm:h-[300px]');
+    expect(html).toContain('lg:h-[360px]');
+  });
+
+  it('hides the subtitle and the button below sm, so the phone shows only the title', () => {
+    expect(html).toMatch(/<p class="rv[^"]*hidden sm:block[^"]*"/);
+    const btn = html.match(/<button[^>]*>ดูสถานะตอนนี้<\/button>/);
+    expect(btn[0]).toContain('hidden sm:inline-flex');
+  });
+
+  it('keeps the credit small (10px) on phones', () => {
+    expect(html).toContain('text-[10px]');
+  });
+
   it('marks the photo for the slow settle-in zoom', () => {
     expect(html).toContain('hero-img-settle');
   });

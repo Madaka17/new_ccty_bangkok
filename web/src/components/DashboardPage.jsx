@@ -23,6 +23,8 @@ import EmergencyButton from './EmergencyButton.jsx';
 import Reveal from './fx/Reveal.jsx';
 
 const POLL_MS = 60000;
+// The online chip is hidden below this count: a "0" made the site look dead
+const ONLINE_MIN_SHOWN = 5;
 const MORE_KEY = 'home-details-open';
 // Dashboard sections; each tab groups one topic
 const SECTIONS = [
@@ -226,11 +228,13 @@ export default function DashboardPage({ isActive, incidents, onAskText, onOpenRo
           <Button size="sm" onClick={load} loading={refreshing} className="h-9">
             รีเฟรช
           </Button>
-          <span className="inline-flex items-center gap-2 h-9 px-3 rounded-md border border-[var(--c-border)] text-xs text-[var(--c-muted)]" title="จำนวนคนที่เปิดเว็บอยู่ตอนนี้">
-            <span aria-hidden="true" className="live-dot w-2 h-2 rounded-full bg-[var(--ok-ring)]" />
-            คนดูอยู่ตอนนี้
-            <span className="num text-sm font-semibold text-[var(--c-ink)]">{onlineCount != null ? fmtNum(onlineCount) : '–'}</span>
-          </span>
+          {onlineCount != null && onlineCount >= ONLINE_MIN_SHOWN && (
+            <span className="inline-flex items-center gap-2 h-9 px-3 rounded-md border border-[var(--c-border)] text-xs text-[var(--c-muted)]" title="จำนวนคนที่เปิดเว็บอยู่ตอนนี้">
+              <span aria-hidden="true" className="live-dot w-2 h-2 rounded-full bg-[var(--ok-ring)]" />
+              คนดูอยู่ตอนนี้
+              <span className="num text-sm font-semibold text-[var(--c-ink)]">{fmtNum(onlineCount)}</span>
+            </span>
+          )}
         </div>
       </div>
       <div className="md:hidden flex items-center justify-between gap-3">

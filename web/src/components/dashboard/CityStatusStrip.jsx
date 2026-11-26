@@ -297,7 +297,7 @@ function LocateHint({ onAsk, denied }) {
   if (denied) return <p className="self-start min-h-11 flex items-center text-xs text-[var(--c-muted)]">เปิดสิทธิ์ตำแหน่งในเบราว์เซอร์ก่อน</p>;
   return (
     <button type="button" onClick={onAsk} className="cursor-pointer self-start min-h-11 flex items-center text-xs font-semibold text-[var(--c-ink)] underline underline-offset-2">
-      ใช้ตำแหน่งของฉัน
+      ดูอากาศตรงที่ฉันอยู่
     </button>
   );
 }

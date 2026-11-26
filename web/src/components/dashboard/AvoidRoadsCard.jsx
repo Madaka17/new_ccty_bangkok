@@ -34,7 +34,7 @@ export default function AvoidRoadsCard({ summary, onNavigate }) {
                 <span className="num w-7 shrink-0 text-[15px] font-semibold text-[var(--c-muted)] text-right">{i + 1}</span>
                 <span className="flex-1 min-w-0">
                   <span className="block truncate text-base font-semibold" title={r.name}>{r.name}</span>
-                  <span className="block text-sm text-[var(--c-muted)]">{r.red_km ? `ติดยาว ${r.red_km} กม. จาก ${r.length_km} กม.` : `ช่วงที่มีข้อมูล ${r.length_km} กม.`}</span>
+                  <span className="block text-sm text-[var(--c-muted)]">{r.red_km ? `ติด ${r.red_km} กม.` : `ช่วงที่มีข้อมูล ${r.length_km} กม.`}</span>
                 </span>
                 <span className="inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-1 text-sm font-semibold bg-[var(--t-tint)] text-[var(--t-text)]">
                   <span aria-hidden="true" className="w-2 h-2 rounded-full bg-[var(--t-ring)]" />

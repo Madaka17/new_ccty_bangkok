@@ -78,7 +78,6 @@ export default function Sidebar({ page, onNavigate, aiActive, liveCount = 0, ale
           const open = holdsPage || !closed.includes(group.label);
           const listId = `nav-group-${gi}`;
           const badges = {
-            ai: aiActive ? { text: 'พร้อม', tone: 'grey' } : null,
             cameras: liveCount ? { text: `${liveCount}`, tone: 'grey' } : null,
             alerts: alertCount > 0 ? { text: `${alertCount}`, tone: 'alert' } : null,
           };
