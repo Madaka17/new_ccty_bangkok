@@ -292,7 +292,7 @@ export default function App() {
  const openFloodReport = useCallback(() => navigate('report'), [navigate]);
 
  const weather = useWeatherScene();
- const sidebarProps = { page, onNavigate: navigate, onReport: openFloodReport, alertCount, aiActive, liveCount: activeCams.length, weatherPref: weather.pref, onWeatherPref: weather.setPref, weatherScene: weather.scene, weatherBlocked: weather.blocked };
+ const sidebarProps = { page, onNavigate: navigate, onReport: openFloodReport, alertCount, liveCount: activeCams.length, weatherPref: weather.pref, onWeatherPref: weather.setPref, weatherScene: weather.scene, weatherBlocked: weather.blocked };
 
   return (
     <div className="min-h-full app-backdrop lg:p-4">

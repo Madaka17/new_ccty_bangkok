@@ -39,7 +39,7 @@ function LogoMark() {
 
 const PILL = 'num text-[11px] min-w-5 h-5 px-1.5 rounded-full grid place-items-center';
 
-export default function Sidebar({ page, onNavigate, aiActive, liveCount = 0, alertCount = 0, onReport, onClose, weatherPref, onWeatherPref, weatherScene, weatherBlocked }) {
+export default function Sidebar({ page, onNavigate, liveCount = 0, alertCount = 0, onReport, onClose, weatherPref, onWeatherPref, weatherScene, weatherBlocked }) {
   const [closed, setClosed] = useState(readClosedGroups);
 
   const toggleGroup = (label) => {

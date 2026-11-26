@@ -14,6 +14,10 @@ describe('EmergencyButton inline (home answer panel)', () => {
     expect(btn).not.toContain('rounded-md');
   });
 
+  it('switches to dark ink in dark mode so the label stays readable on the red fill', () => {
+    expect(btn).toContain('dark:text-[#0f0f10]');
+  });
+
   it('keeps the 44px touch height', () => {
     expect(btn).toContain('h-11');
   });
