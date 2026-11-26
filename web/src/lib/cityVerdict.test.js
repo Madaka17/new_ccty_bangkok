@@ -136,6 +136,52 @@ describe('cityVerdict', () => {
     expect(v.detail).toContain('ยังไม่มีข้อมูล: ฝุ่น');
   });
 
+  test('flood headline does not repeat the water item', () => {
+    const items = allFine();
+    items[2] = { ...check('ฝนและน้ำ', 'yellow', true, { id: 'water' }), say: 'ถนนน้ำท่วม 3 จุด' };
+    const v = cityVerdict({ items, trafficTone: 'green', flooding: 3 });
+    expect(v.headline).toBe('ถนนน้ำท่วม 3 จุด ดูเส้นทางก่อนออก');
+    expect(v.detail).not.toContain('ถนนน้ำท่วม 3 จุด');
+    expect(v.detail).toBe('รถคล่องตัว');
+  });
+
+  test('red flood headline does not repeat the water item', () => {
+    const items = allFine();
+    items[2] = { ...check('ฝนและน้ำ', 'red', true, { id: 'water' }), say: 'ถนนน้ำท่วม 12 จุด' };
+    const v = cityVerdict({ items, trafficTone: 'green', flooding: FLOOD_ROADS_SEVERE + 2 });
+    expect(v.tone).toBe('red');
+    expect(v.detail).not.toContain('ถนนน้ำท่วม 12 จุด');
+  });
+
+  test('red traffic headline does not repeat the traffic item, but keeps the other care items', () => {
+    const items = allFine();
+    items[0] = { ...check('รถติดไหม', 'red', true, { id: 'traffic' }), say: 'รถติดหนัก' };
+    items[1] = { ...check('อุบัติเหตุ', 'yellow', true, { id: 'incident' }), say: 'อุบัติเหตุ 5' };
+    const v = cityVerdict({ items, trafficTone: 'red' });
+    expect(v.headline).toBe('รถติดหนักหลายสาย');
+    expect(v.detail).toBe('อุบัติเหตุ 5');
+  });
+
+  test('slow traffic headline does not repeat the traffic item', () => {
+    const items = allFine();
+    items[0] = { ...check('รถติดไหม', 'yellow', true, { id: 'traffic' }), say: 'รถชะลอตัว' };
+    items[1] = { ...check('อุบัติเหตุ', 'yellow', true, { id: 'incident' }), say: 'อุบัติเหตุ 5' };
+    const v = cityVerdict({ items, trafficTone: 'yellow' });
+    expect(v.headline).toBe('รถชะลอตัว เผื่อเวลาเดินทาง');
+    expect(v.detail).not.toContain('รถชะลอตัว');
+    expect(v.detail).toBe('อุบัติเหตุ 5');
+  });
+
+  test('more than three care items: the headline shows three and counts the rest, the detail carries the rest', () => {
+    const items = allFine();
+    ['ก', 'ข', 'ค', 'ง', 'จ'].forEach((say, k) => {
+      items[k] = { ...check('เรื่อง', 'yellow', true, { id: 'c' + k }), say };
+    });
+    const v = cityVerdict({ items, trafficTone: 'green' });
+    expect(v.headline).toBe('ระวัง: ก · ข · ค และอีก 2 เรื่อง');
+    expect(v.detail).toBe('รถคล่องตัว · ง · จ');
+  });
+
   test('fresh data stays green', () => {
     const items = allFine();
     items[0] = check('รถติดไหม', 'green', true, { id: 'traffic', ...aged(60, 900) });

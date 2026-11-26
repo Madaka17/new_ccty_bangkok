@@ -20,6 +20,12 @@ describe('CityStatusStrip state marks', () => {
   });
 });
 
+describe('CityStatusStrip phone header', () => {
+  it('lets the colour key wrap under the heading on a 360 px phone', () => {
+    expect(render()).toMatch(/class="[^"]*flex-wrap[^"]*items-baseline/);
+  });
+});
+
 describe('CityStatusStrip colour key', () => {
   it('names the four states with the same words as the answer', () => {
     const html = render();

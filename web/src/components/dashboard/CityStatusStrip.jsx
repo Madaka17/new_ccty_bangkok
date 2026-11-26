@@ -114,7 +114,7 @@ export default function CityStatusStrip({ summary, bkkFlow, trafficAt, incidents
   const trafficTone = level.key;
   const trafficStatus = flow == null ? 'กำลังโหลด' : level.label;
 
-  // Rain and water in Bangkok (lib/cityChecks.js: what counts, and what is only named as ปริมณฑล)
+  // Rain and water in Bangkok (lib/cityChecks.js: what counts, and what is only named as รอบ กทม.)
   const wc = waterCheck(water, flood);
   const { flooding } = wc;
   // The flooded-road count comes from the BMA sensors (flood) once they have loaded, so the check is as old as the
@@ -164,8 +164,8 @@ export default function CityStatusStrip({ summary, bkkFlow, trafficAt, incidents
       <CityHero verdict={verdict} headline={headline} detail={detail} onAskText={onAskText} emergency={emergency} />
 
       {/* wide screens: the six checks as the stages of one pipeline, in a fixed order. The seam between two stages is
-          solid when both have data, dashed while one is still waiting. The glyph's shape names the tone, so colour
-          is never the only sign. */}
+          solid when both have data, dashed while one is still waiting. The word beside each check names its tone, so
+          colour is never the only sign. */}
       <section aria-labelledby="city-now" className="hidden md:block rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
         <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-1.5 min-h-12 border-b border-[var(--c-border)]">
           <h2 id="city-now" className="panel-label">เช็กก่อนออก 6 เรื่อง</h2>
@@ -217,7 +217,7 @@ export default function CityStatusStrip({ summary, bkkFlow, trafficAt, incidents
 
       {/* phones: one panel of rows, the ones that need care first */}
       <section aria-labelledby="city-now-m" className="md:hidden rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] overflow-hidden">
-        <div className="flex items-baseline justify-between gap-2 px-4 py-2.5 border-b border-[var(--c-border)]">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-2.5 border-b border-[var(--c-border)]">
           <h2 id="city-now-m" className="panel-label">เช็กก่อนออก 6 เรื่อง</h2>
           <p className="text-xs text-[var(--c-muted)]"><ColourKey /></p>
         </div>
