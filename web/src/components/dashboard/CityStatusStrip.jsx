@@ -271,31 +271,13 @@ function Fresh({ at, limit, lead = ' · ' }) {
   );
 }
 
-// The state of one check as a shape, in its tone's colour: a tick (fine), a half-filled ring (keep an eye on it),
-// a warning triangle (take care), a dashed ring (no data yet)
+// The state of one check as a colour dot in its tone's colour (the Thai word beside it names the state); a hollow ring means no data yet
 function StateGlyph({ tone, known, className = '' }) {
   const shape = !known || tone === 'neutral' ? 'none' : tone;
   return (
     <svg viewBox="0 0 20 20" fill="none" className={`${className} text-[var(--t-ring)]`} aria-hidden="true">
-      {shape === 'green' && (
-        <>
-          <circle cx="10" cy="10" r="8.25" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M6.5 10.2l2.4 2.4 4.6-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        </>
-      )}
-      {shape === 'yellow' && (
-        <>
-          <circle cx="10" cy="10" r="8.25" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M10 3.75a6.25 6.25 0 0 1 0 12.5z" fill="currentColor" />
-        </>
-      )}
-      {shape === 'red' && (
-        <>
-          <path d="M8.6 2.9 1.9 14.6a1.6 1.6 0 0 0 1.4 2.4h13.4a1.6 1.6 0 0 0 1.4-2.4L11.4 2.9a1.6 1.6 0 0 0-2.8 0z" fill="currentColor" />
-          <path d="M10 7.5v3.6M10 13.9h.01" stroke="var(--c-surface)" strokeWidth="1.8" strokeLinecap="round" />
-        </>
-      )}
-      {shape === 'none' && <circle cx="10" cy="10" r="8.25" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 2.5" />}
+      {shape === 'none' && <circle cx="10" cy="10" r="4.5" stroke="currentColor" strokeWidth="1.5" />}
+      {shape !== 'none' && <circle cx="10" cy="10" r="4.5" fill="currentColor" />}
     </svg>
   );
 }

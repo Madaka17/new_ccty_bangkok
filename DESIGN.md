@@ -139,7 +139,7 @@ components:
 
 The site reads like a console that watches the city, set in an earthy, plain palette. One status panel states the verdict (the answer to "ตอนนี้ออกไปได้ไหม"), and six checks run under it as the stages of a pipeline. Dark is the first theme: a deep forest-black ground (#0b1a10), panels split by 1px seams, one step of elevation. Light keeps the same grammar on a cream ground (#fffaf0) with white panels. There is no glass, no gradient on content, and no mosaic of equal tiles. The one glow is the soft green halo on the selected menu row. The verdict is bigger than everything else on the screen.
 
-Colour carries state and nothing else. Forest green (sage in dark) marks only action, the selected item and "you are here". Green, yellow and red mean fine, watch and act; grey means no data yet; purple means what belongs to the viewer (my district, my route). Blue is kept for water and other information data. Every state also has a shape, so colour is never the only sign. Figures and times are set in a monospaced face so columns line up.
+Colour carries state and nothing else. Forest green (sage in dark) marks only action, the selected item and "you are here". Green, yellow and red mean fine, watch and act; grey means no data yet; purple means what belongs to the viewer (my district, my route). Blue is kept for water and other information data. Every state also has a Thai word (ปกติ / เฝ้าดู / ระวัง), so colour is never the only sign; the mark itself is a plain colour dot, a hollow ring when there is no data yet. Figures and times are set in a monospaced face so columns line up.
 
 The look is adapted from the Wix template wh-1062 "Non-Profit Organization (Earthy)", adopted 2026-11-26. The overview page opens with a photo hero (see Photo Hero under Components).
 
@@ -149,7 +149,7 @@ This is a measured build: the home page and the app shell (sidebar, phone top ba
 - Dark-first forest-black console with a full cream-and-white light twin; the theme follows the device and can be toggled.
 - Flat: 1px seams and tonal steps; light cards add one soft shadow, dark has none.
 - One verdict, six pipeline stages; the check rows with care needed come first on a phone.
-- State is colour plus glyph shape plus a Thai word.
+- State is a colour dot plus a Thai word.
 - Fraunces with Noto Serif Thai for h1 and h2, the looped Thai sans for all other text, mono for figures only.
 - Pill buttons and a photo hero on the overview page, with its photo credit always visible.
 
@@ -251,7 +251,7 @@ Panels expand along one axis only: a clip reveal downward (0.28s) for panels, si
 
 ### Do:
 - **Do** put the verdict and its one sentence first on any new top-level screen, with the state glyph beside the word.
-- **Do** pair every status colour with its glyph shape and a Thai word.
+- **Do** pair every status colour dot with a Thai word.
 - **Do** set figures and times in the mono face with `.num`.
 - **Do** build new surfaces from seams, the raised step and the `tone-*` classes; reach for the `--c-*` tokens before any Tailwind palette colour.
 - **Do** keep touch targets at 44px or more and body text at 15px or more.
