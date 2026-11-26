@@ -11,6 +11,13 @@ export function initialShown(ioAvailable = hasIO()) {
   return !ioAvailable;
 }
 
+// Pure decision for one observer entry: shown at 15% in view, or, for a box taller than five viewports (which can
+// never reach 15% on screen), as soon as it touches the screen.
+export function shouldShow(entry, viewportHeight) {
+  if (!entry.isIntersecting) return false;
+  return entry.intersectionRatio >= 0.15 || entry.boundingClientRect.height > viewportHeight * 5;
+}
+
 const callbacks = new Map();
 let observer = null;
 
@@ -18,7 +25,7 @@ function sharedObserver() {
   if (observer) return observer;
   observer = new IntersectionObserver((entries) => {
     for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
+      if (!shouldShow(entry, window.innerHeight)) continue;
       const done = callbacks.get(entry.target);
       observer.unobserve(entry.target);
       callbacks.delete(entry.target);
