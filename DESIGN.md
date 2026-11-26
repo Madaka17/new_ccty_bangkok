@@ -2,32 +2,32 @@
 name: BKK StreetSmart
 description: The city as a working console. One status panel answers "can I go out now", six checks run under it like build stages.
 colors:
-  ground-dark: "#0f0f10"
-  surface-dark: "#18181b"
-  raised-dark: "#222226"
-  seam-dark: "#2a2a2f"
-  seam-strong-dark: "#3a3a40"
-  ink-dark: "#f4f4f5"
-  muted-dark: "#a1a1aa"
-  action-dark: "#fb923c"
-  action-fill-dark: "#f97316"
-  on-action: "#0f0f10"
+  ground-dark: "#0b1a10"
+  surface-dark: "#11241a"
+  raised-dark: "#183022"
+  seam-dark: "#22392b"
+  seam-strong-dark: "#33503e"
+  ink-dark: "#f6f1e4"
+  muted-dark: "#b4bfb8"
+  action-dark: "#9fd3a6"
+  action-fill-dark: "#7dbe87"
+  on-action: "#052812"
   ok-dark: "#56d364"
   watch-dark: "#facc15"
   act-dark: "#f85149"
   act-text-dark: "#ff7b72"
   none-dark: "#6e7681"
   yours-dark: "#c678dd"
-  ground-light: "#f7f7f8"
+  ground-light: "#fffaf0"
   surface-light: "#ffffff"
-  raised-light: "#f1f1f3"
-  seam-light: "#e4e4e7"
-  seam-strong-light: "#d4d4d8"
-  ink-light: "#18181b"
-  muted-light: "#52525b"
-  action-light: "#c2410c"
-  action-hover-light: "#ea580c"
-  action-tint-light: "#fff1e6"
+  raised-light: "#f6f1e4"
+  seam-light: "#e8e1cf"
+  seam-strong-light: "#b4bfb8"
+  ink-light: "#052812"
+  muted-light: "#5d7365"
+  action-light: "#24582a"
+  action-hover-light: "#1c4521"
+  action-tint-light: "#e6eae7"
   ok-light: "#1a7f37"
   watch-ring-light: "#ca8a04"
   watch-text-light: "#854d0e"
@@ -48,9 +48,9 @@ typography:
     fontWeight: 600
     lineHeight: 1.375
   page-title:
-    fontFamily: "Noto Sans Thai Looped, ui-sans-serif, system-ui, sans-serif"
+    fontFamily: "Fraunces, Noto Serif Thai, ui-serif, Georgia, serif"
     fontSize: "26px"
-    fontWeight: 700
+    fontWeight: 500
     lineHeight: "36px"
     letterSpacing: "-0.005em"
   answer:
@@ -105,7 +105,7 @@ components:
   button-primary:
     backgroundColor: "{colors.action-fill-dark}"
     textColor: "{colors.on-action}"
-    rounded: "{rounded.md}"
+    rounded: "{rounded.pill}"
     padding: "0 20px"
     height: "44px"
   button-emergency:
@@ -134,27 +134,30 @@ components:
 
 ## Overview
 
-**Creative North Star: "The City Console"**
+**Creative North Star: "The Earthy City Console"**
 
-The site reads like a developer console that watches the city. One status panel states the verdict (the answer to "ตอนนี้ออกไปได้ไหม"), and six checks run under it as the stages of a pipeline. Dark is the first theme: a near-black zinc ground, panels split by 1px seams, one step of elevation. Light keeps the same grammar on a cool zinc white. There is no glass, no gradient on content, and no mosaic of equal tiles. The one glow is the soft orange halo on the selected menu row. The verdict is bigger than everything else on the screen.
+The site reads like a console that watches the city, set in an earthy, plain palette. One status panel states the verdict (the answer to "ตอนนี้ออกไปได้ไหม"), and six checks run under it as the stages of a pipeline. Dark is the first theme: a deep forest-black ground (#0b1a10), panels split by 1px seams, one step of elevation. Light keeps the same grammar on a cream ground (#fffaf0) with white panels. There is no glass, no gradient on content, and no mosaic of equal tiles. The one glow is the soft green halo on the selected menu row. The verdict is bigger than everything else on the screen.
 
-Colour carries state and nothing else. Orange marks only action, the selected item and "you are here". Green, yellow and red mean fine, watch and act; grey means no data yet; purple means what belongs to the viewer (my district, my route). Blue is kept for water and other information data. Every state also has a shape, so colour is never the only sign. Figures and times are set in a monospaced face so columns line up.
+Colour carries state and nothing else. Forest green (sage in dark) marks only action, the selected item and "you are here". Green, yellow and red mean fine, watch and act; grey means no data yet; purple means what belongs to the viewer (my district, my route). Blue is kept for water and other information data. Every state also has a shape, so colour is never the only sign. Figures and times are set in a monospaced face so columns line up.
+
+The look is adapted from the Wix template wh-1062 "Non-Profit Organization (Earthy)", adopted 2026-11-26. The overview page opens with a photo hero (see Photo Hero under Components).
 
 This is a measured build: the home page and the app shell (sidebar, phone top bar, bottom bar) carry the system. Everything below the fold and every other page inherit only the tokens (see Don'ts and the drift line).
 
 **Key Characteristics:**
-- Dark-first near-black console with a full light twin; the theme follows the device and can be toggled.
-- Flat: 1px seams and tonal steps, no shadows on panels.
+- Dark-first forest-black console with a full cream-and-white light twin; the theme follows the device and can be toggled.
+- Flat: 1px seams and tonal steps; light cards add one soft shadow, dark has none.
 - One verdict, six pipeline stages; the check rows with care needed come first on a phone.
 - State is colour plus glyph shape plus a Thai word.
-- One looped Thai face for all text, mono for figures only.
+- Fraunces with Noto Serif Thai for h1 and h2, the looped Thai sans for all other text, mono for figures only.
+- Pill buttons and a photo hero on the overview page, with its photo credit always visible.
 
 ## Colors
 
-A zinc neutral system (near-black and cool white) with a single action orange and four state colours; each theme has its own values, listed in the frontmatter with `-dark` / `-light` suffixes.
+An earthy neutral system (forest-black, cream and white) with a single action green and four state colours; each theme has its own values, listed in the frontmatter with `-dark` / `-light` suffixes.
 
 ### Primary
-- **Action Orange** (dark text/ring `action-dark`, button fill `action-fill-dark`; light `action-light`, hover `action-hover-light`): buttons, focus rings, the selected menu row, the current page's icon, the 2px tab rule, the "running" state. Also marks "you are here" (`--c-here`). Text on an orange fill is dark (`on-action`, #0f0f10), never white.
+- **Action Green** (light `action-light` #24582a, hover `action-hover-light` #1c4521, text on fill white; dark text/ring `action-dark` #9fd3a6, button fill `action-fill-dark` #7dbe87, text on fill `on-action` #052812): buttons, focus rings, the selected menu row, the current page's icon, the 2px tab rule, the "running" state. Also marks "you are here" (`--c-here`).
 - **Text links** (`text-blue-700 hover:underline`) intentionally stay blue for now (follow-up).
 - **Water and info blue** (`--color-blue-*`): water levels, flood and other information data. It is not an action colour.
 
@@ -170,21 +173,22 @@ A zinc neutral system (near-black and cool white) with a single action orange an
 ### Named Rules
 **The State-Only Colour Rule.** Hue appears only to say fine, watch, act, no data, action, selected, or yours. A surface that needs emphasis uses a seam or the raised step, not a hue.
 
-**The Dark Ink On Orange Rule.** Text on an orange fill is `on-action` (#0f0f10), never white.
+**The Ink On Green Rule.** Text on a green fill is white (`--c-on-primary`, #ffffff) in light and `on-action` (#052812) in dark. Never mix them: no white on the sage dark fill, no dark text on the forest light fill.
 
 **The Honest Grey Rule.** A check with no data is grey with a dashed ring and the words "รอข้อมูล"; it is never drawn green. The verdict says the data is not all in rather than "ปกติ".
 
 ## Typography
 
-**Display / Body Font:** Noto Sans Thai Looped (with ui-sans-serif, system-ui). Weights 400, 500, 600, 700.
+**Display Font:** Fraunces, with Noto Serif Thai for Thai glyphs (ui-serif, Georgia). Used for h1 and h2 only, weight 500 (the overview hero title is 400). Loaded weights: Fraunces 300-600, Noto Serif Thai 400-600.
+**Body Font:** Noto Sans Thai Looped (with ui-sans-serif, system-ui). Weights 400, 500, 600, 700.
 **Mono Font:** JetBrains Mono (with ui-monospace, Cascadia Mono). Weights 400, 500, 600.
 
-**Character:** One compact looped Thai face for everything, so heads and body read the same way for any reader; the mono face is reserved for numbers and times, which gives the console its instrument feel.
+**Character:** The serif display face gives page titles and the overview hero a warm, civic voice. Everything else uses one compact looped Thai sans, so body text and labels read the same way for any reader. The mono face is reserved for numbers and times, which keeps the console's instrument feel.
 
 ### Hierarchy
 - **Verdict** (700, 30px, 36px from 640px, 1.25): the one word answer beside its glyph.
 - **Headline** (600, 20px, 24px from 640px, snug, max about 30em): the one plain sentence under the verdict.
-- **Page title** (700, 26px, 36px line): the PageHeader h1 on inner pages.
+- **Page title** (Fraunces with Noto Serif Thai, 500, 26px, 36px line): the PageHeader h1 on inner pages.
 - **Answer** (700, 18px phone care rows and pipeline cards, 17px calm phone rows): the check result in its tone text colour.
 - **Body** (400-500, 15px, 1.6): details, nav labels, tabs (600).
 - **Panel label** (600, 13px, 0.02em, muted, sentence case): the heading of a panel or nav group. It is a real heading, not a decoration above one.
@@ -201,7 +205,7 @@ Desktop (from 1024px): a 232px sidebar rail split by a seam, a top bar (page tit
 
 ## Elevation & Depth
 
-Flat by default. Depth is one tonal step (surface to raised) plus 1px seams; panels carry no shadow. The only shadows left in the system are the hairline ring token (`0 0 0 1px` seam colour) and a soft drop on map popups and toasts. The selected menu row takes `--c-glow`, a soft orange halo under its orange fill; it is the only glow in the system. The live-source dot breathes a 5px ring in the fine colour; that is state, not glow.
+Flat by default. Depth is one tonal step (surface to raised) plus 1px seams; dark panels carry no shadow, and light cards carry one soft card shadow (`--c-card-shadow`). The only shadows left in the system are the hairline ring token (`0 0 0 1px` seam colour) and a soft drop on map popups and toasts. The selected menu row takes `--c-glow`, a soft green halo under its green fill; it is the only glow in the system. The live-source dot breathes a 5px ring in the fine colour; that is state, not glow.
 
 ### Named Rules
 **The Seam Not Shadow Rule.** Separate panels with a 1px seam and, at most, the raised step. A panel that needs a shadow to be seen is placed wrong.
@@ -213,14 +217,14 @@ Small, quiet corners: panels 12px, controls and cards 6px, avatars/badges and sc
 ## Components
 
 ### Buttons
-- **Shape:** 6px corners, 44px tall on touch surfaces (the Button helper offers 40px md and 32px sm).
-- **Primary:** action-fill background, dark text (`on-action`, #0f0f10), semibold, 20px side padding; hover steps to the darker action (`--c-primary-hover`). Dark theme fill is `#f97316`; in dark the hover also steps to `#ea580c`.
+- **Shape:** pill (fully rounded), 44px tall on touch surfaces (the Button helper offers 40px md and 32px sm).
+- **Primary:** green fill with a pill shape and 20px side padding. In light the fill is forest green (`--c-primary-fill` #24582a) with white text; in dark the fill is sage (#7dbe87) with forest-black text (`on-action`, #052812). Semibold; hover steps to `--c-primary-hover` (#1c4521 in light, #93cc9b in dark).
 - **Secondary / Ghost:** seam border on surface, or transparent; hover raises to the raised step.
 - **Emergency (inline):** transparent with a 1px dashed act-coloured border and act text, phone icon, 44px tall, sits beside the verdict; hover fills with the act tint. A destructive control is dashed so it is findable but never louder than the verdict.
 - **Focus:** a 2px action outline with 2px offset on every focusable element.
 
 ### Cards / Containers
-- **Panel:** surface background, 1px seam, 12px corners, no shadow.
+- **Panel:** surface background, 1px seam, 12px corners, no shadow in dark; light panels take one soft card shadow (`--c-card-shadow`).
 - **Check card (wide):** raised background, 1px seam, 6px corners, 12px by 14px padding; hover borders in the tone's ring colour; contents are glyph, question (muted), answer (tone text, bold), tone word.
 - **Check row (phone):** 56px minimum, glyph, question, right-aligned answer, chevron; hover raises.
 
@@ -229,9 +233,12 @@ Small, quiet corners: panels 12px, controls and cards 6px, avatars/badges and sc
 - **Focus:** 2px outline in the action colour (`--c-primary`) with 2px offset.
 
 ### Navigation
-- **Sidebar:** surface rail, 64px brand header, panel-label group headings, 44px rows with a 20px icon; the selected row is filled orange with dark text (`on-action`) and the one glow (`--c-glow`) (`aria-current`).
+- **Sidebar:** surface rail, 64px brand header, panel-label group headings, 44px rows with a 20px icon; the selected row is filled green (forest in light, sage in dark) with its on-fill ink and the one glow (`--c-glow`) (`aria-current`).
 - **Bottom bar (phone):** five items on a hairline top seam; the current page is marked by a 2px action rule on that seam; "แจ้งน้ำท่วม" sits in the middle on a filled action square; the last item opens the menu drawer.
 - **Tabs:** an underline row on a seam; the selected tab gets ink text and a 2px action rule that slides between tabs (spring); 44px tall, 15px semibold.
+
+### Photo Hero (overview)
+The overview page opens with a photo, the one place the system uses imagery. It is a rounded card, 220px tall on phones, 300px from 640px and 360px from 1024px. A green scrim (`.hero-overlay`, deepening from 35% to 75% toward the bottom) keeps the white h1 (Fraunces, weight 400) above 4.5:1 contrast. One pill button (white outline, filling white with forest-black text on hover) sits under the title. The photo is decorative (empty alt text). Its credit is always visible at the bottom right: "ภาพ: Supanut Arunoprayote (CC BY 4.0)", linking to the Wikimedia Commons file (Benjakitti Forest Park). Keep that credit on any change to the hero.
 
 ### State Glyph and Pipeline (signature)
 Six checks, always the same order on wide screens, each led by its StateGlyph; on phones ranked care, then fine, then waiting. The seam fill animation draws solid joins from the left as the page opens.
@@ -247,11 +254,11 @@ Panels expand along one axis only: a clip reveal downward (0.28s) for panels, si
 - **Do** set figures and times in the mono face with `.num`.
 - **Do** build new surfaces from seams, the raised step and the `tone-*` classes; reach for the `--c-*` tokens before any Tailwind palette colour.
 - **Do** keep touch targets at 44px or more and body text at 15px or more.
-- **Do** use dark ink (`--c-on-primary`) on orange fills and reserve yellow for "watch".
+- **Do** use the on-fill ink (`--c-on-primary`: white in light, forest-black in dark) on green fills, and reserve yellow for "watch".
 
 ### Don't:
 - **Don't** use glass, glow outside the selected menu row, gradients on content, or soft drop shadows on panels.
-- **Don't** put white text on an orange fill, or use orange for decoration.
+- **Don't** put white text on the dark sage fill, put dark text on the light forest green, or use green for decoration.
 - **Don't** colour a surface for decoration; hue means state, action or "yours".
 - **Don't** draw a check with missing data as fine.
 - **Don't** nest rounded cards inside cards on new work, or use saturated chart bars.
