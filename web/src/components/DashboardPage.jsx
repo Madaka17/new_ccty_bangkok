@@ -219,7 +219,7 @@ export default function DashboardPage({ isActive, incidents, onAskText, onOpenRo
           refresh, online count); phones get the time and my district. The page refreshes itself every minute. */}
       <HeroBanner onPrimary={focusStatus} />
       <div className="hidden md:flex flex-wrap items-end justify-between gap-3">
-        <p className="text-sm text-slate-600">{updatedLine}</p>
+        <p className="text-sm text-[var(--c-muted)]">{updatedLine}</p>
         <div className="flex flex-wrap items-center gap-2">
           <DistrictButton district={myDistrict} onNavigate={onNavigate} className="h-9 lg:hidden" />
           <Button size="sm" onClick={load} loading={refreshing} className="h-9">

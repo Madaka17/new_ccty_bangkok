@@ -13,7 +13,7 @@ export default function HeroBanner({ onPrimary, children }) {
         className="absolute inset-0 -z-10 h-full w-full object-cover"
       />
       <div aria-hidden="true" className="hero-overlay absolute inset-0 -z-10" />
-      <div className="relative flex h-full flex-col items-center justify-center gap-4 px-5 text-center">
+      <div className="relative flex h-full flex-col items-center justify-center gap-4 px-5 pb-8 text-center">
         <h1 id="hero-title" className="font-serif-display text-balance text-3xl leading-tight font-normal text-white sm:text-5xl lg:text-6xl">
           เช็กกรุงเทพฯ ก่อนออกจากบ้าน
         </h1>
