@@ -212,6 +212,25 @@ def test_js100_keeps_recent_flood_items_in_the_area():
     ("บริเวณเกาะกลางถนน ภายหลังเกิดเหตุการณ์น้ำท่วม พบต้นไม้ตาย", "after"),
     ("ตัดหญ้า ที่ขวางทาง ท่อระบายน้ำ ป้องกันน้ำขังในซอย", "other"),
     ("มีการทำถนนเจาะในเวลากลางคืน", "other"),
+    # non-flood topics with no standing-water words: left out of the water count
+    ("ไฟส่องสว่างดับ ซอยหน้าบ้าน", "other"),                   # illustrative text, not a copied report
+    ("ไฟส่องสว่างดับ ระดับน้ำในคลองสูงมาก", "other"),         # "ระดับน้ำ" alone is not standing water here
+    ("ท่อตัน ต้นไม้ล้อมรอบทางเดิน", "other"),
+    ("งูเข้าบ้าน ระดับน้ำขึ้นที่ท่าน้ำ", "other"),
+    # same topic, but the water is on the spot: stays water
+    ("ท่อตัน น้ำท่วมขังหน้าบ้าน", "water"),
+    # live Traffy audit: past or chronic flood mentions are not water now
+    ("ไฟป้ายรถเมล์ดับ ก่อนน้ำท่วม กทม ครั้งก่อน", "after"),
+    ("จอดรถเรียงซ้อน ที่ทีน้ำท่วมกทม.", "recurring"),
+    ("ป้ายรถเมล์ชำรุด น้ำท่วมตลอด", "recurring"),
+    ("ซอยนี้เคยท่วมปีที่แล้ว", "after"),
+    # sewage and vacant land are not flood water unless standing water (ขัง) is named
+    ("น้ำเสียจากส้วมไหลล้นระเบียงในอาคาร ระดับน้ำสูง", "other"),
+    ("ที่ดินรกร้างมีหญ้าขึ้นรก ระดับน้ำสูงขึ้น", "other"),
+    # real reports from the audit (shortened): standing water stays water
+    ("น้ำขังที่ท่อ", "water"),
+    ("น้ำท่วมขังหน้าหมู่บ้าน", "water"),
+    ("น้ำขังริมฟุตบาท", "water"),
 ])
 def test_traffy_report_kind(text, kind):
     assert flood_feeds.report_kind(text) == kind

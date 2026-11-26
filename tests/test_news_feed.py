@@ -21,6 +21,13 @@ def test_kind_of_headlines():
     assert nf.kind_of("หุ้นไทยวันนี้ปิดบวก") == ""
 
 
+def test_flood_word_inside_other_words_is_not_flood():
+    # "ยกระดับน้ำมัน" (oil) contains "ระดับน้ำ"; "น้ำล้นหลาม" is an idiom for overflowing with crowds.
+    assert nf.kind_of("BKP ผนึก 3 คู่ค้ายกระดับน้ำมันปาล์มไทย รับกติกา EUDR") == ""
+    assert nf.kind_of("ระดับน้ำเจ้าพระยาสูงขึ้น เตือนริมตลิ่ง") == "flood"
+    assert nf.kind_of("แฟนคลับแห่ร่วมงานล้นหลาม") == ""
+
+
 def test_parse_rss_keeps_recent_flood_and_accident_with_province():
     xml = _rss(("น้ำท่วมหนัก จ.สุโขทัย ชาวบ้านอพยพ", "https://www.matichon.co.th/a1", "Sat, 03 Oct 2026 03:00:00 +0700"),
                ("รถชนกันบนถนนมิตรภาพ นครราชสีมา", "https://www.matichon.co.th/a2", "Sat, 03 Oct 2026 02:00:00 +0700"),

@@ -60,7 +60,9 @@ TOPICS = {
 TOPIC_URL = {"flood": "/#water", "zone": "/#water", "incident": "/#dashboard", "air": "/#air", "system": "/#dashboard"}
 CHECK_SECONDS = 60
 BKK_TZ = timezone(timedelta(hours=7))
-CLEAR_SECONDS = 30 * 60
+# An item must be missing from its feed this long before it counts as cleared. Longdo/BMA feeds drop items for a
+# while and bring them back, so a short gap must not re-alert the same incident.
+CLEAR_SECONDS = 3 * 60 * 60
 FLOOD_CM = 20.0
 CLOSED_CM = 60.0
 # Residents file a few flood complaints a day in normal weather; several in one district within an hour is rain now
@@ -85,7 +87,8 @@ VAPID_SUB = os.getenv("ALERT_VAPID_SUB", "mailto:admin@example.com")
 
 
 def _event_key(title):
-    """Longdo and the BMA centre relay the same report, and follow-ups say "คืบหน้า...": key on the place."""
+    """Longdo and the BMA centre relay the same report, and follow-ups say "คืบหน้า...": key on the place.
+    Whitespace and the "คืบหน้า" word are dropped so the same report with other spacing shares one key."""
     return "inc:" + "".join((title or "").replace("คืบหน้า", "").split())
 
 

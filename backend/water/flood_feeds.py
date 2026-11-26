@@ -65,6 +65,18 @@ REPORT_PAST = re.compile(r"ภายหลัง(?:เกิด)?เหตุก
 REPORT_PREVENT = re.compile(r"ป้องกัน")
 REPORT_WATER_NOW = re.compile(r"ท่วมขัง|น้ำขัง|น้ำท่วม|นำ้ท่วม|ท่วมสูง|ล้อมรอบ|ระดับน้ำ|น้ำเข้าบ้าน|น้ำรอการระบาย|น้ำไม่ระบาย|"
                               r"ระบายน้ำไม่ทัน")
+# Clear non-flood topics (lights and power, animals, trees, rubbish, footpaths, pipes blocked without water)
+REPORT_OTHER_TOPIC = re.compile(
+    r"ไฟส่องสว่าง|ไฟฟ้า|ไฟดับ|เสาไฟ|หลอดไฟ|งู|สัตว์|สุนัข|หมา|แมว|ต้นไม้|กิ่งไม้|ขยะ|ทางเท้า|ฟุตบาท|"
+    r"ท่อ(?:อุด)?ตัน|ท่อระบาย(?:น้ำ)?(?:ชำรุด|แตก|พัง)")
+# Sewage and vacant land: other, unless standing water (ขัง) is named
+REPORT_SEWAGE_LAND = re.compile(r"ส้วม|สิ่งปฏิกูล|น้ำเสีย|ท่อน้ำทิ้ง|ระเบียง|ที่ดินรกร้าง|ที่รกร้าง")
+# Standing-water words that keep such a report in "water" (a "ท่อตัน น้ำท่วมขัง" report is about the water)
+STRONG_WATER = re.compile(r"ท่วมขัง|น้ำขัง|น้ำท่วม|นำ้ท่วม|ท่วมสูง|น้ำเข้าบ้าน")
+# Past or chronic flood mentions, not water on the spot now: "recurring" (every time, always) or "after" (a past flood)
+REPORT_RECURRING_FLOOD = re.compile(r"ท่วม(?:ทุกที|ตลอด)|ที่ทีน้ำท่วม")
+REPORT_PAST_FLOOD = re.compile(r"ก่อนน้ำท่วม|ครั้งก่อน|เคยท่วม|ปีที่แล้ว")
+STANDING_WATER = re.compile(r"ท่วมขัง|น้ำขัง")
 
 
 def report_kind(text):
@@ -74,6 +86,14 @@ def report_kind(text):
         return "aid"
     if REPORT_STILL.search(text):
         return "water"
+    if REPORT_RECURRING_FLOOD.search(text) and not STANDING_WATER.search(text):
+        return "recurring"
+    if REPORT_PAST_FLOOD.search(text) and not STANDING_WATER.search(text):
+        return "after"
+    if REPORT_OTHER_TOPIC.search(text) and not STRONG_WATER.search(text):
+        return "other"
+    if REPORT_SEWAGE_LAND.search(text) and not STANDING_WATER.search(text):
+        return "other"
     if REPORT_WHEN_RAIN.search(text):
         return "recurring"
     if (AFTER_FLOOD.search(text) or REPORT_PAST.search(text)) and not re.search(r"ท่วมขัง|น้ำขัง", text):
