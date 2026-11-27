@@ -90,6 +90,49 @@ def middles():
     return out
 
 
+_OUTLINE = None     # [(min_lat, min_lng, max_lat, max_lng, ring)] for each Bangkok district, read once
+
+
+def _outline():
+    global _OUTLINE
+    if _OUTLINE is None:
+        with open(GEO_FILE, encoding="utf-8") as f:
+            feats = json.load(f)["features"]
+        out = []
+        for ft in feats:
+            if ft["properties"].get("pro_code") != "10":
+                continue
+            g = ft["geometry"]
+            polys = [g["coordinates"]] if g["type"] == "Polygon" else g["coordinates"]
+            for poly in polys:
+                ring = poly[0]                      # [lng, lat] pairs, the outer ring
+                lngs, lats = [c[0] for c in ring], [c[1] for c in ring]
+                out.append((min(lats), min(lngs), max(lats), max(lngs), ring))
+        _OUTLINE = out
+    return _OUTLINE
+
+
+def _inside(lng, lat, ring):
+    """Ray casting: is (lng, lat) inside the polygon ring?"""
+    inside = False
+    j = len(ring) - 1
+    for i in range(len(ring)):
+        xi, yi = ring[i][0], ring[i][1]
+        xj, yj = ring[j][0], ring[j][1]
+        if (yi > lat) != (yj > lat) and lng < (xj - xi) * (lat - yi) / (yj - yi) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def in_bangkok(lat, lng):
+    """True when the point is inside one of Bangkok's 50 district outlines (local file, no network)."""
+    for min_lat, min_lng, max_lat, max_lng, ring in _outline():
+        if min_lat <= lat <= max_lat and min_lng <= lng <= max_lng and _inside(lng, lat, ring):
+            return True
+    return False
+
+
 def rain_forecast(points):
     """{district: (next 24 h mm, next 3 days mm)} from Open-Meteo, one request for every district."""
     names = list(points)

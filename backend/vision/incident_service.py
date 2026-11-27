@@ -22,7 +22,9 @@ import urllib.request
 import cv2
 
 from backend.core import local_llm
+from backend.core.geo import haversine_km
 from backend.core.gemini import gemini_client, gemini_key
+from backend.water.bkk_districts import in_bangkok
 from backend.core.hourly_budget import HourlyBudget
 from backend.vision.frame_utils import safe_id
 from backend.core.log import get_logger
@@ -62,6 +64,78 @@ def _feed_ts(text):
         return int(time.mktime(time.strptime(text, '%Y-%m-%d %H:%M:%S')))
     except (TypeError, ValueError):
         return None
+
+
+# A Longdo item that says the scene is clear: the incident is over
+CLEARED = re.compile(r"พ้น(?:จุด)?กีดขวาง|เคลื่อนย้าย(?:รถ)?(?:ออก)?(?:แล้ว|เรียบร้อย)|เปิด(?:การ)?จราจรได้(?:ตามปกติ)?|"
+                     r"เปิดช่องทาง(?:จราจร)?ได้|การจราจรกลับมาปกติ|เคลียร์(?:พื้นที่)?แล้ว")
+PROGRESS = re.compile(r"^คืบหน้า\s*")   # a follow-up to an incident already listed
+SAME_PLACE_M = 300
+
+
+def _is_update(item):
+    return bool(PROGRESS.match(item['title'] or ''))
+
+
+def _is_cleared(item):
+    return bool(CLEARED.search(f"{item['title']} {item['description']}"))
+
+
+def _same_incident(orig, upd):
+    """A follow-up belongs to an incident within 300 m of it, or whose title (without "คืบหน้า" and the clear
+    phrase) starts with the first 15 characters of the incident's title."""
+    if haversine_km(orig['latitude'], orig['longitude'], upd['latitude'], upd['longitude']) * 1000 <= SAME_PLACE_M:
+        return True
+    core = CLEARED.sub('', PROGRESS.sub('', upd['title'] or '')).strip()
+    head = (orig['title'] or '')[:15]
+    return bool(head) and core.startswith(head)
+
+
+def _settle_incidents(parsed, now):
+    """Split the parsed Longdo accidents and breakdowns into (everywhere, active in BBOX, ended in the last 24 h).
+
+    `parsed` is [(item, feed entry)] in feed order. A "คืบหน้า" follow-up is folded into the incident it refers to;
+    a follow-up or incident that says the scene is clear is not active, and the incident it refers to ends with it.
+    """
+    def stopped(e):
+        return bool(e.get('stop')) and e['stop'] < now
+
+    live = [(i, e) for i, e in parsed if not stopped(e)]
+    ended_at, folded = {}, set()
+    for upd, ue in live:
+        if not _is_update(upd):
+            continue
+        orig = next((o for o, _ in live if o is not upd and not _is_update(o) and _same_incident(o, upd)), None)
+        if orig is None:
+            continue
+        folded.add(upd['id'])
+        if _is_cleared(upd):
+            at = _feed_ts(ue.get('start')) or time.time()
+            ended_at[orig['id']] = ended_at[upd['id']] = at
+    for item, _ in live:
+        if _is_cleared(item):
+            ended_at.setdefault(item['id'], time.time())
+
+    everywhere, active, recent = [], [], []
+    for item, e in parsed:
+        inside = BBOX[0] <= item['latitude'] <= BBOX[2] and BBOX[1] <= item['longitude'] <= BBOX[3]
+        item['in_bkk'] = in_bangkok(item['latitude'], item['longitude'])
+        if stopped(e):
+            cleared = _feed_ts(e.get('stop'))
+            if inside and cleared and time.time() - cleared <= 24 * 3600:
+                recent.append({**item, 'ts': _feed_ts(e.get('start')) or cleared, 'cleared_ts': cleared})
+            continue
+        if item['id'] in ended_at:
+            cleared = int(ended_at[item['id']])
+            if inside and time.time() - cleared <= 24 * 3600:
+                recent.append({**item, 'ts': _feed_ts(e.get('start')) or cleared, 'cleared_ts': cleared})
+            continue
+        if item['id'] in folded:
+            continue
+        everywhere.append(item)
+        if inside:
+            active.append(item)
+    return everywhere, active, recent
 
 SYSTEM_PROMPT = (
     "You review a single frame from a Bangkok traffic CCTV camera. Our tracker flagged either a vehicle that has been "
@@ -261,8 +335,8 @@ class IncidentManager:
         with urllib.request.urlopen(req, timeout=15) as resp:
             items = json.loads(resp.read().decode('utf-8'))
         now = time.strftime('%Y-%m-%d %H:%M:%S')
-        out, recent, floods, national = [], [], [], []
-        everywhere, closures = [], []
+        floods, national = [], []
+        closures, parsed = [], []
         for e in items:
             etype = str(e.get('type') or '')
             title = (e.get('title') or '').strip()
@@ -301,17 +375,8 @@ class IncidentManager:
                 'latitude': lat, 'longitude': lon, 'start': e.get('start'), 'stop': e.get('stop'),
                 'contributor': e.get('contributor', ''), 'severity': e.get('severity', ''),
             }
-            if not e.get('stop') or e['stop'] >= now:
-                everywhere.append(item)
-            if not (BBOX[0] <= lat <= BBOX[2] and BBOX[1] <= lon <= BBOX[3]):
-                continue
-            if e.get('stop') and e['stop'] < now:
-                # Ended already: keep it for the "resolved in the last 24 h" list
-                ts, cleared = _feed_ts(e.get('start')), _feed_ts(e.get('stop'))
-                if cleared and time.time() - cleared <= 24 * 3600:
-                    recent.append({**item, 'ts': ts or cleared, 'cleared_ts': cleared})
-                continue
-            out.append(item)
+            parsed.append((item, e))
+        everywhere, out, recent = _settle_incidents(parsed, now)
         with self.lock:
             self.longdo = out
             self.longdo_recent = recent

@@ -371,7 +371,7 @@ export function useGaugeLayer(mapRef, waterSummary) {
           <br><span style="color:${sty.color};font-weight:700">${sty.label}</span>${g.storage_pct != null ? ` น้ำเต็ม <b>${g.storage_pct}%</b>` : ''}
           ${g.msl != null ? `<br><span style="color:#64748b">ระดับน้ำ ${g.msl} ม.${g.bank != null ? ` · ตลิ่ง ${g.bank} ม.` : ''} (วัดจากระดับน้ำทะเล)</span>` : ''}
           ${g.diff_text && g.diff_bank != null ? `<br><span style="color:#64748b">${esc(g.diff_text)} ${g.diff_bank}</span>` : ''}
-          ${g.ts ? `<br><span style="color:#94a3b8;font-size:11px">ข้อมูล ${new Date(g.ts * 1000).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น. · ${g.source === 'bma' ? 'สำนักการระบายน้ำ กทม.' : 'คลังข้อมูลน้ำแห่งชาติ'}</span>` : ''}
+          ${g.ts ? `<br><span style="color:#94a3b8;font-size:11px">${g.stale ? 'ข้อมูลเก่า ' : 'ข้อมูล '}${new Date(g.ts * 1000).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น. · ${g.source === 'bma' ? 'สำนักการระบายน้ำ กทม.' : 'คลังข้อมูลน้ำแห่งชาติ'}</span>` : ''}
         </div>`
       );
       gaugeMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([g.lng, g.lat]).setPopup(popup).addTo(map));

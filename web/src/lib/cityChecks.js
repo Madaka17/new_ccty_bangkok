@@ -62,14 +62,18 @@ export function incidentCheck(incidents) {
   const all = [...(incidents.camera || []), ...(incidents.longdo || [])];
   const titles = new Set(all.map((i) => i.title));
   const seen = all.filter((i) => !(/^คืบหน้า\s*/.test(i.title || '') && titles.has((i.title || '').replace(/^คืบหน้า\s*/, ''))));
-  const accidents = seen.filter((i) => i.kind !== 'breakdown').length;
-  const breakdowns = seen.length - accidents;
-  const total = seen.length;
+  // Items the server places outside Bangkok (in_bkk false) are named, not counted; a missing field counts
+  const bkk = seen.filter((i) => i.in_bkk !== false);
+  const outside = seen.length - bkk.length;
+  const accidents = bkk.filter((i) => i.kind !== 'breakdown').length;
+  const breakdowns = bkk.length - accidents;
+  const total = bkk.length;
   const tone = total === 0 ? 'green' : total >= INCIDENTS_RED ? 'red' : 'yellow';
-  const status = total === 0
-    ? 'ไม่มีเหตุ'
-    : [accidents ? `อุบัติเหตุ ${accidents}` : null, breakdowns ? `รถเสีย ${breakdowns}` : null].filter(Boolean).join(' · ');
-  return { tone, status, total, accidents, breakdowns, known: true };
+  const parts = total === 0
+    ? ['ไม่มีเหตุ']
+    : [accidents ? `อุบัติเหตุ ${accidents}` : null, breakdowns ? `รถเสีย ${breakdowns}` : null].filter(Boolean);
+  if (outside > 0) parts.push(`รอบ กทม. ${outside}`);
+  return { tone, status: parts.join(' · '), total, accidents, breakdowns, outside, known: true };
 }
 
 // People on Traffy who say the water is there now (the server's report_kind). Aid requests for a past flood,

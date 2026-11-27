@@ -724,6 +724,23 @@ def _load_official_stations():
     rows.sort(key=lambda r: order.index(int(r["id"])))
     return rows
 
+RIVER_STALE_MINUTES = 180    # ThaiWater river gauges report hourly at best
+
+
+def _mark_stale_rivers(rows, now=None):
+    """A river reading older than RIVER_STALE_MINUTES is not live: level 'stale', so no count or home check takes it.
+    A row without a reading time is left as it is."""
+    now = time.time() if now is None else now
+    for r in rows:
+        r["stale"] = bool(r.get("ts")) and now - r["ts"] > RIVER_STALE_MINUTES * 60
+        if r["stale"]:
+            r["level"] = "stale"
+    return rows
+
+
+def _river_counts(rows):
+    return {k: sum(1 for r in rows if r["level"] == k) for k in ("overflow", "high", "normal", "low")}
+
 
 def _build_summary():
     parts = {}
@@ -748,14 +765,14 @@ def _build_summary():
     if "river" not in parts and "canals" not in parts:
         raise RuntimeError(errors.get("river") or "thaiwater unreachable")
 
-    river = parts.get("river", [])
+    river = _mark_stale_rivers(parts.get("river", []))
     canals = parts.get("canals", [])
     roads = parts.get("flood_roads", {"flooding": 0, "slight": 0, "normal": 0, "items": []})
     weather = _zone_watch(parts.get("weather", []), river, canals, roads, parts.get("rain", []))
     return {
         "updated_at": int(time.time()),
         "river": river,
-        "river_counts": {k: sum(1 for r in river if r["level"] == k) for k in ("overflow", "high", "normal", "low")},
+        "river_counts": _river_counts(river),
         "canals": [r for r in canals if r["level"] != "offline"][:40],
         "canal_counts": {k: sum(1 for r in canals if r["level"] == k) for k in ("overflow", "high", "normal", "offline")},
         "canal_total": sum(1 for r in canals if r["level"] != "offline"),
@@ -783,9 +800,6 @@ def rain_stations():
 def get_summary():
     data, stale = _cache.get("summary", SUMMARY_TTL, _build_summary)
     return {**{k: v for k, v in data.items() if k != "canals_all"}, "stale": stale, "api_key": key_status()}
-
-
-RIVER_STALE_MINUTES = 180    # ThaiWater river gauges report hourly at best
 
 
 def get_map():
