@@ -79,3 +79,67 @@ def test_in_bkk_is_false_for_nonthaburi_and_true_for_sukhumvit(monkeypatch):
     m = _refresh(monkeypatch, feed)
     flags = {i['id']: i['in_bkk'] for i in m.longdo}
     assert flags == {'longdo-1': False, 'longdo-2': True}
+
+
+def test_negated_clear_phrase_keeps_the_incident_active(monkeypatch):
+    feed = [_ev(1, 'อุบัติเหตุ ถนนรัชดา'), _ev(2, 'คืบหน้า ยังไม่พ้นกีดขวาง')]
+    m = _refresh(monkeypatch, feed)
+    assert [i['id'] for i in m.longdo] == ['longdo-1']
+
+
+def test_cannot_open_traffic_does_not_clear_the_incident(monkeypatch):
+    feed = [_ev(1, 'อุบัติเหตุ ถนนรัชดา', desc='ไม่สามารถเปิดการจราจรได้')]
+    m = _refresh(monkeypatch, feed)
+    assert [i['id'] for i in m.longdo] == ['longdo-1']
+    assert m.longdo_recent == []
+
+
+def test_traffic_back_to_normal_clears_the_incident(monkeypatch):
+    feed = [_ev(1, 'อุบัติเหตุ ถนนรัชดา', desc='การจราจรกลับมาปกติ')]
+    m = _refresh(monkeypatch, feed)
+    assert m.longdo == []
+    assert [i['id'] for i in m.longdo_recent] == ['longdo-1']
+
+
+def test_standalone_cleared_item_ages_out_of_the_24_hour_list(monkeypatch):
+    feed = [_ev(1, 'อุบัติเหตุ ถนนรัชดา', desc='การจราจรกลับมาปกติ', start=_ts(30 * 3600))]
+    m = _refresh(monkeypatch, feed)
+    assert m.longdo == [] and m.longdo_recent == []
+
+
+def test_follow_up_does_not_merge_with_an_incident_more_than_6_hours_older(monkeypatch):
+    feed = [_ev(1, 'อุบัติเหตุ ถนนรัชดา', start=_ts(7 * 3600)),
+            _ev(2, 'คืบหน้า อุบัติเหตุ ถนนรัชดา เคลื่อนย้ายพ้นกีดขวางแล้ว', start=_ts(60))]
+    m = _refresh(monkeypatch, feed)
+    assert [i['id'] for i in m.longdo] == ['longdo-1']
+
+
+def test_follow_up_does_not_merge_with_an_incident_that_started_later(monkeypatch):
+    feed = [_ev(1, 'อุบัติเหตุ ถนนรัชดา', start=_ts(60)),
+            _ev(2, 'คืบหน้า อุบัติเหตุ ถนนรัชดา เคลื่อนย้ายพ้นกีดขวางแล้ว', start=_ts(600))]
+    m = _refresh(monkeypatch, feed)
+    assert [i['id'] for i in m.longdo] == ['longdo-1']
+
+
+def test_breakdown_follow_up_does_not_end_an_accident(monkeypatch):
+    feed = [_ev(1, 'อุบัติเหตุ ถนนรัชดา'),
+            _ev(2, 'คืบหน้า อุบัติเหตุ ถนนรัชดา เคลื่อนย้ายพ้นกีดขวางแล้ว', etype=1)]
+    m = _refresh(monkeypatch, feed)
+    assert [i['id'] for i in m.longdo] == ['longdo-1']
+
+
+def test_the_nearest_incident_is_the_one_that_ends(monkeypatch):
+    near_by = (NEAR[0] + 0.0018, NEAR[1])      # about 200 m north of NEAR
+    feed = [_ev(1, 'อุบัติเหตุ ถนนรัชดา', start=_ts(900)),
+            _ev(2, 'อุบัติเหตุ ถนนรัชดา', at=near_by, start=_ts(800)),
+            _ev(3, 'คืบหน้า อุบัติเหตุ ถนนรัชดา เคลื่อนย้ายพ้นกีดขวางแล้ว', at=near_by, start=_ts(60))]
+    m = _refresh(monkeypatch, feed)
+    assert [i['id'] for i in m.longdo] == ['longdo-1']
+    assert 'longdo-2' in [i['id'] for i in m.longdo_recent]
+
+
+def test_roads_sharing_a_title_prefix_do_not_merge(monkeypatch):
+    feed = [_ev(1, 'อุบัติเหตุ ถนนรามอินทรา', at=FAR, start=_ts(900)),
+            _ev(2, 'คืบหน้า อุบัติเหตุ ถนนรามคำแหง เคลื่อนย้ายพ้นกีดขวางแล้ว', start=_ts(60))]
+    m = _refresh(monkeypatch, feed)
+    assert [i['id'] for i in m.longdo] == ['longdo-1']

@@ -66,11 +66,13 @@ def _feed_ts(text):
         return None
 
 
-# A Longdo item that says the scene is clear: the incident is over
-CLEARED = re.compile(r"พ้น(?:จุด)?กีดขวาง|เคลื่อนย้าย(?:รถ)?(?:ออก)?(?:แล้ว|เรียบร้อย)|เปิด(?:การ)?จราจรได้(?:ตามปกติ)?|"
-                     r"เปิดช่องทาง(?:จราจร)?ได้|การจราจรกลับมาปกติ|เคลียร์(?:พื้นที่)?แล้ว")
+# A Longdo item that says the scene is clear: the incident is over. "ยังไม่พ้น…", "ไม่สามารถเปิดการจราจรได้" are not.
+CLEARED = re.compile(r"(?<!ไม่)(?<!ยังไม่)(?<!ไม่สามารถ)(?:พ้น(?:จุด)?กีดขวาง|เคลื่อนย้าย(?:รถ)?(?:ออก)?(?:แล้ว|เรียบร้อย)|"
+                     r"เปิด(?:การ)?จราจรได้(?:ตามปกติ)?|เปิดช่องทาง(?:จราจร)?ได้|การจราจรกลับมาปกติ|เคลียร์(?:พื้นที่)?แล้ว)")
 PROGRESS = re.compile(r"^คืบหน้า\s*")   # a follow-up to an incident already listed
-SAME_PLACE_M = 300
+SAME_PLACE_M = 300                      # the same spot
+SAME_ROAD_M = 2000                      # a 15-character title match only counts this close
+FOLLOW_UP_MAX_H = 6                     # a follow-up comes at most this long after the incident started
 
 
 def _is_update(item):
@@ -81,14 +83,28 @@ def _is_cleared(item):
     return bool(CLEARED.search(f"{item['title']} {item['description']}"))
 
 
-def _same_incident(orig, upd):
-    """A follow-up belongs to an incident within 300 m of it, or whose title (without "คืบหน้า" and the clear
-    phrase) starts with the first 15 characters of the incident's title."""
-    if haversine_km(orig['latitude'], orig['longitude'], upd['latitude'], upd['longitude']) * 1000 <= SAME_PLACE_M:
-        return True
+def _match_distance(orig, upd):
+    """Metres between a follow-up and the incident it belongs to, or None when it does not belong to it.
+
+    Same kind (accident or breakdown), the incident started at or before the follow-up and at most FOLLOW_UP_MAX_H
+    before it, and either the same spot (300 m), or the follow-up's title (without "คืบหน้า" and the clear phrase)
+    starts with the incident's whole title, or its first 15 characters match and the spot is within 2 km.
+    """
+    if orig['kind'] != upd['kind']:
+        return None
+    o_ts, u_ts = _feed_ts(orig.get('start')), _feed_ts(upd.get('start'))
+    if o_ts is None or u_ts is None or not 0 <= u_ts - o_ts <= FOLLOW_UP_MAX_H * 3600:
+        return None
+    dist = haversine_km(orig['latitude'], orig['longitude'], upd['latitude'], upd['longitude']) * 1000
+    if dist <= SAME_PLACE_M:
+        return dist
     core = CLEARED.sub('', PROGRESS.sub('', upd['title'] or '')).strip()
-    head = (orig['title'] or '')[:15]
-    return bool(head) and core.startswith(head)
+    title = (orig['title'] or '').strip()
+    if title and core.startswith(title):
+        return dist
+    if dist <= SAME_ROAD_M and title and core.startswith(title[:15]):
+        return dist
+    return None
 
 
 def _settle_incidents(parsed, now):
@@ -105,16 +121,23 @@ def _settle_incidents(parsed, now):
     for upd, ue in live:
         if not _is_update(upd):
             continue
-        orig = next((o for o, _ in live if o is not upd and not _is_update(o) and _same_incident(o, upd)), None)
-        if orig is None:
+        cands = []
+        for o, _ in live:
+            if o is upd or _is_update(o):
+                continue
+            dist = _match_distance(o, upd)
+            if dist is not None:
+                cands.append((dist, -(_feed_ts(o.get('start')) or 0), o))
+        if not cands:
             continue
+        orig = min(cands, key=lambda c: (c[0], c[1]))[2]     # the nearest, then the latest to start
         folded.add(upd['id'])
         if _is_cleared(upd):
             at = _feed_ts(ue.get('start')) or time.time()
             ended_at[orig['id']] = ended_at[upd['id']] = at
-    for item, _ in live:
-        if _is_cleared(item):
-            ended_at.setdefault(item['id'], time.time())
+    for item, e in live:
+        if _is_cleared(item):      # ages out of the 24 h list from the time the feed gave it, not from now
+            ended_at.setdefault(item['id'], _feed_ts(e.get('start')) or time.time())
 
     everywhere, active, recent = [], [], []
     for item, e in parsed:
