@@ -293,25 +293,6 @@ class CycleArchiver:
             self._write_rows(os.path.join(self.data_dir, fname), [label] + ROAD_DAY_HEADER[1:],
                              [[p, road, n, sc, c, m, t, tot, round(tot / max(1, sc), 2)] for p, road, n, sc, c, m, t, tot in rows])
 
-    def rebuild_files(self):
-        """Regenerate daily/, weekly/, monthly/ and roads/ from the archived cycles (after moving old exports away)."""
-        import shutil
-        for sub in ("daily", "weekly", "monthly", "roads"):
-            shutil.rmtree(os.path.join(self.data_dir, sub), ignore_errors=True)
-        with self.db.lock:
-            conn = self._conn()
-            conn.row_factory = sqlite3.Row
-            rows = [dict(r) for r in conn.execute("SELECT * FROM bma_cycles ORDER BY cycle_end").fetchall()]
-            conn.close()
-        by_end = {}
-        for r in rows:
-            by_end.setdefault(r["cycle_end"], []).append(r)
-        for end, items in sorted(by_end.items()):
-            self.write_cycle_files(items, datetime.fromtimestamp(end))
-        for key in sorted({(r["date"], r["week"], r["month"]) for r in rows}):
-            self.write_period_files(datetime.strptime(key[0], "%Y-%m-%d"))
-        return len(rows)
-
     def write_live_snapshot(self, cams):
         """Refreshed after every scan: what every camera sees right now, plus a per-road roll-up."""
         now_s = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

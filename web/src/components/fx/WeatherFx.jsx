@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { badgeText, dropCount } from '../../lib/weatherFx.js';
 
-// Weather background behind the content (same layer approach as RiverBackdrop). Decoration only: fixed,
+// Weather background behind the content (same layer approach as the page backdrop). Decoration only: fixed,
 // z-index -1, pointer-events none, aria-hidden. Particles are made once per scene (useMemo), and the
 // animations only move transform and opacity (index.css, "weather background").
 const NARROW_QUERY = '(max-width: 639px)';

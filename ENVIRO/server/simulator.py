@@ -130,10 +130,6 @@ class Simulator:
         self.stalta_threshold = row["stalta_threshold"]
         self.pga_calibration = row["pga_calibration"]
 
-    def reload_detector_config(self):
-        with self.lock:
-            self._load_detector_config()
-
     def dist_km(self, station):
         return haversine_km(station["lat"], station["lng"], self.quake["lat"], self.quake["lng"])
 

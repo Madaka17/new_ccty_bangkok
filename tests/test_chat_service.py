@@ -16,10 +16,6 @@ def test_asked_ignores_very_short_names():
     assert not ctx._asked("ถนนสายไหน", "สา")
 
 
-def test_site_context_empty_sources():
-    assert ctx.site_context("อะไรก็ได้", {}) == []
-
-
 def test_road_flood_context_puts_named_road_before_district():
     items = [{"road": f"ซอย {i}", "district": "บางนา", "province": "กรุงเทพมหานคร", "level_th": "เฝ้าระวัง", "class": 1}
              for i in range(10)]

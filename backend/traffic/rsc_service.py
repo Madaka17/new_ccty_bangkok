@@ -315,13 +315,6 @@ def fetch_district_points(year, district, force=False):
         raise
 
 
-def fetch_radius_points(lat, lon, radius_m, year):
-    res = _post(f"{RSC_WS}/get/accident-points", {"lat": lat, "lon": lon, "radius": int(radius_m), "year": year}, timeout=120)
-    if not res.get("data"):
-        return []
-    return [_strip(c) for c in res["data"]["accidents"]]
-
-
 def _district_codes():
     data = _post(f"{RSC_API}/secondary/get_district_stats", {"geocode": BKK_GEOCODE})["Data"]
     return sorted(d["geocode"] for d in data)

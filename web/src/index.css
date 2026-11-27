@@ -187,7 +187,6 @@ body {
 :root:not(.dark) body { background: var(--c-backdrop); }
 .app-backdrop { background: var(--c-backdrop); }
 /* Dashboard card: white tile, 1px seam, soft shadow in light; dark stays flat (the shadow token is none) */
-.dash-card { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--c-radius-card); box-shadow: var(--c-card-shadow); }
 
 h1, h2 { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.01em; }
 h3 { font-family: var(--font-sans); }
@@ -331,10 +330,7 @@ input, textarea { caret-color: var(--c-primary); }
 .seg-tray { background: var(--c-ground); border: 1px solid var(--c-border); }
 .seg-off { color: var(--c-muted); }
 .seg-off:hover { background: var(--c-raised); color: var(--c-ink); }
-.seg-on { background: var(--c-primary-fill); color: var(--c-on-primary); box-shadow: 0 0 0 1px var(--c-border); }
 .seg-icon { background: var(--c-raised); color: var(--c-muted); }
-.seg-hint { color: var(--c-muted); font-weight: 400; }
-.dark .seg-on { background: var(--c-primary-fill); color: var(--c-on-primary); box-shadow: 0 0 0 1px var(--c-border-strong); }
 
 /* Floating AI button robot (BotFace.jsx): blink every few seconds, antenna bulb glows */
 .bot-eyes { transform-box: fill-box; transform-origin: center; animation: bot-blink 4.5s infinite; }
