@@ -12,7 +12,7 @@ pip3 install -r requirements.txt   # first time only
 python3 main.py
 ```
 
-Open **http://localhost:5050**. Demo accounts (password `enviro2026` for all):
+Open **http://localhost:5050**. Demo accounts (the passwords are generated on the first start and written to `data/initial_passwords.txt`; set `ENVIRO_SEED_PASSWORD` (12+ characters) before the first start to choose one shared password instead; change one later with `python -m server.set_password <username>`; after a change, sessions already logged in stay valid until the ENVIRO server restarts, so restart it: session ที่ล็อกอินอยู่แล้วยังใช้ได้จนกว่าจะรีสตาร์ท ENVIRO server):
 
 | Username | Role | Can do |
 |---|---|---|

@@ -198,7 +198,7 @@ def chat(traffic, messages, camera_stats=None, water=None, extra=None, router=No
     `water` is water_service.get_summary() or None when it is unavailable.
     `extra` holds optional sources: incidents, bma_events, bma_analytics, rsc, camera_risk, air, guidance, ...
     `router` (flood_route.FloodRouter) plans route questions; `location` is the user's {lat, lng} if shared."""
-    question = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+    question = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")[:HISTORY_CHARS]
     history = [{"role": m["role"], "content": m["content"][:HISTORY_CHARS]}
                for m in messages[-HISTORY_KEEP:] if m.get("content")]
     if not history or history[-1]["role"] != "user":

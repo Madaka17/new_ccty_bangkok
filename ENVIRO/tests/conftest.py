@@ -44,6 +44,8 @@ def temp_db(tmp_path, monkeypatch):
     path = str(tmp_path / "enviro-test.db")
     assert os.path.abspath(path) != os.path.abspath(REAL_DB_PATH)
     monkeypatch.setattr(dbmod, "DB_PATH", path)
+    # Seeding writes data/initial_passwords.txt under BASE_DIR; keep that out of the real ENVIRO/data too.
+    monkeypatch.setattr(dbmod, "BASE_DIR", str(tmp_path))
     dbmod.init_db()
     return path
 

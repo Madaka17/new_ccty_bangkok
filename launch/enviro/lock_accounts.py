@@ -1,8 +1,9 @@
 """Replaces ENVIRO's published demo secrets before it goes online.
 
-ENVIRO seeds four demo accounts with the password "enviro2026" and the PROTO-01 node with
-"enviro-proto-01-demo-key", and both are printed in its README on GitHub. start.bat runs this before
-every start, so a fresh database (deleting data\\enviro.db reseeds the demo values) is locked again too.
+ENVIRO used to seed four demo accounts with the password "enviro2026" (it now seeds random passwords, see
+ENVIRO/data/initial_passwords.txt), and still seeds the PROTO-01 node with "enviro-proto-01-demo-key"; both
+are in git history. start.bat and the Pi's bkk-enviro.service run this before every start, so a database
+created by an older ENVIRO, or a fresh one with the demo node key, is locked again too.
 Each new password or node key is appended to ENVIRO\\data\\accounts.txt, which git ignores.
 """
 import os

@@ -34,6 +34,7 @@ could carry that header from the visitor.
 """
 import hashlib
 import hmac
+import json
 import os
 import time
 import ipaddress
@@ -41,7 +42,7 @@ import re
 import threading
 from collections import deque
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from backend.core import security_log
@@ -53,6 +54,7 @@ CHAT_RATE_PER_DAY = int(os.getenv("CHAT_RATE_PER_DAY", "60"))
 CHAT_MAX_BODY = int(os.getenv("CHAT_MAX_BODY", "8000"))       # bytes
 GENERAL_RATE_PER_MIN = int(os.getenv("GENERAL_RATE_PER_MIN", "600"))
 GENERAL_RATE_PER_DAY = int(os.getenv("GENERAL_RATE_PER_DAY", "40000"))
+TELEMETRY_MAX_BODY = int(os.getenv("TELEMETRY_MAX_BODY", "2048"))   # bytes: visitor view / heartbeat
 USER_REPORT_PATH = "/api/flood/user-reports"
 USER_REPORT_MAX_BODY = int(os.getenv("USER_REPORT_MAX_BODY", str(6 * 2**20)))   # bytes: one photo as a data: URL
 USER_REPORT_RATE_PER_HOUR = int(os.getenv("USER_REPORT_RATE_PER_HOUR", "5"))
@@ -335,6 +337,23 @@ def _secure(response, path=""):
     if response.headers.get("content-type", "").startswith("text/html"):
         response.headers.setdefault("Cache-Control", "no-cache")
     return response
+
+
+async def read_json_body(request: Request, limit, too_large="body too large", bad="bad json") -> dict:
+    """The JSON object in the request body, read from the stream and refused past ``limit`` bytes (None: no cap).
+    A chunked upload has no content-length, so the cap is counted as the bytes arrive."""
+    body = bytearray()
+    async for chunk in request.stream():
+        body += chunk
+        if limit is not None and len(body) > limit:
+            raise HTTPException(413, too_large)
+    try:
+        data = json.loads(body)
+    except ValueError:
+        raise HTTPException(400, bad) from None
+    if not isinstance(data, dict):
+        raise HTTPException(400, bad)
+    return data
 
 
 def _deny(status, msg):

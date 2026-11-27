@@ -30,6 +30,14 @@ export default function BmaCameraModal({ cam, onClose }) {
     };
   }, [cam]);
 
+  // The server ends a live stream after 5 minutes (BMA_STREAM_MAX_SECONDS); open a new one before that so the
+  // picture keeps moving instead of freezing on the last frame.
+  useEffect(() => {
+    if (!cam || !live) return;
+    const id = setInterval(() => setTick(Date.now()), 270000);
+    return () => clearInterval(id);
+  }, [cam, live]);
+
   const cur = liveStats || cam;
   const lv = levelOf(cur?.level);
 

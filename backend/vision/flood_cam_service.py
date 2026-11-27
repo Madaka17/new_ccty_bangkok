@@ -460,7 +460,6 @@ class FloodCamWatch:
         return self._budget.allows()
 
     def _ask(self, jpeg, prompt, text, max_tokens):
-        self._budget.spend()
         image = "data:image/jpeg;base64," + base64.standard_b64encode(jpeg).decode("ascii")
         return local_llm.default.chat(
             [{"role": "system", "content": prompt},
@@ -485,9 +484,13 @@ class FloodCamWatch:
             # a candidate goes straight to the single-frame confirm; the grid is not needed for one camera
             if self._budget_ok():
                 camid, jpeg, ts, fp = frames[0]
-                v, extra = self._confirm(camid, jpeg, ts)
-                self._record(camid, jpeg, ts, fp, v, "confirm", extra)
+                judged = self._confirm(camid, jpeg, ts)
+                if judged is not None:
+                    v, extra = judged
+                    self._record(camid, jpeg, ts, fp, v, "confirm", extra)
             return
+        if not self._budget.try_spend():
+            return   # cap used up by a parallel call: the frames stay due for a later grid
         reply = _parse(self._ask(_mosaic([f[1] for f in frames]), SCREEN_PROMPT, f"{len(frames)} tiles.", 120 * len(frames)))
         by_tile = {}
         for t in reply.get("tiles") or []:
@@ -505,7 +508,10 @@ class FloodCamWatch:
                 if not self._budget_ok():
                     continue
                 try:
-                    v, extra = self._confirm(camid, jpeg, ts)
+                    judged = self._confirm(camid, jpeg, ts)
+                    if judged is None:
+                        continue   # cap used up by a parallel call: the camera stays due
+                    v, extra = judged
                     source = "confirm"
                 except Exception as e:  # noqa: BLE001 - the loop backs off after this grid
                     failed = failed or e
@@ -516,7 +522,10 @@ class FloodCamWatch:
 
     def _confirm(self, camid, jpeg, ts):
         """One frame asked alone: the verdict to publish and the state fields to keep with it. The previous state is
-        read before the model call, so a candidate that expires while the model thinks still counts."""
+        read before the model call, so a candidate that expires while the model thinks still counts.
+        None when the hourly cap is used up (the slot is reserved here, at the call)."""
+        if not self._budget.try_spend():
+            return None
         with self._lock:
             prev = dict(self._state.get(camid) or {})
         answer = _parse(self._ask(_enlarge(jpeg), CONFIRM_PROMPT, "One camera.", 300))
