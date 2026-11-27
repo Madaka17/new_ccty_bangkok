@@ -34,3 +34,16 @@ describe('ViewSwitch phone scroll hint', () => {
     expect(html).not.toContain('data-fade="end"');
   });
 });
+
+describe('ViewSwitch desktop grid for long lists', () => {
+  it('9 tabs keep the 2/3/5-column grid from sm up', () => {
+    const cls = tablistClass(renderToStaticMarkup(<ViewSwitch tabs={makeTabs(9)} value="t0" onChange={() => {}} label="x" />));
+    expect(cls).toContain('sm:grid-cols-2');
+    expect(cls).toContain('xl:grid-cols-5');
+  });
+
+  it('7 tabs keep the 2/4-column grid from sm up', () => {
+    const cls = tablistClass(renderToStaticMarkup(<ViewSwitch tabs={makeTabs(7)} value="t0" onChange={() => {}} label="x" />));
+    expect(cls).toContain('md:grid-cols-4');
+  });
+});
