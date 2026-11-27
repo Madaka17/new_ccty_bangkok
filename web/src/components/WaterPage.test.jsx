@@ -36,3 +36,10 @@ describe('WaterPage tabs', () => {
     expect(selected?.[1]).toBe('น้ำท่วมใน กทม.');
   });
 });
+
+describe('WaterPage subtitle', () => {
+  it('says Bangkok and nationwide, reservoirs, and the 7-day forecast', () => {
+    expect(html).toContain('น้ำท่วมใน กทม. และทั่วประเทศ · น้ำในเขื่อน · คาดการณ์ 7 วัน');
+    expect(html).not.toContain('น้ำท่วม น้ำในเขื่อน และคาดการณ์ 7 วัน ทั่วประเทศ');
+  });
+});

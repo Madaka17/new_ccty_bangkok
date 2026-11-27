@@ -19,3 +19,18 @@ describe('ViewSwitch on phones', () => {
     expect(cls).not.toContain('overflow-x-auto');
   });
 });
+
+describe('ViewSwitch phone scroll hint', () => {
+  it('9 tabs render a right-edge fade that is hidden from sm up', () => {
+    const html = renderToStaticMarkup(<ViewSwitch tabs={makeTabs(9)} value="t0" onChange={() => {}} label="x" />);
+    const fade = html.match(/<div[^>]*data-fade="end"[^>]*>/)?.[0];
+    expect(fade).toBeDefined();
+    expect(fade).toContain('sm:hidden');
+    expect(fade).toContain('pointer-events-none');
+  });
+
+  it('3 tabs render no fade', () => {
+    const html = renderToStaticMarkup(<ViewSwitch tabs={makeTabs(3)} value="t0" onChange={() => {}} label="x" />);
+    expect(html).not.toContain('data-fade="end"');
+  });
+});

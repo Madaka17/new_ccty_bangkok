@@ -23,7 +23,7 @@ export default function ViewSwitch({ tabs, value, onChange, label }) {
     el.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
   }, [value, long]);
 
-  return (
+  const tablist = (
     <div ref={tray} role="tablist" aria-label={label} className={`seg-tray ${layout} gap-1.5 p-1.5 rounded-2xl w-full ${tabs.length > 2 ? '' : 'sm:w-fit sm:min-w-[520px]'}`}>
       {tabs.map((t) => {
         const on = value === t.id;
@@ -47,6 +47,14 @@ export default function ViewSwitch({ tabs, value, onChange, label }) {
           </button>
         );
       })}
+    </div>
+  );
+  if (!long) return tablist;
+  // Phones: a fade on the right edge says the row keeps going past the screen.
+  return (
+    <div className="relative w-full">
+      {tablist}
+      <div data-fade="end" aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 w-8 rounded-r-2xl bg-gradient-to-r from-transparent to-[var(--c-ground)] sm:hidden" />
     </div>
   );
 }

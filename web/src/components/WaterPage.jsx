@@ -35,7 +35,7 @@ export default function WaterPage({ isActive }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title={PAGE_TITLES.water} description="น้ำท่วม น้ำในเขื่อน และคาดการณ์ 7 วัน ทั่วประเทศ" />
+      <PageHeader title={PAGE_TITLES.water} description="น้ำท่วมใน กทม. และทั่วประเทศ · น้ำในเขื่อน · คาดการณ์ 7 วัน" />
 
       <ViewSwitch tabs={TABS} value={tab} onChange={pickTab} label="หัวข้อน้ำท่วม" />
 
