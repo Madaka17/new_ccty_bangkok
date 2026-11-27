@@ -14,27 +14,28 @@ import FloodForecastSection from './water/FloodForecastSection.jsx';
 import NationalRoadsSection from './water/NationalRoadsSection.jsx';
 import FloodSummarySection from './water/FloodSummarySection.jsx';
 
+// Bangkok tabs first, then the national ones
 const TABS = [
-  { id: 'situation', label: 'ระดับน้ำทั่วประเทศ', hint: 'น้ำในเขื่อนทุกภาค และคาดการณ์ 7 วันข้างหน้า', icon: 'water' },
+  { id: 'watch', label: 'น้ำท่วมใน กทม.', hint: 'สรุปทั้ง 50 เขต น้ำในคลอง แม่น้ำ ถนน และฝน', icon: 'alerts' },
+  { id: 'shelter', label: 'จุดพักพิงใกล้ฉัน', hint: 'จุดพักพิงชั่วคราวของ กทม. ใกล้คุณ พร้อมเบอร์โทรและเส้นทาง', icon: 'map' },
+  { id: 'reports', label: 'เรื่องที่คนแจ้ง', hint: 'เรื่องน้ำท่วมที่คนแจ้งผ่าน Traffy Fondue และข่าวจราจร', icon: 'visitors' },
+  { id: 'parking', label: 'จุดจอดรถหนีน้ำ', hint: 'ที่จอดรถที่ กทม. ห้าง หรืออาคารเปิดให้จอดหนีน้ำ', icon: 'map' },
+  { id: 'situation', label: 'น้ำในเขื่อนทั่วประเทศ', hint: 'น้ำในเขื่อนทุกภาค และคาดการณ์ 7 วันข้างหน้า', icon: 'water' },
   { id: 'provinces', label: 'คาดการณ์น้ำท่วม', hint: 'จังหวัดที่น้ำท่วม คาดการณ์ 7 วัน และคนแจ้งน้ำท่วมทั่วประเทศ', icon: 'map' },
-  { id: 'roads', label: 'ถนนน้ำท่วม', hint: 'ถนนที่น้ำท่วมทั่วประเทศ และถนนที่อาจท่วมใน 7 วัน', icon: 'map' },
+  { id: 'roads', label: 'ถนนน้ำท่วมทั่วประเทศ', hint: 'ถนนที่น้ำท่วมทั่วประเทศ และถนนที่อาจท่วมใน 7 วัน', icon: 'map' },
   { id: 'summary', label: 'สรุปสถานการณ์', hint: 'สรุปน้ำท่วมและน้ำในเขื่อนทั้งหมด พร้อมสิ่งที่ควรทำ', icon: 'analytics' },
   { id: 'north', label: 'เส้นทางน้ำเหนือ', hint: 'น้ำจากภาคเหนือไหลผ่านจังหวัดไหน ต้องระวังที่ไหน และ 7 วันข้างหน้า', icon: 'water' },
-  { id: 'watch', label: 'เขตเสี่ยงน้ำท่วมในกรุงเทพมหานคร', hint: 'สรุปทั้ง 50 เขต น้ำในคลอง แม่น้ำ ถนน และฝน', icon: 'alerts' },
-  { id: 'shelter', label: 'จุดพักพิงใกล้ฉัน', hint: 'จุดพักพิงชั่วคราวของ กทม. ใกล้คุณ พร้อมเบอร์โทรและเส้นทาง', icon: 'map' },
-  { id: 'parking', label: 'จุดจอดรถหนีน้ำ', hint: 'ที่จอดรถที่ กทม. ห้าง หรืออาคารเปิดให้จอดหนีน้ำ', icon: 'map' },
-  { id: 'reports', label: 'เรื่องที่คนแจ้ง', hint: 'เรื่องน้ำท่วมที่คนแจ้งผ่าน Traffy Fondue และข่าวจราจร', icon: 'visitors' },
 ];
 
 export default function WaterPage({ isActive }) {
-  const [tab, setTab] = useState('situation');
+  const [tab, setTab] = useState('watch');
   // The open tab counts as a view, the first one included (it was counted only after a switch until Oct 2026)
   useEffect(() => trackView(`water:${tab}`), [tab]);
   const pickTab = setTab;
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title={PAGE_TITLES.water} description="น้ำท่วม น้ำในเขื่อน และคาดการณ์ 7 วัน ทั่วประเทศ" />
+      <PageHeader title={PAGE_TITLES.water} description="น้ำท่วมใน กทม. และทั่วประเทศ · น้ำในเขื่อน · คาดการณ์ 7 วัน" />
 
       <ViewSwitch tabs={TABS} value={tab} onChange={pickTab} label="หัวข้อน้ำท่วม" />
 

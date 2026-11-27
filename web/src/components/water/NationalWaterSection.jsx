@@ -9,6 +9,10 @@ import { damLater, fullText, mcm, sum, useFloodForecast } from './forecastData.j
 
 const SHOW = 12;
 
+// The AI text is only shown while it is this fresh; older text would contradict the live numbers beside it
+export const AI_FRESH_SECONDS = 12 * 3600;
+const aiFresh = (ai) => Boolean(ai?.generated_at) && Date.now() / 1000 - ai.generated_at < AI_FRESH_SECONDS;
+
 // Storage bar: today's storage and, lighter, where it will be in 7 days; the black line is the normal storage
 function DamBar({ now, later }) {
   const scale = 130;
@@ -32,11 +36,11 @@ function DamRow({ d, note }) {
         <span className="text-xs text-slate-500">{d.province}</span>
         {full && <Badge tone={d.full_day === 0 ? 'red' : 'yellow'} dot>{full}</Badge>}
         <span className="ml-auto text-xs text-slate-700 tabular-nums">
-          วันนี้ <b>{mcm(d.storage)}</b> → 7 วัน <b className={d.pct_7d >= 100 ? 'text-red-700' : ''}>{mcm(damLater(d))}</b> / ความจุ {mcm(d.normal)} ล้าน ลบ.ม.
+          วันนี้ <b>{mcm(d.storage)}</b> → 7 วัน <b className={d.pct_7d >= 100 ? 'text-red-700' : ''}>{mcm(damLater(d))}</b> / ระดับเก็บกักปกติ {mcm(d.normal)} ล้าน ลบ.ม.
         </span>
       </div>
       <DamBar now={d.pct} later={d.pct_7d} />
-      {d.pct_7d >= 100 && <p className="text-xs text-red-700">อีก 7 วันน้ำเกินความจุปกติ {mcm(damLater(d) - d.normal)} ล้าน ลบ.ม.</p>}
+      {d.pct_7d >= 100 && <p className="text-xs text-red-700">อีก 7 วันน้ำเกินระดับเก็บกักปกติ {mcm(damLater(d) - d.normal)} ล้าน ลบ.ม.</p>}
       <p className="text-xs text-slate-600">
         {d.net >= 0 ? `น้ำเข้ามากกว่าที่ปล่อยวันละ ${d.net.toFixed(1)} ล้าน ลบ.ม.` : `ปล่อยน้ำมากกว่าที่เข้าวันละ ${Math.abs(d.net).toFixed(1)} ล้าน ลบ.ม.`}
         {` · ฝน 7 วัน ${Math.round(sum(d.rain7))} มม.`}
@@ -61,7 +65,8 @@ export default function NationalWaterSection({ isActive }) {
   const dams = data.dams;
   const fullNow = dams.filter((d) => d.full_day === 0).length;
   const fullSoon = dams.filter((d) => d.full_day > 0).length;
-  const ai = data.ai?.water;
+  const aiOk = aiFresh(data.ai);
+  const ai = aiOk ? data.ai?.water : undefined;
   const shown = all ? dams : dams.slice(0, SHOW);
 
   return (
@@ -71,7 +76,7 @@ export default function NationalWaterSection({ isActive }) {
       </StatusBanner>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatTile label="เขื่อนใหญ่ที่เต็มแล้ว" value={`${fullNow} / ${dams.length}`} tone={fullNow ? 'red' : undefined} sub="น้ำเกินความจุปกติ" />
+        <StatTile label="เขื่อนใหญ่ที่เต็มแล้ว" value={`${fullNow} / ${dams.length}`} tone={fullNow ? 'red' : undefined} sub="น้ำถึงระดับเก็บกักปกติแล้ว" />
         <StatTile label="เขื่อนใหญ่ที่จะเต็มใน 7 วัน" value={fullSoon} tone={fullSoon ? 'yellow' : undefined} sub="ถ้าปล่อยน้ำเท่าเดิม" />
         <StatTile label="อ่างเก็บน้ำกลางที่เต็ม" value={`${data.medium.full} / ${data.medium.count}`} sub={`เกือบเต็มอีก ${data.medium.over80 - data.medium.full} แห่ง`} />
         <StatTile label="ฝน 7 วันมากที่สุด" value={rainTop[0] ? `${Math.round(rainTop[0].mm)} มม.` : '–'} sub={rainTop[0]?.province || ''} />
@@ -81,9 +86,9 @@ export default function NationalWaterSection({ isActive }) {
         <SectionHeader
           id="dams-title"
           title="น้ำในเขื่อนใหญ่ วันนี้และอีก 7 วัน"
-          description={`อัปเดต ${fmtDateTime(data.updated_at)} (${agoText(data.updated_at)})${data.ai?.generated_at ? ` · AI วิเคราะห์เมื่อ ${fmtDateTime(data.ai.generated_at)}` : ''}`}
+          description={`อัปเดต ${fmtDateTime(data.updated_at)} (${agoText(data.updated_at)})${aiOk ? ` · AI วิเคราะห์เมื่อ ${fmtDateTime(data.ai.generated_at)}` : ''}`}
         />
-        <p className="text-xs text-slate-500">ตัวเลขเป็นล้าน ลบ.ม. · แถบเข้ม = วันนี้ · แถบจาง = อีก 7 วัน · เส้นดำ = ความจุปกติ</p>
+        <p className="text-xs text-slate-500">ตัวเลขเป็นล้าน ลบ.ม. · แถบเข้ม = วันนี้ · แถบจาง = อีก 7 วัน · เส้นดำ = ระดับเก็บกักปกติ</p>
         <ul className="divide-y divide-slate-100">
           {shown.map((d) => <DamRow key={d.id} d={d} note={ai?.dams?.[d.name]} />)}
         </ul>

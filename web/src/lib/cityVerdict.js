@@ -12,6 +12,7 @@ import { freshness } from './freshness.js';
 // incidents), but it does not stop a trip by itself, so it only makes the answer yellow. A danger already known is
 // shown at once, even while other checks are still loading, and even on old data.
 
+export const HEADLINE_CARE_MAX = 3;     // most care items the headline names; the rest are counted and go to the detail
 export const FLOOD_ROADS_SEVERE = 10;   // flooded roads (BMA sensors, flood + slight) from which the answer is red
 
 // The checks a trip depends on; old weather or dust does not stop the answer. People's flood reports are left out
@@ -37,11 +38,16 @@ export function cityVerdict({ items, trafficTone, flooding = 0, avoid = [], now 
 
   let tone;
   let headline;
+  let named = [];   // ids of the care items the headline already says: left out of the detail
   if (flooding >= FLOOD_ROADS_SEVERE || trafficTone === 'red') {
     tone = 'red';
-    headline = flooding >= FLOOD_ROADS_SEVERE
-      ? floodLine
-      : avoidText ? `รถติดหนักหลายสาย เลี่ยง${avoidText}` : 'รถติดหนักหลายสาย';
+    if (flooding >= FLOOD_ROADS_SEVERE) {
+      headline = floodLine;
+      named = ['water'];
+    } else {
+      headline = avoidText ? `รถติดหนักหลายสาย เลี่ยง${avoidText}` : 'รถติดหนักหลายสาย';
+      named = ['traffic'];
+    }
   } else if (old.length) {
     const oldest = old.reduce((a, b) => (b.at < a.at ? b : a));
     const oldList = `ข้อมูลเก่า: ${old.map((i) => i.q).join(', ')} (${freshness(oldest.at, oldest.limit, now).text})`;
@@ -58,11 +64,18 @@ export function cityVerdict({ items, trafficTone, flooding = 0, avoid = [], now 
     };
   } else if (care.length) {
     tone = 'yellow';
-    headline = flooding > 0
-      ? floodLine
-      : trafficTone === 'yellow'
-        ? (avoidText ? `รถชะลอตัว เผื่อเวลา และเลี่ยง${avoidText}` : 'รถชะลอตัว เผื่อเวลาเดินทาง')
-        : trafficTone === 'green' ? `รถคล่องตัว แต่มี ${care.length} เรื่องต้องระวัง` : `มี ${care.length} เรื่องต้องระวัง`;
+    if (flooding > 0) {
+      headline = floodLine;
+      named = ['water'];
+    } else if (trafficTone === 'yellow') {
+      headline = avoidText ? `รถชะลอตัว เผื่อเวลา และเลี่ยง${avoidText}` : 'รถชะลอตัว เผื่อเวลาเดินทาง';
+      named = ['traffic'];
+    } else {
+      const shown = care.slice(0, HEADLINE_CARE_MAX);
+      const more = care.length - shown.length;
+      headline = `ระวัง: ${shown.map((i) => i.say).join(' · ')}${more ? ' และอีก ' + more + ' เรื่อง' : ''}`;
+      named = shown.map((i) => i.id);
+    }
   } else if (pending.length) {
     return {
       tone: 'neutral',
@@ -76,10 +89,11 @@ export function cityVerdict({ items, trafficTone, flooding = 0, avoid = [], now 
     headline = 'ทุกเรื่องปกติ เดินทางได้ตามปกติ';
   }
 
+  // The detail adds only what the headline does not already say (a green answer has no care items to add)
   const detail = [
-    ...care.map((i) => i.say),
-    ...(care.length && calm.length && !pending.length ? ['เรื่องอื่นปกติ'] : []),
+    care.length && trafficTone === 'green' && !headline.startsWith('รถ') ? 'รถคล่องตัว' : null,
+    ...care.filter((i) => !named.includes(i.id)).map((i) => i.say),
     ...(pending.length ? [`ยังไม่มีข้อมูล: ${pending.map((i) => i.q).join(', ')}`] : []),
-  ].join(' · ');
+  ].filter(Boolean).join(' · ');
   return { tone, label: VERDICT_LABEL[tone], headline, detail, care, calm, pending, old: [] };
 }

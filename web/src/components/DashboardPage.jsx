@@ -5,9 +5,9 @@ import { readMyDistrict } from '../lib/district.js';
 import { bmaSiteDown } from './bma/BmaSiteNotice.jsx';
 import { trackView } from '../lib/telemetry.js';
 import { Button } from './dashboard/ui.jsx';
-import { PageHeader, Tabs } from './dashboard/primitives.jsx';
+import { Tabs } from './dashboard/primitives.jsx';
+import HeroBanner from './dashboard/HeroBanner.jsx';
 import { fmtDateTime, fmtNum } from './dashboard/format.js';
-import { PAGE_TITLES } from './Sidebar.jsx';
 import FlowOverview from './dashboard/FlowOverview.jsx';
 import IncidentPanel from './dashboard/IncidentPanel.jsx';
 import EventsPanel from './dashboard/EventsPanel.jsx';
@@ -20,8 +20,11 @@ import NewsCard from './dashboard/NewsCard.jsx';
 import AvoidRoadsCard from './dashboard/AvoidRoadsCard.jsx';
 import BMAEventFeed from './water/BMAEventFeed.jsx';
 import EmergencyButton from './EmergencyButton.jsx';
+import Reveal from './fx/Reveal.jsx';
 
 const POLL_MS = 60000;
+// The online chip is hidden below this count: a "0" made the site look dead
+const ONLINE_MIN_SHOWN = 5;
 const MORE_KEY = 'home-details-open';
 // Dashboard sections; each tab groups one topic
 const SECTIONS = [
@@ -202,32 +205,40 @@ export default function DashboardPage({ isActive, incidents, onAskText, onOpenRo
     el.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'start' });
   }, [jump, section]);
 
+  const updatedLine = activeSummary ? `ข้อมูลล่าสุด ${fmtDateTime(activeSummary.updated_at)}` : 'กำลังโหลดข้อมูล...';
+  // The hero's primary button brings the city status strip into view and focuses it (reduced motion: no smooth scroll)
+  const statusRef = useRef(null);
+  const focusStatus = () => {
+    const el = statusRef.current;
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: calm ? 'auto' : 'smooth', block: 'start' });
+  };
+
   return (
     <div className="flex flex-col gap-4">
-      {/* wide screens: the page header; phones: the top bar already names the page, so only the time and my
-          district sit above the answer. The page refreshes itself every minute. */}
-      <div className="hidden md:block">
-        <PageHeader
-          title={PAGE_TITLES.dashboard}
-          description={activeSummary ? `ข้อมูลล่าสุด ${fmtDateTime(activeSummary.updated_at)}` : 'กำลังโหลดข้อมูล...'}
-          actions={
-            <div className="flex flex-wrap items-center gap-2">
-              <DistrictButton district={myDistrict} onNavigate={onNavigate} className="h-9 lg:hidden" />
-              <Button size="sm" onClick={load} loading={refreshing} className="h-9">
-                รีเฟรช
-              </Button>
-              <span className="inline-flex items-center gap-2 h-9 px-3 rounded-md border border-[var(--c-border)] text-xs text-[var(--c-muted)]" title="จำนวนคนที่เปิดเว็บอยู่ตอนนี้">
-                <span aria-hidden="true" className="live-dot w-2 h-2 rounded-full bg-[var(--ok-ring)]" />
-                คนดูอยู่ตอนนี้
-                <span className="num text-sm font-semibold text-[var(--c-ink)]">{onlineCount != null ? fmtNum(onlineCount) : '–'}</span>
-              </span>
-            </div>
-          }
-        />
+      {/* The photo hero carries the page's only h1. Under it: wide screens get the time, the actions (district,
+          refresh, online count); phones get the time and my district. The page refreshes itself every minute. */}
+      <HeroBanner onPrimary={focusStatus} />
+      <div className="hidden md:flex flex-wrap items-end justify-between gap-3">
+        <p className="text-sm text-[var(--c-muted)]">{updatedLine}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <DistrictButton district={myDistrict} onNavigate={onNavigate} className="h-9 lg:hidden" />
+          <Button size="sm" onClick={load} loading={refreshing} className="h-9">
+            รีเฟรช
+          </Button>
+          {onlineCount != null && onlineCount >= ONLINE_MIN_SHOWN && (
+            <span className="inline-flex items-center gap-2 h-9 px-3 rounded-md border border-[var(--c-border)] text-xs text-[var(--c-muted)]" title="จำนวนคนที่เปิดเว็บอยู่ตอนนี้">
+              <span aria-hidden="true" className="live-dot w-2 h-2 rounded-full bg-[var(--ok-ring)]" />
+              คนดูอยู่ตอนนี้
+              <span className="num text-sm font-semibold text-[var(--c-ink)]">{fmtNum(onlineCount)}</span>
+            </span>
+          )}
+        </div>
       </div>
       <div className="md:hidden flex items-center justify-between gap-3">
-        <h1 className="sr-only">{PAGE_TITLES.dashboard}</h1>
-        <p className="text-xs text-[var(--c-muted)]">{activeSummary ? `ข้อมูลล่าสุด ${fmtDateTime(activeSummary.updated_at)}` : 'กำลังโหลดข้อมูล...'}</p>
+        <p className="text-xs text-[var(--c-muted)]">{updatedLine}</p>
         <DistrictButton district={myDistrict} onNavigate={onNavigate} className="min-h-11" />
       </div>
 
@@ -238,31 +249,37 @@ export default function DashboardPage({ isActive, incidents, onAskText, onOpenRo
       )}
 
 
-      <CityStatusStrip
-        summary={activeSummary}
-        bkkFlow={bkkFlow}
-        trafficAt={bkkFlow != null ? areas?.updated_at : activeSummary?.updated_at}
-        incidents={incidents}
-        flood={flood}
-        avoid={avoid}
-        onNavigate={onNavigate}
-        onIncidents={openIncidents}
-        onAskText={onAskText}
-        isActive={isActive}
-        emergency={<EmergencyButton inline />}
-      />
+      <div id="city-status" ref={statusRef} tabIndex={-1} className="focus:outline-none">
+        <CityStatusStrip
+          summary={activeSummary}
+          bkkFlow={bkkFlow}
+          trafficAt={bkkFlow != null ? areas?.updated_at : activeSummary?.updated_at}
+          incidents={incidents}
+          flood={flood}
+          avoid={avoid}
+          onNavigate={onNavigate}
+          onIncidents={openIncidents}
+          onAskText={onAskText}
+          isActive={isActive}
+          emergency={<EmergencyButton inline />}
+        />
+      </div>
 
       {/* roads to avoid on the left, the country's flood and accident news beside them on wide screens. There the two
           cards are one height: the roads card sets it and the news list scrolls inside the news card. On phones the
           news waits in the details. */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-4">
-        <AvoidRoadsCard summary={summary} onNavigate={onNavigate} />
-        <div className={`relative min-w-0 lg:min-h-[28rem] ${more ? '' : 'hidden lg:block'}`}>
+        <Reveal index={0} className="h-full min-w-0">
+          <AvoidRoadsCard summary={summary} onNavigate={onNavigate} />
+        </Reveal>
+        <Reveal index={1} className={`relative min-w-0 lg:min-h-[28rem] ${more ? '' : 'hidden lg:block'}`}>
           <NewsCard isActive={isActive && (more || isWide)} />
-        </div>
+        </Reveal>
       </div>
 
-      <button
+      <Reveal
+        as="button"
+        index={0}
         type="button"
         onClick={toggleMore}
         aria-expanded={more}
@@ -278,7 +295,7 @@ export default function DashboardPage({ isActive, incidents, onAskText, onOpenRo
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-4 h-4 shrink-0 text-[var(--c-muted)] transition-transform duration-200 ${more ? 'rotate-180' : ''}`} aria-hidden="true">
           <path d="M4 6l4 4 4-4" />
         </svg>
-      </button>
+      </Reveal>
 
       {more && (
         <div id="home-details" className="panel-open flex flex-col gap-4">
@@ -291,26 +308,28 @@ export default function DashboardPage({ isActive, incidents, onAskText, onOpenRo
 
         {section === 'overview' && (
           <>
-            <BestTimeCard isActive={isActive} />
-            <FlowOverview summary={activeSummary} areas={areas} error={summaryError} onRetry={load} retrying={refreshing} onArea={setRoadArea} />
-            <TrafficGuidanceCard province={roadArea?.province} amphoe={roadArea?.amphoe} />
+            <Reveal index={0} className="min-w-0"><BestTimeCard isActive={isActive} /></Reveal>
+            <Reveal index={1} className="min-w-0"><FlowOverview summary={activeSummary} areas={areas} error={summaryError} onRetry={load} retrying={refreshing} onArea={setRoadArea} /></Reveal>
+            <Reveal index={2} className="min-w-0"><TrafficGuidanceCard province={roadArea?.province} amphoe={roadArea?.amphoe} /></Reveal>
           </>
         )}
         {/* The road-colour shares (Longdo lines) sit with the per-road views: on the overview they read as a second,
             different traffic score next to the one above */}
         {section === 'road-risk' && (
           <>
-            <DensityPanel d={density} onOpenRoad={onOpenRoad} showShare={false} />
-            <RoadRiskPanel isActive={isActive && section === 'road-risk'} onOpenRoad={onOpenRoad} />
+            <Reveal index={0} className="min-w-0"><DensityPanel d={density} onOpenRoad={onOpenRoad} showShare={false} /></Reveal>
+            <Reveal index={1} className="min-w-0"><RoadRiskPanel isActive={isActive && section === 'road-risk'} onOpenRoad={onOpenRoad} /></Reveal>
           </>
         )}
         {section === 'incidents' && (
-          <div ref={incidentsRef} tabIndex={-1} aria-label="รายการอุบัติเหตุและรถเสีย" className="scroll-mt-20 outline-none">
-            <IncidentPanel incidents={incidents} onOpenAI={onOpenAI} onNavigate={onNavigate} />
-          </div>
+          <Reveal index={0} className="min-w-0">
+            <div ref={incidentsRef} tabIndex={-1} aria-label="รายการอุบัติเหตุและรถเสีย" className="scroll-mt-20 outline-none">
+              <IncidentPanel incidents={incidents} onOpenAI={onOpenAI} onNavigate={onNavigate} />
+            </div>
+          </Reveal>
         )}
-        {section === 'events' && <EventsPanel isActive={isActive && section === 'events'} onNavigate={onNavigate} />}
-        {section === 'bma-reports' && <BMAEventFeed isActive={isActive && section === 'bma-reports'} onToast={onToast} />}
+        {section === 'events' && <Reveal index={0} className="min-w-0"><EventsPanel isActive={isActive && section === 'events'} onNavigate={onNavigate} /></Reveal>}
+        {section === 'bma-reports' && <Reveal index={0} className="min-w-0"><BMAEventFeed isActive={isActive && section === 'bma-reports'} onToast={onToast} /></Reveal>}
         </div>
       )}
     </div>

@@ -32,7 +32,7 @@ MRSS = "{http://search.yahoo.com/mrss/}"
 
 # Headline words. "ท่วม" alone is not enough ("ท่วมท้น" = overwhelming); a flood needs water words with it.
 FLOOD = re.compile(r"น้ำท่วม|ท่วมขัง|ท่วมสูง|ท่วมหนัก|ท่วมบ้าน|ท่วมถนน|น้ำป่า|น้ำหลาก|อุทกภัย|ล้นตลิ่ง|น้ำล้น|"
-                   r"ผู้ประสบภัยน้ำ|ดินโคลนถล่ม|ดินสไลด์|ระดับน้ำ")
+                   r"ผู้ประสบภัยน้ำ|ดินโคลนถล่ม|ดินสไลด์|ระดับน้ำ(?!มัน)")
 # Most crash headlines read "<vehicle or driver> ... ชน / เฉี่ยว ...": a vehicle word, then ชน or เฉี่ยว not followed by a
 # vowel or tone mark, so ชนะ (win), ชนิด, names like ยศชนัน and ชวน (invite) stay out.
 ACCIDENT = re.compile(r"อุบัติเหตุ|ประสานงา|ชนท้าย|รถคว่ำ|พลิกคว่ำ|ตกข้างทาง|เสียหลัก|รถตกคลอง|ชนเสา|ชนต้นไม้|"

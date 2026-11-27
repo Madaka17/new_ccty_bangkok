@@ -33,6 +33,7 @@ export default function ReportFloodForm({ pin, locating, onUseMyLocation, onPinC
   const [depth, setDepth] = useState('');
   const [photo, setPhoto] = useState(null);
   const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoName, setPhotoName] = useState('');
   const [note, setNote] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
@@ -58,8 +59,8 @@ export default function ReportFloodForm({ pin, locating, onUseMyLocation, onPinC
     if (!file) return;
     setPhotoBusy(true);
     setError('');
-    try { setPhoto(await shrinkPhoto(file)); }
-    catch (e) { setError(e.message.includes('เลือก') ? e.message : 'เปิดรูปนี้ไม่ได้ กรุณาเลือกรูป JPEG, PNG หรือ WebP'); }
+    try { setPhoto(await shrinkPhoto(file)); setPhotoName(file.name); }
+    catch (e) { setPhoto(null); setPhotoName(''); setError(e.message.includes('เลือก') ? e.message : 'เปิดรูปนี้ไม่ได้ กรุณาเลือกรูป JPEG, PNG หรือ WebP'); }
     finally { setPhotoBusy(false); }
   };
 
@@ -141,9 +142,14 @@ export default function ReportFloodForm({ pin, locating, onUseMyLocation, onPinC
 
         <div>
           <label htmlFor="report-photo" className="font-medium text-slate-700">รูปน้ำท่วม (ไม่บังคับ)</label>
-          <input id="report-photo" type="file" accept="image/*" disabled={photoBusy} onChange={pickPhoto} className={`mt-2 block w-full min-w-0 text-sm text-slate-600 file:mr-2 file:rounded-lg file:border file:border-slate-300 file:bg-transparent file:px-3 file:py-2 file:text-inherit ${FOCUS}`} />
+          {/* The native input shows English "Choose File"; it stays in the tab order, the label is the visible button */}
+          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-3">
+            <input id="report-photo" type="file" accept="image/*" disabled={photoBusy} onChange={pickPhoto} className="peer sr-only" />
+            <label htmlFor="report-photo" className={`inline-flex h-10 shrink-0 cursor-pointer items-center rounded-full border border-slate-300 bg-white px-4 text-sm font-medium text-slate-800 hover:bg-slate-50 peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--c-primary)] peer-focus-visible:ring-offset-2 ${photoBusy ? 'pointer-events-none opacity-60' : ''}`}>เลือกรูป</label>
+            <span className="min-w-0 truncate text-sm text-slate-600">{photoName || 'ยังไม่ได้เลือกรูป'}</span>
+          </div>
           {photoBusy && <p role="status" className="mt-1 text-xs text-slate-500">กำลังเตรียมรูป…</p>}
-          {photo && <div className="mt-2"><img src={photo} alt="รูปน้ำท่วมที่จะส่ง" className="w-full max-h-48 rounded-md object-contain" /><Button size="sm" className="mt-1" disabled={photoBusy} onClick={() => setPhoto(null)}>ลบรูป</Button></div>}
+          {photo && <div className="mt-2"><img src={photo} alt="รูปน้ำท่วมที่จะส่ง" className="w-full max-h-48 rounded-md object-contain" /><Button size="sm" className="mt-1" disabled={photoBusy} onClick={() => { setPhoto(null); setPhotoName(''); }}>ลบรูป</Button></div>}
         </div>
 
         <div>

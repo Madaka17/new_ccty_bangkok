@@ -212,6 +212,36 @@ def test_js100_keeps_recent_flood_items_in_the_area():
     ("บริเวณเกาะกลางถนน ภายหลังเกิดเหตุการณ์น้ำท่วม พบต้นไม้ตาย", "after"),
     ("ตัดหญ้า ที่ขวางทาง ท่อระบายน้ำ ป้องกันน้ำขังในซอย", "other"),
     ("มีการทำถนนเจาะในเวลากลางคืน", "other"),
+    # non-flood topics with no standing-water words: left out of the water count
+    ("ไฟส่องสว่างดับ ซอยหน้าบ้าน", "other"),                   # illustrative text, not a copied report
+    ("ไฟส่องสว่างดับ ระดับน้ำในคลองสูงมาก", "other"),         # "ระดับน้ำ" alone is not standing water here
+    ("ท่อตัน ต้นไม้ล้อมรอบทางเดิน", "other"),
+    ("งูเข้าบ้าน ระดับน้ำขึ้นที่ท่าน้ำ", "other"),
+    # same topic, but the water is on the spot: stays water
+    ("ท่อตัน น้ำท่วมขังหน้าบ้าน", "water"),
+    # live Traffy audit: past or chronic flood mentions are not water now
+    ("ไฟป้ายรถเมล์ดับ ก่อนน้ำท่วม กทม ครั้งก่อน", "after"),
+    ("จอดรถเรียงซ้อน ที่ทีน้ำท่วมกทม.", "recurring"),
+    ("ป้ายรถเมล์ชำรุด น้ำท่วมตลอด", "recurring"),
+    ("ซอยนี้เคยท่วมปีที่แล้ว", "after"),
+    # sewage and vacant land are not flood water unless standing water (ขัง) is named
+    ("น้ำเสียจากส้วมไหลล้นระเบียงในอาคาร ระดับน้ำสูง", "other"),
+    ("ที่ดินรกร้างมีหญ้าขึ้นรก ระดับน้ำสูงขึ้น", "other"),
+    ("หมาจรจัดเห่าเสียงดังหน้าซอย", "other"),
+    # live floods that share words with the cases above: stay water
+    ("น้ำท่วมถนน รถผ่านไม่ได้", "water"),
+    ("ระดับน้ำสูง เข้าบ้านแล้ว", "water"),
+    ("ท่วมถนน ระบายน้ำไม่ทัน แจ้งหมายเลข 1555", "water"),
+    ("ท่วมถนน ไฟดับ", "water"),
+    ("น้ำท่วมตลอดซอย ตอนนี้", "water"),
+    ("น้ำท่วมตลอดซอย", "water"),
+    ("น้ำท่วมตลอดแนวถนน", "water"),
+    ("น้ำท่วมบ้าน น้ำเสียไหลย้อน", "water"),
+    ("น้ำท่วมที่ดินรกร้าง", "water"),
+    # real reports from the audit (shortened): standing water stays water
+    ("น้ำขังที่ท่อ", "water"),
+    ("น้ำท่วมขังหน้าหมู่บ้าน", "water"),
+    ("น้ำขังริมฟุตบาท", "water"),
 ])
 def test_traffy_report_kind(text, kind):
     assert flood_feeds.report_kind(text) == kind
@@ -231,3 +261,14 @@ def test_traffy_water_status_keeps_water_now_reports_only():
     st = feed.water_status()
     assert [i["id"] for i in st["items"]] == ["a", "c"] and st["total"] == 2
     assert feed.status()["total"] == 3   # the full list is unchanged
+
+
+@pytest.mark.parametrize("text,kind", [
+    ("น้ำท่วมตลอดทั้งคืน", "water"),
+    ("น้ำท่วมตลอดทั้งวัน", "water"),
+    ("ถนนท่วมตลอดทาง", "water"),
+    ("แจ้งหมายเลข 1555 ท่อตัน", "other"),
+    ("ป้ายรถเมล์ชำรุด น้ำท่วมตลอด", "recurring"),
+])
+def test_all_night_and_along_road_floods_are_live_water(text, kind):
+    assert flood_feeds.report_kind(text) == kind

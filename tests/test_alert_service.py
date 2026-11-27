@@ -49,6 +49,21 @@ def test_realerts_after_condition_cleared(tmp_path, monkeypatch):
     assert len(svc.check(now=1000 + CLEAR_SECONDS + 60)) == 1
 
 
+def test_incident_missing_from_feed_for_an_hour_does_not_realert(tmp_path, monkeypatch):
+    on = {"v": True}
+    feed = lambda: {"longdo": [{"id": "l1", "kind": "accident", "title": "อุบัติเหตุ ถนนสุขุมวิท"}] if on["v"] else []}
+    svc, _ = _svc(tmp_path, monkeypatch, incidents=feed)
+    assert len(svc.check(now=1000)) == 1
+    on["v"] = False
+    svc.check(now=1000 + 3600)     # flickers out of the feed for an hour
+    on["v"] = True
+    assert svc.check(now=1000 + 3600 + 60) == []
+
+
+def test_event_key_ignores_followup_word_and_spaces():
+    assert alert_service._event_key("คืบหน้า อุบัติเหตุ ถนนสุขุมวิท ") == alert_service._event_key("อุบัติเหตุ ถนนสุขุมวิท")
+
+
 def test_state_survives_restart(tmp_path, monkeypatch):
     svc, _ = _svc(tmp_path, monkeypatch, flood=_wet(30))
     svc.check(now=1000)
@@ -271,7 +286,7 @@ def test_dust_alert_key_clears_after_its_date(tmp_path, monkeypatch):
 
 def test_malformed_dust_key_clears_after_normal_window(tmp_path, monkeypatch):
     svc, _ = _svc(tmp_path, monkeypatch)
-    svc.sent["airfc:None"] = {"level": 1, "first": 0, "seen": _bkk(18, 18) - 3600}
+    svc.sent["airfc:None"] = {"level": 1, "first": 0, "seen": _bkk(18, 18) - CLEAR_SECONDS - 1}
     svc.check(now=_bkk(18, 18))    # absent, and older than CLEAR_SECONDS: not kept by the date rule
     assert "airfc:None" not in svc.sent
 

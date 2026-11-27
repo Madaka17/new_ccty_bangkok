@@ -64,7 +64,21 @@ REPORT_WHEN_RAIN = re.compile(r"(?:เวลา|เมื่อ|พอ)ฝน(?:
 REPORT_PAST = re.compile(r"ภายหลัง(?:เกิด)?เหตุการณ์|จากเหตุการณ์น้ำท่วม|ที่ผ่านมา")
 REPORT_PREVENT = re.compile(r"ป้องกัน")
 REPORT_WATER_NOW = re.compile(r"ท่วมขัง|น้ำขัง|น้ำท่วม|นำ้ท่วม|ท่วมสูง|ล้อมรอบ|ระดับน้ำ|น้ำเข้าบ้าน|น้ำรอการระบาย|น้ำไม่ระบาย|"
-                              r"ระบายน้ำไม่ทัน")
+                              r"ระบายน้ำไม่ทัน|ท่วมตลอด(?:ซอย|ถนน|แนว|ทาง)")
+# Clear non-flood topics (lights and power, animals, trees, rubbish, footpaths, pipes blocked without water)
+REPORT_OTHER_TOPIC = re.compile(
+    r"ไฟส่องสว่าง|ไฟฟ้า|ไฟดับ|เสาไฟ|หลอดไฟ|(?<![ก-ฮ])งู|(?<![ก-ฮ])แมว|หมา(?![ยกดว])|สุนัข|สัตว์|"
+    r"ต้นไม้|กิ่งไม้|ขยะ|ทางเท้า|ฟุตบาท|ท่อ(?:อุด)?ตัน|ท่อระบาย(?:น้ำ)?(?:ชำรุด|แตก|พัง)")
+# Sewage and vacant land: other, unless water on the spot (ขัง or a flood) is named
+REPORT_SEWAGE_LAND = re.compile(r"ส้วม|สิ่งปฏิกูล|น้ำเสีย|ท่อน้ำทิ้ง|ระเบียง|ที่ดินรกร้าง|ที่รกร้าง")
+# Words that say the water is on the spot: they keep a report in "water" ("ท่อตัน น้ำท่วมขัง" is about the water)
+STRONG_WATER = re.compile(r"ท่วมขัง|น้ำขัง|น้ำท่วม|นำ้ท่วม|ท่วมสูง|น้ำเข้าบ้าน|ท่วมถนน|ท่วมบ้าน|น้ำล้อมรอบ|"
+                          r"น้ำรอการระบาย|ระบายน้ำไม่ทัน")
+# Past or chronic flood mentions, not water on the spot now: "recurring" (every time, always) or "after" (a past flood)
+REPORT_RECURRING_FLOOD = re.compile(r"ท่วม(?:ทุกที|ตลอด(?!ซอย|ถนน|แนว|ทาง|คืน|วัน|เส้น|ทั้ง|เช้า|เย็น|ค่ำ|ชั่วโมง))|ที่ทีน้ำท่วม")
+REPORT_NOW = re.compile(r"ตอนนี้|ขณะนี้|ยังท่วม|อยู่ตอนนี้")
+REPORT_PAST_FLOOD = re.compile(r"ก่อนน้ำท่วม|ครั้งก่อน|เคยท่วม|ปีที่แล้ว")
+STANDING_WATER = re.compile(r"ท่วมขัง|น้ำขัง")
 
 
 def report_kind(text):
@@ -74,13 +88,21 @@ def report_kind(text):
         return "aid"
     if REPORT_STILL.search(text):
         return "water"
+    if REPORT_RECURRING_FLOOD.search(text) and not REPORT_NOW.search(text):
+        return "recurring"
+    if REPORT_PAST_FLOOD.search(text) and not STANDING_WATER.search(text):
+        return "after"
+    if REPORT_OTHER_TOPIC.search(text) and not STRONG_WATER.search(text):
+        return "other"
+    if REPORT_SEWAGE_LAND.search(text) and not STRONG_WATER.search(text):
+        return "other"
     if REPORT_WHEN_RAIN.search(text):
         return "recurring"
     if (AFTER_FLOOD.search(text) or REPORT_PAST.search(text)) and not re.search(r"ท่วมขัง|น้ำขัง", text):
         return "after"
     if REPORT_PREVENT.search(text):
         return "other"
-    return "water" if REPORT_WATER_NOW.search(text) else "other"
+    return "water" if REPORT_WATER_NOW.search(text) or STRONG_WATER.search(text) else "other"
 
 
 # The Traffy form appends "ความสูงระดับ<ข้อเท้า|หน้าแข้ง|เข่า|...>" to flood reports

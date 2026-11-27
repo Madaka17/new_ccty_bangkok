@@ -24,6 +24,7 @@ export const GAUGE_STYLE = {
   high: { color: '#f59e0b', label: 'น้ำมาก' },
   normal: { color: '#0284c7', label: 'ปกติ' },
   low: { color: '#94a3b8', label: 'น้ำน้อย' },
+  stale: { color: '#94a3b8', label: 'ข้อมูลเก่า' },    // reading older than 3 h: muted, not counted anywhere
 };
 // AI flood watch on the BMA cameras (flood_cam_service.py): a camera pill, the colour is what the AI saw
 export const CAM_FLOOD_STYLE = {

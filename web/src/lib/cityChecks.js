@@ -10,7 +10,8 @@ const WATCH_RANK = { green: 0, yellow: 1, orange: 2, red: 3 };
 
 // Rain and water in Bangkok. Flooded roads come from the BMA drainage sensors (`flood`, ~250 stations); ThaiWater
 // relays only about 107 of them, so it is the fallback. River gauges and rain stations cover Bangkok and the
-// provinces around it: only Bangkok's own count toward the tone, the rest are named as ปริมณฑล.
+// provinces around it: Bangkok's own always decide the tone; the provinces around only make the row yellow (watch,
+// never red) when Bangkok has no overflow of its own, and are named as รอบ กทม.
 // The rain-watch zones (green / yellow / orange / red, the worst one leads) also carry tomorrow's storm.
 export function waterCheck(water, flood) {
   const roads = water?.flood_roads;
@@ -48,7 +49,8 @@ export function waterCheck(water, flood) {
     tone = 'yellow';
     status = worst.storm_at ? `ฝนฟ้าคะนอง ${worst.storm_at}` : `เฝ้าระวังฝน ${worst.name}`;
   } else if (nearOverflow > 0) {
-    status = `กทม. ปกติ · ปริมณฑลน้ำล้นตลิ่ง ${nearOverflow} จุด`;
+    tone = 'yellow';
+    status = `รอบ กทม. น้ำล้นตลิ่ง ${nearOverflow} จุด`;
   }
   return { tone, status, flooding, bkkOverflow, nearOverflow, heavyRain, watch, known: true };
 }
@@ -60,14 +62,18 @@ export function incidentCheck(incidents) {
   const all = [...(incidents.camera || []), ...(incidents.longdo || [])];
   const titles = new Set(all.map((i) => i.title));
   const seen = all.filter((i) => !(/^คืบหน้า\s*/.test(i.title || '') && titles.has((i.title || '').replace(/^คืบหน้า\s*/, ''))));
-  const accidents = seen.filter((i) => i.kind !== 'breakdown').length;
-  const breakdowns = seen.length - accidents;
-  const total = seen.length;
+  // Items the server places outside Bangkok (in_bkk false) are named, not counted; a missing field counts
+  const bkk = seen.filter((i) => i.in_bkk !== false);
+  const outside = seen.length - bkk.length;
+  const accidents = bkk.filter((i) => i.kind !== 'breakdown').length;
+  const breakdowns = bkk.length - accidents;
+  const total = bkk.length;
   const tone = total === 0 ? 'green' : total >= INCIDENTS_RED ? 'red' : 'yellow';
-  const status = total === 0
-    ? 'ไม่มีเหตุ'
-    : [accidents ? `อุบัติเหตุ ${accidents}` : null, breakdowns ? `รถเสีย ${breakdowns}` : null].filter(Boolean).join(' · ');
-  return { tone, status, total, accidents, breakdowns, known: true };
+  const parts = total === 0
+    ? ['ไม่มีเหตุ']
+    : [accidents ? `อุบัติเหตุ ${accidents}` : null, breakdowns ? `รถเสีย ${breakdowns}` : null].filter(Boolean);
+  if (outside > 0) parts.push(`รอบ กทม. ${outside}`);
+  return { tone, status: parts.join(' · '), total, accidents, breakdowns, outside, known: true };
 }
 
 // People on Traffy who say the water is there now (the server's report_kind). Aid requests for a past flood,

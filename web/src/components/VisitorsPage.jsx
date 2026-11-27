@@ -7,27 +7,14 @@ import { PageHeader, StatTile, ShareBar } from './dashboard/primitives.jsx';
 import { fmtDay, fmtNum } from './dashboard/format.js';
 import HourlyViewsCard from './dashboard/HourlyViewsCard.jsx';
 import { PAGE_TITLES } from './Sidebar.jsx';
+import { pageLabel } from '../lib/visitorLabels.js';
 
 const TOPIC_LABEL = { traffic: 'จราจร', flood: 'น้ำท่วม', road_status: 'สภาพถนน', accidents: 'อุบัติเหตุ' };
 const TOPIC_COLOR = { traffic: 'bg-blue-600', flood: 'bg-cyan-500', road_status: 'bg-amber-500', accidents: 'bg-red-600' };
 const VISITOR_POLL_MS = 5000;
 // The fifth tile (everyone so far): a row of its own under the other four, beside them from xl up
 const TOTAL_SPAN = 'col-span-2 lg:col-span-4 xl:col-span-1';
-const PAGE_LABEL = {
-  ...PAGE_TITLES, analytics: 'สถิติเมือง (หน้าเก่า)', 'bma-count': 'นับรถทุกกล้อง กทม.', helmet: 'คนไม่สวมหมวกกันน็อก', wrongway: 'รถขับย้อนศร',
-};
-const SUB_LABEL = {
-  overview: 'ภาพรวม', trend: 'แนวโน้ม', flood: 'น้ำท่วม', roads: 'ถนนน้ำท่วม', incidents: 'อุบัติเหตุและรถเสีย', 'bma-reports': 'ข่าวจากศูนย์ กทม.',
-  safety: 'ความปลอดภัย', traffic: 'จราจร', density: 'ความหนาแน่น', accidents: 'อุบัติเหตุ', riskbkk: 'จุดเสี่ยง กทม.', visitors: 'ผู้เข้าใช้งาน',
-  'road-risk': 'ถนนแต่ละสาย', situation: 'ระดับน้ำตอนนี้', north: 'น้ำเหนือ', watch: 'เขตเสี่ยงน้ำท่วม', shelter: 'จุดพักพิง', reports: 'เรื่องที่คนแจ้ง',
-  agent: 'AI สรุปสถานการณ์', analysis: 'AI คาดการณ์รายโซน',
-};
 const hh = (h) => `${String(h).padStart(2, '0')}:00`;
-function pageLabel(view) {
-  const [base, sub] = view.split(':');
-  const name = PAGE_LABEL[base] || base;
-  return sub ? `${name} › ${SUB_LABEL[sub] || sub}` : name;
-}
 
 // Ranked list with a proportional bar behind each row, so the biggest page reads at a glance
 function RankList({ rows, unit, empty }) {

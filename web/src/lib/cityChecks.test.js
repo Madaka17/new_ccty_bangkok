@@ -6,11 +6,15 @@ const zone = (name, watch, storm_at = null) => ({ name, watch, storm_at });
 const noFlood = { counts: { flood: 0, slight: 0 } };
 
 describe('waterCheck', () => {
-  test('river overflow outside Bangkok does not make Bangkok yellow, but is named', () => {
+  test('river overflow outside Bangkok makes the row yellow (watch), named as around Bangkok', () => {
     const w = { river: [gauge('นครปฐม', 'overflow'), gauge('สมุทรปราการ', 'overflow'), gauge('กรุงเทพมหานคร', 'high')], weather: [] };
     const c = waterCheck(w, noFlood);
-    expect(c.tone).toBe('green');
-    expect(c.status).toBe('กทม. ปกติ · ปริมณฑลน้ำล้นตลิ่ง 2 จุด');
+    expect(c).toMatchObject({ tone: 'yellow', status: 'รอบ กทม. น้ำล้นตลิ่ง 2 จุด' });
+  });
+
+  test('Bangkok overflow still wins over the provinces around', () => {
+    const w = { river: [gauge('นครปฐม', 'overflow'), gauge('กรุงเทพมหานคร', 'overflow')], weather: [] };
+    expect(waterCheck(w, noFlood)).toMatchObject({ tone: 'yellow', status: 'น้ำล้นตลิ่ง 1 จุด' });
   });
 
   test('Bangkok overflow counts', () => {
@@ -39,6 +43,11 @@ describe('waterCheck', () => {
     expect(waterCheck(w, noFlood)).toMatchObject({ tone: 'yellow', status: 'ฝนหนัก 1 จุด' });
   });
 
+  test('a stale Bangkok river reading does not make the row red or yellow', () => {
+    const w = { river: [gauge('กรุงเทพมหานคร', 'stale')], weather: [] };
+    expect(waterCheck(w, noFlood)).toMatchObject({ tone: 'green', status: 'ปกติ', bkkOverflow: 0 });
+  });
+
   test('nothing loaded yet', () => {
     expect(waterCheck(null, null)).toMatchObject({ tone: 'neutral', known: false });
   });
@@ -46,6 +55,20 @@ describe('waterCheck', () => {
 
 describe('incidentCheck', () => {
   const ev = (kind, title) => ({ kind, title });
+  test('incidents outside Bangkok are not counted and are named as รอบ กทม.', () => {
+    const c = incidentCheck({ longdo: [
+      { kind: 'accident', title: 'อุบัติเหตุ ก', in_bkk: true },
+      { kind: 'accident', title: 'อุบัติเหตุ ข', in_bkk: false },
+      { kind: 'breakdown', title: 'รถเสีย ค' },
+    ] });
+    expect(c).toMatchObject({ total: 2, accidents: 1, breakdowns: 1, outside: 1, status: 'อุบัติเหตุ 1 · รถเสีย 1 · รอบ กทม. 1' });
+  });
+
+  test('only outside Bangkok: no Bangkok incident, the outside count still shows', () => {
+    const c = incidentCheck({ longdo: [{ kind: 'accident', title: 'อุบัติเหตุ ก', in_bkk: false }] });
+    expect(c).toMatchObject({ tone: 'green', total: 0, outside: 1, status: 'ไม่มีเหตุ · รอบ กทม. 1' });
+  });
+
   test('accidents and breakdowns are counted apart', () => {
     const c = incidentCheck({ camera: [], longdo: [ev('accident', 'อุบัติเหตุ ก'), ev('accident', 'อุบัติเหตุ ข'), ev('breakdown', 'รถเสีย ค')] });
     expect(c).toMatchObject({ tone: 'yellow', status: 'อุบัติเหตุ 2 · รถเสีย 1', total: 3 });

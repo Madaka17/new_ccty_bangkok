@@ -1,0 +1,49 @@
+import { describe, it, expect } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
+import ViewSwitch from './ViewSwitch.jsx';
+
+const makeTabs = (n) => Array.from({ length: n }, (_, i) => ({ id: `t${i}`, label: `Tab ${i}`, icon: 'water' }));
+
+const tablistClass = (html) => html.match(/role="tablist"[^>]*class="([^"]*)"/)?.[1]
+  ?? html.match(/class="([^"]*)"[^>]*role="tablist"/)?.[1];
+
+describe('ViewSwitch on phones', () => {
+  it('9 tabs: one horizontally scrollable row below sm, grid from sm up', () => {
+    const cls = tablistClass(renderToStaticMarkup(<ViewSwitch tabs={makeTabs(9)} value="t0" onChange={() => {}} label="x" />));
+    expect(cls).toContain('overflow-x-auto');
+    expect(cls).toContain('sm:grid');
+  });
+
+  it('3 tabs: unchanged, no horizontal scroll row', () => {
+    const cls = tablistClass(renderToStaticMarkup(<ViewSwitch tabs={makeTabs(3)} value="t0" onChange={() => {}} label="x" />));
+    expect(cls).not.toContain('overflow-x-auto');
+  });
+});
+
+describe('ViewSwitch phone scroll hint', () => {
+  it('9 tabs render a right-edge fade that is hidden from sm up', () => {
+    const html = renderToStaticMarkup(<ViewSwitch tabs={makeTabs(9)} value="t0" onChange={() => {}} label="x" />);
+    const fade = html.match(/<div[^>]*data-fade="end"[^>]*>/)?.[0];
+    expect(fade).toBeDefined();
+    expect(fade).toContain('sm:hidden');
+    expect(fade).toContain('pointer-events-none');
+  });
+
+  it('3 tabs render no fade', () => {
+    const html = renderToStaticMarkup(<ViewSwitch tabs={makeTabs(3)} value="t0" onChange={() => {}} label="x" />);
+    expect(html).not.toContain('data-fade="end"');
+  });
+});
+
+describe('ViewSwitch desktop grid for long lists', () => {
+  it('9 tabs keep the 2/3/5-column grid from sm up', () => {
+    const cls = tablistClass(renderToStaticMarkup(<ViewSwitch tabs={makeTabs(9)} value="t0" onChange={() => {}} label="x" />));
+    expect(cls).toContain('sm:grid-cols-2');
+    expect(cls).toContain('xl:grid-cols-5');
+  });
+
+  it('7 tabs keep the 2/4-column grid from sm up', () => {
+    const cls = tablistClass(renderToStaticMarkup(<ViewSwitch tabs={makeTabs(7)} value="t0" onChange={() => {}} label="x" />));
+    expect(cls).toContain('md:grid-cols-4');
+  });
+});

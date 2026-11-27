@@ -797,6 +797,7 @@ export default function MapPage({ isActive, cameras, active, incidents, onToggle
                   <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: GAUGE_STYLE.overflow.color }} />ล้นตลิ่ง</span>
                   <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: GAUGE_STYLE.high.color }} />น้ำมาก</span>
                   <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: GAUGE_STYLE.normal.color }} />ปกติ</span>
+                  <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: GAUGE_STYLE.stale.color }} />{GAUGE_STYLE.stale.label}</span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1">บอกว่าน้ำในแม่น้ำหรือคลองเต็มแค่ไหน ไม่ใช่น้ำบนถนน</p>
               </>
